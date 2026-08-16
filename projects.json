@@ -1,0 +1,22 @@
+{
+  "builder": {
+    "summary": "Builder itself — the Telegram meta-harness that routes requests to Claude Code sessions across all local projects. Self-modifiable.",
+    "aliases": ["builder", "harness", "meta", "bot"]
+  },
+  "puretype": {
+    "summary": "PureType — a typing practice / typing game app.",
+    "aliases": ["typing", "typinggame"]
+  },
+  "atma": {
+    "summary": "Atma — monorepo umbrella for Atma Gaming projects (kenoverse lives here).",
+    "aliases": ["atmagaming"]
+  },
+  "Color-Match": {
+    "summary": "Color Match — an old color matching game.",
+    "aliases": ["colormatch"]
+  },
+  "webhooks": {
+    "summary": "Webhooks service for the Meditation Steps (am) projects.",
+    "aliases": ["amwebhooks"]
+  }
+}
