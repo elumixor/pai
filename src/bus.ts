@@ -1,9 +1,5 @@
 import { EventEmitter } from "node:events";
 import { db, now } from "./db.ts";
-import { config } from "./config.ts";
-import { logger } from "./log.ts";
-
-const log = logger("bus");
 
 export interface BuilderEvent {
   kind: string;
@@ -24,28 +20,12 @@ class Bus extends EventEmitter {
       event.ts,
     );
     this.emit("event", event);
-    void push(event);
     return event;
   }
 }
 
 export const bus = new Bus();
 bus.setMaxListeners(50);
-
-async function push(event: BuilderEvent) {
-  const { url, secret } = config.dashboard;
-  if (!url) return;
-  try {
-    await fetch(`${url.replace(/\/$/, "")}/api/ingest`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${secret}` },
-      body: JSON.stringify(event),
-      signal: AbortSignal.timeout(5000),
-    });
-  } catch (err) {
-    log.debug("dashboard push failed", (err as Error).message);
-  }
-}
 
 export function recentEvents(sessionId?: string, limit = 100): BuilderEvent[] {
   const rows = sessionId

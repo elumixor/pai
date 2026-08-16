@@ -73,4 +73,16 @@ which is merged over what the scanner infers.
 - `src/handler.ts` — message → session work. Frontend-agnostic; both CLI and Telegram use it.
 - `src/server.ts` — localhost HTTP API and the SSE event stream.
 - `src/telegram.ts` — grammY long-polling frontend, single private chat.
-- `src/bus.ts` — event log, and the push to the hosted dashboard when configured.
+- `src/bus.ts` — the event log every frontend reads from.
+- `src/dashboard.ts` — debounced snapshot push to the hosted dashboard.
+- `web/` — SvelteKit status page on Vercel. Deploy with `cd web && bun run build && vercel
+  deploy --prod --scope elumixors-projects`. State lives in a private Vercel Blob so any
+  function instance can serve it; `BUILDER_DASHBOARD_SECRET` gates both writes and reads.
+
+## Not done yet
+
+- Concurrency is unbounded by design. `rate_limit` events are recorded but nothing throttles
+  on them yet.
+- `~/dev/gen` and nested repos under a repo that already has `.git` are skipped by the
+  scanner, so a few real projects (`atma/services`, `gen/loop-dashboard`) are missing.
+- Session output is only relayed to Telegram at turn end. Nothing streams mid-turn.

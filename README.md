@@ -33,6 +33,21 @@ stop a session.
 
 Everything the bot does is also a CLI command — see `CLAUDE.md`.
 
+To keep it running across reboots:
+
+```sh
+bun scripts/install-daemon.ts            # launchd user agent, --uninstall to remove
+```
+
+## Dashboard
+
+`web/` is a small SvelteKit status page on Vercel, for checking on things from a phone. The
+daemon pushes a state snapshot to it every couple of seconds; the page never reaches back
+into the machine, so nothing has to be exposed to the internet.
+
+Set `BUILDER_DASHBOARD_URL` and `BUILDER_DASHBOARD_SECRET` to turn it on. The same secret
+gates reads — open the page once as `https://<url>/#k=<secret>` and it's remembered.
+
 ## Requirements
 
 Bun, and the Claude Code CLI logged into a subscription.
