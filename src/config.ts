@@ -40,10 +40,9 @@ export const config = {
     idleShutdownMs: Number(env.BUILDER_IDLE_SHUTDOWN_MS ?? 60 * 60 * 1000),
   },
 
-  router: {
-    model: env.BUILDER_ROUTER_MODEL ?? "haiku",
-    /** Reuse the last-used project if a message arrives within this window and looks like a follow-up. */
-    stickyMs: Number(env.BUILDER_STICKY_MS ?? 5 * 60 * 1000),
+  /** The conversational layer that decides what to do with a message. */
+  agent: {
+    model: env.BUILDER_AGENT_MODEL ?? "anthropic/claude-sonnet-5",
   },
 
   verbose: bool(env.BUILDER_VERBOSE),

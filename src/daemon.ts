@@ -2,6 +2,7 @@ import { config } from "./config.ts";
 import { refresh } from "./catalog.ts";
 import { startServer } from "./server.ts";
 import { startTelegram } from "./telegram.ts";
+import { recordSessionActivity } from "./agent.ts";
 import { startDashboardPush } from "./dashboard.ts";
 import { killAll, reapIdle } from "./sessions.ts";
 import { bus } from "./bus.ts";
@@ -10,6 +11,7 @@ import { logger } from "./log.ts";
 const log = logger("daemon");
 
 refresh();
+recordSessionActivity();
 const server = startServer();
 const bot = startTelegram();
 const stopDashboard = startDashboardPush();

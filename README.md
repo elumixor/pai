@@ -10,9 +10,10 @@ from behind the router.
 ## What it does
 
 - Watches `~/dev` and keeps a catalog of every repo it finds.
-- Takes a free-form message and picks the project it's about, using Haiku over that catalog.
-- Starts a real Claude Code session in that project's directory, or continues one that is
-  already working on the same thing.
+- Holds an actual conversation. Ask what's running, what a session did, or what it can do,
+  and it answers — it only starts work when you ask for work.
+- Starts a real Claude Code session in the right project's directory, or continues one that
+  is already working on the same thing.
 - Streams what each session does back into the chat. Reply to a session's message to send it
   a follow-up.
 - Knows about sessions it didn't start — anything you launched in a terminal shows up in
@@ -28,8 +29,11 @@ cp .env.example .env      # TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID
 bun run daemon
 ```
 
-Then message the bot. `/ps` for what's running, `/projects` for the catalog, `/kill <id>` to
-stop a session.
+`.env` also needs an `AI_GATEWAY_API_KEY` — the chat agent runs on the Vercel AI Gateway.
+The coding sessions it spawns run on your Claude subscription and cost nothing extra.
+
+Then just talk to the bot. `/reset` clears the conversation; everything else is plain
+language.
 
 Everything the bot does is also a CLI command — see `CLAUDE.md`.
 

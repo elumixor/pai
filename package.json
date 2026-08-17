@@ -12,7 +12,9 @@
   "dependencies": {
     "@grammyjs/auto-retry": "^2.0.2",
     "@grammyjs/transformer-throttler": "^1.2.1",
-    "grammy": "^1.30.0"
+    "ai": "^7.0.66",
+    "grammy": "^1.30.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/bun": "latest",

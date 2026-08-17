@@ -1,9 +1,9 @@
 import { config } from "./config.ts";
 import { all as allProjects, refresh } from "./catalog.ts";
 import { bus, recentEvents, type BuilderEvent } from "./bus.ts";
-import { handle, dispatch } from "./handler.ts";
-import { route } from "./router.ts";
-import { find, listAll, recentByProject, ensureLive } from "./sessions.ts";
+import { chat } from "./agent.ts";
+import { clear, transcript } from "./chat.ts";
+import { find, listAll, recentByProject, ensureLive, spawn } from "./sessions.ts";
 import { db } from "./db.ts";
 import { logger } from "./log.ts";
 
@@ -32,19 +32,24 @@ export function startServer() {
           return json(allProjects());
         }
 
-        if (path === "/route" && req.method === "POST") {
-          const { text, replyTo } = await body<{ text: string; replyTo?: string }>(req);
-          return json(await route(text, { replyToSessionId: replyTo }));
+        if (path === "/chat" && req.method === "POST") {
+          const { text } = await body<{ text: string }>(req);
+          return json(await chat(text));
         }
 
-        if (path === "/message" && req.method === "POST") {
-          const { text, replyTo } = await body<{ text: string; replyTo?: string }>(req);
-          return json(await handle({ text, replyToSessionId: replyTo }));
+        if (path === "/chat/history") {
+          if (req.method === "DELETE") {
+            clear();
+            return json({ ok: true });
+          }
+          return json(transcript(100));
         }
 
         if (path === "/spawn" && req.method === "POST") {
           const { project, text } = await body<{ project: string; text: string }>(req);
-          return json(dispatch(text, project));
+          const session = spawn(project, text.slice(0, 80));
+          session.send(text);
+          return json(session.toJSON());
         }
 
         if (path === "/send" && req.method === "POST") {
@@ -70,10 +75,6 @@ export function startServer() {
           const sessionId = raw ? (find(raw)?.id ?? resolveSessionId(raw) ?? raw) : undefined;
           if (!url.searchParams.get("follow")) return json(recentEvents(sessionId, 200));
           return sse(sessionId);
-        }
-
-        if (path === "/routings") {
-          return json(db.query("SELECT * FROM routings ORDER BY id DESC LIMIT 200").all());
         }
 
         return json({ error: "not found" }, 404);

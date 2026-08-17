@@ -62,16 +62,15 @@ function summarize(e: any): string {
 const usage = `builder cli
 
   daemon                       run the daemon in the foreground (no telegram)
-  projects [--refresh]         list the catalog as the router sees it
-  route <text>                 routing decision only, never spawns
-  message <text> [--reply id]  full path: route then spawn/continue
-  spawn <project> <text>       start a session in a project
+  chat <text>                  talk to builder — the same path Telegram uses
+  history [--clear]            the conversation builder remembers
+  projects [--refresh]         list the catalog as the agent sees it
+  spawn <project> <text>       start a session in a project, skipping the agent
   send <id> <text>             send a turn to an existing session
   ps                           builder sessions + every other claude session
   tail [id] [--raw]            follow the event stream
   events [id]                  recent events
   kill <id>
-  routings                     recorded routing decisions
 
   --json on any command for raw output`;
 
@@ -88,20 +87,24 @@ try {
       out(data, () => data.map((p: any) => `${p.slug.padEnd(28)} ${p.summary.slice(0, 80)}`).join("\n"));
       break;
     }
-    case "route": {
-      const data = await post("/route", { text: positional.join(" "), replyTo: flag("reply") });
-      out(data, () => `${data.stage} → ${data.action} ${data.project ?? "?"} ${data.sessionId ?? ""} (${data.confidence}, ${data.ms}ms)\n${data.reason}`);
+    case "chat": {
+      const data = await post("/chat", { text: positional.join(" ") });
+      out(data, () => data.text);
       break;
     }
-    case "message": {
-      const data = await post("/message", { text: positional.join(" "), replyTo: flag("reply") });
-      out(data, () => `${data.kind}: ${data.text}`);
+    case "history": {
+      if (args.includes("--clear")) {
+        out(await api("/chat/history", { method: "DELETE" }), () => "cleared");
+        break;
+      }
+      const data = await api("/chat/history");
+      out(data, () => data.map((m: any) => `${m.role.padEnd(9)} ${m.content.replace(/\n/g, " ").slice(0, 140)}`).join("\n"));
       break;
     }
     case "spawn": {
       const [project, ...rest] = positional;
       const data = await post("/spawn", { project, text: rest.join(" ") });
-      out(data, () => `${data.kind}: ${data.text}`);
+      out(data, () => `${data.project} · ${data.shortId} ${data.state}`);
       break;
     }
     case "send": {
@@ -133,11 +136,6 @@ try {
     case "kill":
       out(await post("/kill", { sessionId: positional[0] }));
       break;
-    case "routings": {
-      const data = await api("/routings");
-      out(data, () => data.map((r: any) => `${r.stage.padEnd(9)} ${r.action.padEnd(9)} ${(r.project ?? "-").padEnd(20)} ${r.text.slice(0, 60)}`).join("\n"));
-      break;
-    }
     default:
       console.log(usage);
   }

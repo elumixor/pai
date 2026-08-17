@@ -1,18 +1,14 @@
-import { Bot, InlineKeyboard } from "grammy";
+import { Bot } from "grammy";
 import { autoRetry } from "@grammyjs/auto-retry";
 import { apiThrottler } from "@grammyjs/transformer-throttler";
 import { config } from "./config.ts";
 import { db, now } from "./db.ts";
 import { bus, type BuilderEvent } from "./bus.ts";
-import { handle, dispatch } from "./handler.ts";
-import { find, listAll, recentByProject } from "./sessions.ts";
-import { all as allProjects, refresh } from "./catalog.ts";
+import { chat } from "./agent.ts";
+import { clear } from "./chat.ts";
 import { logger } from "./log.ts";
 
 const log = logger("telegram");
-
-/** Pending "which project?" choices, keyed by a short token that fits in callback_data. */
-const pending = new Map<string, { text: string; options: { label: string; project: string; sessionId?: string }[] }>();
 
 export function startTelegram() {
   if (!config.telegram.enabled) return undefined;
@@ -26,50 +22,41 @@ export function startTelegram() {
   bot.api.config.use(autoRetry({ maxRetryAttempts: 3 }));
 
   const chatId = config.telegram.chatId;
-  const send = async (text: string, extra: Record<string, unknown> = {}) =>
-    bot.api.sendMessage(chatId, clip(text), { parse_mode: "HTML", ...extra });
+  const send = (text: string) => bot.api.sendMessage(chatId, clip(text));
 
   bot.on("message:text", async (ctx) => {
     if (ctx.chat.id !== chatId) return;
     const text = ctx.message.text;
 
-    if (text.startsWith("/")) return command(ctx, text, send);
-
-    const replyId = ctx.message.reply_to_message?.message_id;
-    const replyTo = replyId
-      ? (db.query("SELECT session_id FROM tg_messages WHERE message_id = ?").get(replyId) as
-          | { session_id: string }
-          | undefined)
-      : undefined;
-
-    const result = await handle({ text, replyToSessionId: replyTo?.session_id });
-
-    if (result.kind === "ask") {
-      const token = Math.random().toString(36).slice(2, 8);
-      pending.set(token, { text, options: result.options ?? [] });
-      const kb = new InlineKeyboard();
-      (result.options ?? []).forEach((o, i) => kb.text(o.label, `p:${token}:${i}`).row());
-      await ctx.reply(escape(result.text), { reply_markup: kb });
-      return;
+    if (text === "/reset") {
+      clear();
+      return void ctx.reply("history cleared");
     }
 
-    const sent = await ctx.reply(escape(result.text));
-    if (result.sessionId) link(sent.message_id, result.sessionId);
+    // Turns can take a while — keep the typing indicator alive until the reply lands.
+    const typing = setInterval(() => void ctx.replyWithChatAction("typing").catch(() => {}), 5000);
+    void ctx.replyWithChatAction("typing").catch(() => {});
+
+    try {
+      const replyTo = ctx.message.reply_to_message?.message_id;
+      const linked = replyTo
+        ? (db.query("SELECT session_id FROM tg_messages WHERE message_id = ?").get(replyTo) as
+            | { session_id: string }
+            | undefined)
+        : undefined;
+      // A Telegram reply is an explicit pointer at a session; hand it to the agent as context.
+      const prompt = linked ? `(replying to session ${linked.session_id.slice(0, 6)})\n${text}` : text;
+
+      const result = await chat(prompt);
+      await ctx.reply(clip(result.text));
+    } catch (err) {
+      log.error("turn failed", err);
+      await ctx.reply(`error: ${(err as Error).message}`);
+    } finally {
+      clearInterval(typing);
+    }
   });
 
-  bot.on("callback_query:data", async (ctx) => {
-    const [, token, idxRaw] = ctx.callbackQuery.data.split(":");
-    const entry = token ? pending.get(token) : undefined;
-    const option = entry?.options[Number(idxRaw)];
-    await ctx.answerCallbackQuery();
-    if (!entry || !option) return void ctx.editMessageText("expired — send it again");
-    pending.delete(token!);
-    const result = dispatch(entry.text, option.project, option.sessionId);
-    await ctx.editMessageText(escape(result.text));
-    if (result.sessionId && ctx.callbackQuery.message) link(ctx.callbackQuery.message.message_id, result.sessionId);
-  });
-
-  // Push session activity into the chat.
   bus.on("event", (e: BuilderEvent) => void relay(e, send));
 
   bot.catch((err) => log.error("bot error", err.message));
@@ -85,60 +72,24 @@ function link(messageId: number, sessionId: string) {
   );
 }
 
-async function relay(e: BuilderEvent, send: (text: string, extra?: Record<string, unknown>) => Promise<any>) {
-  const tag = e.sessionId ? `${e.project} · ${e.sessionId.slice(0, 6)}` : "builder";
+/** Session activity goes to the chat and into the agent's memory of the conversation. */
+async function relay(e: BuilderEvent, send: (text: string) => Promise<{ message_id: number }>) {
+  const short = e.sessionId?.slice(0, 6) ?? "";
+  const tag = e.sessionId ? `${e.project} · ${short}` : "builder";
   try {
     if (e.kind === "session.turn_end") {
       const text = String(e.payload.text ?? "").trim();
-      const sent = await send(`<b>${escape(tag)}</b>\n${escape(text)}`);
+      if (!text) return;
+      const sent = await send(`[${tag}]\n${text}`);
       if (e.sessionId) link(sent.message_id, e.sessionId);
     } else if (e.kind === "session.exit" && e.payload.code !== 0) {
-      await send(`<b>${escape(tag)}</b> exited (code ${e.payload.code})`);
+      await send(`[${tag}] session exited (code ${e.payload.code})`);
     } else if (e.kind === "rate_limit" && e.payload.status !== "allowed") {
-      await send(`⚠️ rate limit: ${escape(String(e.payload.status))}`);
+      await send(`rate limit: ${e.payload.status}`);
     }
   } catch (err) {
     log.warn("relay failed", (err as Error).message);
   }
-}
-
-async function command(ctx: any, text: string, send: (t: string, e?: Record<string, unknown>) => Promise<any>) {
-  const [cmd, ...rest] = text.slice(1).split(/\s+/);
-  const arg = rest.join(" ");
-  switch (cmd) {
-    case "ps": {
-      const { owned, foreign } = await listAll();
-      const mine = owned.length
-        ? owned.map((s) => `• ${s.project} · ${s.shortId} — ${s.state}`).join("\n")
-        : "(no builder sessions)";
-      const others = foreign.map((f: any) => `• ${String(f.cwd).split("/").pop()} — ${f.kind}`).join("\n");
-      return send(`<b>builder</b>\n${escape(mine)}\n\n<b>other sessions</b>\n${escape(others || "(none)")}`);
-    }
-    case "projects":
-      return send(escape(allProjects().map((p) => p.slug).join("\n")));
-    case "refresh":
-      return send(`indexed ${refresh().length} projects`);
-    case "kill": {
-      const s = find(arg);
-      if (!s) return send("no such session");
-      s.kill();
-      return send(`killed ${s.shortId}`);
-    }
-    case "recent":
-      return send(
-        escape(
-          recentByProject(undefined, 10)
-            .map((s) => `${s.project} · ${s.shortId} — ${s.state}`)
-            .join("\n") || "(none)",
-        ),
-      );
-    default:
-      return send("commands: /ps /recent /projects /refresh /kill &lt;id&gt;");
-  }
-}
-
-function escape(s: string) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function clip(s: string, max = 4000) {

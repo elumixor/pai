@@ -47,21 +47,6 @@ CREATE TABLE IF NOT EXISTS tg_messages (
   session_id  TEXT NOT NULL,
   ts          INTEGER NOT NULL
 );
-
--- Every routing decision, kept as ground truth for accuracy evaluation.
-CREATE TABLE IF NOT EXISTS routings (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  text        TEXT NOT NULL,
-  stage       TEXT NOT NULL,
-  project     TEXT,
-  session_id  TEXT,
-  action      TEXT NOT NULL,
-  confidence  TEXT,
-  reason      TEXT,
-  ms          INTEGER,
-  corrected   TEXT,
-  ts          INTEGER NOT NULL
-);
 `);
 
 export function now() {
