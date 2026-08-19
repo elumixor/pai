@@ -1,7 +1,7 @@
 import { config } from "./config.ts";
 import { refresh } from "./catalog.ts";
 import { startServer } from "./server.ts";
-import { startTelegram } from "./telegram.ts";
+import { startTelegram } from "./telegram.tsx";
 import { recordSessionActivity } from "./agent.ts";
 import { startDashboardPush } from "./dashboard.ts";
 import { killAll, reapIdle } from "./sessions.ts";

@@ -50,6 +50,19 @@
     return () => clearInterval(timer);
   });
 
+  // A link from Telegram points at a session via ?s=<shortId> — scroll to it once loaded.
+  let scrolledTo = false;
+  $effect(() => {
+    if (!snapshot || scrolledTo) return;
+    const target = new URLSearchParams(location.search).get("s");
+    if (!target) return;
+    const el = document.getElementById(`sess-${target}`);
+    if (!el) return;
+    scrolledTo = true;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("highlight");
+  });
+
   function clock(ts: number) {
     return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   }
@@ -86,7 +99,7 @@
       {:else}
         <ul class="sessions">
           {#each snapshot.sessions as s (s.shortId)}
-            <li>
+            <li id="sess-{s.shortId}">
               <span class="dot {s.state}"></span>
               <code>{s.shortId}</code>
               <strong>{s.project}</strong>
@@ -102,7 +115,7 @@
       <h2>recent</h2>
       <ul class="recent">
         {#each snapshot.recent.slice(0, 8) as r (r.shortId)}
-          <li>
+          <li id="sess-{r.shortId}">
             <code>{r.shortId}</code>
             <strong>{r.project}</strong>
             <span class="state">{r.state}</span>
@@ -152,6 +165,19 @@
     font-size: 18px;
     margin: 0;
     letter-spacing: 0.04em;
+  }
+
+  li.highlight {
+    animation: highlight 2s ease-out;
+  }
+
+  @keyframes highlight {
+    from {
+      background: #3b4a5a;
+    }
+    to {
+      background: transparent;
+    }
   }
 
   h2 {

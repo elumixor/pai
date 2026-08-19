@@ -168,6 +168,29 @@ export async function chat(text: string): Promise<ChatResult> {
   }
 }
 
+/** Same turn, but calls `onDelta` with the accumulated text as it streams in. */
+export async function chatStream(text: string, onDelta: (partial: string) => void): Promise<ChatResult> {
+  remember("user", text);
+  try {
+    const result = await agent.stream({ messages: history() });
+    let acc = "";
+    for await (const delta of result.textStream) {
+      acc += delta;
+      onDelta(acc);
+    }
+    const reply = (await result.text).trim() || "(no reply)";
+    remember("assistant", reply);
+    const steps = (await result.steps).length;
+    log.info(`turn: ${steps} steps`);
+    return { text: reply, steps };
+  } catch (err) {
+    log.error("turn failed", err);
+    const reply = `agent error: ${(err as Error).message}`;
+    onDelta(reply);
+    return { text: reply, steps: 0 };
+  }
+}
+
 /**
  * What sessions report is part of the conversation, whatever frontend is attached —
  * otherwise "did it finish?" would depend on Telegram having been running.
