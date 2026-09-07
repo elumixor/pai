@@ -2,8 +2,10 @@
 export {}; // dynamic imports only, but top-level await needs this file to be a module
 const [cmd, ...args] = process.argv.slice(2);
 
-// `daemon` needs these set before config.ts is evaluated, so config is imported after.
-if (cmd === "daemon") {
+// The foreground daemon is the dev loop: verbose, and no bot fighting the installed one for the token.
+// These have to be set before config.ts is evaluated, so config is imported after.
+const foreground = args.includes("--foreground") || args.includes("-f");
+if (cmd === "daemon" && foreground) {
   process.env.PAI_NO_TELEGRAM ??= "1";
   process.env.PAI_VERBOSE ??= "1";
 }
@@ -79,7 +81,7 @@ const usage = `pai
   tail [id] [--raw]            follow the event stream
   events [id]                  recent events
   projects [--refresh]         coding projects as the assistant sees them
-  daemon                       run the daemon in the foreground (no telegram)
+  daemon [--foreground]        start the daemon; --foreground stays attached, verbose, no telegram
   install [--uninstall]        launchd user agent + \`pai\` on PATH
   update [--check] [--force]   pull, reinstall, rebuild, restart the daemon
 
@@ -87,9 +89,25 @@ const usage = `pai
 
 try {
   switch (cmd) {
-    case "daemon":
-      await import("./daemon.ts");
+    case "daemon": {
+      if (foreground) {
+        await import("./daemon.ts");
+        break;
+      }
+      // Detached, so the terminal comes back; it keeps the port until it is killed.
+      const log = `${config.repo}/data/daemon.log`;
+      const file = Bun.file(log);
+      const child = Bun.spawn([process.execPath, "run", `${config.repo}/src/daemon.ts`], {
+        cwd: config.repo,
+        stdout: file,
+        stderr: file,
+        stdin: "ignore",
+        env: process.env,
+      });
+      child.unref();
+      out({ pid: child.pid, log }, () => `daemon ${child.pid} — ${log} (--foreground to stay attached)`);
       break;
+    }
     case "update": {
       // Works with the daemon down too — then the update just runs here.
       const local = async () => {

@@ -9,7 +9,7 @@ by the main session (`start_task` tool), by `/new <title>`, or by the user creat
 Never test through Telegram. The CLI drives the identical code path.
 
 ```sh
-bun run src/cli.ts daemon                  # foreground, verbose, telegram off
+bun run src/cli.ts daemon [-f]             # detached; -f/--foreground = attached, verbose, telegram off
 bun run src/cli.ts chat "<text>"           # a main-conversation turn, waits for the reply
 bun run src/cli.ts task "<title>" "<text>" [--project <slug>]
 bun run src/cli.ts send <id> "<text>" [--wait]
