@@ -1,6 +1,6 @@
 import { config } from "./config.ts";
 import { bus, recentEvents } from "./bus.ts";
-import { list, recentByProject } from "./sessions.ts";
+import { list, recent } from "./sessions.ts";
 import { all as allProjects } from "./catalog.ts";
 import { logger } from "./log.ts";
 
@@ -15,8 +15,8 @@ export function startDashboardPush() {
   if (!config.dashboard.url) return;
 
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const schedule = () => {
-    if (timer) return;
+  const schedule = (e: { kind: string }) => {
+    if (timer || e.kind === "session.delta") return;
     timer = setTimeout(() => {
       timer = undefined;
       void push();
@@ -39,8 +39,8 @@ export function snapshot() {
     host: process.env.HOST ?? "local",
     projects: allProjects().map((p) => ({ slug: p.slug, summary: p.summary })),
     sessions: list(),
-    recent: recentByProject(undefined, 20),
-    events: recentEvents(undefined, 100),
+    recent: recent(20),
+    events: recentEvents(undefined, 150),
   };
 }
 

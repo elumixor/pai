@@ -1,270 +1,375 @@
 import { randomUUID } from "node:crypto";
-import type { Subprocess } from "bun";
+import { query, type Options, type Query, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "./config.ts";
 import { db, now } from "./db.ts";
 import { bus } from "./bus.ts";
 import { logger } from "./log.ts";
+import { paiTools } from "./tools.ts";
+import { instructionsFor } from "./prompts.ts";
 
 const log = logger("session");
 
+export type SessionKind = "main" | "task" | "code";
 export type SessionState = "starting" | "idle" | "busy" | "dead";
 
-export interface SessionRow {
-  session_id: string;
-  short_id: string;
-  project: string;
-  cwd: string;
-  title: string;
-  state: SessionState;
-  pid: number | null;
-  started_at: number;
-  last_activity: number;
-  last_result: string | null;
+export interface Question {
+  question: string;
+  header: string;
+  options: { label: string; description: string }[];
+  multiSelect: boolean;
 }
 
-interface SpawnOptions {
-  project: string;
+export interface PendingQuestion {
+  id: string;
+  questions: Question[];
+  resolve: (answer: { answers?: Record<string, string | string[]>; response?: string }) => void;
+}
+
+export interface SessionOptions {
+  kind: SessionKind;
+  title: string;
   cwd: string;
-  title?: string;
+  project?: string;
+  threadId?: number | null;
   /** Resume an existing on-disk session instead of starting a fresh one. */
   resume?: string;
-  model?: string;
 }
 
 /**
- * One Claude Code process driven over the stream-json protocol.
+ * One Claude Code session driven through the Agent SDK in streaming-input mode.
  *
- * The process is disposable; the session is not. Everything needed to bring a
- * session back lives in ~/.claude/projects, so a dead process is respawned with
- * --resume rather than treated as lost work.
+ * The process is disposable; the session is not. The transcript lives under
+ * ~/.claude/projects, so a dead process is respawned with `resume` and keeps its
+ * full context.
  */
 export class Session {
   readonly id: string;
   readonly shortId: string;
-  readonly project: string;
+  readonly kind: SessionKind;
   readonly cwd: string;
+  readonly project?: string;
   title: string;
+  threadId: number | null;
+  cardId: number | null = null;
   state: SessionState = "starting";
+  costUsd = 0;
+  turns = 0;
+  lastTool = "";
 
-  private proc?: Subprocess<"pipe", "pipe", "pipe">;
-  private queue: string[] = [];
-  private buffer = "";
-  private turnText = "";
+  private q?: Query;
+  private inbox: SDKUserMessage[] = [];
+  private wake?: () => void;
+  private closed = false;
+  private turnText: string[] = [];
+  private streamText = "";
+  /** True between a user turn being sent and its result; injected context produces results too, which are not turns. */
+  private activeTurn = false;
+  pending?: PendingQuestion;
 
-  constructor(opts: SpawnOptions) {
+  constructor(opts: SessionOptions) {
     this.id = opts.resume ?? randomUUID();
     this.shortId = this.id.slice(0, 6);
-    this.project = opts.project;
+    this.kind = opts.kind;
     this.cwd = opts.cwd;
-    this.title = opts.title ?? "";
-    this.start(opts.resume !== undefined, opts.model);
+    this.project = opts.project;
+    this.title = opts.title;
+    this.threadId = opts.threadId ?? null;
+    if (opts.resume) {
+      const row = db.query("SELECT card_id, cost_usd, turns FROM sessions WHERE session_id = ?").get(this.id) as
+        | { card_id: number | null; cost_usd: number; turns: number }
+        | undefined;
+      this.cardId = row?.card_id ?? null;
+      this.costUsd = row?.cost_usd ?? 0;
+      this.turns = row?.turns ?? 0;
+    }
+    this.start(opts.resume !== undefined);
   }
 
-  private start(resume: boolean, model?: string) {
-    const args = [
-      "-p",
-      "--input-format",
-      "stream-json",
-      "--output-format",
-      "stream-json",
-      "--verbose",
-      "--permission-mode",
-      config.session.permissionMode,
-      "--model",
-      model ?? config.session.model,
-      "-n",
-      `builder/${this.project}/${this.shortId}`,
-    ];
-    if (resume) args.push("--resume", this.id);
-    else args.push("--session-id", this.id);
-
-    this.proc = Bun.spawn(["claude", ...args], {
+  private start(resume: boolean) {
+    const model = this.kind === "main" ? config.models.main : config.models.task;
+    const options: Options = {
       cwd: this.cwd,
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env, BUILDER_SESSION: this.id },
-    }) as Subprocess<"pipe", "pipe", "pipe">;
+      model,
+      permissionMode: "bypassPermissions",
+      allowDangerouslySkipPermissions: true,
+      includePartialMessages: true,
+      // Project settings only: the user's global hooks and plugins are for their
+      // terminal sessions, not for the assistant. claude.ai connectors still load.
+      settingSources: ["project"],
+      additionalDirectories: this.kind === "code" ? [config.workspace] : [],
+      systemPrompt: { type: "preset", preset: "claude_code", append: instructionsFor(this) },
+      mcpServers: {
+        pai: paiTools(this),
+        playwright: { type: "stdio", command: "npx", args: ["@playwright/mcp@latest"] },
+      },
+      canUseTool: async (tool, input) => {
+        if (tool === "AskUserQuestion") return this.ask(input as { questions: Question[] });
+        return { behavior: "allow", updatedInput: input };
+      },
+      stderr: (data) => log.debug(`${this.shortId} stderr`, data.trim().slice(0, 300)),
+      title: this.title,
+      env: { ...process.env, PAI_SESSION: this.id },
+    };
+    if (resume) options.resume = this.id;
+    else options.sessionId = this.id;
 
+    this.q = query({ prompt: this.input(), options });
     this.persist();
-    bus.emitEvent(
-      resume ? "session.resumed" : "session.started",
-      { shortId: this.shortId, cwd: this.cwd, title: this.title },
-      this.id,
-      this.project,
-    );
-
-    void this.readLoop();
-    void this.watchExit();
+    bus.emitEvent(resume ? "session.resumed" : "session.started", this.summary(), this.id);
+    void this.pump();
   }
 
-  private async readLoop() {
-    const dec = new TextDecoder();
-    for await (const chunk of this.proc!.stdout) {
-      this.buffer += dec.decode(chunk as Uint8Array);
-      const lines = this.buffer.split("\n");
-      this.buffer = lines.pop() ?? "";
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          this.handle(JSON.parse(line) as Record<string, any>);
-        } catch {
-          log.debug(`${this.shortId} unparsable line`, line.slice(0, 200));
-        }
+  private async *input(): AsyncGenerator<SDKUserMessage> {
+    while (!this.closed) {
+      const next = this.inbox.shift();
+      if (next) {
+        yield next;
+        continue;
       }
+      await new Promise<void>((r) => (this.wake = r));
     }
   }
 
-  private async watchExit() {
-    const code = await this.proc!.exited;
-    const stderr = await new Response(this.proc!.stderr).text();
-    this.state = "dead";
-    this.persist();
-    bus.emitEvent("session.exit", { code, stderr: stderr.slice(-2000) }, this.id, this.project);
-    log.info(`${this.shortId} exited code=${code}`);
+  private async pump() {
+    try {
+      for await (const m of this.q!) this.handle(m);
+      this.die(0);
+    } catch (err) {
+      log.error(`${this.shortId} query failed`, (err as Error).message);
+      bus.emitEvent("session.error", { message: (err as Error).message }, this.id);
+      this.die(1);
+    }
   }
 
-  private handle(msg: Record<string, any>) {
+  private die(code: number) {
+    if (this.state === "dead") return;
+    this.state = "dead";
+    this.pending?.resolve({ response: "(session ended)" });
+    this.pending = undefined;
+    this.persist();
+    bus.emitEvent("session.exit", { code }, this.id);
+  }
+
+  private handle(m: SDKMessage) {
     this.touch();
-    switch (msg.type) {
+    switch (m.type) {
       case "system":
-        if (msg.subtype === "init" && this.state === "starting") {
+        if (m.subtype === "init" && this.state === "starting") {
           this.state = "busy";
           this.persist();
         }
+        if (m.subtype === "status" && m.status === "compacting") bus.emitEvent("session.status", { status: "compacting" }, this.id);
         break;
 
+      case "stream_event": {
+        const e = m.event as { type: string; delta?: { type: string; text?: string } };
+        if (e.type === "content_block_delta" && e.delta?.type === "text_delta" && e.delta.text) {
+          this.streamText += e.delta.text;
+          bus.emitEvent("session.delta", { text: this.streamText }, this.id);
+        }
+        if (e.type === "message_stop" || e.type === "content_block_start") {
+          // A new block or message begins: the previous text block is complete.
+          if (e.type === "content_block_start" && this.streamText) this.streamText += "\n\n";
+        }
+        break;
+      }
+
       case "assistant": {
-        for (const block of (msg.message?.content ?? []) as Record<string, any>[]) {
+        for (const block of m.message.content as Record<string, any>[]) {
           if (block.type === "text" && block.text) {
-            this.turnText += block.text;
-            bus.emitEvent("session.text", { text: block.text }, this.id, this.project);
+            this.turnText.push(block.text);
+            bus.emitEvent("session.text", { text: block.text }, this.id);
           } else if (block.type === "tool_use") {
-            bus.emitEvent(
-              "session.tool",
-              { name: block.name, summary: summarizeTool(block.name, block.input) },
-              this.id,
-              this.project,
-            );
+            this.lastTool = summarizeTool(block.name, block.input);
+            bus.emitEvent("session.tool", { name: block.name, summary: this.lastTool }, this.id);
           }
         }
         break;
       }
 
       case "rate_limit_event":
-        bus.emitEvent("rate_limit", msg.rate_limit_info ?? {}, this.id, this.project);
+        if (m.rate_limit_info.status !== "allowed")
+          bus.emitEvent("rate_limit", m.rate_limit_info as unknown as Record<string, unknown>, this.id);
         break;
 
       case "result": {
-        const text = (msg.result as string) ?? this.turnText;
-        this.turnText = "";
+        const text = this.turnText.join("\n\n").trim() || (m.subtype === "success" ? m.result : "");
+        this.turnText = [];
+        this.streamText = "";
+        if (!this.activeTurn && !text) {
+          this.state = "idle";
+          this.persist();
+          break;
+        }
+        this.activeTurn = false;
+        this.turns += 1;
+        this.costUsd = m.total_cost_usd ?? this.costUsd;
+        this.state = "idle";
         db.prepare("UPDATE sessions SET last_result = ? WHERE session_id = ?").run(text.slice(0, 4000), this.id);
+        this.persist();
         bus.emitEvent(
           "session.turn_end",
           {
             text,
-            isError: Boolean(msg.is_error),
-            durationMs: msg.duration_ms,
-            costUsd: msg.total_cost_usd,
+            isError: m.subtype !== "success" || Boolean(m.is_error),
+            subtype: m.subtype,
+            durationMs: m.duration_ms,
+            costUsd: m.total_cost_usd,
+            numTurns: m.num_turns,
           },
           this.id,
-          this.project,
         );
-        this.state = "idle";
-        this.persist();
-        this.flush();
         break;
       }
     }
   }
 
-  /** Enqueue a user turn. Sent immediately when the session is idle, otherwise after the current turn. */
-  send(text: string) {
-    this.queue.push(text);
-    bus.emitEvent("session.input", { text }, this.id, this.project);
-    this.flush();
+  /** Enqueue a user turn. The SDK queues it if a turn is already running. */
+  send(text: string, opts: { images?: { media_type: string; data: string }[] } = {}) {
+    if (this.state === "dead") throw new Error(`session ${this.shortId} is dead`);
+    const content: any[] = [{ type: "text", text }];
+    for (const img of opts.images ?? [])
+      content.push({ type: "image", source: { type: "base64", media_type: img.media_type, data: img.data } });
+    this.inbox.push({ type: "user", message: { role: "user", content }, parent_tool_use_id: null });
+    this.activeTurn = true;
+    this.wake?.();
+    if (this.state === "idle") {
+      this.state = "busy";
+      this.persist();
+    }
+    bus.emitEvent("session.input", { text }, this.id);
   }
 
-  private flush() {
-    // "starting" is sendable: the CLI emits system/init only once it has a first
-    // turn to work on, so waiting for init before writing would deadlock.
-    if (this.state === "busy" || this.state === "dead") return;
-    if (this.queue.length === 0 || !this.proc) return;
-    const text = this.queue.shift()!;
-    const frame = JSON.stringify({
+  /** Append context to the transcript without spending a model turn on it. */
+  inject(text: string) {
+    if (this.state === "dead") return;
+    this.inbox.push({
       type: "user",
-      message: { role: "user", content: [{ type: "text", text }] },
+      message: { role: "user", content: text },
+      parent_tool_use_id: null,
+      shouldQuery: false,
     });
-    this.proc.stdin.write(frame + "\n");
-    this.proc.stdin.flush();
-    this.state = "busy";
-    this.persist();
+    this.wake?.();
+  }
+
+  private ask(input: { questions: Question[] }) {
+    return new Promise<{ behavior: "allow"; updatedInput: Record<string, unknown> }>((resolve) => {
+      const id = randomUUID().slice(0, 8);
+      this.pending = {
+        id,
+        questions: input.questions,
+        resolve: (answer) => {
+          this.pending = undefined;
+          bus.emitEvent("session.answer", { id, ...answer }, this.id);
+          resolve({ behavior: "allow", updatedInput: { ...input, ...answer } });
+        },
+      };
+      this.persist();
+      bus.emitEvent("session.question", { id, questions: input.questions }, this.id);
+    });
+  }
+
+  /** Answers the pending question with a chosen option, or with free text. */
+  answer(text: string, questionIndex = 0) {
+    const p = this.pending;
+    if (!p) return false;
+    const q = p.questions[questionIndex] ?? p.questions[0]!;
+    p.resolve({ answers: { [q.question]: text } });
+    return true;
+  }
+
+  async interrupt() {
+    if (!this.q || this.state !== "busy") return false;
+    await this.q.interrupt();
+    return true;
   }
 
   kill() {
-    this.queue = [];
+    this.closed = true;
+    this.wake?.();
     try {
-      this.proc?.stdin.end();
-      this.proc?.kill();
+      this.q?.close();
     } catch {
       /* already gone */
     }
-    this.state = "dead";
-    this.persist();
+    this.die(0);
   }
 
   private touch() {
     db.prepare("UPDATE sessions SET last_activity = ? WHERE session_id = ?").run(now(), this.id);
   }
 
-  private persist() {
+  persist() {
     db.prepare(
-      `INSERT INTO sessions (session_id, short_id, project, cwd, title, state, pid, started_at, last_activity)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(session_id) DO UPDATE SET state=excluded.state, pid=excluded.pid,
-         title=excluded.title, last_activity=excluded.last_activity`,
+      `INSERT INTO sessions (session_id, short_id, kind, title, cwd, project, thread_id, card_id, state, started_at, last_activity, cost_usd, turns)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(session_id) DO UPDATE SET state=excluded.state, title=excluded.title, thread_id=excluded.thread_id,
+         card_id=excluded.card_id, last_activity=excluded.last_activity, cost_usd=excluded.cost_usd, turns=excluded.turns`,
     ).run(
       this.id,
       this.shortId,
-      this.project,
-      this.cwd,
+      this.kind,
       this.title,
+      this.cwd,
+      this.project ?? null,
+      this.threadId,
+      this.cardId,
       this.state,
-      this.proc?.pid ?? null,
       now(),
       now(),
+      this.costUsd,
+      this.turns,
     );
   }
 
-  toJSON() {
+  summary() {
     return {
       sessionId: this.id,
       shortId: this.shortId,
+      kind: this.kind,
+      title: this.title,
       project: this.project,
       cwd: this.cwd,
-      title: this.title,
+      threadId: this.threadId,
       state: this.state,
-      pid: this.proc?.pid,
-      queued: this.queue.length,
+      costUsd: this.costUsd,
+      turns: this.turns,
+      lastTool: this.lastTool,
+      queued: this.inbox.length,
+      waiting: Boolean(this.pending),
     };
+  }
+
+  toJSON() {
+    return this.summary();
   }
 }
 
-function summarizeTool(name: string, input: Record<string, any> | undefined): string {
-  if (!input) return name;
+export function summarizeTool(name: string, input: Record<string, any> | undefined): string {
+  const short = name.replace(/^mcp__/, "").replace(/__/g, ":");
+  if (!input) return short;
   switch (name) {
     case "Bash":
-      return String(input.command ?? "").slice(0, 120);
+      return `$ ${String(input.command ?? "").slice(0, 120)}`;
     case "Read":
     case "Edit":
     case "Write":
-      return String(input.file_path ?? "").replace(process.env.HOME ?? "", "~");
+      return `${name} ${String(input.file_path ?? "").replace(process.env.HOME ?? "", "~")}`;
     case "Grep":
     case "Glob":
-      return String(input.pattern ?? "");
+      return `${name} ${String(input.pattern ?? "")}`;
+    case "WebSearch":
+      return `search "${String(input.query ?? "").slice(0, 80)}"`;
+    case "WebFetch":
+      return `fetch ${String(input.url ?? "").slice(0, 100)}`;
+    case "Agent":
     case "Task":
-      return String(input.description ?? "");
-    default:
-      return "";
+      return `agent: ${String(input.description ?? "")}`;
+    case "AskUserQuestion":
+      return "asking you";
+    default: {
+      const first = Object.values(input).find((v) => typeof v === "string") as string | undefined;
+      return first ? `${short} ${first.slice(0, 80)}` : short;
+    }
   }
 }

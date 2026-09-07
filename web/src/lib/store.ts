@@ -1,6 +1,6 @@
 import { get, put } from "@vercel/blob";
 
-const KEY = "builder/snapshot.json";
+const KEY = "pai/snapshot.json";
 
 export interface Snapshot {
   ts: number;

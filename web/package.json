@@ -1,5 +1,5 @@
 {
-  "name": "builder-dashboard",
+  "name": "pai-dashboard",
   "private": true,
   "type": "module",
   "scripts": {

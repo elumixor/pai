@@ -1,10 +1,7 @@
 import { config } from "./config.ts";
 import { all as allProjects, refresh } from "./catalog.ts";
-import { bus, recentEvents, type BuilderEvent } from "./bus.ts";
-import { chat } from "./agent.ts";
-import { clear, transcript } from "./chat.ts";
-import { find, listAll, recentByProject, ensureLive, spawn } from "./sessions.ts";
-import { db } from "./db.ts";
+import { bus, recentEvents, waitFor, type PaiEvent } from "./bus.ts";
+import * as sessions from "./sessions.ts";
 import { logger } from "./log.ts";
 
 const log = logger("server");
@@ -15,6 +12,8 @@ const json = (data: unknown, status = 200) =>
 async function body<T>(req: Request): Promise<T> {
   return (await req.json()) as T;
 }
+
+const TURN_TIMEOUT = 15 * 60 * 1000;
 
 export function startServer() {
   const server = Bun.serve({
@@ -32,47 +31,59 @@ export function startServer() {
           return json(allProjects());
         }
 
+        // A turn in the main conversation, identical to a Telegram message in the root chat.
         if (path === "/chat" && req.method === "POST") {
           const { text } = await body<{ text: string }>(req);
-          return json(await chat(text));
+          const m = sessions.main();
+          const done = waitFor("session.turn_end", m.id, TURN_TIMEOUT);
+          m.send(text);
+          const e = await done;
+          return json({ session: m.shortId, ...e.payload });
         }
 
-        if (path === "/chat/history") {
-          if (req.method === "DELETE") {
-            clear();
-            return json({ ok: true });
-          }
-          return json(transcript(100));
-        }
-
-        if (path === "/spawn" && req.method === "POST") {
-          const { project, text } = await body<{ project: string; text: string }>(req);
-          const session = spawn(project, text.slice(0, 80));
-          session.send(text);
-          return json(session.toJSON());
+        if (path === "/task" && req.method === "POST") {
+          const { title, text, project } = await body<{ title: string; text: string; project?: string }>(req);
+          const s = sessions.spawnTask({ title, project });
+          if (text) s.send(text);
+          return json(s.summary());
         }
 
         if (path === "/send" && req.method === "POST") {
-          const { sessionId, text } = await body<{ sessionId: string; text: string }>(req);
-          const session = ensureLive(sessionId);
-          if (!session) return json({ error: "no such session" }, 404);
-          session.send(text);
-          return json(session.toJSON());
+          const { id, text, wait } = await body<{ id: string; text: string; wait?: boolean }>(req);
+          const s = resolveLive(id);
+          if (!s) return json({ error: "no such session" }, 404);
+          const done = wait ? waitFor("session.turn_end", s.id, TURN_TIMEOUT) : undefined;
+          s.send(text);
+          if (!done) return json(s.summary());
+          return json({ session: s.shortId, ...(await done).payload });
         }
 
-        if (path === "/kill" && req.method === "POST") {
-          const { sessionId } = await body<{ sessionId: string }>(req);
-          const session = find(sessionId);
-          if (!session) return json({ error: "no such session" }, 404);
-          session.kill();
+        if (path === "/answer" && req.method === "POST") {
+          const { id, text } = await body<{ id: string; text: string }>(req);
+          const s = id === "main" ? sessions.main() : sessions.find(id);
+          if (!s) return json({ error: "no such session" }, 404);
+          return json({ answered: s.answer(text) });
+        }
+
+        if (path === "/stop" && req.method === "POST") {
+          const { id, kill } = await body<{ id: string; kill?: boolean }>(req);
+          const s = id === "main" ? sessions.main() : sessions.find(id);
+          if (!s) return json({ error: "no such session" }, 404);
+          if (kill) s.kill();
+          else await s.interrupt();
           return json({ ok: true });
         }
 
-        if (path === "/ps") return json({ ...(await listAll()), recent: recentByProject(undefined, 20) });
+        if (path === "/reset" && req.method === "POST") {
+          sessions.resetMain();
+          return json({ ok: true });
+        }
+
+        if (path === "/tasks") return json({ live: sessions.list(), recent: sessions.recent(30) });
 
         if (path === "/events") {
           const raw = url.searchParams.get("session") ?? undefined;
-          const sessionId = raw ? (find(raw)?.id ?? resolveSessionId(raw) ?? raw) : undefined;
+          const sessionId = raw ? (sessions.find(raw)?.id ?? sessions.resolveId(raw) ?? raw) : undefined;
           if (!url.searchParams.get("follow")) return json(recentEvents(sessionId, 200));
           return sse(sessionId);
         }
@@ -88,22 +99,22 @@ export function startServer() {
   return server;
 }
 
-function resolveSessionId(idOrShort: string): string | undefined {
-  const row = db
-    .query("SELECT session_id FROM sessions WHERE session_id = ? OR short_id = ? ORDER BY last_activity DESC LIMIT 1")
-    .get(idOrShort, idOrShort) as { session_id: string } | undefined;
-  return row?.session_id;
+function resolveLive(id: string) {
+  if (id === "main") return sessions.main();
+  const full = sessions.find(id)?.id ?? sessions.resolveId(id);
+  return full ? sessions.ensureLive(full) : undefined;
 }
 
 function sse(sessionId?: string) {
   const enc = new TextEncoder();
-  let write: (e: BuilderEvent) => void = () => {};
+  let write: (e: PaiEvent) => void = () => {};
   let ping: ReturnType<typeof setInterval>;
 
   const stream = new ReadableStream({
     start(controller) {
       write = (e) => {
         if (sessionId && e.sessionId !== sessionId) return;
+        if (e.kind === "session.delta") return;
         try {
           controller.enqueue(enc.encode(`data: ${JSON.stringify(e)}\n\n`));
         } catch {

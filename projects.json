@@ -1,22 +1,35 @@
 {
-  "builder": {
-    "summary": "Builder itself — the Telegram meta-harness that routes requests to Claude Code sessions across all local projects. Self-modifiable.",
-    "aliases": ["builder", "harness", "meta", "bot"]
-  },
   "puretype": {
-    "summary": "PureType — a typing practice / typing game app.",
-    "aliases": ["typing", "typinggame"]
+    "summary": "PureType \u2014 a typing practice / typing game app.",
+    "aliases": [
+      "typing",
+      "typinggame"
+    ]
   },
   "atma": {
-    "summary": "Atma — monorepo umbrella for Atma Gaming projects (kenoverse lives here).",
-    "aliases": ["atmagaming"]
+    "summary": "Atma \u2014 monorepo umbrella for Atma Gaming projects (kenoverse lives here).",
+    "aliases": [
+      "atmagaming"
+    ]
   },
   "Color-Match": {
-    "summary": "Color Match — an old color matching game.",
-    "aliases": ["colormatch"]
+    "summary": "Color Match \u2014 an old color matching game.",
+    "aliases": [
+      "colormatch"
+    ]
   },
   "webhooks": {
     "summary": "Webhooks service for the Meditation Steps (am) projects.",
-    "aliases": ["amwebhooks"]
+    "aliases": [
+      "amwebhooks"
+    ]
+  },
+  "pai": {
+    "summary": "pai \u2014 the personal assistant itself: Telegram frontend, Agent SDK sessions, dashboard. Self-modifiable.",
+    "aliases": [
+      "pai",
+      "assistant",
+      "bot"
+    ]
   }
 }

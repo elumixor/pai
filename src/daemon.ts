@@ -1,17 +1,18 @@
+import { mkdirSync } from "node:fs";
 import { config } from "./config.ts";
 import { refresh } from "./catalog.ts";
 import { startServer } from "./server.ts";
-import { startTelegram } from "./telegram.tsx";
-import { recordSessionActivity } from "./agent.ts";
+import { startTelegram } from "./telegram.ts";
 import { startDashboardPush } from "./dashboard.ts";
-import { killAll, reapIdle } from "./sessions.ts";
+import { killAll, reapIdle, relayTasksToMain } from "./sessions.ts";
 import { bus } from "./bus.ts";
 import { logger } from "./log.ts";
 
 const log = logger("daemon");
 
+mkdirSync(config.workspace, { recursive: true });
 refresh();
-recordSessionActivity();
+relayTasksToMain();
 const server = startServer();
 const bot = startTelegram();
 const stopDashboard = startDashboardPush();
@@ -35,4 +36,4 @@ function shutdown(signal: string) {
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-log.info(`builder up — projects under ${config.devRoot}, telegram ${bot ? "on" : "off"}`);
+log.info(`pai up — workspace ${config.workspace}, telegram ${bot ? "on" : "off"}`);

@@ -29,6 +29,8 @@ function out(data: unknown, pretty?: () => string) {
   else console.log(pretty());
 }
 
+const clock = (ts: number) => new Date(ts).toISOString().slice(11, 19);
+
 async function follow(sessionId?: string, raw = false) {
   const url = `${base}/events?follow=1${sessionId ? `&session=${sessionId}` : ""}`;
   const res = await fetch(url);
@@ -46,7 +48,7 @@ async function follow(sessionId?: string, raw = false) {
       if (!line) continue;
       const e = JSON.parse(line.slice(6));
       if (raw) console.log(JSON.stringify(e));
-      else console.log(`${new Date(e.ts).toISOString().slice(11, 19)} ${e.kind} ${summarize(e)}`);
+      else console.log(`${clock(e.ts)} ${(e.sessionId ?? "").slice(0, 6).padEnd(6)} ${e.kind.padEnd(18)} ${summarize(e)}`);
     }
   }
 }
@@ -54,32 +56,84 @@ async function follow(sessionId?: string, raw = false) {
 function summarize(e: any): string {
   const p = e.payload ?? {};
   if (e.kind === "session.tool") return `${p.name} ${p.summary ?? ""}`;
-  if (e.kind === "session.text" || e.kind === "session.turn_end" || e.kind === "session.input")
-    return String(p.text ?? "").replace(/\s+/g, " ").slice(0, 160);
+  if (e.kind === "session.question") return p.questions?.map((q: any) => q.question).join(" | ") ?? "";
+  if (typeof p.text === "string") return p.text.replace(/\s+/g, " ").slice(0, 160);
   return JSON.stringify(p).slice(0, 160);
 }
 
-const usage = `builder cli
+const usage = `pai
 
-  daemon                       run the daemon in the foreground (no telegram)
-  chat <text>                  talk to builder — the same path Telegram uses
-  history [--clear]            the conversation builder remembers
-  projects [--refresh]         list the catalog as the agent sees it
-  spawn <project> <text>       start a session in a project, skipping the agent
-  send <id> <text>             send a turn to an existing session
-  ps                           builder sessions + every other claude session
+  chat <text>                  a turn in the main conversation — the same path as Telegram
+  task <title> <text>          start a task (own context, own topic) — --project <slug> for coding work
+  send <id> <text>             send a turn to a task; --wait for its reply
+  answer <id> <text>           answer a task's pending question
+  tasks                        running and recent tasks
+  stop <id|main> [--kill]      interrupt (or kill) a session
+  reset                        forget the main conversation
   tail [id] [--raw]            follow the event stream
   events [id]                  recent events
-  kill <id>
+  projects [--refresh]         coding projects as the assistant sees them
+  daemon                       run the daemon in the foreground (no telegram)
+  install [--uninstall]        launchd user agent + \`pai\` on PATH
 
   --json on any command for raw output`;
 
 try {
   switch (cmd) {
     case "daemon": {
-      process.env.BUILDER_NO_TELEGRAM ??= "1";
-      process.env.BUILDER_VERBOSE ??= "1";
+      process.env.PAI_NO_TELEGRAM ??= "1";
+      process.env.PAI_VERBOSE ??= "1";
       await import("./daemon.ts");
+      break;
+    }
+    case "install":
+      await import("../scripts/install-daemon.ts");
+      break;
+    case "chat": {
+      const data = await post("/chat", { text: positional.join(" ") });
+      out(data, () => data.text || (data.error ?? "(no reply)"));
+      break;
+    }
+    case "task": {
+      const [title, ...rest] = positional;
+      const data = await post("/task", { title, text: rest.join(" "), project: flag("project") });
+      out(data, () => `${data.shortId} ${data.kind} "${data.title}" ${data.state}`);
+      break;
+    }
+    case "send": {
+      const [id, ...rest] = positional;
+      const data = await post("/send", { id, text: rest.join(" "), wait: args.includes("--wait") });
+      out(data, () => (data.text !== undefined ? data.text : `${data.shortId} ${data.state}`));
+      break;
+    }
+    case "answer": {
+      const [id, ...rest] = positional;
+      out(await post("/answer", { id, text: rest.join(" ") }));
+      break;
+    }
+    case "tasks": {
+      const data = await api("/tasks");
+      out(data, () =>
+        data.recent.length
+          ? data.recent
+              .map((t: any) => `${t.shortId}  ${t.state.padEnd(9)} ${t.kind.padEnd(5)} ${t.title.slice(0, 40).padEnd(40)} $${t.costUsd.toFixed(2)}  ${t.lastResult.replace(/\s+/g, " ").slice(0, 60)}`)
+              .join("\n")
+          : "(none)",
+      );
+      break;
+    }
+    case "stop":
+      out(await post("/stop", { id: positional[0], kill: args.includes("--kill") }));
+      break;
+    case "reset":
+      out(await post("/reset", {}));
+      break;
+    case "tail":
+      await follow(positional[0], args.includes("--raw"));
+      break;
+    case "events": {
+      const data = await api(`/events${positional[0] ? `?session=${positional[0]}` : ""}`);
+      out(data, () => data.map((e: any) => `${clock(e.ts)} ${(e.sessionId ?? "").slice(0, 6).padEnd(6)} ${e.kind.padEnd(18)} ${summarize(e)}`).join("\n"));
       break;
     }
     case "projects": {
@@ -87,60 +141,11 @@ try {
       out(data, () => data.map((p: any) => `${p.slug.padEnd(28)} ${p.summary.slice(0, 80)}`).join("\n"));
       break;
     }
-    case "chat": {
-      const data = await post("/chat", { text: positional.join(" ") });
-      out(data, () => data.text);
-      break;
-    }
-    case "history": {
-      if (args.includes("--clear")) {
-        out(await api("/chat/history", { method: "DELETE" }), () => "cleared");
-        break;
-      }
-      const data = await api("/chat/history");
-      out(data, () => data.map((m: any) => `${m.role.padEnd(9)} ${m.content.replace(/\n/g, " ").slice(0, 140)}`).join("\n"));
-      break;
-    }
-    case "spawn": {
-      const [project, ...rest] = positional;
-      const data = await post("/spawn", { project, text: rest.join(" ") });
-      out(data, () => `${data.project} · ${data.shortId} ${data.state}`);
-      break;
-    }
-    case "send": {
-      const [id, ...rest] = positional;
-      const data = await post("/send", { sessionId: id, text: rest.join(" ") });
-      out(data, () => `${data.project} · ${data.shortId} ${data.state}`);
-      break;
-    }
-    case "ps": {
-      const data = await api("/ps");
-      out(data, () =>
-        [
-          "builder sessions:",
-          ...(data.owned.length ? data.owned.map((s: any) => `  ${s.shortId}  ${s.project.padEnd(20)} ${s.state}`) : ["  (none)"]),
-          "other claude sessions:",
-          ...data.foreign.map((f: any) => `  ${String(f.sessionId).slice(0, 6)}  ${f.cwd}  ${f.kind}`),
-        ].join("\n"),
-      );
-      break;
-    }
-    case "tail":
-      await follow(positional[0], args.includes("--raw"));
-      break;
-    case "events": {
-      const data = await api(`/events${positional[0] ? `?session=${positional[0]}` : ""}`);
-      out(data, () => data.map((e: any) => `${new Date(e.ts).toISOString().slice(11, 19)} ${e.kind} ${summarize(e)}`).join("\n"));
-      break;
-    }
-    case "kill":
-      out(await post("/kill", { sessionId: positional[0] }));
-      break;
     default:
       console.log(usage);
   }
 } catch (err) {
   console.error(`error: ${(err as Error).message}`);
-  if ((err as Error).message.includes("Unable to connect")) console.error("is the daemon running? `bun run src/cli.ts daemon`");
+  if ((err as Error).message.includes("Unable to connect")) console.error("is the daemon running? `pai daemon`");
   process.exit(1);
 }

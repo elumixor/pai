@@ -3,7 +3,7 @@ import type { RequestHandler } from "./$types";
 import { write, type Snapshot } from "$lib/store";
 
 export const POST: RequestHandler = async ({ request }) => {
-  const secret = process.env.BUILDER_DASHBOARD_SECRET;
+  const secret = process.env.PAI_DASHBOARD_SECRET;
   if (secret && request.headers.get("authorization") !== `Bearer ${secret}`) error(401, "unauthorized");
 
   const snapshot = (await request.json()) as Snapshot;

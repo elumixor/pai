@@ -4,8 +4,8 @@
   interface Snapshot {
     ts: number;
     projects: { slug: string; summary: string }[];
-    sessions: { shortId: string; project: string; state: string; title: string; queued: number }[];
-    recent: { shortId: string; project: string; state: string; lastResult: string; lastActivity: number }[];
+    sessions: { shortId: string; kind: string; project?: string; state: string; title: string; queued: number; waiting: boolean; costUsd: number; turns: number; lastTool: string }[];
+    recent: { shortId: string; kind: string; project: string | null; title: string; state: string; lastResult: string; lastActivity: number; costUsd: number }[];
     events: { ts: number; kind: string; project?: string; sessionId?: string; payload: Record<string, any> }[];
   }
 
@@ -38,10 +38,10 @@
     const fromHash = /(?:^|[#&])k=([^&]+)/.exec(location.hash)?.[1];
     if (fromHash) {
       key = decodeURIComponent(fromHash);
-      localStorage.setItem("builder-key", key);
+      localStorage.setItem("pai-key", key);
       history.replaceState(null, "", location.pathname);
     } else {
-      key = localStorage.getItem("builder-key") ?? "";
+      key = localStorage.getItem("pai-key") ?? "";
     }
 
     void load();
@@ -69,7 +69,8 @@
 
   function summarize(e: Snapshot["events"][number]) {
     const p = e.payload ?? {};
-    if (e.kind === "session.tool") return `${p.name} ${p.summary ?? ""}`;
+    if (e.kind === "session.tool") return p.summary || p.name;
+    if (e.kind === "session.question") return (p.questions as { question: string }[] | undefined)?.map((q) => q.question).join(" | ") ?? "";
     if (typeof p.text === "string") return p.text.replace(/\s+/g, " ").slice(0, 200);
     return "";
   }
@@ -77,7 +78,7 @@
 
 <main>
   <header>
-    <h1>builder</h1>
+    <h1>pai</h1>
     {#if snapshot}
       <span class="age" class:stale>
         {stale ? "daemon not reporting" : `updated ${age}s ago`}
@@ -100,11 +101,11 @@
         <ul class="sessions">
           {#each snapshot.sessions as s (s.shortId)}
             <li id="sess-{s.shortId}">
-              <span class="dot {s.state}"></span>
+              <span class="dot {s.waiting ? 'waiting' : s.state}"></span>
               <code>{s.shortId}</code>
-              <strong>{s.project}</strong>
-              <span class="state">{s.state}{s.queued ? ` +${s.queued} queued` : ""}</span>
-              <span class="title">{s.title}</span>
+              <strong>{s.title}</strong>
+              <span class="state">{s.waiting ? "waiting" : s.state}{s.queued ? ` +${s.queued} queued` : ""} · {s.kind}{s.project ? ` ${s.project}` : ""} · ${s.costUsd.toFixed(2)}</span>
+              <span class="title">{s.lastTool}</span>
             </li>
           {/each}
         </ul>
@@ -117,8 +118,8 @@
         {#each snapshot.recent.slice(0, 8) as r (r.shortId)}
           <li id="sess-{r.shortId}">
             <code>{r.shortId}</code>
-            <strong>{r.project}</strong>
-            <span class="state">{r.state}</span>
+            <strong>{r.title}</strong>
+            <span class="state">{r.state}{r.project ? ` · ${r.project}` : ""}</span>
             <span class="title">{r.lastResult?.slice(0, 120)}</span>
           </li>
         {/each}
@@ -131,6 +132,7 @@
         {#each [...snapshot.events].reverse().slice(0, 60) as e, i (e.ts + "-" + i)}
           <li>
             <span class="time">{clock(e.ts)}</span>
+            <code>{e.sessionId?.slice(0, 6) ?? ""}</code>
             <span class="kind">{e.kind.replace("session.", "")}</span>
             <span class="detail">{summarize(e)}</span>
           </li>
@@ -255,6 +257,9 @@
   }
   .dot.dead {
     background: #3d4451;
+  }
+  .dot.waiting {
+    background: #e0a458;
   }
 
   .muted {

@@ -138,7 +138,7 @@ function overrides(): Record<string, Override> {
   try {
     return JSON.parse(raw) as Record<string, Override>;
   } catch {
-    log.warn("data/projects.json is not valid JSON — ignoring");
+    log.warn("projects.json is not valid JSON — ignoring");
     return {};
   }
 }

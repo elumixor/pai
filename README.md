@@ -1,56 +1,49 @@
-# builder
+# pai
 
-Tell a Telegram bot what's broken. It figures out which of your projects you mean, and puts
-a Claude Code session on it.
+A personal assistant you talk to from Telegram. It runs on your Mac, next to your files,
+your browser, and your Claude subscription, and it can do things: search the web, read and
+send email, look at your calendar, drive a browser, work in your repositories.
 
-builder runs on your machine, next to your repos, using your existing Claude subscription.
-There is no server to pay for and nothing to deploy — Telegram reaches it by long polling
-from behind the router.
+The chat is the interface. Short answers land in the main conversation; anything bigger
+becomes a task with its own topic, its own context, and a live status card at the top.
+Several tasks run at once. Reply in a topic to steer that task; reply in the root to talk to
+the assistant.
 
-## What it does
+## How it is built
 
-- Watches `~/dev` and keeps a catalog of every repo it finds.
-- Holds an actual conversation. Ask what's running, what a session did, or what it can do,
-  and it answers — it only starts work when you ask for work.
-- Starts a real Claude Code session in the right project's directory, or continues one that
-  is already working on the same thing.
-- Streams what each session does back into the chat. Reply to a session's message to send it
-  a follow-up.
-- Knows about sessions it didn't start — anything you launched in a terminal shows up in
-  `/ps` too.
-- Routes requests about builder itself to builder's own repo, so you can ask it to change
-  the thing you're talking to.
+- One Claude Code session per conversation, driven through the Agent SDK. The main chat is
+  one session; every task is another. Sessions survive restarts: the process is disposable,
+  the transcript on disk is not.
+- Telegram is a grammY bot polling from behind your router. Nothing is exposed to the
+  internet. Text streams into the chat as a draft while it is generated; questions arrive as
+  buttons.
+- Tools come from Claude Code itself: shell, files, web search, the claude.ai connectors
+  you have set up (Gmail, Calendar, Drive, Notion, …), Playwright for a browser, and a small
+  in-process set for starting and steering tasks.
+- A SvelteKit page on Vercel shows every session and event for the moments the chat is not
+  enough. The daemon pushes a snapshot to it; it never reaches back.
 
 ## Setup
 
 ```sh
 bun install
 cp .env.example .env      # TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID
-bun run daemon
+bun run daemon            # foreground
+bun run src/cli.ts install   # launchd user agent + `pai` command on PATH
 ```
 
-`.env` also needs an `AI_GATEWAY_API_KEY` — the chat agent runs on the Vercel AI Gateway.
-The coding sessions it spawns run on your Claude subscription and cost nothing extra.
-
-Then just talk to the bot. `/reset` clears the conversation; everything else is plain
-language.
+Then message the bot. `/new <title>` starts a task by hand; anything else is plain
+language. Enable topics for the bot in @BotFather (Bot Settings → Topics) so every task
+gets its own thread; without that, tasks share the root chat and you reply to a task's
+message to talk to it.
 
 Everything the bot does is also a CLI command — see `CLAUDE.md`.
 
-To keep it running across reboots:
-
-```sh
-bun scripts/install-daemon.ts            # launchd user agent, --uninstall to remove
-```
-
 ## Dashboard
 
-`web/` is a small SvelteKit status page on Vercel, for checking on things from a phone. The
-daemon pushes a state snapshot to it every couple of seconds; the page never reaches back
-into the machine, so nothing has to be exposed to the internet.
-
-Set `BUILDER_DASHBOARD_URL` and `BUILDER_DASHBOARD_SECRET` to turn it on. The same secret
-gates reads — open the page once as `https://<url>/#k=<secret>` and it's remembered.
+`web/` is the status page. Set `PAI_DASHBOARD_URL` and `PAI_DASHBOARD_SECRET` to turn on
+the push; open the page once as `https://<url>/#k=<secret>` and it is remembered. Deploy
+with `cd web && vercel deploy --prod`.
 
 ## Requirements
 
