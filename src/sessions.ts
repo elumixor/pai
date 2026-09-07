@@ -1,4 +1,4 @@
-import { Session, closeWarm, prewarm, type SessionKind } from "./session.ts";
+import { Session, closeWarm, prewarm, rewarm, type SessionKind } from "./session.ts";
 import { db, kv, now } from "./db.ts";
 import { config } from "./config.ts";
 import { bus, type PaiEvent } from "./bus.ts";
@@ -189,6 +189,7 @@ export function reapIdle() {
  */
 export function relayTasksToMain() {
   bus.on("event", (e: PaiEvent) => {
+    if (e.kind.startsWith("memory.")) rewarm("task");
     if (!e.sessionId) return;
     const s = find(e.sessionId);
     if (!s || s.kind === "main") return;
@@ -196,7 +197,11 @@ export function relayTasksToMain() {
     const mainId = kv.get(MAIN_KEY);
     const m = mainId ? find(mainId) : undefined;
     if (!m || m.state === "dead") return;
-    if (e.kind === "session.turn_end") {
+    if (e.kind === "memory.saved") {
+      m.inject(`${tag} ${e.payload.updated ? "updated" : "saved"} memory ${e.payload.name} (${e.payload.type}): ${e.payload.description}`);
+    } else if (e.kind === "memory.forgotten") {
+      m.inject(`${tag} forgot memory ${e.payload.name}`);
+    } else if (e.kind === "session.turn_end") {
       const text = String(e.payload.text ?? "").trim();
       if (text) m.inject(`${tag} reported:\n${text.slice(0, 1500)}`);
     } else if (e.kind === "session.question") {

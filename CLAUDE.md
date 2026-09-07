@@ -19,6 +19,7 @@ bun run src/cli.ts stop <id|main> [--kill]
 bun run src/cli.ts tail [id] [--raw]
 bun run src/cli.ts events [id]
 bun run src/cli.ts projects
+bun run src/cli.ts memory [query]
 bun run src/cli.ts update [--check] [--force]  # pull, reinstall, rebuild menubar, restart
 ```
 
@@ -37,6 +38,11 @@ task results reach the main conversation without a model call.
 `~/.claude/projects`. `settingSources: ["project"]` keeps the user's global hooks and
 plugins out of assistant sessions; claude.ai connectors still load.
 
+Long-term memory (`src/memory.ts`) is one markdown file per fact under `workspace/memory/`,
+frontmatter for name/type/description. Every session gets `remember` / `recall` / `forget`;
+the index goes into the system prompt, so a memory change re-warms the task process. Saves
+from tasks are injected into the main conversation.
+
 `AskUserQuestion` reaches `canUseTool` even under `bypassPermissions`. It becomes a
 `session.question` event; Telegram renders buttons, the CLI has `answer`.
 
@@ -44,6 +50,7 @@ plugins out of assistant sessions; claude.ai connectors still load.
 
 - `src/session.ts` — one SDK session, the event mapping, questions.
 - `src/sessions.ts` — registry, main session (`kv.main_session`), tasks, revival, reaper, task→main relay.
+- `src/memory.ts` — long-term memory files, index, search.
 - `src/tools.ts` — the in-process `pai` MCP server, one instance per session (bound through a ref, since warm processes exist before their session).
 - `src/browser.ts` — one Playwright MCP server per daemon over HTTP; sessions connect instead of spawning `npx`.
 - `src/prompts.ts` — instructions appended to the Claude Code system prompt, per session kind.

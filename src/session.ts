@@ -68,6 +68,14 @@ function takeWarm(kind: SessionKind): Warm | undefined {
   return entry;
 }
 
+/** Drops the warm process so the next one is built with the current system prompt (memory index). */
+export function rewarm(kind: "main" | "task") {
+  const entry = takeWarm(kind);
+  if (!entry) return;
+  void entry.ready.then((q) => q.close()).catch(() => {});
+  prewarm(kind);
+}
+
 export function closeWarm() {
   for (const w of warm.values()) void w.ready.then((q) => q.close()).catch(() => {});
   warm.clear();

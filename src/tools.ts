@@ -4,6 +4,7 @@ import type { Session } from "./session.ts";
 import { all as allProjects, get as getProject, refresh } from "./catalog.ts";
 import { bus, recentEvents } from "./bus.ts";
 import * as sessions from "./sessions.ts";
+import * as memory from "./memory.ts";
 
 const ok = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });
 const taskArg = z.string().describe("task id, full or the 6-character short form");
@@ -49,6 +50,32 @@ export function paiTools(kind: "main" | "task" | "code", ref: SessionRef) {
     ),
     tool("rescan_projects", "Re-read the dev root. Use after a repo is created, renamed, or moved.", {}, async () =>
       ok({ projects: refresh().length }),
+    ),
+    tool(
+      "remember",
+      "Save a fact to long-term memory, shared by every session and listed in every system prompt. One fact per memory; an existing name is replaced, so update rather than duplicate. Not for what a repo or the transcript already records.",
+      {
+        name: z.string().max(60).describe("short kebab-case slug, e.g. 'dentist-contact'"),
+        type: z.enum(memory.MEMORY_TYPES).describe("user: who the user is; person: someone they deal with; preference: how they want things done; project: ongoing work and constraints; reference: a URL, id, or pointer; fact: anything else"),
+        description: z.string().max(160).describe("one line, shown in the index of every session"),
+        body: z.string().max(4000).describe("the fact itself, with the why where it matters; absolute dates, not relative"),
+      },
+      async (input) => {
+        try {
+          return ok({ saved: memory.remember({ ...input, by: self().id }).name });
+        } catch (err) {
+          return ok({ error: (err as Error).message });
+        }
+      },
+    ),
+    tool(
+      "recall",
+      "Read memories in full. A query matches names, descriptions, and bodies; empty returns everything. The system prompt has the index, so recall only when the body matters.",
+      { query: z.string().optional() },
+      async ({ query }) => ok(memory.recall(query ?? "").map(({ name, type, description, body }) => ({ name, type, description, body }))),
+    ),
+    tool("forget", "Delete a memory that is wrong or no longer true.", { name: z.string() }, async ({ name }) =>
+      ok({ forgotten: memory.forget(name, self().id) }),
     ),
   ];
 

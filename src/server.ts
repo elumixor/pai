@@ -3,6 +3,7 @@ import { all as allProjects, refresh } from "./catalog.ts";
 import { bus, recentEvents, waitFor, type PaiEvent } from "./bus.ts";
 import * as sessions from "./sessions.ts";
 import { status as updateStatus, update } from "./update.ts";
+import * as memory from "./memory.ts";
 import { logger } from "./log.ts";
 
 const log = logger("server");
@@ -139,6 +140,8 @@ export function startServer() {
           sessions.resetMain();
           return json({ ok: true });
         }
+
+        if (path === "/memory") return json(memory.recall(url.searchParams.get("q") ?? ""));
 
         if (path === "/tasks") return json({ live: sessions.list(), recent: sessions.recent(30) });
 
