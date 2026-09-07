@@ -8,15 +8,26 @@ import * as sessions from "./sessions.ts";
 const ok = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });
 const taskArg = z.string().describe("task id, full or the 6-character short form");
 
-/** In-process MCP server. One instance per session, so the tools know who is calling. */
-export function paiTools(self: Session) {
+export interface SessionRef {
+  session?: Session;
+}
+
+/**
+ * In-process MCP server. One instance per session, so the tools know who is calling; the
+ * session arrives through a ref because pre-warmed processes are built before it exists.
+ */
+export function paiTools(kind: "main" | "task" | "code", ref: SessionRef) {
+  const self = () => {
+    if (!ref.session) throw new Error("tool called before its session was bound");
+    return ref.session;
+  };
   const common = [
     tool(
       "progress",
       "Post a short interim note to the user in this session's chat, before the turn ends. Use sparingly: one line when a long step finished.",
       { text: z.string().max(500) },
       async ({ text }) => {
-        bus.emitEvent("session.progress", { text }, self.id);
+        bus.emitEvent("session.progress", { text }, self().id);
         return ok({ posted: true });
       },
     ),
@@ -122,7 +133,7 @@ export function paiTools(self: Session) {
   return createSdkMcpServer({
     name: "pai",
     version: "1.0.0",
-    tools: self.kind === "main" ? [...common, ...mainOnly] : common,
+    tools: kind === "main" ? [...common, ...mainOnly] : common,
   });
 }
 

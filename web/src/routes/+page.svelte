@@ -21,6 +21,9 @@
     try {
       const res = await fetch(`/api/state?k=${encodeURIComponent(key)}`, { cache: "no-store" });
       if (res.status === 401) {
+        // A stale key would keep failing forever, so forget it and wait for a fresh link.
+        localStorage.removeItem("pai-key");
+        key = "";
         error = "wrong or missing key — open the link with #k=<secret>";
         return;
       }

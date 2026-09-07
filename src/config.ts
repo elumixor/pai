@@ -22,6 +22,9 @@ export const config = {
   port: Number(env.PAI_PORT ?? 8787),
   host: "127.0.0.1",
 
+  /** Shared Playwright MCP server, one per daemon. */
+  browserPort: Number(env.PAI_BROWSER_PORT ?? 8931),
+
   dbPath: resolve(env.PAI_DB ?? join(repo, "data", "pai.db")),
 
   telegram: {

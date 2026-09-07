@@ -33,7 +33,7 @@ into bus events (`session.delta`, `session.text`, `session.tool`, `session.turn_
 `session.question`, …). `inject()` appends context with `shouldQuery: false`, which is how
 task results reach the main conversation without a model call.
 
-A dead process is revived with `resume` (`sessions.ensureLive()`); the transcript lives in
+`prewarm()` keeps one initialised `task` process ready via `startup()`; a new task adopts it and its session id, so first replies take ~1s instead of ~30s. A dead process is revived with `resume` (`sessions.ensureLive()`); the transcript lives in
 `~/.claude/projects`. `settingSources: ["project"]` keeps the user's global hooks and
 plugins out of assistant sessions; claude.ai connectors still load.
 
@@ -44,7 +44,8 @@ plugins out of assistant sessions; claude.ai connectors still load.
 
 - `src/session.ts` — one SDK session, the event mapping, questions.
 - `src/sessions.ts` — registry, main session (`kv.main_session`), tasks, revival, reaper, task→main relay.
-- `src/tools.ts` — the in-process `pai` MCP server, one instance per session.
+- `src/tools.ts` — the in-process `pai` MCP server, one instance per session (bound through a ref, since warm processes exist before their session).
+- `src/browser.ts` — one Playwright MCP server per daemon over HTTP; sessions connect instead of spawning `npx`.
 - `src/prompts.ts` — instructions appended to the Claude Code system prompt, per session kind.
 - `src/tg-user.ts` — the user's own Telegram account (gramjs, `TELEGRAM_USER_SESSION`) as the `tg` MCP server: list/read/search chats, send as the user.
 - `menubar/main.swift` — menu bar status app; compiled and loaded by `install`.

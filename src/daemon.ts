@@ -4,7 +4,8 @@ import { refresh } from "./catalog.ts";
 import { restoreDaemonJob, startServer } from "./server.ts";
 import { startTelegram } from "./telegram.ts";
 import { startDashboardPush } from "./dashboard.ts";
-import { killAll, reapIdle, relayTasksToMain } from "./sessions.ts";
+import { killAll, reapIdle, relayTasksToMain, warmUp } from "./sessions.ts";
+import { startBrowser } from "./browser.ts";
 import { bus } from "./bus.ts";
 import { disconnectUser } from "./tg-user.ts";
 import { startAutoUpdate } from "./update.ts";
@@ -16,7 +17,9 @@ mkdirSync(config.workspace, { recursive: true });
 refresh();
 relayTasksToMain();
 const server = startServer();
+const stopBrowser = startBrowser();
 const bot = startTelegram();
+warmUp();
 const stopDashboard = startDashboardPush();
 const stopAutoUpdate = startAutoUpdate();
 
@@ -32,6 +35,7 @@ function shutdown(signal: string) {
   stopDashboard?.();
   stopAutoUpdate?.();
   killAll();
+  stopBrowser();
   void disconnectUser();
   void bot?.stop();
   void server.stop(true);

@@ -1,4 +1,4 @@
-import type { Session } from "./session.ts";
+import type { SessionKind } from "./session.ts";
 import { config } from "./config.ts";
 
 const COMMON = `
@@ -26,7 +26,7 @@ You are one task with a single goal, running in your own Telegram topic. If the 
 const CODE = `
 You are a coding session in one of the user's repositories. Work in the repo directly; commit when a piece of work is complete with a subject-only message under 10 words. Do not push. Report what changed and how it was verified.`;
 
-export function instructionsFor(session: Session): string {
-  const role = session.kind === "main" ? MAIN : session.kind === "code" ? CODE : TASK;
-  return `${COMMON}\n${role}\n\nSession: ${session.shortId} (${session.kind}), title "${session.title}".`;
+export function instructionsFor(kind: SessionKind): string {
+  const role = kind === "main" ? MAIN : kind === "code" ? CODE : TASK;
+  return `${COMMON}\n${role}`;
 }

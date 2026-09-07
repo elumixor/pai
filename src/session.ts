@@ -1,12 +1,77 @@
 import { randomUUID } from "node:crypto";
-import { query, type Options, type Query, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query, startup, type Options, type Query, type SDKMessage, type SDKUserMessage, type WarmQuery } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "./config.ts";
 import { db, now } from "./db.ts";
 import { bus } from "./bus.ts";
 import { logger } from "./log.ts";
-import { paiTools } from "./tools.ts";
+import { paiTools, type SessionRef } from "./tools.ts";
+import { browserMcp } from "./browser.ts";
 import { instructionsFor } from "./prompts.ts";
 import { enabled as tgUserEnabled, telegramUserTools } from "./tg-user.ts";
+
+/** Subprocesses spawned and initialised ahead of time, keyed by kind. Only kinds with a fixed cwd can be warmed. */
+interface Warm {
+  id: string;
+  ref: SessionRef;
+  ready: Promise<WarmQuery>;
+}
+const warm = new Map<SessionKind, Warm>();
+
+function build(kind: SessionKind, cwd: string, ref: SessionRef): Options {
+  return {
+    cwd,
+    model: kind === "main" ? config.models.main : config.models.task,
+    permissionMode: "bypassPermissions",
+    allowDangerouslySkipPermissions: true,
+    includePartialMessages: true,
+    // Project settings only: the user's global hooks and plugins are for their
+    // terminal sessions, not for the assistant. claude.ai connectors still load.
+    settingSources: ["project"],
+    additionalDirectories: kind === "code" ? [config.workspace] : [],
+    systemPrompt: { type: "preset", preset: "claude_code", append: instructionsFor(kind) },
+    mcpServers: {
+      pai: paiTools(kind, ref),
+      ...(tgUserEnabled() ? { tg: telegramUserTools() } : {}),
+      playwright: browserMcp(),
+    },
+    canUseTool: async (tool, input) => {
+      const s = ref.session;
+      if (tool === "AskUserQuestion" && s) return s.ask(input as { questions: Question[] });
+      return { behavior: "allow", updatedInput: input };
+    },
+    stderr: (data) => ref.session && log.debug(`${ref.session.shortId} stderr`, data.trim().slice(0, 300)),
+    env: { ...process.env },
+  };
+}
+
+/** Starts a subprocess for `kind` now so the next session of that kind opens without the spawn cost. */
+export function prewarm(kind: "main" | "task") {
+  if (warm.has(kind)) return;
+  const ref: SessionRef = {};
+  const id = randomUUID();
+  const options = { ...build(kind, config.workspace, ref), sessionId: id };
+  const entry: Warm = { id, ref, ready: startup({ options }) };
+  warm.set(kind, entry);
+  entry.ready.then(
+    () => log.debug(`warm ${kind} ready`),
+    (err) => {
+      log.warn(`prewarm ${kind} failed`, (err as Error).message);
+      if (warm.get(kind) === entry) warm.delete(kind);
+    },
+  );
+}
+
+/** Takes the warm process for `kind`, if one exists. The caller owns it from here. */
+function takeWarm(kind: SessionKind): Warm | undefined {
+  const entry = warm.get(kind);
+  if (entry) warm.delete(kind);
+  return entry;
+}
+
+export function closeWarm() {
+  for (const w of warm.values()) void w.ready.then((q) => q.close()).catch(() => {});
+  warm.clear();
+}
 
 const log = logger("session");
 
@@ -61,6 +126,7 @@ export class Session {
   private inbox: SDKUserMessage[] = [];
   private wake?: () => void;
   private closed = false;
+  private warm?: Warm;
   private turnText: string[] = [];
   private streamText = "";
   /** True between a user turn being sent and its result; injected context produces results too, which are not turns. */
@@ -68,7 +134,9 @@ export class Session {
   pending?: PendingQuestion;
 
   constructor(opts: SessionOptions) {
-    this.id = opts.resume ?? randomUUID();
+    // A fresh session of a warmable kind adopts the pre-spawned process and its id.
+    this.warm = !opts.resume && opts.cwd === config.workspace ? takeWarm(opts.kind) : undefined;
+    this.id = opts.resume ?? this.warm?.id ?? randomUUID();
     this.shortId = this.id.slice(0, 6);
     this.kind = opts.kind;
     this.cwd = opts.cwd;
@@ -87,38 +155,29 @@ export class Session {
   }
 
   private start(resume: boolean) {
-    const model = this.kind === "main" ? config.models.main : config.models.task;
-    const options: Options = {
-      cwd: this.cwd,
-      model,
-      permissionMode: "bypassPermissions",
-      allowDangerouslySkipPermissions: true,
-      includePartialMessages: true,
-      // Project settings only: the user's global hooks and plugins are for their
-      // terminal sessions, not for the assistant. claude.ai connectors still load.
-      settingSources: ["project"],
-      additionalDirectories: this.kind === "code" ? [config.workspace] : [],
-      systemPrompt: { type: "preset", preset: "claude_code", append: instructionsFor(this) },
-      mcpServers: {
-        pai: paiTools(this),
-        ...(tgUserEnabled() ? { tg: telegramUserTools() } : {}),
-        playwright: { type: "stdio", command: "npx", args: ["@playwright/mcp@latest"] },
-      },
-      canUseTool: async (tool, input) => {
-        if (tool === "AskUserQuestion") return this.ask(input as { questions: Question[] });
-        return { behavior: "allow", updatedInput: input };
-      },
-      stderr: (data) => log.debug(`${this.shortId} stderr`, data.trim().slice(0, 300)),
-      title: this.title,
-      env: { ...process.env, PAI_SESSION: this.id },
-    };
+    const ref: SessionRef = { session: this };
+    const options = build(this.kind, this.cwd, ref);
+    options.title = this.title;
     if (resume) options.resume = this.id;
     else options.sessionId = this.id;
 
-    this.q = query({ prompt: this.input(), options });
     this.persist();
-    bus.emitEvent(resume ? "session.resumed" : "session.started", this.summary(), this.id);
-    void this.pump();
+    void (async () => {
+      let q: Query | undefined;
+      if (this.warm) {
+        this.warm.ref.session = this;
+        try {
+          q = (await this.warm.ready).query(this.input());
+          log.debug(`${this.shortId} took a warm ${this.kind} process`);
+        } catch (err) {
+          log.warn(`warm ${this.kind} unusable: ${(err as Error).message}`);
+        }
+      }
+      this.q = q ?? query({ prompt: this.input(), options });
+      bus.emitEvent(resume ? "session.resumed" : "session.started", this.summary(), this.id);
+      if (!resume) this.inject(`You are session ${this.shortId} (${this.kind}), titled "${this.title}".`);
+      await this.pump();
+    })();
   }
 
   private async *input(): AsyncGenerator<SDKUserMessage> {
@@ -254,7 +313,7 @@ export class Session {
     this.wake?.();
   }
 
-  private ask(input: { questions: Question[] }) {
+  ask(input: { questions: Question[] }) {
     return new Promise<{ behavior: "allow"; updatedInput: Record<string, unknown> }>((resolve) => {
       const id = randomUUID().slice(0, 8);
       this.pending = {

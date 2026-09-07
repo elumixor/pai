@@ -96,7 +96,8 @@ class Frontend {
     const threadId = threadOf(ctx) ?? null;
     const text = msg.text ?? msg.caption ?? "";
 
-    if (msg.forum_topic_created) return; // service message, nothing to route
+    // Service messages (topic created/edited, pins) and the bot's own messages are not turns.
+    if (msg.from?.is_bot || msg.forum_topic_created || msg.forum_topic_edited || msg.pinned_message) return;
     if (threadId !== null && !this.topics) {
       // getMe lags behind the BotFather switch; a threaded message is proof enough.
       this.topics = true;
@@ -329,7 +330,7 @@ class Frontend {
   private async openTopic(s: Session) {
     if (s.threadId === null && this.topics) {
       try {
-        const topic = await this.bot.api.createForumTopic(this.chatId, `${STATUS.busy} ${s.title}`.slice(0, 128));
+        const topic = await this.bot.api.createForumTopic(this.chatId, s.title.slice(0, 128));
         s.threadId = topic.message_thread_id;
         s.persist();
       } catch (err) {
@@ -454,12 +455,7 @@ class Frontend {
         .catch((err: Error) => {
           if (!err.message.includes("not modified")) log.debug("card edit failed", err.message);
         });
-    if (this.topics)
-      await this.bot.api
-        .editForumTopic(this.chatId, s.threadId, { name: `${s.kind === "main" ? "💬" : STATUS[this.status(s)]} ${s.title}`.slice(0, 128) })
-        .catch((err: Error) => {
-          if (!err.message.includes("not modified")) log.debug("topic rename failed", err.message);
-        });
+    // Status lives on the card only: renaming the topic posts a service message every time.
   }
 }
 

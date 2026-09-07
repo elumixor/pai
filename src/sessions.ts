@@ -1,4 +1,4 @@
-import { Session, type SessionKind } from "./session.ts";
+import { Session, closeWarm, prewarm, type SessionKind } from "./session.ts";
 import { db, kv, now } from "./db.ts";
 import { config } from "./config.ts";
 import { bus, type PaiEvent } from "./bus.ts";
@@ -53,6 +53,7 @@ export function spawnTask(opts: SpawnTask): Session {
   const session = new Session({ kind, title: opts.title, cwd, project, threadId: opts.threadId });
   live.set(session.id, session);
   log.info(`spawned ${kind} ${session.shortId} "${opts.title}"`);
+  prewarm("task");
   bus.emitEvent("task.created", session.summary(), session.id);
   return session;
 }
@@ -151,8 +152,15 @@ export function recent(limit = 20, kind?: SessionKind): SessionRow[] {
 }
 
 export function killAll() {
+  closeWarm();
   for (const s of live.values()) s.kill();
   live.clear();
+}
+
+/** Opens the main conversation and readies a process for the next task, so first replies are quick. */
+export function warmUp() {
+  main();
+  prewarm("task");
 }
 
 /** Frees the subprocess of long-idle task sessions. The session itself stays resumable. */

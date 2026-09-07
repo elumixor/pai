@@ -18,19 +18,20 @@ struct Health: Decodable { let ok: Bool; let dashboardUrl: String? }
 
 let base = "http://127.0.0.1:8787"
 
-/// A single wedge of pie: a 100 degree sector, drawn as a template image so the menu bar tints it.
-func pieIcon(_ size: CGFloat = 15) -> NSImage {
-    let image = NSImage(size: NSSize(width: size, height: size))
-    image.lockFocus()
-    let radius = size * 0.58
-    let center = NSPoint(x: size / 2, y: (size - radius) / 2)
-    let path = NSBezierPath()
-    path.move(to: center)
-    path.appendArc(withCenter: center, radius: radius, startAngle: 40, endAngle: 140)
-    path.close()
-    NSColor.black.setFill()
-    path.fill()
-    image.unlockFocus()
+/// lucide.dev cake-slice (ISC), drawn as a template image so the menu bar tints it.
+let cakeSVG = """
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" \
+stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M16 13H3" />
+<path d="M16 17H3" />
+<path d="m7.2 7.9-3.388 2.5A2 2 0 0 0 3 12.01V20a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-8.654c0-2-2.44-6.026-6.44-8.026a1 1 0 0 0-1.082.057L10.4 5.6" />
+<circle cx="9" cy="7" r="2" />
+</svg>
+"""
+
+func cakeIcon(_ size: CGFloat = 16) -> NSImage {
+    guard let image = NSImage(data: Data(cakeSVG.utf8)) else { fatalError("cake-slice icon failed to decode") }
+    image.size = NSSize(width: size, height: size)
     image.isTemplate = true
     return image
 }
@@ -40,7 +41,7 @@ final class App: NSObject, NSApplicationDelegate {
     let menu = NSMenu()
     var dashboard = ""
     var up = false
-    let icon = pieIcon()
+    let icon = cakeIcon()
 
     func applicationDidFinishLaunching(_ n: Notification) {
         item.menu = menu
@@ -72,19 +73,33 @@ final class App: NSObject, NSApplicationDelegate {
         switch t.state { case "busy", "starting": return "🔵"; case "idle": return "🟢"; case "dead": return "⚪"; default: return "⚪" }
     }
 
+    /// The menu bar line: how many tasks run, how many want an answer, what it has cost so far.
+    /// Nothing at all when the daemon is up and idle — an unadorned icon is the resting state.
+    func status(live: [Task], tasks: [Task], busy: Int, waiting: Int, main: Task?) -> NSAttributedString {
+        var parts: [String] = []
+        if !up {
+            parts.append("✕")
+        } else {
+            if waiting > 0 { parts.append("?\(waiting)") }
+            if busy > 0 { parts.append("\(busy)") } else if main?.state == "busy" { parts.append("…") }
+            let spent = live.reduce(0.0) { $0 + ($1.costUsd ?? 0) }
+            if spent >= 0.01 { parts.append(String(format: "$%.2f", spent)) }
+        }
+        let text = parts.isEmpty ? "" : " " + parts.joined(separator: " ")
+        return NSAttributedString(
+            string: text,
+            attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)],
+        )
+    }
+
     func render(live: [Task], recent: [Task]) {
         let tasks = live.filter { $0.kind != "main" }
         let busy = tasks.filter { $0.state == "busy" || $0.state == "starting" }.count
         let waiting = tasks.filter { $0.waiting == true }.count
         let main = live.first { $0.kind == "main" }
-        var title = ""
-        if !up { title = " ✕" }
-        else if waiting > 0 { title = " 🟡\(waiting)" }
-        else if busy > 0 { title = " \(busy)" }
-        else if main?.state == "busy" { title = " …" }
         item.button?.image = icon
         item.button?.imagePosition = .imageLeading
-        item.button?.title = title
+        item.button?.attributedTitle = status(live: live, tasks: tasks, busy: busy, waiting: waiting, main: main)
 
         menu.removeAllItems()
         if !up {
