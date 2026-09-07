@@ -36,6 +36,14 @@ bun run daemon            # foreground
 bun run src/cli.ts install   # launchd user agent + `pai` command on PATH
 ```
 
+## Updating
+
+`pai update` pulls the repo, reinstalls dependencies, rebuilds the menu bar app and
+restarts the daemon; `--force` rebuilds without new commits, `--check` only reports.
+An installed daemon also does this on its own every 30 minutes when new commits are on
+the upstream branch, the working tree is clean and nothing is running — set
+`PAI_AUTO_UPDATE=0` to keep updates manual.
+
 Then message the bot. `/new <title>` starts a task by hand; anything else is plain
 language. Enable topics for the bot in @BotFather (Bot Settings → Threads Settings → Threaded Mode) so every task
 gets its own thread; without that, tasks share the root chat and you reply to a task's

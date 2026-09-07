@@ -75,6 +75,7 @@ const usage = `pai
   projects [--refresh]         coding projects as the assistant sees them
   daemon                       run the daemon in the foreground (no telegram)
   install [--uninstall]        launchd user agent + \`pai\` on PATH
+  update [--check] [--force]   pull, reinstall, rebuild, restart the daemon
 
   --json on any command for raw output`;
 
@@ -84,6 +85,25 @@ try {
       process.env.PAI_NO_TELEGRAM ??= "1";
       process.env.PAI_VERBOSE ??= "1";
       await import("./daemon.ts");
+      break;
+    }
+    case "update": {
+      // Works with the daemon down too — then the update just runs here.
+      const local = async () => {
+        const u = await import("./update.ts");
+        return args.includes("--check") ? u.status() : u.update(args.includes("--force"));
+      };
+      const remote = () =>
+        args.includes("--check") ? api("/update") : post("/update", { force: args.includes("--force") });
+      const data = await remote().catch((err: Error) => {
+        if (!err.message.includes("Unable to connect")) throw err;
+        return local();
+      });
+      out(data, () =>
+        data.updated
+          ? `updated to ${data.head}${data.restarting ? " — daemon restarting" : ""}`
+          : `${data.head} on ${data.branch} · ${data.behind} behind${data.dirty ? " · dirty" : ""}${data.reason ? ` · ${data.reason}` : ""}`,
+      );
       break;
     }
     case "install":

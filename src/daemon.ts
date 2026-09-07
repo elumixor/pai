@@ -7,6 +7,7 @@ import { startDashboardPush } from "./dashboard.ts";
 import { killAll, reapIdle, relayTasksToMain } from "./sessions.ts";
 import { bus } from "./bus.ts";
 import { disconnectUser } from "./tg-user.ts";
+import { startAutoUpdate } from "./update.ts";
 import { logger } from "./log.ts";
 
 const log = logger("daemon");
@@ -17,6 +18,7 @@ relayTasksToMain();
 const server = startServer();
 const bot = startTelegram();
 const stopDashboard = startDashboardPush();
+const stopAutoUpdate = startAutoUpdate();
 
 const catalogTimer = setInterval(refresh, 15 * 60 * 1000);
 const reaper = setInterval(reapIdle, 60 * 1000);
@@ -28,6 +30,7 @@ function shutdown(signal: string) {
   clearInterval(catalogTimer);
   clearInterval(reaper);
   stopDashboard?.();
+  stopAutoUpdate?.();
   killAll();
   void disconnectUser();
   void bot?.stop();

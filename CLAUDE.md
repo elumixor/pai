@@ -19,6 +19,7 @@ bun run src/cli.ts stop <id|main> [--kill]
 bun run src/cli.ts tail [id] [--raw]
 bun run src/cli.ts events [id]
 bun run src/cli.ts projects
+bun run src/cli.ts update [--check] [--force]  # pull, reinstall, rebuild menubar, restart
 ```
 
 `--json` on any command. Session ids in full or as the 6-char short form. After

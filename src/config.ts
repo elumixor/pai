@@ -52,6 +52,10 @@ export const config = {
   /** Kill a session process that has been idle this long (ms). The session stays resumable. */
   idleShutdownMs: Number(env.PAI_IDLE_SHUTDOWN_MS ?? 60 * 60 * 1000),
 
+  /** Pull and restart on new commits by itself; PAI_AUTO_UPDATE=0 to keep it manual. */
+  autoUpdate: bool(env.PAI_AUTO_UPDATE, true),
+  autoUpdateIntervalMs: Number(env.PAI_AUTO_UPDATE_INTERVAL_MS ?? 30 * 60 * 1000),
+
   verbose: bool(env.PAI_VERBOSE),
 };
 

@@ -2,6 +2,7 @@ import { config } from "./config.ts";
 import { all as allProjects, refresh } from "./catalog.ts";
 import { bus, recentEvents, waitFor, type PaiEvent } from "./bus.ts";
 import * as sessions from "./sessions.ts";
+import { status as updateStatus, update } from "./update.ts";
 import { logger } from "./log.ts";
 
 const log = logger("server");
@@ -26,6 +27,14 @@ export function startServer() {
       try {
         if (path === "/health")
           return json({ ok: true, pid: process.pid, uptime: process.uptime(), dashboardUrl: config.dashboard.url || undefined, dashboardKey: config.dashboard.secret || undefined });
+
+        // The response goes out before the process exits, so the CLI sees the result of its own update.
+        if (path === "/update" && req.method === "POST") {
+          const { force } = await body<{ force?: boolean }>(req);
+          return json(await update(force));
+        }
+
+        if (path === "/update") return json(await updateStatus());
 
         if (path === "/projects") {
           if (url.searchParams.get("refresh")) refresh();
