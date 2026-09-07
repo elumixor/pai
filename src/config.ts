@@ -31,6 +31,13 @@ export const config = {
     chatId: Number(env.TELEGRAM_CHAT_ID ?? 0),
   },
 
+  /** The user's own Telegram account (MTProto), so the assistant can read and write chats as them. */
+  telegramUser: {
+    apiId: Number(env.TELEGRAM_API_ID ?? 0),
+    apiHash: env.TELEGRAM_API_HASH ?? "",
+    session: env.TELEGRAM_USER_SESSION ?? "",
+  },
+
   /** Optional hosted dashboard that local events get pushed to. */
   dashboard: {
     url: env.PAI_DASHBOARD_URL ?? "",

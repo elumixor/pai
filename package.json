@@ -16,6 +16,7 @@
     "@grammyjs/transformer-throttler": "^1.2.1",
     "grammy": "^1.46.0",
     "react": "^19.2.8",
+    "telegram": "^2.26.22",
     "zod": "^4.4.3"
   },
   "devDependencies": {

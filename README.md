@@ -20,6 +20,10 @@ the assistant.
 - Tools come from Claude Code itself: shell, files, web search, the claude.ai connectors
   you have set up (Gmail, Calendar, Drive, Notion, …), Playwright for a browser, and a small
   in-process set for starting and steering tasks.
+- With `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` / `TELEGRAM_USER_SESSION` set, the assistant also
+  has your own Telegram account: it can read your chats, search them, and (after asking)
+  write to people as you.
+- A menu bar item shows what is running; `install` builds and loads it.
 - A SvelteKit page on Vercel shows every session and event for the moments the chat is not
   enough. The daemon pushes a snapshot to it; it never reaches back.
 
@@ -33,7 +37,7 @@ bun run src/cli.ts install   # launchd user agent + `pai` command on PATH
 ```
 
 Then message the bot. `/new <title>` starts a task by hand; anything else is plain
-language. Enable topics for the bot in @BotFather (Bot Settings → Topics) so every task
+language. Enable topics for the bot in @BotFather (Bot Settings → Threads Settings → Threaded Mode) so every task
 gets its own thread; without that, tasks share the root chat and you reply to a task's
 message to talk to it.
 

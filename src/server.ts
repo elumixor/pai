@@ -24,7 +24,8 @@ export function startServer() {
       const url = new URL(req.url);
       const path = url.pathname;
       try {
-        if (path === "/health") return json({ ok: true, pid: process.pid, uptime: process.uptime() });
+        if (path === "/health")
+          return json({ ok: true, pid: process.pid, uptime: process.uptime(), dashboardUrl: config.dashboard.url || undefined });
 
         if (path === "/projects") {
           if (url.searchParams.get("refresh")) refresh();

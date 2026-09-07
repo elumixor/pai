@@ -10,3 +10,4 @@ web/.svelte-kit
 workspace/*
 !workspace/CLAUDE.md
 scripts/pai
+menubar/pai-menubar

@@ -45,6 +45,8 @@ plugins out of assistant sessions; claude.ai connectors still load.
 - `src/sessions.ts` — registry, main session (`kv.main_session`), tasks, revival, reaper, task→main relay.
 - `src/tools.ts` — the in-process `pai` MCP server, one instance per session.
 - `src/prompts.ts` — instructions appended to the Claude Code system prompt, per session kind.
+- `src/tg-user.ts` — the user's own Telegram account (gramjs, `TELEGRAM_USER_SESSION`) as the `tg` MCP server: list/read/search chats, send as the user.
+- `menubar/main.swift` — menu bar status app; compiled and loaded by `install`.
 - `src/telegram.ts` — grammY frontend: routing by topic / reply, draft streaming, live cards, question keyboards, attachments.
 - `src/server.ts`, `src/cli.ts` — localhost API and the CLI over it.
 - `src/catalog.ts` — coding projects under `~/dev`; `projects.json` overrides.
@@ -53,7 +55,7 @@ plugins out of assistant sessions; claude.ai connectors still load.
 
 ## Not done yet
 
-- Telegram topics need enabling in @BotFather once; until then tasks share the root chat.
+- Telegram topics need enabling in @BotFather once (Bot Settings → Threads Settings → Threaded Mode); until then tasks share the root chat.
 - No per-task budget cap; `maxBudgetUsd` is one option away.
 - Documents other than images are saved to `inbox/` and mentioned by path only.
 - Concurrency is unbounded.

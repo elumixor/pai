@@ -6,6 +6,7 @@ import { bus } from "./bus.ts";
 import { logger } from "./log.ts";
 import { paiTools } from "./tools.ts";
 import { instructionsFor } from "./prompts.ts";
+import { enabled as tgUserEnabled, telegramUserTools } from "./tg-user.ts";
 
 const log = logger("session");
 
@@ -100,6 +101,7 @@ export class Session {
       systemPrompt: { type: "preset", preset: "claude_code", append: instructionsFor(this) },
       mcpServers: {
         pai: paiTools(this),
+        ...(tgUserEnabled() ? { tg: telegramUserTools() } : {}),
         playwright: { type: "stdio", command: "npx", args: ["@playwright/mcp@latest"] },
       },
       canUseTool: async (tool, input) => {

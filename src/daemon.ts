@@ -6,6 +6,7 @@ import { startTelegram } from "./telegram.ts";
 import { startDashboardPush } from "./dashboard.ts";
 import { killAll, reapIdle, relayTasksToMain } from "./sessions.ts";
 import { bus } from "./bus.ts";
+import { disconnectUser } from "./tg-user.ts";
 import { logger } from "./log.ts";
 
 const log = logger("daemon");
@@ -28,6 +29,7 @@ function shutdown(signal: string) {
   clearInterval(reaper);
   stopDashboard?.();
   killAll();
+  void disconnectUser();
   void bot?.stop();
   void server.stop(true);
   process.exit(0);
