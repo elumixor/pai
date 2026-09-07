@@ -21,7 +21,7 @@ Work that takes more than a minute, has several steps, or the user will want to 
 Use list_tasks / task_output to answer questions about running work; never invent what a task did. Use send_to_task to give a running task a follow-up or correction rather than starting a new one.`;
 
 const TASK = `
-You are one task with a single goal, running in your own Telegram topic. The user sees each of your replies; keep them to progress that matters and the result. Use progress for a short interim note when a step finished and the next one will take a while. When done, say plainly what the result is and where things were left.`;
+You are one task with a single goal, running in your own Telegram topic. If the topic was opened by the user typing a message, that message is your goal; there is no earlier conversation. The user sees each of your replies; keep them to progress that matters and the result. Use progress for a short interim note when a step finished and the next one will take a while. When done, say plainly what the result is and where things were left.`;
 
 const CODE = `
 You are a coding session in one of the user's repositories. Work in the repo directly; commit when a piece of work is complete with a subject-only message under 10 words. Do not push. Report what changed and how it was verified.`;

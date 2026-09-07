@@ -14,7 +14,7 @@ struct Task: Decodable {
     let project: String?
 }
 struct Tasks: Decodable { let live: [Task]; let recent: [Task] }
-struct Health: Decodable { let ok: Bool; let dashboardUrl: String? }
+struct Health: Decodable { let ok: Bool; let dashboardUrl: String?; let dashboardKey: String? }
 
 let base = "http://127.0.0.1:8787"
 
@@ -22,6 +22,7 @@ final class App: NSObject, NSApplicationDelegate {
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     let menu = NSMenu()
     var dashboard = ""
+    var key = ""
     var up = false
 
     func applicationDidFinishLaunching(_ n: Notification) {
@@ -44,6 +45,7 @@ final class App: NSObject, NSApplicationDelegate {
         get("/health", Health.self) { h in
             self.up = h?.ok ?? false
             if let d = h?.dashboardUrl { self.dashboard = d }
+            if let k = h?.dashboardKey { self.key = k }
             if !self.up { self.render(live: [], recent: []); return }
             self.get("/tasks", Tasks.self) { t in self.render(live: t?.live ?? [], recent: t?.recent ?? []) }
         }
@@ -96,11 +98,17 @@ final class App: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
     }
 
-    @objc func openTask(_ sender: NSMenuItem) {
-        guard !dashboard.isEmpty, let id = sender.representedObject as? String else { return }
-        NSWorkspace.shared.open(URL(string: "\(dashboard)/?s=\(id)")!)
+    /// The page remembers the key from the fragment, so every link carries it; the fragment never leaves the browser.
+    func url(_ query: String) -> URL? {
+        guard !dashboard.isEmpty else { return nil }
+        let k = key.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? key
+        return URL(string: "\(dashboard)/\(query)\(key.isEmpty ? "" : "#k=\(k)")")
     }
-    @objc func openDashboard() { if !dashboard.isEmpty { NSWorkspace.shared.open(URL(string: dashboard)!) } }
+    @objc func openTask(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String, let u = url("?s=\(id)") else { return }
+        NSWorkspace.shared.open(u)
+    }
+    @objc func openDashboard() { if let u = url("") { NSWorkspace.shared.open(u) } }
     @objc func restart() {
         let p = Process(); p.launchPath = "/bin/launchctl"
         p.arguments = ["kickstart", "-k", "gui/\(getuid())/dev.elumixor.pai"]; try? p.run()

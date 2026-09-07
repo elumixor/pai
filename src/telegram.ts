@@ -5,7 +5,7 @@ import { markdownToTelegramHtml, splitMessage } from "@elumixor/react-telegram";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "./config.ts";
-import { db, now } from "./db.ts";
+import { db, kv, now } from "./db.ts";
 import { bus, type PaiEvent } from "./bus.ts";
 import * as sessions from "./sessions.ts";
 import type { Question, Session } from "./session.ts";
@@ -13,6 +13,7 @@ import { logger } from "./log.ts";
 
 const log = logger("telegram");
 
+const MAIN_THREAD = "main_thread_id";
 const STATUS = { starting: "🔵", busy: "🔵", idle: "🟢", waiting: "🟡", dead: "⚪", error: "🔴" } as const;
 const INBOX = join(config.workspace, "inbox");
 
@@ -50,8 +51,9 @@ export function startTelegram() {
   bot.catch((err) => log.error("bot error", err.message));
   void (async () => {
     const me = await bot.api.getMe();
-    tg.topics = Boolean(me.has_topics_enabled);
-    log.info(`@${me.username}, topics ${tg.topics ? "on" : "off (enable in @BotFather → Bot Settings → Topics)"}`);
+    tg.topics = Boolean(me.has_topics_enabled) || Boolean(kv.get(MAIN_THREAD));
+    log.info(`@${me.username}, topics ${tg.topics ? "on" : "off (enable in @BotFather → Bot Settings → Threads Settings)"}`);
+    if (tg.topics) await tg.ensureMainTopic();
     await bot.api.setMyCommands([
       { command: "new", description: "start a task in a new topic: /new <title>" },
       { command: "tasks", description: "what is running" },
@@ -95,6 +97,11 @@ class Frontend {
     const text = msg.text ?? msg.caption ?? "";
 
     if (msg.forum_topic_created) return; // service message, nothing to route
+    if (threadId !== null && !this.topics) {
+      // getMe lags behind the BotFather switch; a threaded message is proof enough.
+      this.topics = true;
+      await this.ensureMainTopic();
+    }
 
     if (text.startsWith("/")) {
       const handled = await this.command(ctx, text, threadId);
@@ -115,12 +122,50 @@ class Frontend {
     session.send(body, { images: images.images });
   }
 
+  /**
+   * In threaded mode the main conversation lives in its own topic, since every message the user
+   * types outside a topic opens a new one. Created once, remembered in kv.
+   */
+  async ensureMainTopic() {
+    const known = kv.get(MAIN_THREAD);
+    if (known) return Number(known);
+    try {
+      const topic = await this.bot.api.createForumTopic(this.chatId, "💬 pai");
+      kv.set(MAIN_THREAD, String(topic.message_thread_id));
+      await this.bot.api.sendMessage(this.chatId, "This is the main conversation. Other topics are tasks; typing a new thread starts one.", {
+        message_thread_id: topic.message_thread_id,
+      });
+      return topic.message_thread_id;
+    } catch (err) {
+      log.warn("could not create main topic", (err as Error).message);
+      return undefined;
+    }
+  }
+
+  private mainThread(): number | null {
+    const v = kv.get(MAIN_THREAD);
+    return v ? Number(v) : null;
+  }
+
+  private main(): Session {
+    const m = sessions.main();
+    const thread = this.mainThread();
+    if (thread !== null && m.threadId !== thread) {
+      m.threadId = thread;
+      m.persist();
+    }
+    return m;
+  }
+
   /** Which session a message belongs to: its topic, the message it replies to, or the main conversation. */
   private route(ctx: Context, threadId: number | null): Session {
+    if (threadId !== null && threadId === this.mainThread()) return this.main();
     if (threadId !== null) {
       const existing = sessions.byThread(threadId);
       if (existing) return existing;
-      const name = ctx.message?.reply_to_message?.forum_topic_created?.name ?? `topic ${threadId}`;
+      const created = ctx.message?.reply_to_message?.forum_topic_created;
+      const text = ctx.message?.text ?? ctx.message?.caption ?? "";
+      const name = created && !created.is_name_implicit ? created.name : text.replace(/\s+/g, " ").slice(0, 40) || `topic ${threadId}`;
       return sessions.spawnTask({ title: name, threadId });
     }
     const replyTo = ctx.message?.reply_to_message?.message_id;
@@ -131,7 +176,7 @@ class Frontend {
       const s = linked ? sessions.ensureLive(linked.session_id) : undefined;
       if (s) return s;
     }
-    return sessions.main();
+    return this.main();
   }
 
   private async command(ctx: Context, text: string, threadId: number | null): Promise<boolean> {
@@ -166,7 +211,7 @@ class Frontend {
         return true;
       }
       case "/stop": {
-        const s = threadId !== null ? sessions.byThread(threadId) : sessions.main();
+        const s = threadId !== null && threadId !== this.mainThread() ? sessions.byThread(threadId) : this.main();
         const did = await s?.interrupt();
         await reply(did ? "interrupted" : "nothing running");
         return true;
@@ -374,7 +419,7 @@ class Frontend {
   // ---- live card -----------------------------------------------------------
 
   private scheduleCard(s: Session) {
-    if (s.threadId === null || s.cardId === null) return;
+    if (s.threadId === null) return;
     if (this.cardTimers.has(s.id)) return;
     this.cardTimers.set(
       s.id,
@@ -402,15 +447,16 @@ class Frontend {
   }
 
   private async updateCard(s: Session) {
-    if (s.threadId === null || s.cardId === null) return;
-    await this.bot.api
-      .editMessageText(this.chatId, s.cardId, this.cardText(s), { parse_mode: "HTML", link_preview_options: { is_disabled: true } })
-      .catch((err: Error) => {
-        if (!err.message.includes("not modified")) log.debug("card edit failed", err.message);
-      });
+    if (s.threadId === null) return;
+    if (s.cardId !== null)
+      await this.bot.api
+        .editMessageText(this.chatId, s.cardId, this.cardText(s), { parse_mode: "HTML", link_preview_options: { is_disabled: true } })
+        .catch((err: Error) => {
+          if (!err.message.includes("not modified")) log.debug("card edit failed", err.message);
+        });
     if (this.topics)
       await this.bot.api
-        .editForumTopic(this.chatId, s.threadId, { name: `${STATUS[this.status(s)]} ${s.title}`.slice(0, 128) })
+        .editForumTopic(this.chatId, s.threadId, { name: `${s.kind === "main" ? "💬" : STATUS[this.status(s)]} ${s.title}`.slice(0, 128) })
         .catch((err: Error) => {
           if (!err.message.includes("not modified")) log.debug("topic rename failed", err.message);
         });

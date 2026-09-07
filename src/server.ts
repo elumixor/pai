@@ -25,7 +25,7 @@ export function startServer() {
       const path = url.pathname;
       try {
         if (path === "/health")
-          return json({ ok: true, pid: process.pid, uptime: process.uptime(), dashboardUrl: config.dashboard.url || undefined });
+          return json({ ok: true, pid: process.pid, uptime: process.uptime(), dashboardUrl: config.dashboard.url || undefined, dashboardKey: config.dashboard.secret || undefined });
 
         if (path === "/projects") {
           if (url.searchParams.get("refresh")) refresh();
