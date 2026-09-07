@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { config } from "./config.ts";
 import { refresh } from "./catalog.ts";
-import { startServer } from "./server.ts";
+import { restoreDaemonJob, startServer } from "./server.ts";
 import { startTelegram } from "./telegram.ts";
 import { startDashboardPush } from "./dashboard.ts";
 import { killAll, reapIdle, relayTasksToMain } from "./sessions.ts";
@@ -35,6 +35,7 @@ function shutdown(signal: string) {
   void disconnectUser();
   void bot?.stop();
   void server.stop(true);
+  restoreDaemonJob();
   process.exit(0);
 }
 

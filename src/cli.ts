@@ -1,8 +1,14 @@
 #!/usr/bin/env bun
-import { config } from "./config.ts";
-
-const base = `http://${config.host}:${config.port}`;
+export {}; // dynamic imports only, but top-level await needs this file to be a module
 const [cmd, ...args] = process.argv.slice(2);
+
+// `daemon` needs these set before config.ts is evaluated, so config is imported after.
+if (cmd === "daemon") {
+  process.env.PAI_NO_TELEGRAM ??= "1";
+  process.env.PAI_VERBOSE ??= "1";
+}
+const { config } = await import("./config.ts");
+const base = `http://${config.host}:${config.port}`;
 const jsonOut = args.includes("--json");
 const positional = args.filter((a) => !a.startsWith("--"));
 
@@ -81,12 +87,9 @@ const usage = `pai
 
 try {
   switch (cmd) {
-    case "daemon": {
-      process.env.PAI_NO_TELEGRAM ??= "1";
-      process.env.PAI_VERBOSE ??= "1";
+    case "daemon":
       await import("./daemon.ts");
       break;
-    }
     case "update": {
       // Works with the daemon down too — then the update just runs here.
       const local = async () => {
