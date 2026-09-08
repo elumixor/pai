@@ -292,6 +292,12 @@ class Frontend {
       if (info.status === "rejected") await this.send(null, `⛔ rate limited: ${esc(JSON.stringify(info))}`);
       return;
     }
+    if (e.kind === "daemon.updated") {
+      const info = e.payload as { from?: string; to?: string; at?: string };
+      const when = new Date(info.at ?? Date.now()).toLocaleString();
+      await this.send(null, `🚀 pai updated <code>${esc(info.from ?? "?")}</code> → <code>${esc(info.to ?? "?")}</code>\n${esc(when)}`);
+      return;
+    }
     if (!e.sessionId) return;
     const s = sessions.find(e.sessionId);
     if (!s) return;

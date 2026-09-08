@@ -70,8 +70,8 @@ export async function update(force = false): Promise<UpdateResult> {
   const head = (await git("rev-parse", "--short", "HEAD")).stdout.toString().trim();
   const restarting = managedByLaunchd();
   log.info(`updated to ${head}${restarting ? " — restarting" : ""}`);
-  bus.emitEvent("daemon.updated", { from: s.head, to: head, restarting });
-  if (restarting) setTimeout(() => process.exit(0), 500);
+  bus.emitEvent("daemon.updated", { from: s.head, to: head, restarting, at: new Date().toISOString() });
+  if (restarting) setTimeout(() => process.exit(0), 1200);
   return { ...s, head, updated: true, restarting };
 }
 
