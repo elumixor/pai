@@ -10,6 +10,7 @@ import { bus, type PaiEvent } from "./bus.ts";
 import * as sessions from "./sessions.ts";
 import type { Question, Session } from "./session.ts";
 import { logger } from "./log.ts";
+import { transcribe } from "./transcribe.ts";
 
 const log = logger("telegram");
 
@@ -227,21 +228,34 @@ class Frontend {
     }
   }
 
-  /** Saves photos/documents to the inbox; photos are also passed to the model inline. */
+  /** Saves photos/documents/voice notes to the inbox; photos go to the model inline, voice gets transcribed. */
   private async attachments(ctx: Context) {
     const msg = ctx.message!;
     const images: { media_type: string; data: string }[] = [];
     const notes: string[] = [];
     const photo = msg.photo?.at(-1);
     const doc = msg.document;
-    const fileMeta = photo ?? doc;
+    const voice = msg.voice ?? msg.audio;
+    const fileMeta = photo ?? doc ?? voice;
     if (!fileMeta) return { images, note: "" };
     const file = await ctx.api.getFile(fileMeta.file_id);
-    const name = doc?.file_name ?? `${photo ? "photo" : "file"}-${now()}${photo ? ".jpg" : ""}`;
+    const name = doc?.file_name ?? (voice ? `voice-${now()}.ogg` : `${photo ? "photo" : "file"}-${now()}${photo ? ".jpg" : ""}`);
     const path = join(INBOX, name.replace(/[^\w.-]+/g, "_"));
     const res = await fetch(`https://api.telegram.org/file/bot${config.telegram.token}/${file.file_path}`);
     const bytes = new Uint8Array(await res.arrayBuffer());
     await Bun.write(path, bytes);
+
+    if (voice) {
+      try {
+        const text = await transcribe(path);
+        notes.push(text ? `[voice message: "${text}"]` : "[voice message: nothing recognized]");
+      } catch (err) {
+        log.warn("transcribe failed", (err as Error).message);
+        notes.push(`[voice message saved: ${path} — transcription failed]`);
+      }
+      return { images, note: notes.join("\n") };
+    }
+
     notes.push(`[attachment saved: ${path}]`);
     const mime = doc?.mime_type ?? "image/jpeg";
     if (photo || mime.startsWith("image/")) images.push({ media_type: mime, data: Buffer.from(bytes).toString("base64") });
