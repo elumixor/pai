@@ -9,7 +9,6 @@ struct Task: Decodable {
     let title: String
     let state: String
     let waiting: Bool?
-    let costUsd: Double?
     let lastTool: String?
     let project: String?
 }
@@ -73,17 +72,15 @@ final class App: NSObject, NSApplicationDelegate {
         switch t.state { case "busy", "starting": return "🔵"; case "idle": return "🟢"; case "dead": return "⚪"; default: return "⚪" }
     }
 
-    /// The menu bar line: how many tasks run, how many want an answer, what it has cost so far.
+    /// The menu bar line: how many tasks run and how many want an answer.
     /// Nothing at all when the daemon is up and idle — an unadorned icon is the resting state.
-    func status(live: [Task], tasks: [Task], busy: Int, waiting: Int, main: Task?) -> NSAttributedString {
+    func status(busy: Int, waiting: Int, main: Task?) -> NSAttributedString {
         var parts: [String] = []
         if !up {
             parts.append("✕")
         } else {
             if waiting > 0 { parts.append("?\(waiting)") }
             if busy > 0 { parts.append("\(busy)") } else if main?.state == "busy" { parts.append("…") }
-            let spent = live.reduce(0.0) { $0 + ($1.costUsd ?? 0) }
-            if spent >= 0.01 { parts.append(String(format: "$%.2f", spent)) }
         }
         let text = parts.isEmpty ? "" : " " + parts.joined(separator: " ")
         return NSAttributedString(
@@ -99,7 +96,7 @@ final class App: NSObject, NSApplicationDelegate {
         let main = live.first { $0.kind == "main" }
         item.button?.image = icon
         item.button?.imagePosition = .imageLeading
-        item.button?.attributedTitle = status(live: live, tasks: tasks, busy: busy, waiting: waiting, main: main)
+        item.button?.attributedTitle = status(busy: busy, waiting: waiting, main: main)
 
         menu.removeAllItems()
         if !up {
@@ -112,7 +109,6 @@ final class App: NSObject, NSApplicationDelegate {
             if shown.isEmpty { menu.addItem(withTitle: "no tasks", action: nil, keyEquivalent: "") }
             for t in shown {
                 var line = "\(dot(t)) \(t.title) · \(t.waiting == true ? "waiting" : t.state)"
-                if let c = t.costUsd, c > 0 { line += String(format: " · $%.2f", c) }
                 if let tool = t.lastTool, !tool.isEmpty, t.state == "busy" { line += "\n      ⚙ \(tool.prefix(60))" }
                 let mi = NSMenuItem(title: line, action: #selector(openTask(_:)), keyEquivalent: "")
                 mi.target = self
