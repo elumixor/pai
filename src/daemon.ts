@@ -5,6 +5,7 @@ import { restoreDaemonJob, startServer } from "./api/server.ts";
 import { startTelegram } from "./clients/telegram.ts";
 import { startDashboardPush } from "./clients/dashboard.ts";
 import { killAll, reapIdle, relayTasksToMain, warmUp } from "./domain/sessions.ts";
+import { closeAll as closeTerminals } from "./domain/terminals.ts";
 import { startBrowser } from "./domain/browser.ts";
 import { bus } from "./core/bus.ts";
 import { disconnectUser } from "./clients/tg-user.ts";
@@ -35,6 +36,7 @@ function shutdown(signal: string) {
   stopDashboard?.();
   stopAutoUpdate?.();
   killAll();
+  closeTerminals();
   stopBrowser();
   void disconnectUser();
   void bot?.stop();

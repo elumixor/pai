@@ -1,207 +1,51 @@
+import type { ServerWebSocket } from "bun";
 import { config } from "../core/config.ts";
-import { all as allProjects, refresh } from "../domain/catalog.ts";
-import { bus, recentEvents, waitFor, type PaiEvent } from "../core/bus.ts";
-import * as sessions from "../domain/sessions.ts";
-import { status as updateStatus, update } from "../host/update.ts";
-import * as memory from "../domain/memory.ts";
+import { get as getTerminal } from "../domain/terminals.ts";
 import { logger } from "../core/log.ts";
+import { freePort } from "./port.ts";
+import { handle, json } from "./routes.ts";
 
 const log = logger("server");
 
-const json = (data: unknown, status = 200) =>
-  new Response(JSON.stringify(data, null, 2), { status, headers: { "content-type": "application/json" } });
+const STREAM_PATH = /^\/terminals\/([\w-]+)\/stream$/;
 
-async function body<T>(req: Request): Promise<T> {
-  return (await req.json()) as T;
-}
-
-const TURN_TIMEOUT = 15 * 60 * 1000;
-
-/** The launchd daemon owns the port until it is booted out; killing it alone just makes KeepAlive bring it back. */
-const DAEMON_LABEL = "dev.elumixor.pai";
-
-const plistPath = `${process.env.HOME}/Library/LaunchAgents/${DAEMON_LABEL}.plist`;
-let bootedOut = false;
-
-function pidsOnPort(port: number): number[] {
-  const res = Bun.spawnSync(["lsof", "-ti", `tcp:${port}`]);
-  return new TextDecoder()
-    .decode(res.stdout)
-    .split("\n")
-    .map((line) => Number(line.trim()))
-    .filter((pid) => pid > 0 && pid !== process.pid);
-}
-
-function launchdPid(): number | undefined {
-  const res = Bun.spawnSync(["launchctl", "print", `gui/${process.getuid!()}/${DAEMON_LABEL}`]);
-  const pid = /^\s*pid = (\d+)/m.exec(new TextDecoder().decode(res.stdout))?.[1];
-  return pid ? Number(pid) : undefined;
-}
-
-/** Whatever holds the port loses it: a stale or foreground daemon is killed, the launchd job is booted out. */
-function freePort(port: number) {
-  for (let attempt = 0; attempt < 20; attempt++) {
-    const pids = pidsOnPort(port);
-    if (pids.length === 0) return;
-    const managed = launchdPid();
-    for (const pid of pids) {
-      if (pid === managed) {
-        log.warn(`booting out ${DAEMON_LABEL} (pid ${pid}) to take port ${port}`);
-        Bun.spawnSync(["launchctl", "bootout", `gui/${process.getuid!()}/${DAEMON_LABEL}`]);
-        bootedOut = true;
-      } else {
-        log.warn(`killing pid ${pid} on port ${port}`);
-        process.kill(pid, attempt < 6 ? "SIGTERM" : "SIGKILL");
-      }
-    }
-    Bun.sleepSync(200);
-  }
-  throw new Error(`port ${port} is still in use by ${pidsOnPort(port).join(", ")}`);
-}
-
-/** Puts the launchd daemon back after a foreground run took its port. */
-export function restoreDaemonJob() {
-  if (!bootedOut) return;
-  bootedOut = false;
-  log.info(`restoring ${DAEMON_LABEL}`);
-  Bun.spawnSync(["launchctl", "bootstrap", `gui/${process.getuid!()}`, plistPath]);
+interface TerminalSocket {
+  readonly terminalId: string;
+  unsubscribe?: () => void;
 }
 
 export function startServer() {
   freePort(config.port);
-  const server = Bun.serve({
+  const server = Bun.serve<TerminalSocket, string>({
     hostname: config.host,
     port: config.port,
     idleTimeout: 0,
-    async fetch(req) {
-      const url = new URL(req.url);
-      const path = url.pathname;
-      try {
-        if (path === "/health")
-          return json({ ok: true, pid: process.pid, uptime: process.uptime(), dashboardUrl: config.dashboard.url || undefined, dashboardKey: config.dashboard.secret || undefined });
-
-        // The response goes out before the process exits, so the CLI sees the result of its own update.
-        if (path === "/update" && req.method === "POST") {
-          const { force } = await body<{ force?: boolean }>(req);
-          return json(await update(force));
-        }
-
-        if (path === "/update") return json(await updateStatus());
-
-        if (path === "/projects") {
-          if (url.searchParams.get("refresh")) refresh();
-          return json(allProjects());
-        }
-
-        // A turn in the main conversation, identical to a Telegram message in the root chat.
-        if (path === "/chat" && req.method === "POST") {
-          const { text } = await body<{ text: string }>(req);
-          const m = sessions.main();
-          const done = waitFor("session.turn_end", m.id, TURN_TIMEOUT);
-          m.send(text);
-          const e = await done;
-          return json({ session: m.shortId, ...e.payload });
-        }
-
-        if (path === "/task" && req.method === "POST") {
-          const { title, text, project } = await body<{ title: string; text: string; project?: string }>(req);
-          const s = sessions.spawnTask({ title, project });
-          if (text) s.send(text);
-          return json(s.summary());
-        }
-
-        if (path === "/send" && req.method === "POST") {
-          const { id, text, wait } = await body<{ id: string; text: string; wait?: boolean }>(req);
-          const s = resolveLive(id);
-          if (!s) return json({ error: "no such session" }, 404);
-          const done = wait ? waitFor("session.turn_end", s.id, TURN_TIMEOUT) : undefined;
-          s.send(text);
-          if (!done) return json(s.summary());
-          return json({ session: s.shortId, ...(await done).payload });
-        }
-
-        if (path === "/answer" && req.method === "POST") {
-          const { id, text } = await body<{ id: string; text: string }>(req);
-          const s = resolveLive(id);
-          if (!s) return json({ error: "no such session" }, 404);
-          if (!s.pending) return json({ answered: false, error: "no question pending" });
-          return json({ answered: s.answer(text) });
-        }
-
-        if (path === "/stop" && req.method === "POST") {
-          const { id, kill } = await body<{ id: string; kill?: boolean }>(req);
-          const s = id === "main" ? sessions.main() : sessions.find(id);
-          if (!s) return json({ error: "no such session" }, 404);
-          if (kill) s.kill();
-          else await s.interrupt();
-          return json({ ok: true });
-        }
-
-        if (path === "/reset" && req.method === "POST") {
-          sessions.resetMain();
-          return json({ ok: true });
-        }
-
-        if (path === "/memory") return json(memory.recall(url.searchParams.get("q") ?? ""));
-
-        if (path === "/tasks") return json({ live: sessions.list(), recent: sessions.recent(30) });
-
-        if (path === "/events") {
-          const raw = url.searchParams.get("session") ?? undefined;
-          const sessionId = raw ? (sessions.find(raw)?.id ?? sessions.resolveId(raw) ?? raw) : undefined;
-          if (!url.searchParams.get("follow")) return json(recentEvents(sessionId, 200));
-          return sse(sessionId);
-        }
-
-        return json({ error: "not found" }, 404);
-      } catch (err) {
-        log.error(path, err);
-        return json({ error: (err as Error).message }, 500);
-      }
+    fetch(req, bunServer): Response | Promise<Response> | undefined {
+      const terminalId = STREAM_PATH.exec(new URL(req.url).pathname)?.[1];
+      if (!terminalId) return handle(req);
+      if (!getTerminal(terminalId)) return json({ error: "no such terminal" }, 404);
+      // An upgraded request has no response; Bun takes the socket over from here.
+      if (bunServer.upgrade(req, { data: { terminalId } })) return undefined;
+      return json({ error: "expected a websocket upgrade" }, 426);
+    },
+    websocket: {
+      open(ws: ServerWebSocket<TerminalSocket>) {
+        const terminal = getTerminal(ws.data.terminalId);
+        if (!terminal) return ws.close(1011, "terminal is gone");
+        ws.data.unsubscribe = terminal.subscribe((data) => ws.send(data));
+      },
+      message(ws: ServerWebSocket<TerminalSocket>, message) {
+        const terminal = getTerminal(ws.data.terminalId);
+        if (!terminal) return ws.close(1011, "terminal is gone");
+        terminal.write(typeof message === "string" ? message : new TextDecoder().decode(message));
+      },
+      close(ws: ServerWebSocket<TerminalSocket>) {
+        ws.data.unsubscribe?.();
+      },
     },
   });
   log.info(`http://${config.host}:${server.port}`);
   return server;
 }
 
-function resolveLive(id: string) {
-  if (id === "main") return sessions.main();
-  const full = sessions.find(id)?.id ?? sessions.resolveId(id);
-  return full ? sessions.ensureLive(full) : undefined;
-}
-
-function sse(sessionId?: string) {
-  const enc = new TextEncoder();
-  let write: (e: PaiEvent) => void = () => {};
-  let ping: ReturnType<typeof setInterval>;
-
-  const stream = new ReadableStream({
-    start(controller) {
-      write = (e) => {
-        if (sessionId && e.sessionId !== sessionId) return;
-        if (e.kind === "session.delta") return;
-        try {
-          controller.enqueue(enc.encode(`data: ${JSON.stringify(e)}\n\n`));
-        } catch {
-          /* client went away between events */
-        }
-      };
-      for (const e of recentEvents(sessionId, 50)) write(e);
-      bus.on("event", write);
-      ping = setInterval(() => {
-        try {
-          controller.enqueue(enc.encode(": ping\n\n"));
-        } catch {
-          /* same */
-        }
-      }, 15000);
-    },
-    cancel() {
-      clearInterval(ping);
-      bus.off("event", write);
-    },
-  });
-  return new Response(stream, {
-    headers: { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" },
-  });
-}
+export { restoreDaemonJob } from "./port.ts";
