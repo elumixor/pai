@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -30,6 +30,11 @@ async function waitFor(predicate: () => boolean, timeoutMs = 5000) {
 }
 
 beforeAll(() => {
+  // The app is a build artefact; a clean checkout (CI) has not made it yet.
+  if (!existsSync(join(import.meta.dir, "..", "app", "dist", "index.html"))) {
+    const built = Bun.spawnSync({ cmd: ["bun", "run", "scripts/build-app.ts"] });
+    if (built.exitCode !== 0) throw new Error("could not build the web app for the test run");
+  }
   server = startServer();
 });
 
