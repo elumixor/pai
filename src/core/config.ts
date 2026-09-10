@@ -1,8 +1,19 @@
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
-const env = process.env;
 const repo = resolve(import.meta.dir, "../..");
+
+// Bun only auto-loads .env from the current directory, and the CLI is run from anywhere.
+// Reading the repository's own file keeps one source of settings for every entry point.
+const envFile = join(repo, ".env");
+for (const line of existsSync(envFile) ? readFileSync(envFile, "utf8").split("\n") : []) {
+  const match = /^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*)$/.exec(line);
+  if (!match?.[1] || process.env[match[1]] !== undefined) continue;
+  process.env[match[1]] = (match[2] ?? "").replace(/^["']|["']$/g, "");
+}
+
+const env = process.env;
 
 function bool(v: string | undefined, dflt = false) {
   if (v === undefined) return dflt;
