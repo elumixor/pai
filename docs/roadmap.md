@@ -70,7 +70,7 @@ Terraform workspace, not a merged history.
 - [ ] Memory: 1 GB with ~640 MB resident and swap already in use. Headless Chromium plus
       several Claude sessions will not fit. Either cap concurrency and keep the browser
       off by default, or move to a shape with 2-4 GB (leaves the free tier, ~$7-15/mo).
-- [ ] Reboot test — the whole point of the service is that it comes back by itself.
+- [x] Reboot test: hard reset of the instance, service back up and polling on its own.
 
 ### 2. Reach the daemon from the internet
 
