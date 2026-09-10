@@ -27,6 +27,10 @@ function build(kind: SessionKind, cwd: string, ref: SessionRef): Options {
     // Project settings only: the user's global hooks and plugins are for their
     // terminal sessions, not for the assistant. claude.ai connectors still load.
     settingSources: ["project"],
+    // Discovered from .claude/skills under the project (and, for code sessions, the repo).
+    // No global plugins: hooks like caveman's `~/.claude/.caveman-active` toggle assume one
+    // interactive terminal and would race across pai's concurrent sessions.
+    skills: "all",
     additionalDirectories: kind === "code" ? [config.workspace] : [],
     systemPrompt: { type: "preset", preset: "claude_code", append: instructionsFor(kind) },
     mcpServers: {
