@@ -81,8 +81,9 @@ export async function update(force = false): Promise<UpdateResult> {
     if (config.updateChannel === "tag") await run("git checkout", git("checkout", "--quiet", s.target));
     else await run("git pull", git("pull", "--ff-only"));
   }
-  await run("bun install", $`bun install`.cwd(config.repo).nothrow().quiet());
-  await run("build web app", $`bun run scripts/build-app.ts`.cwd(config.repo).nothrow().quiet());
+  await run("bun install", $`${process.execPath} install`.cwd(config.repo).nothrow().quiet());
+  // process.execPath, not "bun": the service's PATH is not a login shell's.
+  await run("build web app", $`${process.execPath} run scripts/build-app.ts`.cwd(config.repo).nothrow().quiet());
   if (process.platform === "darwin") {
     await run(
       "swiftc",
