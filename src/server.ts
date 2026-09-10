@@ -122,8 +122,9 @@ export function startServer() {
 
         if (path === "/answer" && req.method === "POST") {
           const { id, text } = await body<{ id: string; text: string }>(req);
-          const s = id === "main" ? sessions.main() : sessions.find(id);
+          const s = resolveLive(id);
           if (!s) return json({ error: "no such session" }, 404);
+          if (!s.pending) return json({ answered: false, error: "no question pending" });
           return json({ answered: s.answer(text) });
         }
 

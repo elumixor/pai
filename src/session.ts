@@ -96,7 +96,9 @@ export interface Question {
 export interface PendingQuestion {
   id: string;
   questions: Question[];
-  resolve: (answer: { answers?: Record<string, string | string[]>; response?: string }) => void;
+  /** Answers collected so far, by question index. The promise resolves once every question has one. */
+  answers: Record<number, string>;
+  resolve: (answer: { answers?: Record<string, string>; response?: string }) => void;
 }
 
 export interface SessionOptions {
@@ -327,6 +329,7 @@ export class Session {
       this.pending = {
         id,
         questions: input.questions,
+        answers: {},
         resolve: (answer) => {
           this.pending = undefined;
           bus.emitEvent("session.answer", { id, ...answer }, this.id);
@@ -338,12 +341,32 @@ export class Session {
     });
   }
 
-  /** Answers the pending question with a chosen option, or with free text. */
-  answer(text: string, questionIndex = 0) {
+  /** The index of the first question in the pending set that has no answer yet. */
+  nextUnanswered(): number | undefined {
+    const p = this.pending;
+    if (!p) return undefined;
+    const i = p.questions.findIndex((_, idx) => p.answers[idx] === undefined);
+    return i === -1 ? undefined : i;
+  }
+
+  /**
+   * Answers one question of the pending set, by index (a chosen option's label, or free text —
+   * comma-joined labels for a multiSelect question). Resolves the underlying tool call once every
+   * question in the set has an answer; a `AskUserQuestion` call can carry 1-4 of them.
+   */
+  answer(text: string, questionIndex = this.nextUnanswered() ?? 0) {
     const p = this.pending;
     if (!p) return false;
-    const q = p.questions[questionIndex] ?? p.questions[0]!;
-    p.resolve({ answers: { [q.question]: text } });
+    const q = p.questions[questionIndex];
+    if (!q) return false;
+    p.answers[questionIndex] = text;
+    if (Object.keys(p.answers).length < p.questions.length) {
+      this.persist();
+      return true;
+    }
+    const answers: Record<string, string> = {};
+    p.questions.forEach((qq, i) => (answers[qq.question] = p.answers[i]!));
+    p.resolve({ answers });
     return true;
   }
 

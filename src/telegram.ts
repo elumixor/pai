@@ -84,6 +84,8 @@ class Frontend {
   topics = false;
   private outboxes = new Map<string, Outbox>();
   private cardTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** In-progress multiSelect picks, keyed by `${shortId}:${questionIndex}`, cleared on Done. */
+  private selections = new Map<string, Set<number>>();
 
   constructor(
     private bot: Bot,
@@ -264,24 +266,64 @@ class Frontend {
 
   async callback(ctx: Context) {
     const data = ctx.callbackQuery!.data!;
-    const [kind, short, qi, oi] = data.split(":");
-    if (kind !== "a") return;
+    const [kind, short, qiStr, oiStr] = data.split(":");
     const s = sessions.find(short!);
     const p = s?.pending;
     if (!s || !p) {
       await ctx.answerCallbackQuery({ text: "that question is no longer open" });
       return;
     }
-    const q = p.questions[Number(qi)];
-    const option = q?.options[Number(oi)];
-    if (!q || !option) return void ctx.answerCallbackQuery();
-    s.answer(option.label, Number(qi));
-    await ctx.answerCallbackQuery({ text: option.label });
+    const qi = Number(qiStr);
+    const q = p.questions[qi];
+    if (!q) return void ctx.answerCallbackQuery();
+
+    if (kind === "a") {
+      const option = q.options[Number(oiStr)];
+      if (!option) return void ctx.answerCallbackQuery();
+      s.answer(option.label, qi);
+      await ctx.answerCallbackQuery({ text: option.label });
+      await this.markAnswered(ctx, q, option.label);
+      return;
+    }
+
+    const key = `${short}:${qi}`;
+    if (kind === "t") {
+      const oi = Number(oiStr);
+      const set = this.selections.get(key) ?? new Set<number>();
+      if (set.has(oi)) set.delete(oi);
+      else set.add(oi);
+      this.selections.set(key, set);
+      await ctx.answerCallbackQuery({ text: set.has(oi) ? `+ ${q.options[oi]?.label}` : `- ${q.options[oi]?.label}` });
+      await ctx.editMessageReplyMarkup({ reply_markup: this.multiKeyboard(s, q, qi, set) }).catch(() => {});
+      return;
+    }
+
+    if (kind === "d") {
+      const set = this.selections.get(key);
+      this.selections.delete(key);
+      const labels = q.options.filter((_, oi) => set?.has(oi)).map((o) => o.label);
+      if (labels.length === 0) return void ctx.answerCallbackQuery({ text: "pick at least one" });
+      s.answer(labels.join(", "), qi);
+      await ctx.answerCallbackQuery({ text: labels.join(", ") });
+      await this.markAnswered(ctx, q, labels.join(", "));
+      return;
+    }
+
+    await ctx.answerCallbackQuery();
+  }
+
+  private async markAnswered(ctx: Context, q: Question, answerText: string) {
     const m = ctx.callbackQuery!.message;
     if (m && "text" in m)
       await ctx.api
-        .editMessageText(this.chatId, m.message_id, `${questionText(q)}\n\n→ <b>${esc(option.label)}</b>`, { parse_mode: "HTML" })
+        .editMessageText(this.chatId, m.message_id, `${questionText(q)}\n\n→ <b>${esc(answerText)}</b>`, { parse_mode: "HTML" })
         .catch(() => {});
+  }
+
+  private multiKeyboard(s: Session, q: Question, qi: number, set: Set<number>) {
+    const kb = new InlineKeyboard();
+    q.options.forEach((o, oi) => kb.text(`${set.has(oi) ? "☑" : "☐"} ${o.label.slice(0, 55)}`, `t:${s.shortId}:${qi}:${oi}`).row());
+    return kb.text("✅ Done", `d:${s.shortId}:${qi}`).row();
   }
 
   // ---- outbound ------------------------------------------------------------
@@ -426,8 +468,9 @@ class Frontend {
 
   private async askUser(s: Session, questions: Question[]) {
     for (const [qi, q] of questions.entries()) {
-      const kb = new InlineKeyboard();
-      q.options.forEach((o, oi) => kb.text(o.label.slice(0, 60), `a:${s.shortId}:${qi}:${oi}`).row());
+      const kb = q.multiSelect
+        ? this.multiKeyboard(s, q, qi, new Set())
+        : q.options.reduce((kb, o, oi) => kb.text(o.label.slice(0, 60), `a:${s.shortId}:${qi}:${oi}`).row(), new InlineKeyboard());
       const sent = await this.bot.api.sendMessage(this.chatId, questionText(q), {
         parse_mode: "HTML",
         message_thread_id: s.threadId ?? undefined,
@@ -486,7 +529,8 @@ function startedAt(s: Session): number {
 
 function questionText(q: Question) {
   const opts = q.options.map((o, i) => `${i + 1}. <b>${esc(o.label)}</b>${o.description ? ` — ${esc(o.description)}` : ""}`);
-  return `❓ <b>${esc(q.header)}</b>\n${esc(q.question)}\n\n${opts.join("\n")}\n\n<i>tap an option or reply with text</i>`;
+  const hint = q.multiSelect ? "tap to toggle options, then Done" : "tap an option or reply with text";
+  return `❓ <b>${esc(q.header)}</b>\n${esc(q.question)}\n\n${opts.join("\n")}\n\n<i>${hint}</i>`;
 }
 
 function esc(s: string) {
