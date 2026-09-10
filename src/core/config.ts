@@ -18,9 +18,9 @@ export const config = {
   devRoot: resolve(env.PAI_DEV_ROOT ?? join(homedir(), "dev")),
   scanDepth: Number(env.PAI_SCAN_DEPTH ?? 2),
 
-  /** Local HTTP API the CLI talks to. */
+  /** The HTTP API. Loopback by default; the tailnet address when other devices need it. */
   port: Number(env.PAI_PORT ?? 8787),
-  host: "127.0.0.1",
+  host: env.PAI_BIND ?? "127.0.0.1",
 
   /** Shared Playwright MCP server, one per daemon. */
   browserPort: Number(env.PAI_BROWSER_PORT ?? 8931),

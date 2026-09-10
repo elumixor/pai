@@ -2,7 +2,7 @@
  * Turns a freshly provisioned host into a running pai: a read-only deploy key, the
  * checkout, dependencies, secrets and state carried over, then the service.
  *
- *   bun run infra/bootstrap.ts [--host pai] [--from <old ssh target>]
+ *   bun run infra/bootstrap.ts [--host pai] [--from <old ssh target>] [--env <file>]
  *
  * Everything runs over SSH, so the host has to be on the tailnet already. Secrets travel
  * over that connection and never through git.
@@ -19,6 +19,7 @@ const flag = (name: string) => {
 
 const host = flag("host") ?? "pai";
 const from = flag("from");
+const envFile = flag("env") ?? join(config.repo, ".env");
 const REPO = "elumixor/pai";
 const remote = (command: string) => $`ssh ${host} ${command}`;
 
@@ -50,7 +51,7 @@ async function clone() {
 }
 
 async function carryState() {
-  await $`scp ${join(config.repo, ".env")} ${host}:~/pai/.env`;
+  await $`scp ${envFile} ${host}:~/pai/.env`;
   await remote("chmod 600 ~/pai/.env");
 
   const source = from ?? "";
