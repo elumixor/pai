@@ -1,15 +1,15 @@
 import { mkdirSync } from "node:fs";
-import { config } from "./config.ts";
-import { refresh } from "./catalog.ts";
-import { restoreDaemonJob, startServer } from "./server.ts";
-import { startTelegram } from "./telegram.ts";
-import { startDashboardPush } from "./dashboard.ts";
-import { killAll, reapIdle, relayTasksToMain, warmUp } from "./sessions.ts";
-import { startBrowser } from "./browser.ts";
-import { bus } from "./bus.ts";
-import { disconnectUser } from "./tg-user.ts";
-import { startAutoUpdate } from "./update.ts";
-import { logger } from "./log.ts";
+import { config } from "./core/config.ts";
+import { refresh } from "./domain/catalog.ts";
+import { restoreDaemonJob, startServer } from "./api/server.ts";
+import { startTelegram } from "./clients/telegram.ts";
+import { startDashboardPush } from "./clients/dashboard.ts";
+import { killAll, reapIdle, relayTasksToMain, warmUp } from "./domain/sessions.ts";
+import { startBrowser } from "./domain/browser.ts";
+import { bus } from "./core/bus.ts";
+import { disconnectUser } from "./clients/tg-user.ts";
+import { startAutoUpdate } from "./host/update.ts";
+import { logger } from "./core/log.ts";
 
 const log = logger("daemon");
 

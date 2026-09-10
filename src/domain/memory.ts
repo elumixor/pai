@@ -1,7 +1,7 @@
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { config } from "./config.ts";
-import { bus } from "./bus.ts";
+import { config } from "../core/config.ts";
+import { bus } from "../core/bus.ts";
 
 /**
  * Long-term memory: one markdown file per fact under the workspace, shared by every

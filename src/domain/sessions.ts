@@ -1,9 +1,9 @@
 import { Session, closeWarm, prewarm, rewarm, type SessionKind } from "./session.ts";
-import { db, kv, now } from "./db.ts";
-import { config } from "./config.ts";
-import { bus, type PaiEvent } from "./bus.ts";
+import { db, kv, now } from "../core/db.ts";
+import { config } from "../core/config.ts";
+import { bus, type PaiEvent } from "../core/bus.ts";
 import { get as getProject } from "./catalog.ts";
-import { logger } from "./log.ts";
+import { logger } from "../core/log.ts";
 
 const log = logger("sessions");
 

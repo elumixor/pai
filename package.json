@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "daemon": "bun run src/daemon.ts",
-    "cli": "bun run src/cli.ts",
+    "cli": "bun run src/clients/cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test"
   },

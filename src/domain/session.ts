@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { query, startup, type Options, type Query, type SDKMessage, type SDKUserMessage, type WarmQuery } from "@anthropic-ai/claude-agent-sdk";
-import { config } from "./config.ts";
-import { db, now } from "./db.ts";
-import { bus } from "./bus.ts";
-import { logger } from "./log.ts";
+import { config } from "../core/config.ts";
+import { db, now } from "../core/db.ts";
+import { bus } from "../core/bus.ts";
+import { logger } from "../core/log.ts";
 import { paiTools, type SessionRef } from "./tools.ts";
 import { browserMcp } from "./browser.ts";
 import { instructionsFor } from "./prompts.ts";
-import { enabled as tgUserEnabled, telegramUserTools } from "./tg-user.ts";
+import { enabled as tgUserEnabled, telegramUserTools } from "../clients/tg-user.ts";
 
 /** Subprocesses spawned and initialised ahead of time, keyed by kind. Only kinds with a fixed cwd can be warmed. */
 interface Warm {

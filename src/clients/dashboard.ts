@@ -1,8 +1,8 @@
-import { config } from "./config.ts";
-import { bus, recentEvents } from "./bus.ts";
-import { list, recent } from "./sessions.ts";
-import { all as allProjects } from "./catalog.ts";
-import { logger } from "./log.ts";
+import { config } from "../core/config.ts";
+import { bus, recentEvents } from "../core/bus.ts";
+import { list, recent } from "../domain/sessions.ts";
+import { all as allProjects } from "../domain/catalog.ts";
+import { logger } from "../core/log.ts";
 
 const log = logger("dashboard");
 

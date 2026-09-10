@@ -13,7 +13,7 @@ const LABEL = "dev.elumixor.pai";
 const MENUBAR = "dev.elumixor.pai.menubar";
 const plistPath = join(homedir(), "Library", "LaunchAgents", `${LABEL}.plist`);
 const menubarPlist = join(homedir(), "Library", "LaunchAgents", `${MENUBAR}.plist`);
-const repo = resolve(import.meta.dir, "..");
+const repo = resolve(import.meta.dir, "../..");
 const logs = join(repo, "data");
 const binDir = join(homedir(), ".local", "bin");
 const bin = join(binDir, "pai");
@@ -75,7 +75,7 @@ await Bun.write(plistPath, plist);
 await load(LABEL, plistPath);
 
 const launcher = join(repo, "scripts", "pai");
-await Bun.write(launcher, `#!/bin/sh\nexec "${bun}" run "${join(repo, "src", "cli.ts")}" "$@"\n`);
+await Bun.write(launcher, `#!/bin/sh\nexec "${bun}" run "${join(repo, "src", "clients", "cli.ts")}" "$@"\n`);
 await $`chmod +x ${launcher}`;
 if (existsSync(bin)) rmSync(bin);
 symlinkSync(launcher, bin);

@@ -13,7 +13,7 @@ import { mkdirSync, symlinkSync, rmSync, existsSync } from "node:fs";
 const LABEL = "pai";
 const unitDir = join(homedir(), ".config", "systemd", "user");
 const unitPath = join(unitDir, `${LABEL}.service`);
-const repo = resolve(import.meta.dir, "..");
+const repo = resolve(import.meta.dir, "../..");
 const logs = join(repo, "data");
 const binDir = join(homedir(), ".local", "bin");
 const bin = join(binDir, "pai");
@@ -65,7 +65,7 @@ await $`systemctl --user enable --now ${LABEL}`.quiet();
 await $`loginctl enable-linger ${process.env.USER}`.nothrow().quiet();
 
 const launcher = join(repo, "scripts", "pai");
-await Bun.write(launcher, `#!/bin/sh\nexec "${bun}" run "${join(repo, "src", "cli.ts")}" "$@"\n`);
+await Bun.write(launcher, `#!/bin/sh\nexec "${bun}" run "${join(repo, "src", "clients", "cli.ts")}" "$@"\n`);
 await $`chmod +x ${launcher}`;
 if (existsSync(bin)) rmSync(bin);
 symlinkSync(launcher, bin);

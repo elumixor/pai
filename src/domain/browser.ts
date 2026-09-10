@@ -1,6 +1,6 @@
 import type { Subprocess } from "bun";
-import { config } from "./config.ts";
-import { logger } from "./log.ts";
+import { config } from "../core/config.ts";
+import { logger } from "../core/log.ts";
 
 const log = logger("browser");
 

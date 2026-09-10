@@ -9,7 +9,7 @@ if (cmd === "daemon" && foreground) {
   process.env.PAI_NO_TELEGRAM ??= "1";
   process.env.PAI_VERBOSE ??= "1";
 }
-const { config } = await import("./config.ts");
+const { config } = await import("../core/config.ts");
 const base = `http://${config.host}:${config.port}`;
 const jsonOut = args.includes("--json");
 const positional = args.filter((a) => !a.startsWith("--"));
@@ -92,7 +92,7 @@ try {
   switch (cmd) {
     case "daemon": {
       if (foreground) {
-        await import("./daemon.ts");
+        await import("../daemon.ts");
         break;
       }
       // Detached, so the terminal comes back; it keeps the port until it is killed.
@@ -112,7 +112,7 @@ try {
     case "update": {
       // Works with the daemon down too — then the update just runs here.
       const local = async () => {
-        const u = await import("./update.ts");
+        const u = await import("../host/update.ts");
         return args.includes("--check") ? u.status() : u.update(args.includes("--force"));
       };
       const remote = () =>
@@ -129,7 +129,7 @@ try {
       break;
     }
     case "install":
-      await import(process.platform === "darwin" ? "../scripts/install-daemon.ts" : "../scripts/install-daemon-linux.ts");
+      await import(process.platform === "darwin" ? "../host/install-daemon.ts" : "../host/install-daemon-linux.ts");
       break;
     case "chat": {
       const data = await post("/chat", { text: positional.join(" ") });

@@ -1,10 +1,10 @@
 // Self-update: pull the repo, reinstall dependencies, rebuild the menu bar app, restart.
 // The daemon restarts by exiting — launchd's KeepAlive brings it back on the new code.
 import { $ } from "bun";
-import { config } from "./config.ts";
-import { bus } from "./bus.ts";
-import { list } from "./sessions.ts";
-import { logger } from "./log.ts";
+import { config } from "../core/config.ts";
+import { bus } from "../core/bus.ts";
+import { list } from "../domain/sessions.ts";
+import { logger } from "../core/log.ts";
 
 const log = logger("update");
 const MENUBAR_LABEL = "dev.elumixor.pai.menubar";

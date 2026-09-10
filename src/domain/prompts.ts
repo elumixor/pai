@@ -1,5 +1,5 @@
 import type { SessionKind } from "./session.ts";
-import { config } from "./config.ts";
+import { config } from "../core/config.ts";
 import { index as memoryIndex } from "./memory.ts";
 
 const COMMON = `

@@ -2,8 +2,8 @@ import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { TelegramClient, Api } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
-import { config } from "./config.ts";
-import { logger } from "./log.ts";
+import { config } from "../core/config.ts";
+import { logger } from "../core/log.ts";
 
 const log = logger("tg-user");
 

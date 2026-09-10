@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 const env = process.env;
-const repo = resolve(import.meta.dir, "..");
+const repo = resolve(import.meta.dir, "../..");
 
 function bool(v: string | undefined, dflt = false) {
   if (v === undefined) return dflt;

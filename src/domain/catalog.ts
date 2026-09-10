@@ -1,8 +1,8 @@
 import { readdirSync, existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { config } from "./config.ts";
-import { db, now } from "./db.ts";
-import { logger } from "./log.ts";
+import { config } from "../core/config.ts";
+import { db, now } from "../core/db.ts";
+import { logger } from "../core/log.ts";
 
 const log = logger("catalog");
 
@@ -133,7 +133,7 @@ interface Override {
  * edit it on itself.
  */
 function overrides(): Record<string, Override> {
-  const raw = read(join(import.meta.dir, "..", "projects.json"));
+  const raw = read(join(import.meta.dir, "../..", "projects.json"));
   if (!raw) return {};
   try {
     return JSON.parse(raw) as Record<string, Override>;

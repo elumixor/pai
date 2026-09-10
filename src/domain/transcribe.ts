@@ -1,8 +1,8 @@
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { unlink, mkdir } from "node:fs/promises";
-import { config } from "./config.ts";
-import { logger } from "./log.ts";
+import { config } from "../core/config.ts";
+import { logger } from "../core/log.ts";
 
 const log = logger("transcribe");
 

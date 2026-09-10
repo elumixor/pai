@@ -1,10 +1,10 @@
-import { config } from "./config.ts";
-import { all as allProjects, refresh } from "./catalog.ts";
-import { bus, recentEvents, waitFor, type PaiEvent } from "./bus.ts";
-import * as sessions from "./sessions.ts";
-import { status as updateStatus, update } from "./update.ts";
-import * as memory from "./memory.ts";
-import { logger } from "./log.ts";
+import { config } from "../core/config.ts";
+import { all as allProjects, refresh } from "../domain/catalog.ts";
+import { bus, recentEvents, waitFor, type PaiEvent } from "../core/bus.ts";
+import * as sessions from "../domain/sessions.ts";
+import { status as updateStatus, update } from "../host/update.ts";
+import * as memory from "../domain/memory.ts";
+import { logger } from "../core/log.ts";
 
 const log = logger("server");
 

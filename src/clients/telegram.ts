@@ -4,13 +4,13 @@ import { apiThrottler } from "@grammyjs/transformer-throttler";
 import { markdownToTelegramHtml, splitMessage } from "@elumixor/react-telegram";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { config } from "./config.ts";
-import { db, kv, now } from "./db.ts";
-import { bus, type PaiEvent } from "./bus.ts";
-import * as sessions from "./sessions.ts";
-import type { Question, Session } from "./session.ts";
-import { logger } from "./log.ts";
-import { transcribe } from "./transcribe.ts";
+import { config } from "../core/config.ts";
+import { db, kv, now } from "../core/db.ts";
+import { bus, type PaiEvent } from "../core/bus.ts";
+import * as sessions from "../domain/sessions.ts";
+import type { Question, Session } from "../domain/session.ts";
+import { logger } from "../core/log.ts";
+import { transcribe } from "../domain/transcribe.ts";
 
 const log = logger("telegram");
 
