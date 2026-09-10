@@ -29,7 +29,9 @@ if (process.argv.includes("--uninstall")) {
   process.exit(0);
 }
 
-const bun = (await $`which bun`.text()).trim();
+// process.execPath is the real bun binary; `which bun` resolves to bun's temporary
+// node-shim directory under /tmp, which disappears between runs.
+const bun = process.execPath;
 mkdirSync(logs, { recursive: true });
 mkdirSync(binDir, { recursive: true });
 

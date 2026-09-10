@@ -27,7 +27,13 @@ if (process.argv.includes("--uninstall")) {
   process.exit(0);
 }
 
-const bun = (await $`which bun`.text()).trim();
+// process.execPath is the real bun binary; `which bun` resolves to bun's temporary
+// node-shim directory under /tmp, which disappears between runs.
+const bun = process.execPath;
+const path = (process.env.PATH ?? "")
+  .split(":")
+  .filter((p) => !p.startsWith("/tmp/bun-node-"))
+  .join(":");
 mkdirSync(logs, { recursive: true });
 mkdirSync(binDir, { recursive: true });
 mkdirSync(unitDir, { recursive: true });
@@ -42,7 +48,7 @@ ExecStart=${bun} run ${join(repo, "src", "daemon.ts")}
 WorkingDirectory=${repo}
 Restart=always
 RestartSec=2
-Environment=PATH=${process.env.PATH}
+Environment=PATH=${path}
 Environment=HOME=${homedir()}
 StandardOutput=append:${join(logs, "daemon.log")}
 StandardError=append:${join(logs, "daemon.log")}
