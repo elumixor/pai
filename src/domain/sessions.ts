@@ -1,5 +1,6 @@
 import { Session, closeWarm, prewarm, rewarm, type SessionKind } from "./session.ts";
 import { db, kv, now } from "../core/db.ts";
+import { existsSync } from "node:fs";
 import { config } from "../core/config.ts";
 import { bus, type PaiEvent } from "../core/bus.ts";
 import { get as getProject } from "./catalog.ts";
@@ -73,6 +74,18 @@ export function byThread(threadId: number): Session | undefined {
   return row ? ensureLive(row.session_id) : undefined;
 }
 
+/**
+ * A session records the directory it ran in, which does not survive the daemon moving to
+ * another machine. Falling back keeps old conversations resumable instead of failing to
+ * spawn with ENOENT.
+ */
+function workingDirectory(recorded: string, project: string | null) {
+  if (existsSync(recorded)) return recorded;
+  const fallback = (project ? getProject(project)?.path : undefined) ?? config.workspace;
+  log.warn(`${recorded} is gone; resuming in ${fallback}`);
+  return fallback;
+}
+
 /** Resumes a session whose process died but whose transcript is still on disk. */
 export function revive(sessionId: string): Session | undefined {
   const row = db.query("SELECT * FROM sessions WHERE session_id = ?").get(sessionId) as
@@ -82,7 +95,7 @@ export function revive(sessionId: string): Session | undefined {
   const session = new Session({
     kind: row.kind,
     title: row.title,
-    cwd: row.cwd,
+    cwd: workingDirectory(row.cwd, row.project),
     project: row.project ?? undefined,
     threadId: row.thread_id,
     resume: sessionId,
