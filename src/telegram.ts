@@ -61,8 +61,19 @@ export function startTelegram() {
       { command: "stop", description: "interrupt this session" },
       { command: "reset", description: "forget the main conversation" },
     ]);
-    await bot.start({ drop_pending_updates: true, onStart: () => log.info("polling") });
-  })();
+    // A second poller on the same token makes getUpdates fail with 409, which used to
+    // reject out of here and take the whole daemon down. Keep retrying instead: the
+    // other instance is usually a stale process that goes away on its own.
+    for (;;) {
+      try {
+        await bot.start({ drop_pending_updates: true, onStart: () => log.info("polling") });
+        return;
+      } catch (err) {
+        log.error("polling stopped", (err as Error).message);
+        await new Promise((r) => setTimeout(r, 15_000));
+      }
+    }
+  })().catch((err) => log.error("telegram startup failed", (err as Error).message));
   return bot;
 }
 
