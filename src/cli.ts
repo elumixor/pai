@@ -129,7 +129,7 @@ try {
       break;
     }
     case "install":
-      await import("../scripts/install-daemon.ts");
+      await import(process.platform === "darwin" ? "../scripts/install-daemon.ts" : "../scripts/install-daemon-linux.ts");
       break;
     case "chat": {
       const data = await post("/chat", { text: positional.join(" ") });

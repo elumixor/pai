@@ -37,8 +37,13 @@ async function run(step: string, cmd: ReturnType<typeof git>) {
   return res.stdout.toString().trim();
 }
 
-/** launchd sets XPC_SERVICE_NAME to the job label, so this tells a managed daemon from `pai daemon`. */
-const managedByLaunchd = () => (process.env.XPC_SERVICE_NAME ?? "").startsWith("dev.elumixor.pai");
+/**
+ * launchd sets XPC_SERVICE_NAME to the job label; systemd sets INVOCATION_ID for any unit
+ * it started. Either tells a managed daemon (which restarts on exit) from `pai daemon` run
+ * by hand (which doesn't).
+ */
+const managedByLaunchd = () =>
+  (process.env.XPC_SERVICE_NAME ?? "").startsWith("dev.elumixor.pai") || Boolean(process.env.INVOCATION_ID);
 
 export async function status(): Promise<UpdateStatus> {
   await git("fetch", "--quiet");
@@ -61,11 +66,13 @@ export async function update(force = false): Promise<UpdateResult> {
 
   if (s.behind > 0) await run("git pull", git("pull", "--ff-only"));
   await run("bun install", $`bun install`.cwd(config.repo).nothrow().quiet());
-  await run(
-    "swiftc",
-    $`swiftc -O -o ${`${config.repo}/menubar/pai-menubar`} ${`${config.repo}/menubar/main.swift`}`.nothrow().quiet(),
-  );
-  await $`launchctl kickstart -k gui/${process.getuid!()}/${MENUBAR_LABEL}`.nothrow().quiet();
+  if (process.platform === "darwin") {
+    await run(
+      "swiftc",
+      $`swiftc -O -o ${`${config.repo}/menubar/pai-menubar`} ${`${config.repo}/menubar/main.swift`}`.nothrow().quiet(),
+    );
+    await $`launchctl kickstart -k gui/${process.getuid!()}/${MENUBAR_LABEL}`.nothrow().quiet();
+  }
 
   const head = (await git("rev-parse", "--short", "HEAD")).stdout.toString().trim();
   const restarting = managedByLaunchd();
