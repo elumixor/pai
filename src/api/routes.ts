@@ -7,6 +7,7 @@ import * as memory from "../domain/memory.ts";
 import { status as updateStatus, update } from "../host/update.ts";
 import { logger } from "../core/log.ts";
 import { events } from "./events.ts";
+import { messagePage } from "./message.ts";
 
 const log = logger("api");
 
@@ -124,6 +125,9 @@ export async function handle(req: Request): Promise<Response> {
       }
       return json(terminal.summary());
     }
+
+    const message = /^\/m\/([A-Za-z0-9_-]+)$/.exec(path);
+    if (message?.[1]) return messagePage(message[1]);
 
     if (path === "/events") {
       const raw = url.searchParams.get("session") ?? undefined;

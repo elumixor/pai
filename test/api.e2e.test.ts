@@ -92,6 +92,24 @@ describe("the web app", () => {
   });
 });
 
+describe("the metadata link", () => {
+  it("renders what a message carried", async () => {
+    const { PROTOCOL_VERSION, encodePayload } = await import("../src/protocol/rich.ts");
+    const payload = encodePayload({ v: PROTOCOL_VERSION, kind: "result", session: "abc123", project: "pai" });
+    const res = await get(`/m/${payload}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("abc123");
+    expect(html).toContain("pai");
+  });
+
+  it("says so when the link is unreadable", async () => {
+    const res = await get("/m/bm90LWpzb24");
+    expect(res.status).toBe(404);
+    expect(await res.text()).toContain("Nothing to show");
+  });
+});
+
 describe("terminals over the api", () => {
   it("opens, streams, resizes and closes", async () => {
     const opened = (await (await post("/terminals", { cwd: scratch, cols: 80, rows: 24 })).json()) as {
