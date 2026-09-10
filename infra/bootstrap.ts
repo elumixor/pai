@@ -24,7 +24,9 @@ const host = flag("host") ?? "pai";
 const state = flag("state") ?? config.repo;
 const envFile = flag("env") ?? join(config.repo, ".env");
 const REPO = "elumixor/pai";
-const remote = (command: string) => $`ssh ${host} ${command}`;
+// node-gyp (node-pty's install script) re-invokes bun by name, so the remote shell needs
+// bun on PATH rather than an absolute path at the call site.
+const remote = (command: string) => $`ssh ${host} ${`export PATH="$HOME/.bun/bin:$PATH"; ${command}`}`;
 
 async function ensureDeployKey() {
   const existing = await $`ssh ${host} 'cat ~/.ssh/id_ed25519_pai.pub 2>/dev/null'`.nothrow().quiet();
@@ -61,9 +63,9 @@ async function carryState() {
 }
 
 async function install() {
-  await remote("cd ~/pai && ~/.bun/bin/bun install");
-  await remote("cd ~/pai && ~/.bun/bin/bun run build:app");
-  await remote("cd ~/pai && ~/.bun/bin/bun run src/clients/cli.ts install");
+  await remote("cd ~/pai && bun install");
+  await remote("cd ~/pai && bun run build:app");
+  await remote("cd ~/pai && bun run src/clients/cli.ts install");
   await remote("systemctl --user is-active pai");
 }
 
