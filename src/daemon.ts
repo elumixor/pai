@@ -3,7 +3,6 @@ import { config } from "./core/config.ts";
 import { refresh } from "./domain/catalog.ts";
 import { restoreDaemonJob, startServer } from "./api/server.ts";
 import { startTelegram } from "./clients/telegram.ts";
-import { startDashboardPush } from "./clients/dashboard.ts";
 import { killAll, reapIdle, relayTasksToMain, warmUp } from "./domain/sessions.ts";
 import { closeAll as closeTerminals } from "./domain/terminals.ts";
 import { startBrowser } from "./domain/browser.ts";
@@ -21,7 +20,6 @@ const server = startServer();
 const stopBrowser = startBrowser();
 const bot = startTelegram();
 warmUp();
-const stopDashboard = startDashboardPush();
 const stopAutoUpdate = startAutoUpdate();
 
 const catalogTimer = setInterval(refresh, 15 * 60 * 1000);
@@ -33,7 +31,6 @@ function shutdown(signal: string) {
   log.info(`${signal} — shutting down`);
   clearInterval(catalogTimer);
   clearInterval(reaper);
-  stopDashboard?.();
   stopAutoUpdate?.();
   killAll();
   closeTerminals();

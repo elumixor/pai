@@ -35,8 +35,7 @@ export async function handle(req: Request): Promise<Response> {
         ok: true,
         pid: process.pid,
         uptime: process.uptime(),
-        dashboardUrl: config.dashboard.url || undefined,
-        dashboardKey: config.dashboard.secret || undefined,
+        baseUrl: config.baseUrl || undefined,
       });
 
     // The response goes out before the process exits, so the CLI sees the result of its own update.

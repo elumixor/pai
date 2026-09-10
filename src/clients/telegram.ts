@@ -423,8 +423,8 @@ class Frontend {
   }
 
   private tag(s: Session) {
-    const url = config.dashboard.url;
-    const id = url ? `<a href="${url}/?s=${s.shortId}">${s.shortId}</a>` : s.shortId;
+    const base = config.baseUrl;
+    const id = base ? `<a href="${base}/app/?s=${s.shortId}">${s.shortId}</a>` : s.shortId;
     return `[${esc(s.title)} · ${id}]`;
   }
 
@@ -433,7 +433,7 @@ class Frontend {
    * link and nothing else, so this is only attached when there is a URL to point at.
    */
   private trailer(s: Session | null) {
-    const base = config.dashboard.url;
+    const base = config.baseUrl;
     if (!s || !base) return "";
     const meta: RichMeta = {
       v: PROTOCOL_VERSION,
@@ -541,7 +541,7 @@ class Frontend {
     const lines = [`${STATUS[st]} <b>${esc(s.title)}</b> <code>${s.shortId}</code>`, meta.join(" · ")];
     if (s.lastTool && st === "busy") lines.push(`⚙ ${esc(s.lastTool.slice(0, 100))}`);
     if (st === "waiting") lines.push("❓ waiting for your answer");
-    if (config.dashboard.url) lines.push(`<a href="${config.dashboard.url}/?s=${s.shortId}">details</a>`);
+    if (config.baseUrl) lines.push(`<a href="${config.baseUrl}/app/?s=${s.shortId}">details</a>`);
     return lines.join("\n");
   }
 

@@ -17,8 +17,4 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bunx tsc --noEmit
       - run: bun run test
-      # The web dashboard is its own package with its own lockfile.
-      - run: bun install --frozen-lockfile
-        working-directory: web
-      - run: bun run build
-        working-directory: web
+      - run: bun run build:app

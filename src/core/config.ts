@@ -41,11 +41,8 @@ export const config = {
     session: env.TELEGRAM_USER_SESSION ?? "",
   },
 
-  /** Optional hosted dashboard that local events get pushed to. */
-  dashboard: {
-    url: env.PAI_DASHBOARD_URL ?? "",
-    secret: env.PAI_DASHBOARD_SECRET ?? "",
-  },
+  /** Where this daemon is reachable on the tailnet; clients link back to it. */
+  baseUrl: (env.PAI_BASE_URL ?? "").replace(/\/$/, ""),
 
   models: {
     main: env.PAI_MAIN_MODEL ?? "sonnet",
