@@ -4,7 +4,8 @@ pai runs on one Hetzner Cloud server, reachable only over Tailscale.
 
 | | |
 | --- | --- |
-| Type | CX43 — 8 vCPU, 16 GB, 160 GB, ~€16/mo (Nuremberg) |
+| Type | CX43 — 8 vCPU, 16 GB, 160 GB, €15.99/mo (Nuremberg) |
+| Address | `pai` on the tailnet, `100.70.170.72`; the public address exists but nothing may enter through it |
 | Image | Ubuntu 24.04 |
 | Inbound | nothing; a Hetzner firewall with no rules, `tailscale ssh` for access |
 | Service | `pai.service`, a systemd user unit with lingering enabled |
@@ -51,6 +52,33 @@ Restoring is `borg extract` into `~/pai`; the checkout itself comes from git.
 ```sh
 HCLOUD_TOKEN=... bun run infra/provision.ts --delete
 ```
+
+## Getting back in
+
+The firewall has no inbound rules, so Tailscale is the only way to the machine. Install it
+on whatever you are holding and the host answers to `pai`. If Tailscale itself is what
+broke, open port 22 to your own address for as long as the repair takes:
+
+```sh
+FW=$(curl -s -H "authorization: Bearer $HCLOUD_TOKEN" \
+  "https://api.hetzner.cloud/v1/firewalls?name=pai-no-inbound" | jq -r .firewalls[0].id)
+curl -s -XPOST -H "authorization: Bearer $HCLOUD_TOKEN" -H "content-type: application/json" \
+  "https://api.hetzner.cloud/v1/firewalls/$FW/actions/set_rules" \
+  -d "{\"rules\":[{\"direction\":\"in\",\"protocol\":\"tcp\",\"port\":\"22\",\"source_ips\":[\"$(curl -s https://api.ipify.org)/32\"]}]}"
+```
+
+Set the rules back to `[]` afterwards. The Hetzner console is the way in if even that fails.
+
+## What a migration carries
+
+`bootstrap.ts --state <dir>` moves `data/pai.db` and `workspace/memory`. Two things live
+outside it and have to come across by hand, or old conversations are lost:
+
+- `~/.claude/projects/<path-slug>/*.jsonl` — the transcripts. The directory name is derived
+  from the working directory, so it has to be renamed for the new home (`-home-elumixor-pai-workspace`
+  became `-home-pai-pai-workspace`).
+- Sessions record the directory they ran in. A recorded path that does not exist on the new
+  host falls back to the project or the workspace rather than failing to spawn.
 
 ## Notes
 
