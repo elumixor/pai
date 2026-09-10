@@ -210,7 +210,15 @@ export class Session {
       for await (const m of this.q!) this.handle(m);
       this.die(0);
     } catch (err) {
-      log.error(`${this.shortId} query failed`, (err as Error).message);
+      // The SDK wraps spawn failures, so the useful part (errno, the binary it tried) is
+      // on the cause rather than the message.
+      const detail = err as Error & { code?: string; cause?: unknown };
+      log.error(
+        `${this.shortId} query failed`,
+        [detail.message, detail.code, detail.cause instanceof Error ? detail.cause.message : detail.cause]
+          .filter(Boolean)
+          .join(" | "),
+      );
       bus.emitEvent("session.error", { message: (err as Error).message }, this.id);
       this.die(1);
     }
