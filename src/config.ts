@@ -59,6 +59,12 @@ export const config = {
   autoUpdate: bool(env.PAI_AUTO_UPDATE, true),
   autoUpdateIntervalMs: Number(env.PAI_AUTO_UPDATE_INTERVAL_MS ?? 30 * 60 * 1000),
 
+  /**
+   * What "new version" means: "tag" follows the newest `v*` tag, so a release is a tag
+   * push and untagged commits are ignored; "branch" follows the checked-out branch.
+   */
+  updateChannel: (env.PAI_UPDATE_CHANNEL ?? "branch") as "branch" | "tag",
+
   verbose: bool(env.PAI_VERBOSE),
 };
 

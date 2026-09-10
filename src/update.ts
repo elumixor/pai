@@ -14,6 +14,8 @@ export interface UpdateStatus {
   behind: number;
   dirty: boolean;
   head: string;
+  /** What the daemon is following: the newest `v*` tag, or the branch's upstream. */
+  target?: string;
 }
 
 export interface UpdateResult extends UpdateStatus {
@@ -45,13 +47,22 @@ async function run(step: string, cmd: ReturnType<typeof git>) {
 const managedByLaunchd = () =>
   (process.env.XPC_SERVICE_NAME ?? "").startsWith("dev.elumixor.pai") || Boolean(process.env.INVOCATION_ID);
 
+/** The newest `v*` tag by version order, or undefined when the repo has none. */
+async function latestTag() {
+  const out = (await git("tag", "--list", "v*", "--sort=-v:refname")).stdout.toString().trim();
+  return out.split("\n")[0]?.trim() || undefined;
+}
+
 export async function status(): Promise<UpdateStatus> {
-  await git("fetch", "--quiet");
+  await git("fetch", "--quiet", "--tags", "--force");
   const branch = (await git("rev-parse", "--abbrev-ref", "HEAD")).stdout.toString().trim();
-  const behind = (await git("rev-list", "--count", "HEAD..@{u}")).stdout.toString().trim();
   const dirty = (await git("status", "--porcelain")).stdout.toString().trim();
   const head = (await git("rev-parse", "--short", "HEAD")).stdout.toString().trim();
-  return { branch, behind: Number(behind) || 0, dirty: dirty.length > 0, head };
+  const target = config.updateChannel === "tag" ? await latestTag() : "@{u}";
+  const behind = target
+    ? Number((await git("rev-list", "--count", `HEAD..${target}`)).stdout.toString().trim()) || 0
+    : 0;
+  return { branch, behind, dirty: dirty.length > 0, head, target };
 }
 
 /**
@@ -64,7 +75,12 @@ export async function update(force = false): Promise<UpdateResult> {
   if (skip) return { ...s, updated: false, reason: skip, restarting: false };
   if (s.dirty && s.behind > 0) return { ...s, updated: false, reason: "working tree is dirty", restarting: false };
 
-  if (s.behind > 0) await run("git pull", git("pull", "--ff-only"));
+  if (s.behind > 0 && s.target) {
+    // A tag is not a branch, so it is checked out by name rather than pulled; on the
+    // branch channel the target is the upstream ref and a fast-forward is enough.
+    if (config.updateChannel === "tag") await run("git checkout", git("checkout", "--quiet", s.target));
+    else await run("git pull", git("pull", "--ff-only"));
+  }
   await run("bun install", $`bun install`.cwd(config.repo).nothrow().quiet());
   if (process.platform === "darwin") {
     await run(

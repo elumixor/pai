@@ -40,9 +40,14 @@ bun run src/cli.ts install   # launchd user agent + `pai` command on PATH
 
 `pai update` pulls the repo, reinstalls dependencies, rebuilds the menu bar app and
 restarts the daemon; `--force` rebuilds without new commits, `--check` only reports.
-An installed daemon also does this on its own every 30 minutes when new commits are on
-the upstream branch, the working tree is clean and nothing is running — set
-`PAI_AUTO_UPDATE=0` to keep updates manual.
+An installed daemon also does this on its own every 30 minutes when the working tree is
+clean and nothing is running — set `PAI_AUTO_UPDATE=0` to keep updates manual.
+
+What counts as a new version depends on `PAI_UPDATE_CHANNEL`. The default, `branch`,
+follows the checked-out branch's upstream, so every push deploys. `tag` follows the
+newest `v*` tag instead, which makes a release an explicit `git tag v1.2.3 && git push
+--tags` and leaves ordinary commits alone. Either way the host pulls; nothing reaches
+into it, so there is no deploy key or SSH access to hand to a CI runner.
 
 Then message the bot. `/new <title>` starts a task by hand; anything else is plain
 language. Enable topics for the bot in @BotFather (Bot Settings → Threads Settings → Threaded Mode) so every task
