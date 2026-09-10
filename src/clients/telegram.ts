@@ -11,6 +11,7 @@ import * as sessions from "../domain/sessions.ts";
 import type { Question, Session } from "../domain/session.ts";
 import { logger } from "../core/log.ts";
 import { transcribe } from "../domain/transcribe.ts";
+import { MARKER, PROTOCOL_VERSION, trailerUrl, type RichMeta } from "../protocol/rich.ts";
 
 const log = logger("telegram");
 
@@ -427,12 +428,35 @@ class Frontend {
     return `[${esc(s.title)} · ${id}]`;
   }
 
+  /**
+   * Metadata for a client that knows how to render it. Stock Telegram shows the trailing
+   * link and nothing else, so this is only attached when there is a URL to point at.
+   */
+  private trailer(s: Session | null) {
+    const base = config.dashboard.url;
+    if (!s || !base) return "";
+    const meta: RichMeta = {
+      v: PROTOCOL_VERSION,
+      kind: s.kind === "main" ? "turn" : "result",
+      session: s.shortId,
+      project: s.project,
+    };
+    try {
+      return ` <a href="${trailerUrl(base, meta)}">${MARKER}</a>`;
+    } catch (err) {
+      log.warn(`dropping metadata: ${(err as Error).message}`);
+      return "";
+    }
+  }
+
   /** Sends HTML text into a session's place in the chat, chunked, and remembers which session it came from. */
   private async send(s: Session | null, htmlText: string, linkTo?: Session) {
     const threadId = s?.threadId ?? undefined;
     const prefix = s && s.kind !== "main" && threadId === undefined ? `${this.tag(s)}\n` : "";
-    for (const chunk of splitMessage(prefix + htmlText, 4000)) {
-      const sent = await this.bot.api.sendMessage(this.chatId, chunk.text, {
+    const chunks = splitMessage(prefix + htmlText, 4000);
+    for (const [index, chunk] of chunks.entries()) {
+      const text = index === chunks.length - 1 ? chunk.text + this.trailer(s) : chunk.text;
+      const sent = await this.bot.api.sendMessage(this.chatId, text, {
         parse_mode: "HTML",
         message_thread_id: threadId,
         link_preview_options: { is_disabled: true },
