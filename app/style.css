@@ -1,0 +1,84 @@
+:root {
+  color-scheme: dark;
+  --bg: #0e1315;
+  --panel: #151b1e;
+  --line: #263034;
+  --ink: #e7eef0;
+  --muted: #8b9ba1;
+  --accent: #43b3b8;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+header {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+header span { color: var(--muted); font-size: 0.85rem; }
+
+main { flex: 1; display: grid; grid-template-columns: 16rem 1fr; min-height: 0; }
+
+aside {
+  border-right: 1px solid var(--line);
+  padding: 0.75rem 1rem;
+  overflow-y: auto;
+  background: var(--panel);
+}
+
+aside h2 {
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 1rem 0 0.4rem;
+}
+
+aside ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.2rem; }
+
+aside li button {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  color: var(--ink);
+  font: inherit;
+  padding: 0.3rem 0.4rem;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+aside li button:hover, aside li button[aria-current="true"] { background: #1c2427; color: var(--accent); }
+
+aside li small { display: block; color: var(--muted); font-size: 0.75rem; }
+
+form { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.6rem; }
+
+select, form button {
+  background: #1c2427;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+#stage { min-width: 0; min-height: 0; padding: 0.5rem; }
+
+.empty { color: var(--muted); padding: 2rem; }
+
+.xterm { height: 100%; }

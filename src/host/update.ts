@@ -82,6 +82,7 @@ export async function update(force = false): Promise<UpdateResult> {
     else await run("git pull", git("pull", "--ff-only"));
   }
   await run("bun install", $`bun install`.cwd(config.repo).nothrow().quiet());
+  await run("build web app", $`bun run scripts/build-app.ts`.cwd(config.repo).nothrow().quiet());
   if (process.platform === "darwin") {
     await run(
       "swiftc",

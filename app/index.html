@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>pai</title>
+    <link rel="stylesheet" href="/app/xterm.css" />
+    <link rel="stylesheet" href="/app/style.css" />
+  </head>
+  <body>
+    <header>
+      <strong>pai</strong>
+      <span id="host"></span>
+    </header>
+    <main>
+      <aside>
+        <h2>Sessions</h2>
+        <ul id="sessions"></ul>
+        <h2>Terminals</h2>
+        <ul id="terminals"></ul>
+        <form id="open">
+          <select id="project"></select>
+          <button type="submit">New terminal</button>
+        </form>
+      </aside>
+      <section id="stage"></section>
+    </main>
+    <script type="module" src="/app/main.js"></script>
+  </body>
+</html>

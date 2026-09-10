@@ -62,6 +62,31 @@ describe("api", () => {
   });
 });
 
+describe("the web app", () => {
+  it("redirects the root to the app", async () => {
+    const res = await fetch(`${base}/`, { redirect: "manual" });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toContain("/app/");
+  });
+
+  it("serves the built page", async () => {
+    const res = await get("/app/");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("<title>pai</title>");
+  });
+
+  it("serves the bundle", async () => {
+    const res = await get("/app/main.js");
+    expect(res.status).toBe(200);
+    expect((await res.text()).length).toBeGreaterThan(1000);
+  });
+
+  it("refuses to escape the build directory", async () => {
+    const res = await get("/app/../../package.json");
+    expect(await res.text()).not.toContain("\"name\": \"pai\"");
+  });
+});
+
 describe("terminals over the api", () => {
   it("opens, streams, resizes and closes", async () => {
     const opened = (await (await post("/terminals", { cwd: scratch, cols: 80, rows: 24 })).json()) as {
