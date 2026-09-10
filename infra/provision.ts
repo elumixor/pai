@@ -80,10 +80,15 @@ async function ensureSshKey() {
   return { id: created.ssh_key.id, publicKey };
 }
 
+/** `tskey-auth-<id>-<secret>`. A key pasted with its prefix twice fails silently inside cloud-init. */
+const AUTHKEY = /^tskey-auth-[A-Za-z0-9]+-[A-Za-z0-9]+$/;
+
 function userData(publicKey: string) {
+  const authkey = required("TAILSCALE_AUTHKEY");
+  if (!AUTHKEY.test(authkey)) throw new Error(`TAILSCALE_AUTHKEY is not shaped like tskey-auth-<id>-<secret>: ${authkey}`);
   return readFileSync(join(import.meta.dir, "cloud-init.yaml"), "utf8")
     .replaceAll("${SSH_PUBLIC_KEY}", publicKey)
-    .replaceAll("${TAILSCALE_AUTHKEY}", required("TAILSCALE_AUTHKEY"));
+    .replaceAll("${TAILSCALE_AUTHKEY}", authkey);
 }
 
 async function create() {

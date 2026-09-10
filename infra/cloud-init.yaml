@@ -31,8 +31,9 @@ write_files:
     content: |
       PasswordAuthentication no
       PermitRootLogin no
-  - path: /home/pai/bootstrap.sh
-    owner: pai:pai
+  # write_files runs before users_groups, so this cannot live in /home/pai or be owned by
+  # a user that does not exist yet.
+  - path: /usr/local/bin/pai-bootstrap.sh
     permissions: "0755"
     content: |
       #!/usr/bin/env bash
@@ -51,6 +52,8 @@ write_files:
 runcmd:
   # Tailscale is the only way in once this finishes: SSH stays open to the tailnet only.
   - curl -fsSL https://tailscale.com/install.sh | sh
-  - tailscale up --authkey=${TAILSCALE_AUTHKEY} --hostname=pai --ssh
+  # A rejected auth key must not stop the rest: recovering is far easier on a host that
+  # already has its toolchain than on a bare one.
+  - tailscale up --authkey=${TAILSCALE_AUTHKEY} --hostname=pai --ssh || true
   - systemctl restart ssh
-  - su - pai -c /home/pai/bootstrap.sh
+  - su - pai -c /usr/local/bin/pai-bootstrap.sh
