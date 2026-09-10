@@ -168,7 +168,10 @@ export class Session {
     this.start(opts.resume !== undefined);
   }
 
+  private resuming = false;
+
   private start(resume: boolean) {
+    this.resuming = resume;
     const ref: SessionRef = { session: this };
     const options = build(this.kind, this.cwd, ref);
     options.title = this.title;
@@ -213,6 +216,13 @@ export class Session {
       // The SDK wraps spawn failures, so the useful part (errno, the binary it tried) is
       // on the cause rather than the message.
       const detail = err as Error & { code?: string; cause?: unknown };
+      // The transcript lives outside the repository, so a session restored from a database
+      // that moved hosts has nothing to resume. Keep the session, drop the history.
+      if (this.resuming && detail.message.includes("No conversation found")) {
+        log.warn(`${this.shortId} has no transcript on this host; starting it fresh`);
+        this.start(false);
+        return;
+      }
       log.error(
         `${this.shortId} query failed`,
         [detail.message, detail.code, detail.cause instanceof Error ? detail.cause.message : detail.cause]
