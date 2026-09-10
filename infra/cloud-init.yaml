@@ -1,0 +1,56 @@
+#cloud-config
+# Builds the pai host from nothing. No secrets belong in here beyond the single-use
+# Tailscale key: Hetzner keeps user-data in instance metadata, readable from the machine.
+
+hostname: pai
+package_update: true
+package_upgrade: true
+
+packages:
+  - git
+  - curl
+  - unzip
+  - build-essential
+  - python3
+  - ffmpeg
+  - cmake
+  - borgbackup
+  - ripgrep
+  - jq
+
+users:
+  - name: pai
+    groups: [sudo]
+    shell: /bin/bash
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+    ssh_authorized_keys:
+      - ${SSH_PUBLIC_KEY}
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-pai.conf
+    content: |
+      PasswordAuthentication no
+      PermitRootLogin no
+  - path: /home/pai/bootstrap.sh
+    owner: pai:pai
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      # Everything that has to run as the pai user rather than root.
+      set -euo pipefail
+
+      curl -fsSL https://bun.sh/install | bash
+      export PATH="$HOME/.bun/bin:$PATH"
+
+      curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+      sudo apt-get install -y nodejs
+
+      mkdir -p ~/dev
+      echo "bootstrap done; copy secrets and clone the repo next"
+
+runcmd:
+  # Tailscale is the only way in once this finishes: SSH stays open to the tailnet only.
+  - curl -fsSL https://tailscale.com/install.sh | sh
+  - tailscale up --authkey=${TAILSCALE_AUTHKEY} --hostname=pai --ssh
+  - systemctl restart ssh
+  - su - pai -c /home/pai/bootstrap.sh

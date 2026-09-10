@@ -1,0 +1,6 @@
+[Unit]
+Description=pai backup to the Storage Box
+
+[Service]
+Type=oneshot
+ExecStart=%h/pai/infra/backup.sh
