@@ -2,7 +2,10 @@
  * Turns a freshly provisioned host into a running pai: a read-only deploy key, the
  * checkout, dependencies, secrets and state carried over, then the service.
  *
- *   bun run infra/bootstrap.ts [--host pai] [--from <old ssh target>] [--env <file>]
+ *   bun run infra/bootstrap.ts [--host pai] [--env <file>] [--state <dir>]
+ *
+ * `--state` is a directory holding the previous host's `data/pai.db` and
+ * `workspace/memory`; how it got there is the old host's business (scp, gcloud, a backup).
  *
  * Everything runs over SSH, so the host has to be on the tailnet already. Secrets travel
  * over that connection and never through git.
@@ -18,7 +21,7 @@ const flag = (name: string) => {
 };
 
 const host = flag("host") ?? "pai";
-const from = flag("from");
+const state = flag("state") ?? config.repo;
 const envFile = flag("env") ?? join(config.repo, ".env");
 const REPO = "elumixor/pai";
 const remote = (command: string) => $`ssh ${host} ${command}`;
@@ -53,15 +56,8 @@ async function clone() {
 async function carryState() {
   await $`scp ${envFile} ${host}:~/pai/.env`;
   await remote("chmod 600 ~/pai/.env");
-
-  const source = from ?? "";
-  if (source) {
-    // Straight from the machine being replaced, so nothing has to be right on this laptop.
-    await $`ssh ${source} 'cd ~/pai && tar czf - data/pai.db workspace/memory' | ssh ${host} 'mkdir -p ~/pai && tar xzf - -C ~/pai'`;
-  } else {
-    await $`tar czf - -C ${config.repo} data/pai.db workspace/memory | ssh ${host} 'tar xzf - -C ~/pai'`;
-  }
-  console.log("carried over .env, the database and long-term memory");
+  await $`tar czf - -C ${state} data/pai.db workspace/memory | ssh ${host} 'tar xzf - -C ~/pai'`;
+  console.log(`carried over ${envFile}, the database and long-term memory from ${state}`);
 }
 
 async function install() {
