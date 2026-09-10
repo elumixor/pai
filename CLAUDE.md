@@ -9,18 +9,18 @@ by the main session (`start_task` tool), by `/new <title>`, or by the user creat
 Never test through Telegram. The CLI drives the identical code path.
 
 ```sh
-bun run src/cli.ts daemon [-f]             # detached; -f/--foreground = attached, verbose, telegram off
-bun run src/cli.ts chat "<text>"           # a main-conversation turn, waits for the reply
-bun run src/cli.ts task "<title>" "<text>" [--project <slug>]
-bun run src/cli.ts send <id> "<text>" [--wait]
-bun run src/cli.ts answer <id|main> "<text>"   # answer a pending AskUserQuestion
-bun run src/cli.ts tasks
-bun run src/cli.ts stop <id|main> [--kill]
-bun run src/cli.ts tail [id] [--raw]
-bun run src/cli.ts events [id]
-bun run src/cli.ts projects
-bun run src/cli.ts memory [query]
-bun run src/cli.ts update [--check] [--force]  # pull, reinstall, rebuild menubar, restart
+bun run src/clients/cli.ts daemon [-f]             # detached; -f/--foreground = attached, verbose, telegram off
+bun run src/clients/cli.ts chat "<text>"           # a main-conversation turn, waits for the reply
+bun run src/clients/cli.ts task "<title>" "<text>" [--project <slug>]
+bun run src/clients/cli.ts send <id> "<text>" [--wait]
+bun run src/clients/cli.ts answer <id|main> "<text>"   # answer a pending AskUserQuestion
+bun run src/clients/cli.ts tasks
+bun run src/clients/cli.ts stop <id|main> [--kill]
+bun run src/clients/cli.ts tail [id] [--raw]
+bun run src/clients/cli.ts events [id]
+bun run src/clients/cli.ts projects
+bun run src/clients/cli.ts memory [query]
+bun run src/clients/cli.ts update [--check] [--force]  # pull, reinstall, rebuild menubar, restart
 ```
 
 `--json` on any command. Session ids in full or as the 6-char short form. After
@@ -48,23 +48,37 @@ from tasks are injected into the main conversation.
 
 ## Layout
 
-- `src/session.ts` — one SDK session, the event mapping, questions.
-- `src/sessions.ts` — registry, main session (`kv.main_session`), tasks, revival, reaper, task→main relay.
-- `src/memory.ts` — long-term memory files, index, search.
-- `src/tools.ts` — the in-process `pai` MCP server, one instance per session (bound through a ref, since warm processes exist before their session).
-- `src/browser.ts` — one Playwright MCP server per daemon over HTTP; sessions connect instead of spawning `npx`.
-- `src/prompts.ts` — instructions appended to the Claude Code system prompt, per session kind.
-- `src/tg-user.ts` — the user's own Telegram account (gramjs, `TELEGRAM_USER_SESSION`) as the `tg` MCP server: list/read/search chats, send as the user.
-- `menubar/main.swift` — menu bar status app; compiled and loaded by `install`.
-- `src/telegram.ts` — grammY frontend: routing by topic / reply, draft streaming, live cards, question keyboards, attachments.
-- `src/server.ts`, `src/cli.ts` — localhost API and the CLI over it.
-- `src/catalog.ts` — coding projects under `~/dev`; `projects.json` overrides.
-- `src/dashboard.ts`, `web/` — snapshot push and the Vercel status page.
+- `src/core/` — `config.ts`, `log.ts`, `bus.ts`, `db.ts`. Configuration is read once, at import.
+- `src/domain/session.ts` — one SDK session, the event mapping, questions.
+- `src/domain/sessions.ts` — registry, main session (`kv.main_session`), tasks, revival, reaper, task→main relay.
+- `src/domain/memory.ts` — long-term memory files, index, search.
+- `src/domain/terminal.ts`, `terminals.ts`, `pty-host.mjs` — PTYs on the host. node-pty only loads under Node, so each terminal is a small Node process the daemon talks to in JSON lines.
+- `src/domain/tools.ts` — the in-process `pai` MCP server, one instance per session (bound through a ref, since warm processes exist before their session).
+- `src/domain/browser.ts` — one Playwright MCP server per daemon over HTTP; sessions connect instead of spawning `npx`.
+- `src/domain/prompts.ts` — instructions appended to the Claude Code system prompt, per session kind.
+- `src/domain/catalog.ts` — coding projects under `~/dev`; `projects.json` overrides.
+- `src/api/` — `server.ts` (transport, the terminal websocket, the app), `routes.ts`, `events.ts` (SSE), `port.ts`, `app.ts`.
+- `src/clients/telegram.ts` — grammY frontend: routing by topic / reply, draft streaming, live cards, question keyboards, attachments.
+- `src/clients/tg-user.ts` — the user's own Telegram account (gramjs, `TELEGRAM_USER_SESSION`) as the `tg` MCP server.
+- `src/clients/cli.ts` — the CLI over the HTTP API.
+- `src/protocol/rich.ts` — metadata trailer: plain text for stock clients, structured for ours.
+- `src/host/` — `update.ts` and the launchd/systemd installers.
+- `app/` — the web app (sessions, terminals) built to `app/dist` and served at `/app`.
+- `infra/` — `provision.ts` (Hetzner), `cloud-init.yaml`, `bootstrap.ts`, borg backup.
+- `menubar/main.swift` — menu bar status app; compiled and loaded by `install` on macOS.
 - `workspace/` — the assistant's cwd; `CLAUDE.md` there is the persona, `inbox/` gets attachments.
+
+## Tests
+
+`bun run test` runs every `*.test.ts` in its own process (`scripts/test.ts`), because
+configuration is frozen at import. Unit suites cover the protocol, memory, the catalog and
+terminals; `test/api.e2e.test.ts` boots the real server on a scratch database and drives it
+over HTTP, including a websocket terminal. No test spends model tokens.
 
 ## Not done yet
 
-- Telegram topics need enabling in @BotFather once (Bot Settings → Threads Settings → Threaded Mode); until then tasks share the root chat.
-- No per-task budget cap; `maxBudgetUsd` is one option away.
+- Permission prompts: sessions run under `bypassPermissions`, so `canUseTool` only carries `AskUserQuestion`.
+- Concurrency is unbounded and there is no usage readout.
+- Project routing is explicit only — no `@project` prefix, no inference.
+- The VS Code extension and the Telegram fork are designed but not built.
 - Documents other than images are saved to `inbox/` and mentioned by path only.
-- Concurrency is unbounded.
