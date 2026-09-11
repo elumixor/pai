@@ -44,10 +44,41 @@ afterAll(async () => {
 });
 
 describe("api", () => {
-  it("reports health", async () => {
+  it("reports health, version and settings", async () => {
     const res = await get("/health");
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ ok: true, pid: process.pid });
+    const status = (await res.json()) as { ok: boolean; version: string; settings: { workspace: string } };
+    expect(status.ok).toBe(true);
+    expect(status.version).toBeTruthy();
+    expect(status.settings.workspace).toBeTruthy();
+  });
+
+  it("names the roots it can show, and lists one", async () => {
+    const roots = (await (await get("/roots")).json()) as { name: string; path: string }[];
+    expect(roots.map((r) => r.name)).toContain("pai");
+    const paiRoot = roots.find((r) => r.name === "pai");
+    const entries = (await (await get(`/files?path=${encodeURIComponent(paiRoot?.path ?? "")}`)).json()) as {
+      name: string;
+    }[];
+    expect(entries.map((e) => e.name)).toContain("package.json");
+  });
+
+  it("reads a file inside a root and refuses one outside", async () => {
+    const roots = (await (await get("/roots")).json()) as { name: string; path: string }[];
+    const paiRoot = roots.find((r) => r.name === "pai")?.path ?? "";
+    const file = (await (await get(`/file?path=${encodeURIComponent(`${paiRoot}/package.json`)}`)).json()) as {
+      text: string;
+    };
+    expect(file.text).toContain("\"name\"");
+
+    const refused = await get("/file?path=%2Fetc%2Fpasswd");
+    expect(refused.status).toBe(500);
+    expect(await refused.text()).toContain("outside the directories");
+  });
+
+  it("lists the documents worth reading", async () => {
+    const docs = (await (await get("/docs")).json()) as { name: string }[];
+    expect(docs.some((doc) => doc.name.endsWith(".md"))).toBe(true);
   });
 
   it("lists projects", async () => {

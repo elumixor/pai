@@ -1,130 +1,67 @@
-import { FitAddon } from "@xterm/addon-fit";
-import { Terminal } from "@xterm/xterm";
+import { clear, el, json } from "./dom.ts";
+import type { Status } from "./types.ts";
+import { overview } from "./views/overview.ts";
+import { threads, stopThreads } from "./views/threads.ts";
+import { terminals, stopTerminals } from "./views/terminals.ts";
+import { files } from "./views/files.ts";
+import { library } from "./views/library.ts";
 
-interface SessionSummary {
-  readonly shortId: string;
-  readonly title: string;
-  readonly state: string;
-  readonly project?: string;
+type Render = (side: HTMLElement, pane: HTMLElement) => Promise<void>;
+
+interface Tab {
+  readonly name: string;
+  readonly render: Render;
+  readonly sidebar: boolean;
 }
 
-interface TerminalSummary {
-  readonly id: string;
-  readonly cwd: string;
-  readonly project?: string;
-  readonly alive: boolean;
-}
+const tabs: readonly Tab[] = [
+  { name: "Overview", render: (_side, pane) => overview(pane), sidebar: false },
+  { name: "Threads", render: threads, sidebar: true },
+  { name: "Terminals", render: terminals, sidebar: true },
+  { name: "Files", render: files, sidebar: true },
+  { name: "Library", render: library, sidebar: true },
+];
 
-interface ProjectSummary {
-  readonly slug: string;
-  readonly summary: string;
-}
+const view = document.getElementById("view");
+const nav = document.getElementById("tabs");
+const summary = document.getElementById("summary");
+if (!view || !nav || !summary) throw new Error("the page is missing its shell");
 
-const el = <T extends HTMLElement>(id: string) => {
-  const found = document.getElementById(id);
-  if (!found) throw new Error(`missing element: ${id}`);
-  return found as T;
-};
+let current = tabs[0] as Tab;
 
-const stage = el("stage");
-const sessionList = el<HTMLUListElement>("sessions");
-const terminalList = el<HTMLUListElement>("terminals");
-const projectSelect = el<HTMLSelectElement>("project");
+async function show(tab: Tab) {
+  stopThreads();
+  if (tab.name !== "Terminals") stopTerminals();
+  current = tab;
 
-async function json<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    headers: init?.body ? { "content-type": "application/json" } : undefined,
-  });
-  if (!res.ok) throw new Error(`${path}: ${res.status} ${await res.text()}`);
-  return (await res.json()) as T;
-}
+  for (const button of nav.querySelectorAll("button")) button.ariaCurrent = String(button.textContent === tab.name);
 
-let active: { id: string; socket: WebSocket; terminal: Terminal; fit: FitAddon } | undefined;
+  const side = el("aside.side");
+  const pane = el("div.pane");
+  clear(view, ...(tab.sidebar ? [side, pane] : [pane]));
+  pane.append(el("p.empty", {}, "loading…"));
 
-function attach(id: string) {
-  active?.socket.close();
-  active?.terminal.dispose();
-  stage.replaceChildren();
-
-  const terminal = new Terminal({ fontSize: 13, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" });
-  const fit = new FitAddon();
-  terminal.loadAddon(fit);
-  terminal.open(stage);
-  fit.fit();
-
-  const socket = new WebSocket(`ws://${location.host}/terminals/${id}/stream`);
-  socket.addEventListener("message", (event) => terminal.write(String(event.data)));
-  socket.addEventListener("close", () => terminal.writeln("\r\n[disconnected]"));
-  terminal.onData((data) => socket.readyState === WebSocket.OPEN && socket.send(data));
-
-  const resize = () => {
-    fit.fit();
-    void json(`/terminals/${id}`, { method: "POST", body: JSON.stringify({ cols: terminal.cols, rows: terminal.rows }) });
-  };
-  terminal.onResize(resize);
-  window.addEventListener("resize", resize);
-
-  active = { id, socket, terminal, fit };
-  void render();
-}
-
-function button(label: string, sub: string, current: boolean, onClick: () => void) {
-  const item = document.createElement("li");
-  const control = document.createElement("button");
-  control.textContent = label;
-  control.ariaCurrent = String(current);
-  control.addEventListener("click", onClick);
-  const detail = document.createElement("small");
-  detail.textContent = sub;
-  control.append(detail);
-  item.append(control);
-  return item;
-}
-
-async function render() {
-  const [{ live }, terminals] = await Promise.all([
-    json<{ live: SessionSummary[] }>("/tasks"),
-    json<TerminalSummary[]>("/terminals"),
-  ]);
-
-  sessionList.replaceChildren(
-    ...live.map((session) =>
-      button(session.title || session.shortId, `${session.state}${session.project ? ` · ${session.project}` : ""}`, false, () => {}),
-    ),
-  );
-
-  terminalList.replaceChildren(
-    ...terminals.map((terminal) =>
-      button(terminal.project ?? terminal.cwd.split("/").pop() ?? terminal.id, terminal.id, terminal.id === active?.id, () =>
-        attach(terminal.id),
-      ),
-    ),
-  );
-
-  if (!active && terminals.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "empty";
-    empty.textContent = "No terminal open. Pick a project and start one.";
-    stage.replaceChildren(empty);
+  try {
+    await tab.render(side, pane);
+  } catch (err) {
+    clear(pane, el("h3", {}, "That did not load"), el("pre", {}, (err as Error).message));
   }
 }
 
-el<HTMLFormElement>("open").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const project = projectSelect.value || undefined;
-  const opened = await json<TerminalSummary>("/terminals", { method: "POST", body: JSON.stringify({ project }) });
-  attach(opened.id);
-});
-
-const health = await json<{ pid: number; uptime: number }>("/health");
-el("host").textContent = `pid ${health.pid} · up ${Math.round(health.uptime / 60)}m`;
-
-const projects = await json<ProjectSummary[]>("/projects");
-projectSelect.replaceChildren(
-  new Option("home", ""),
-  ...projects.map((project) => new Option(project.slug, project.slug)),
+clear(
+  nav,
+  ...tabs.map((tab) => el("button", { onclick: () => void show(tab) }, tab.name)),
 );
 
-await render();
-setInterval(() => void render(), 5000);
+async function heartbeat() {
+  try {
+    const status = await json<Status>("/health");
+    summary.textContent = `${status.host.hostname} · ${status.version} · ${Math.round(status.uptime / 60)}m`;
+  } catch {
+    summary.textContent = "daemon unreachable";
+  }
+}
+
+await show(current);
+await heartbeat();
+setInterval(() => void heartbeat(), 10000);

@@ -8,6 +8,8 @@ import { status as updateStatus, update } from "../host/update.ts";
 import { logger } from "../core/log.ts";
 import { events } from "./events.ts";
 import { messagePage } from "./message.ts";
+import { status } from "./status.ts";
+import * as files from "../domain/files.ts";
 
 const log = logger("api");
 
@@ -31,13 +33,21 @@ export async function handle(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const path = url.pathname;
   try {
-    if (path === "/health")
-      return json({
-        ok: true,
-        pid: process.pid,
-        uptime: process.uptime(),
-        baseUrl: config.baseUrl || undefined,
-      });
+    if (path === "/health") return json(await status());
+
+    if (path === "/files") return json(files.list(url.searchParams.get("path") ?? config.devRoot));
+
+    if (path === "/file") return json(await files.read(url.searchParams.get("path") ?? ""));
+
+    if (path === "/roots") return json(files.roots());
+
+    if (path === "/docs") return json(files.documents());
+
+    // The service manager brings the daemon back, which is what "restart" means here.
+    if (path === "/restart" && req.method === "POST") {
+      setTimeout(() => process.exit(0), 300);
+      return json({ restarting: true });
+    }
 
     // The response goes out before the process exits, so the CLI sees the result of its own update.
     if (path === "/update" && req.method === "POST") {

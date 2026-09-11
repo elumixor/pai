@@ -13,9 +13,16 @@ struct Task: Decodable {
     let project: String?
 }
 struct Tasks: Decodable { let live: [Task]; let recent: [Task] }
-struct Health: Decodable { let ok: Bool; let dashboardUrl: String? }
+struct HealthHost: Decodable { let hostname: String; let baseUrl: String? }
+struct Health: Decodable { let ok: Bool; let version: String?; let host: HealthHost? }
 
-let base = "http://127.0.0.1:8787"
+/// The daemon may run on this Mac or on the host over the tailnet. `~/.config/pai/menubar`
+/// holds the base URL when it is the latter; without it, the local daemon is assumed.
+let base: String = {
+    let file = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/pai/menubar")
+    let configured = (try? String(contentsOf: file, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
+    return configured?.isEmpty == false ? configured! : "http://127.0.0.1:8787"
+}()
 
 /// lucide.dev cake-slice (ISC), drawn as a template image so the menu bar tints it.
 let cakeSVG = """
@@ -39,6 +46,7 @@ final class App: NSObject, NSApplicationDelegate {
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     let menu = NSMenu()
     var dashboard = ""
+    var version = ""
     var up = false
     let icon = cakeIcon()
 
@@ -61,7 +69,8 @@ final class App: NSObject, NSApplicationDelegate {
     func poll() {
         get("/health", Health.self) { h in
             self.up = h?.ok ?? false
-            if let d = h?.dashboardUrl { self.dashboard = d }
+            self.dashboard = (h?.host?.baseUrl ?? base) + "/app/"
+            self.version = h?.version ?? ""
             if !self.up { self.render(live: [], recent: []); return }
             self.get("/tasks", Tasks.self) { t in self.render(live: t?.live ?? [], recent: t?.recent ?? []) }
         }
@@ -100,8 +109,9 @@ final class App: NSObject, NSApplicationDelegate {
 
         menu.removeAllItems()
         if !up {
-            menu.addItem(withTitle: "daemon not running", action: nil, keyEquivalent: "")
+            menu.addItem(withTitle: "no daemon at \(base)", action: nil, keyEquivalent: "")
         } else {
+            if !version.isEmpty { menu.addItem(withTitle: version, action: nil, keyEquivalent: "") }
             if let m = main {
                 menu.addItem(withTitle: "\(dot(m)) main · \(m.state)\(m.lastTool.map { $0.isEmpty ? "" : " · " + $0 } ?? "")", action: nil, keyEquivalent: "")
             }
@@ -121,7 +131,7 @@ final class App: NSObject, NSApplicationDelegate {
         menu.addItem(d)
         let r = NSMenuItem(title: "Restart daemon", action: #selector(restart), keyEquivalent: "r"); r.target = self
         menu.addItem(r)
-        let l = NSMenuItem(title: "Show log", action: #selector(showLog), keyEquivalent: "l"); l.target = self
+        let l = NSMenuItem(title: "Open API", action: #selector(openApi), keyEquivalent: "a"); l.target = self
         menu.addItem(l)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -129,17 +139,17 @@ final class App: NSObject, NSApplicationDelegate {
 
     @objc func openTask(_ sender: NSMenuItem) {
         guard !dashboard.isEmpty, let id = sender.representedObject as? String else { return }
-        NSWorkspace.shared.open(URL(string: "\(dashboard)/?s=\(id)")!)
+        NSWorkspace.shared.open(URL(string: "\(dashboard)?s=\(id)")!)
     }
     @objc func openDashboard() { if !dashboard.isEmpty { NSWorkspace.shared.open(URL(string: dashboard)!) } }
+    /// Works wherever the daemon runs: it exits, and launchd or systemd brings it back.
     @objc func restart() {
-        let p = Process(); p.launchPath = "/bin/launchctl"
-        p.arguments = ["kickstart", "-k", "gui/\(getuid())/dev.elumixor.pai"]; try? p.run()
+        var req = URLRequest(url: URL(string: base + "/restart")!)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 3
+        URLSession.shared.dataTask(with: req).resume()
     }
-    @objc func showLog() {
-        let log = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("dev/pai/data/daemon.log")
-        NSWorkspace.shared.open(log)
-    }
+    @objc func openApi() { NSWorkspace.shared.open(URL(string: base + "/health")!) }
 }
 
 let app = NSApplication.shared
