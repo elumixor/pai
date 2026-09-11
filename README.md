@@ -28,8 +28,13 @@ over HTTP; Telegram, the web app, the CLI and the menu bar are all clients of it
 - With `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` / `TELEGRAM_USER_SESSION` set, the assistant
   also has your own Telegram account: it can read your chats, search them, and (after
   asking) write to people as you.
-- The web app at `/app` lists sessions and gives you a real terminal on the host, over the
-  tailnet. A menu bar item shows what is running.
+- The web app at `/app`, over the tailnet, is the one place everything is visible:
+  **Overview** (version, uptime, host, settings, projects, restart and update),
+  **Threads** (every session, its live event stream, a compose box and an interrupt),
+  **Terminals**, **Files** (projects, workspace and the repo, read-only), and
+  **Library** (the instruction documents and long-term memory).
+- A menu bar item on macOS shows what is running and opens the dashboard. It reads its base
+  URL from `~/.config/pai/menubar`, so it works against a daemon on another machine.
 
 ## Layout
 
