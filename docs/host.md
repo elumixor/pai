@@ -34,6 +34,13 @@ That adds a read-only deploy key to the repository, clones it, carries `.env`, `
 and `workspace/memory` across, installs dependencies and starts the service. With
 `--from` the state comes straight off the machine being replaced.
 
+## What it costs
+
+`pai cost` prices the account against Hetzner's own `/pricing`: the server, its primary
+IPv4, volumes, floating IPs, backups. The `HCLOUD_TOKEN` it reads lives in `.env` on the
+host — already set, so nothing needs asking for. Claude usage is billed by Anthropic and is
+not in that number.
+
 ## Backups
 
 ```sh

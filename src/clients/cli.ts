@@ -81,6 +81,7 @@ const usage = `pai
   tail [id] [--raw]            follow the event stream
   events [id]                  recent events
   projects [--refresh]         coding projects as the assistant sees them
+  cost                         what the host costs per month, priced from Hetzner
   memory [query]               what the assistant remembers; a query searches
   daemon [--foreground]        start the daemon; --foreground stays attached, verbose, no telegram
   install [--uninstall]        launchd user agent + \`pai\` on PATH
@@ -190,6 +191,18 @@ try {
     case "projects": {
       const data = await api(`/projects${args.includes("--refresh") ? "?refresh=1" : ""}`);
       out(data, () => data.map((p: any) => `${p.slug.padEnd(28)} ${p.summary.slice(0, 80)}`).join("\n"));
+      break;
+    }
+    case "cost": {
+      const data = await api("/cost");
+      out(data, () =>
+        data.error
+          ? data.error
+          : [
+              ...data.lines.map((l: any) => `${l.name.padEnd(28)} ${l.monthly.toFixed(2)} ${data.currency}/mo`),
+              `${"total".padEnd(28)} ${data.monthlyTotal.toFixed(2)} ${data.currency}/mo`,
+            ].join("\n"),
+      );
       break;
     }
     default:

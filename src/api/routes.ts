@@ -10,6 +10,7 @@ import { events } from "./events.ts";
 import { messagePage } from "./message.ts";
 import { status } from "./status.ts";
 import * as files from "../domain/files.ts";
+import { cost as hostingCost } from "../domain/hetzner.ts";
 
 const log = logger("api");
 
@@ -112,6 +113,9 @@ export async function handle(req: Request): Promise<Response> {
     }
 
     if (path === "/memory") return json(memory.recall(url.searchParams.get("q") ?? ""));
+
+    if (path === "/cost")
+      return json(await hostingCost().catch((err: Error) => ({ error: err.message })));
 
     if (path === "/tasks") return json({ live: sessions.list(), recent: sessions.recent(30) });
 

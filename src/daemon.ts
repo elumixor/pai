@@ -3,7 +3,7 @@ import { config } from "./core/config.ts";
 import { refresh } from "./domain/catalog.ts";
 import { restoreDaemonJob, startServer } from "./api/server.ts";
 import { startTelegram } from "./clients/telegram.ts";
-import { killAll, reapIdle, relayTasksToMain, warmUp } from "./domain/sessions.ts";
+import { killAll, noteInterrupted, reapIdle, relayTasksToMain, resumeInterrupted, warmUp } from "./domain/sessions.ts";
 import { closeAll as closeTerminals } from "./domain/terminals.ts";
 import { startBrowser } from "./domain/browser.ts";
 import { bus } from "./core/bus.ts";
@@ -19,6 +19,9 @@ relayTasksToMain();
 const server = startServer();
 const stopBrowser = startBrowser();
 const bot = startTelegram();
+// Before warmUp: it revives the main session, whose freshly persisted state would
+// otherwise look like a turn that a restart cut off.
+resumeInterrupted();
 warmUp();
 const stopAutoUpdate = startAutoUpdate();
 
@@ -32,6 +35,7 @@ function shutdown(signal: string) {
   clearInterval(catalogTimer);
   clearInterval(reaper);
   stopAutoUpdate?.();
+  noteInterrupted();
   killAll();
   closeTerminals();
   stopBrowser();

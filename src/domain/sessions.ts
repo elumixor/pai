@@ -164,6 +164,39 @@ export function recent(limit = 20, kind?: SessionKind): SessionRow[] {
   }));
 }
 
+const INTERRUPTED_KEY = "interrupted_sessions";
+
+/**
+ * Remembers which sessions were mid-turn, so a restart does not swallow the reply the user
+ * is waiting for. Called before the process goes down; `resumeInterrupted` picks it up.
+ */
+export function noteInterrupted() {
+  const ids = [...live.values()].filter((s) => s.state === "busy" || s.state === "starting" || s.pending).map((s) => s.id);
+  if (ids.length) kv.set(INTERRUPTED_KEY, ids.join(","));
+  else kv.del(INTERRUPTED_KEY);
+}
+
+/**
+ * Revives the sessions a restart cut off and asks each to finish its turn. A crash leaves
+ * no note, so a row still recorded as busy counts as interrupted too.
+ */
+export function resumeInterrupted() {
+  const noted = (kv.get(INTERRUPTED_KEY) ?? "").split(",").filter(Boolean);
+  kv.del(INTERRUPTED_KEY);
+  const stale = (
+    db.query("SELECT session_id FROM sessions WHERE state IN ('busy', 'starting')").all() as { session_id: string }[]
+  ).map((r) => r.session_id);
+  for (const id of new Set([...noted, ...stale])) {
+    if (find(id)) continue;
+    const s = ensureLive(id);
+    if (!s) continue;
+    log.info(`resuming interrupted ${s.shortId}`);
+    s.send(
+      "The daemon restarted and cut your last turn off part-way through. Check what already happened, finish what is left, and tell the user where things stand.",
+    );
+  }
+}
+
 export function killAll() {
   closeWarm();
   for (const s of live.values()) s.kill();

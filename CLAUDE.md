@@ -19,6 +19,7 @@ bun run src/clients/cli.ts stop <id|main> [--kill]
 bun run src/clients/cli.ts tail [id] [--raw]
 bun run src/clients/cli.ts events [id]
 bun run src/clients/cli.ts projects
+bun run src/clients/cli.ts cost                    # Hetzner spend per month (HCLOUD_TOKEN in .env)
 bun run src/clients/cli.ts memory [query]
 bun run src/clients/cli.ts update [--check] [--force]  # pull, reinstall, rebuild menubar, restart
 ```

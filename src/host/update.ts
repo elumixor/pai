@@ -96,7 +96,9 @@ export async function update(force = false): Promise<UpdateResult> {
   const restarting = managedByLaunchd();
   log.info(`updated to ${head}${restarting ? " — restarting" : ""}`);
   bus.emitEvent("daemon.updated", { from: s.head, to: head, restarting, at: new Date().toISOString() });
-  if (restarting) setTimeout(() => process.exit(0), 1200);
+  // SIGTERM rather than exit: the daemon's own shutdown runs, so interrupted turns are
+  // noted and picked up again on the other side.
+  if (restarting) setTimeout(() => process.kill(process.pid, "SIGTERM"), 1200);
   return { ...s, head, updated: true, restarting };
 }
 

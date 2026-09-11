@@ -5,6 +5,7 @@ import { all as allProjects, get as getProject, refresh } from "./catalog.ts";
 import { bus, recentEvents } from "../core/bus.ts";
 import * as sessions from "./sessions.ts";
 import * as memory from "./memory.ts";
+import { cost as hostingCost } from "./hetzner.ts";
 
 const ok = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });
 const taskArg = z.string().describe("task id, full or the 6-character short form");
@@ -31,6 +32,12 @@ export function paiTools(kind: "main" | "task" | "code", ref: SessionRef) {
         bus.emitEvent("session.progress", { text }, self().id);
         return ok({ posted: true });
       },
+    ),
+    tool(
+      "hosting_cost",
+      "What the host costs per month, priced from the Hetzner account itself. The Claude usage the sessions spend is billed separately and is not in here.",
+      {},
+      async () => ok(await hostingCost().catch((err: Error) => ({ error: err.message }))),
     ),
     tool(
       "list_projects",

@@ -38,6 +38,9 @@ export const config = {
 
   dbPath: resolve(env.PAI_DB ?? join(repo, "data", "pai.db")),
 
+  /** Project-scoped Hetzner Cloud API token, read-only use: pricing the host actually costs. */
+  hcloudToken: env.HCLOUD_TOKEN ?? "",
+
   telegram: {
     enabled: !bool(env.PAI_NO_TELEGRAM),
     token: env.TELEGRAM_BOT_TOKEN ?? "",
