@@ -147,6 +147,11 @@ export class Session {
   private activeTurn = false;
   pending?: PendingQuestion;
 
+  /** A user turn is out and its reply has not come back yet. */
+  get awaitingReply() {
+    return this.activeTurn;
+  }
+
   constructor(opts: SessionOptions) {
     // A fresh session of a warmable kind adopts the pre-spawned process and its id.
     this.warm = !opts.resume && opts.cwd === config.workspace ? takeWarm(opts.kind) : undefined;
@@ -248,7 +253,9 @@ export class Session {
     switch (m.type) {
       case "system":
         if (m.subtype === "init" && this.state === "starting") {
-          this.state = "busy";
+          // A session revived with nothing to answer is idle, not busy: left busy it would
+          // never be reaped and would look mid-turn to every restart after this one.
+          this.state = this.activeTurn || this.inbox.length > 0 ? "busy" : "idle";
           this.persist();
         }
         if (m.subtype === "status" && m.status === "compacting") bus.emitEvent("session.status", { status: "compacting" }, this.id);
