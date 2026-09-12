@@ -1,0 +1,140 @@
+{
+  "name": "pai-vscode",
+  "displayName": "pai",
+  "description": "pai threads, terminals and projects inside the editor",
+  "version": "0.1.0",
+  "publisher": "elumixor",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Other"],
+  "main": "./out/extension.js",
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "pai",
+          "title": "pai",
+          "icon": "media/pai.svg"
+        }
+      ]
+    },
+    "views": {
+      "pai": [
+        {
+          "id": "pai.threads",
+          "name": "Threads"
+        },
+        {
+          "id": "pai.projects",
+          "name": "Projects"
+        },
+        {
+          "id": "pai.terminals",
+          "name": "Terminals"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "pai.refresh",
+        "title": "pai: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "pai.openThread",
+        "title": "pai: Open Thread"
+      },
+      {
+        "command": "pai.newTask",
+        "title": "pai: New Task",
+        "icon": "$(add)"
+      },
+      {
+        "command": "pai.chat",
+        "title": "pai: Message the Main Conversation"
+      },
+      {
+        "command": "pai.interrupt",
+        "title": "pai: Interrupt Thread",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "pai.openTerminal",
+        "title": "pai: Open Terminal",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "pai.openProject",
+        "title": "pai: Open Project Remotely",
+        "icon": "$(folder-opened)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "pai.newTask",
+          "when": "view == pai.threads",
+          "group": "navigation"
+        },
+        {
+          "command": "pai.refresh",
+          "when": "view =~ /^pai\\./",
+          "group": "navigation"
+        },
+        {
+          "command": "pai.openTerminal",
+          "when": "view == pai.terminals",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "pai.interrupt",
+          "when": "view == pai.threads && viewItem == thread",
+          "group": "inline"
+        },
+        {
+          "command": "pai.openProject",
+          "when": "view == pai.projects",
+          "group": "inline"
+        },
+        {
+          "command": "pai.openTerminal",
+          "when": "view == pai.projects",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "pai",
+      "properties": {
+        "pai.baseUrl": {
+          "type": "string",
+          "default": "http://localhost:8787",
+          "description": "Base URL of the pai daemon (the tailnet address of the box)."
+        },
+        "pai.sshHost": {
+          "type": "string",
+          "default": "",
+          "description": "SSH host used to open remote projects (Remote-SSH). Empty = open locally."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "bun run scripts/build.ts",
+    "package": "bunx @vscode/vsce package --no-dependencies -o pai.vsix"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@types/vscode": "^1.90.0",
+    "@types/ws": "^8.5.12"
+  }
+}

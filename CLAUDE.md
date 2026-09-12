@@ -64,6 +64,7 @@ from tasks are injected into the main conversation.
 - `src/clients/cli.ts` — the CLI over the HTTP API.
 - `src/protocol/rich.ts` — metadata trailer: plain text for stock clients, structured for ours.
 - `src/host/` — `update.ts` and the launchd/systemd installers.
+- `editor/vscode/` — the VS Code extension (threads, projects, terminals over the API); `bun run build`, `bun run package`.
 - `app/` — the web app (sessions, terminals) built to `app/dist` and served at `/app`.
 - `infra/` — `provision.ts` (Hetzner), `cloud-init.yaml`, `bootstrap.ts`, borg backup.
 - `menubar/main.swift` — menu bar status app; compiled and loaded by `install` on macOS.
@@ -81,5 +82,5 @@ over HTTP, including a websocket terminal. No test spends model tokens.
 - Permission prompts: sessions run under `bypassPermissions`, so `canUseTool` only carries `AskUserQuestion`.
 - Concurrency is unbounded and there is no usage readout.
 - Project routing is explicit only — no `@project` prefix, no inference.
-- The VS Code extension and the Telegram fork are designed but not built.
+- The Telegram fork is designed but not built; the VS Code extension is unpublished and untested inside a real editor host.
 - Documents other than images are saved to `inbox/` and mentioned by path only.

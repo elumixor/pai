@@ -12,3 +12,5 @@ workspace/*
 scripts/pai
 menubar/pai-menubar
 app/dist
+editor/vscode/out
+editor/vscode/*.vsix

@@ -86,6 +86,7 @@ Cutover copies `.env`, `pai.db` and `workspace/memory`, then the GCP instance is
 
 ### Phase 4 — the clients
 
-The web app gains the session views and the terminal. The VS Code extension follows. The
-Telegram fork is last, and only once the protocol has been in use long enough to be
-stable.
+The web app gains the session views and the terminal. The VS Code extension follows:
+`editor/vscode` is threads, projects and terminals as views over the same endpoints, with
+Remote-SSH opening a project where its sessions already run. The Telegram fork is last, and
+only once the protocol has been in use long enough to be stable.
