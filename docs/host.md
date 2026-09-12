@@ -9,6 +9,7 @@ pai runs on one Hetzner Cloud server, reachable only over Tailscale.
 | Image | Ubuntu 24.04 |
 | Inbound | nothing; a Hetzner firewall with no rules, `tailscale ssh` for access |
 | Service | `pai.service`, a systemd user unit with lingering enabled |
+| Browser editor | `pai-editor.service` — code-server with the pai extension, on the API's address, port 8788 |
 | Updates | the host pulls the newest `v*` tag by itself (`PAI_UPDATE_CHANNEL=tag`) |
 | Backups | borg → Hetzner Storage Box, nightly |
 

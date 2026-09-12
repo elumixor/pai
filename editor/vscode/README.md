@@ -22,6 +22,8 @@ Works in VS Code, Cursor, VSCodium and `code-server` in the browser.
 
 From the repo root, `bun run editor` does everything: builds the extension, packages it,
 installs code-server if it is missing, installs the extension into it and serves the editor.
+`bun run editor --install` makes that a systemd service on the box instead, which is how the
+editor is reachable in a browser over the tailnet without anything running locally.
 
 ## Build
 

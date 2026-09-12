@@ -61,11 +61,15 @@ bun run daemon                     # foreground
 bun run src/clients/cli.ts install # service + `pai` command on PATH
 ```
 
-`bun run editor` serves VS Code in the browser on `http://127.0.0.1:8788` with the pai
-extension installed: threads, projects and terminals from the daemon, next to the files. On
-the box, `PAI_EDITOR_BIND=<tailnet ip> bun run editor` makes it reachable from any device on
-the tailnet. The dashboard is the daemon's own web app at `<baseUrl>/app` — `http://pai:8787/app`
-over the tailnet, or through `ssh -L 8787:127.0.0.1:8787 pai`.
+`bun run editor` serves VS Code in a browser with the pai extension installed: threads,
+projects and terminals from the daemon, next to the files. It runs on the box, not on the
+laptop — `bun run editor --install` leaves a `pai-editor` systemd service behind, bound to
+the same address as the API, so `http://pai:8788` opens the editor from any device on the
+tailnet with nothing running locally. `infra/bootstrap.ts` installs it with the daemon.
+Run it in the foreground (`bun run editor`) to serve it from the machine you are on.
+
+The dashboard is the daemon's own web app at `<baseUrl>/app` — `http://pai:8787/app` over
+the tailnet, or through `ssh -L 8787:127.0.0.1:8787 pai`.
 
 Then message the bot. `/new <title>` starts a task by hand; anything else is plain
 language. Enable topics for the bot in @BotFather (Bot Settings → Threads Settings →

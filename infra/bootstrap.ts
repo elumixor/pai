@@ -66,7 +66,9 @@ async function install() {
   await remote("cd ~/pai && bun install");
   await remote("cd ~/pai && bun run build:app");
   await remote("cd ~/pai && bun run src/clients/cli.ts install");
-  await remote("systemctl --user is-active pai");
+  // The browser editor is a second service on the same box: code-server with the pai extension.
+  await remote("cd ~/pai && bun run editor --install");
+  await remote("systemctl --user is-active pai pai-editor");
 }
 
 await ensureDeployKey();
