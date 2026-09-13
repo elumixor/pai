@@ -118,22 +118,47 @@ const cache = {
 /** Why the last request failed, so the client can say something better than "offline". */
 export let lastError = "";
 
-/** A GET that prefers the daemon and settles for the last answer it gave. */
+async function fetchFrom<T>(base: string, path: string): Promise<T> {
+  const response = await fetch(base + path, { headers: headers(), signal: AbortSignal.timeout(8000) });
+  if (!response.ok) throw new Error(`${path}: ${response.status}`);
+  return (await response.json()) as T;
+}
+
+/**
+ * A GET that prefers the daemon it is pointed at, falls back to another one it can reach —
+ * the box when this network can see it, the daemon on this machine when it cannot — and
+ * settles for the last answer it was given.
+ */
 export async function get<T>(path: string): Promise<T> {
   try {
-    const response = await fetch(baseUrl() + path, { headers: headers(), signal: AbortSignal.timeout(8000) });
-    if (!response.ok) throw new Error(`${path}: ${response.status}`);
-    const data = (await response.json()) as T;
+    const data = await fetchFrom<T>(baseUrl(), path);
     setOnline(true);
     cache.write(path, data);
     return data;
   } catch (err) {
     lastError = (err as Error).message;
+    for (const candidate of await alternatives()) {
+      try {
+        const data = await fetchFrom<T>(candidate, path);
+        setBaseUrl(candidate);
+        setOnline(true);
+        cache.write(path, data);
+        return data;
+      } catch {
+        /* try the next one */
+      }
+    }
     const cached = cache.read<T>(path);
     setOnline(false);
     if (cached !== undefined) return cached;
     throw err;
   }
+}
+
+/** Everywhere a daemon might be, apart from the one that just failed. */
+async function alternatives() {
+  const configuredUrl = await configured();
+  return [...(configuredUrl ? [configuredUrl] : []), ...CANDIDATES].filter((candidate) => candidate !== baseUrl());
 }
 
 /** A write goes to the daemon, or into the outbox to be replayed when it answers again. */
@@ -188,6 +213,14 @@ export const projects = () => get<ProjectSummary[]>("/projects");
 export const status = () => get<Status>("/health");
 export const settings = () => get<Settings>("/settings");
 export const terminals = () => get<TerminalSummary[]>("/terminals");
+export const sync = () =>
+  get<{
+    enabled: boolean;
+    running: boolean;
+    deviceId: string;
+    peer: string;
+    folders: { id: string; state?: string; needBytes?: number; path?: string }[];
+  }>("/sync");
 export const entries = (path: string) => get<Entry[]>(`/files?path=${encodeURIComponent(path)}`);
 export const file = (path: string) => get<{ path: string; content: string; truncated?: boolean }>(`/file?path=${encodeURIComponent(path)}`);
 export const transcript = (session: string, limit = 300) =>

@@ -86,6 +86,26 @@ The API, the dashboard and the editor bind to this machine's Tailscale address w
 one, and to loopback when it does not — so a box on the tailnet is reachable from other
 devices without a tunnel and without being on the internet. `PAI_BIND` overrides it.
 
+## The same files on two machines
+
+`PAI_SYNC=1` gives the daemon a Syncthing of its own and shares two folders with the other
+machines that run pai: the projects under `devRoot`, and the Claude Code transcripts. Pairing
+is one command on each side —
+
+```sh
+pai sync                       # prints this machine's device id
+pai sync <the other device id> # on both machines
+```
+
+— and after that a laptop has the box's files locally. Work offline; Syncthing resolves the
+two directories when the laptop is back, and messages written meanwhile leave the client's
+outbox. Build output (`node_modules`, `target`, `dist`, …) never travels.
+
+A laptop that also runs a daemon of its own (`pai install` with `PAI_NO_TELEGRAM=1` in
+`data/config.json`, so only the box answers the bot) gets the rest for free: the client tries
+the box first and falls back to the daemon on this machine, so threads, files and terminals
+keep working on a plane.
+
 ## Reaching it from anywhere
 
 There is no token by default and none is needed on the tailnet — it is a closed network and
@@ -93,11 +113,15 @@ the daemon is bound to it. A token only exists for the moment the daemon is reac
 somewhere else: the API is remote code execution, so nothing leaves the tailnet unauthenticated.
 Set `PAI_TOKEN` to a long random string, then pick one of:
 
-- `PAI_PUBLIC=1` — the daemon runs Tailscale Funnel for itself and logs the address:
-  `https://pai.<tailnet>.ts.net/ui/?token=…`, a real certificate, no firewall rule, no port
+- `PAI_PUBLIC=1` — the daemon runs Tailscale Funnel for itself: `https://pai.<tailnet>.ts.net/`
+  is the client, `…/editor` is code-server. A real certificate, no firewall rule, no port
   forwarding. Without a token it refuses to publish.
-- `PAI_BIND=0.0.0.0` and open the port on the host firewall — plain
-  `http://<public ip>:8787/ui/?token=…`, no certificate.
+- A domain of your own: point an A record at the host, open 80 and 443
+  (`bun run infra/firewall.ts 80 443`), then `sudo PAI_DOMAIN=pai.example.com bun run
+  infra/gateway.ts` installs Caddy in front — `https://pai.example.com/` for the client and
+  `https://pai.example.com/editor` for the editor, with certificates renewed for you.
+- `PAI_BIND=0.0.0.0` and an open port — plain `http://<public ip>:8787/ui/?token=…`, no
+  certificate.
 
 The token travels in the link once, is kept in a cookie and in the client's own settings, and
 is required on every request that is not the client bundle itself. Requests from loopback (the

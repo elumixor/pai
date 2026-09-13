@@ -44,14 +44,14 @@ export const config = {
   overridesPath,
   repo,
   /** Where the assistant keeps its own files: persona (CLAUDE.md), downloads, notes. */
-  workspace: resolve(env.PAI_WORKSPACE ?? join(repo, "workspace")),
+  workspace: resolve(setting("PAI_WORKSPACE") ?? join(repo, "workspace")),
 
   /** Root that gets scanned for coding projects. */
-  devRoot: resolve(env.PAI_DEV_ROOT ?? join(homedir(), "dev")),
+  devRoot: resolve(setting("PAI_DEV_ROOT") ?? join(homedir(), "dev")),
   scanDepth: Number(env.PAI_SCAN_DEPTH ?? 2),
 
   /** The HTTP API. Loopback by default; the tailnet address when other devices need it. */
-  port: Number(env.PAI_PORT ?? 8787),
+  port: Number(setting("PAI_PORT") ?? 8787),
   host: setting("PAI_BIND") ?? tailnetAddress() ?? "127.0.0.1",
 
   /**
@@ -66,7 +66,7 @@ export const config = {
   },
 
   /** Shared Playwright MCP server, one per daemon. */
-  browserPort: Number(env.PAI_BROWSER_PORT ?? 8931),
+  browserPort: Number(setting("PAI_BROWSER_PORT") ?? 8931),
 
   dbPath: resolve(env.PAI_DB ?? join(repo, "data", "pai.db")),
 
@@ -74,7 +74,7 @@ export const config = {
   hcloudToken: env.HCLOUD_TOKEN ?? "",
 
   telegram: {
-    enabled: !bool(env.PAI_NO_TELEGRAM),
+    enabled: !bool(setting("PAI_NO_TELEGRAM")),
     token: env.TELEGRAM_BOT_TOKEN ?? "",
     /** Only this chat may drive the daemon. */
     chatId: Number(env.TELEGRAM_CHAT_ID ?? 0),
@@ -95,6 +95,23 @@ export const config = {
 
   /** Put the daemon on the public internet through Tailscale Funnel (https, no firewall change). */
   public: bool(setting("PAI_PUBLIC")),
+
+  /** A domain of your own, served by Caddy instead of Funnel. Empty means the tailnet name. */
+  domain: setting("PAI_DOMAIN") ?? "",
+
+  /**
+   * Two-way file sync with the other machines that run pai, over Syncthing: the projects
+   * under `devRoot` and the Claude Code transcripts, so a laptop works with the box's files
+   * offline and catches up when it is back.
+   */
+  sync: {
+    enabled: bool(setting("PAI_SYNC")),
+    /** The other machine's Syncthing device id; pairing is mutual, so both sides set it. */
+    peer: setting("PAI_SYNC_PEER") ?? "",
+    guiPort: Number(setting("PAI_SYNC_PORT") ?? 8384),
+    /** Syncthing's own configuration and keys; a second daemon on one machine needs its own. */
+    home: resolve(setting("PAI_SYNC_HOME") ?? join(homedir(), ".config", "pai-syncthing")),
+  },
 
   /** Where this daemon is reachable on the tailnet; clients link back to it. */
   baseUrl: (setting("PAI_BASE_URL") ?? "").replace(/\/$/, ""),
@@ -117,7 +134,7 @@ export const config = {
    */
   updateChannel: (setting("PAI_UPDATE_CHANNEL") ?? "branch") as "branch" | "tag",
 
-  verbose: bool(env.PAI_VERBOSE),
+  verbose: bool(setting("PAI_VERBOSE")),
 };
 
 export type Config = typeof config;

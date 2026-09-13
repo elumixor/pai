@@ -83,6 +83,7 @@ const usage = `pai
   projects [--refresh]         coding projects as the assistant sees them
   cost                         what the host costs per month, priced from Hetzner
   memory [query]               what the assistant remembers; a query searches
+  sync [device id]             file sync between machines; with an id, pair with that machine
   daemon [--foreground]        start the daemon; --foreground stays attached, verbose, no telegram
   install [--uninstall]        launchd user agent + \`pai\` on PATH
   update [--check] [--force]   pull, reinstall, rebuild, restart the daemon
@@ -185,6 +186,30 @@ try {
         data.length
           ? data.map((m: any) => `${m.name.padEnd(28)} ${m.type.padEnd(10)} ${m.description.slice(0, 80)}`).join("\n")
           : "(nothing saved)",
+      );
+      break;
+    }
+    // `pai sync` shows this machine's device id; `pai sync <id>` pairs it with the other one.
+    case "sync": {
+      const peer = positional[0];
+      if (peer) {
+        await fetch(`${base}/settings`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ PAI_SYNC: "1", PAI_SYNC_PEER: peer }),
+        });
+        await post("/restart", {});
+        console.log(`paired with ${peer}; the daemon is restarting to pick it up`);
+        break;
+      }
+      const data = await api("/sync");
+      out(data, () =>
+        [
+          `enabled   ${data.enabled ? "yes" : "no"}${data.running ? " (running)" : ""}`,
+          `device    ${data.deviceId || "(not started)"}`,
+          `peer      ${data.peer || "(none — run `pai sync <device id>` on both machines)"}`,
+          ...data.folders.map((f: any) => `${String(f.id).padEnd(18)} ${f.state ?? ""} ${f.needBytes ? `${f.needBytes} B behind` : ""}`),
+        ].join("\n"),
       );
       break;
     }

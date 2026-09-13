@@ -16,7 +16,11 @@ export const EDITABLE = [
   "PAI_IDLE_SHUTDOWN_MS",
   "PAI_TOKEN",
   "PAI_PUBLIC",
+  "PAI_DOMAIN",
+  "PAI_SYNC",
+  "PAI_SYNC_PEER",
   "PAI_NO_EDITOR",
+  "PAI_NO_TELEGRAM",
   "PAI_EDITOR_PORT",
   "PAI_EDITOR_BIND",
 ] as const;
@@ -40,7 +44,11 @@ export function effective() {
     PAI_IDLE_SHUTDOWN_MS: String(config.idleShutdownMs),
     PAI_TOKEN: config.token ? "set" : "",
     PAI_PUBLIC: config.public ? "1" : "0",
+    PAI_DOMAIN: config.domain,
+    PAI_SYNC: config.sync.enabled ? "1" : "0",
+    PAI_SYNC_PEER: config.sync.peer,
     PAI_NO_EDITOR: config.editor.enabled ? "0" : "1",
+    PAI_NO_TELEGRAM: config.telegram.enabled ? "0" : "1",
     PAI_EDITOR_PORT: String(config.editor.port),
     PAI_EDITOR_BIND: config.editor.host,
   } satisfies Record<Editable, string>;

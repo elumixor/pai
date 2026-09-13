@@ -1,4 +1,4 @@
-import { baseUrl, flush, outbox, send, setBaseUrl, setToken, settings, token } from "./api.ts";
+import { baseUrl, flush, outbox, send, setBaseUrl, setToken, settings, sync, token } from "./api.ts";
 import { clear, el } from "./dom.ts";
 
 /**
@@ -51,6 +51,31 @@ export async function settingsView(pane: HTMLElement) {
     ),
     rows,
   );
+
+  // Sync is what makes the files on this machine the same files the box's sessions use.
+  try {
+    const state = await sync();
+    rows.append(
+      el("label", {}, "sync"),
+      el(
+        "div.row-inline",
+        {},
+        el("span", {}, state.enabled ? (state.running ? "running" : "starting") : "off"),
+        el("span.dim", {}, state.folders.map((folder) => `${folder.id} ${folder.state ?? ""}`).join(" · ")),
+      ),
+      el("label", {}, "this device"),
+      el("input", { value: state.deviceId, readonly: true }),
+      el("label", {}, "paired with"),
+      el("input", { value: state.peer, placeholder: "the other machine's device id" }),
+    );
+    const peerInput = rows.lastElementChild as HTMLInputElement;
+    peerInput.addEventListener("change", async () => {
+      const { queued } = await send("/settings", { PAI_SYNC: "1", PAI_SYNC_PEER: peerInput.value.trim() }, "PATCH");
+      note.textContent = queued ? "queued" : "paired — restart the daemon to apply";
+    });
+  } catch {
+    /* an unreachable daemon has nothing to say about sync */
+  }
 
   let data;
   try {

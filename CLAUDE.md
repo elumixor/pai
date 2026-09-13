@@ -23,6 +23,7 @@ bun run src/clients/cli.ts cost                    # Hetzner spend per month (HC
 bun run src/clients/cli.ts memory [query]
 bun run src/clients/cli.ts update [--check] [--force]  # pull, reinstall, rebuild menubar, restart
 bun run desktop [--build|--install]                # the desktop app (dev, a .app/.dmg, or /Applications)
+bun run src/clients/cli.ts sync [device id]        # file sync between machines; with an id, pair
 ```
 
 `--json` on any command. Session ids in full or as the 6-char short form. After
@@ -60,7 +61,8 @@ from tasks are injected into the main conversation.
 - `src/domain/prompts.ts` — instructions appended to the Claude Code system prompt, per session kind.
 - `src/domain/catalog.ts` — coding projects under `~/dev`; `projects.json` overrides.
 - `src/api/` — `server.ts` (transport, the terminal websocket, the app), `routes.ts`, `events.ts` (SSE), `port.ts`, `app.ts` (`/app` dashboard, `/ui` client), `auth.ts` (`PAI_TOKEN`; loopback and the bundles are exempt).
-- `src/domain/publish.ts` — `PAI_PUBLIC=1` runs Tailscale Funnel, but only with a token set.
+- `src/domain/publish.ts` — `PAI_PUBLIC=1` runs Tailscale Funnel (`/` the client, `/editor` code-server), but only with a token set.
+- `src/domain/sync.ts` — Syncthing as a child of the daemon: `devRoot` and `~/.claude/projects` shared with `PAI_SYNC_PEER`. `pai sync [device id]`.
 - `src/clients/telegram.ts` — grammY frontend: routing by topic / reply, draft streaming, live cards, question keyboards, attachments.
 - `src/clients/tg-user.ts` — the user's own Telegram account (gramjs, `TELEGRAM_USER_SESSION`) as the `tg` MCP server.
 - `src/clients/cli.ts` — the CLI over the HTTP API.
@@ -72,7 +74,7 @@ from tasks are injected into the main conversation.
 - `editor/vscode/` — the VS Code extension: threads, projects and terminals over the API. `bun run editor` serves it without the daemon.
 - `desktop/` — the Tauri desktop app: `ui/` is the whole client (threads by project, transcript, files, terminal, settings) with an offline cache and an outbox; `src-tauri/` is an empty Rust shell. `bun run desktop`, `bun run desktop:build`.
 - `app/` — the web app (sessions, terminals) built to `app/dist` and served at `/app`.
-- `infra/` — `provision.ts` (Hetzner), `cloud-init.yaml`, `bootstrap.ts`, borg backup.
+- `infra/` — `provision.ts` (Hetzner), `cloud-init.yaml`, `bootstrap.ts`, borg backup, `gateway.ts` (Caddy for a domain of your own, needs root), `firewall.ts` (open ports on the Hetzner firewall).
 - `menubar/main.swift` — menu bar status app; compiled and loaded by `install` on macOS.
 - `workspace/` — the assistant's cwd; `CLAUDE.md` there is the persona, `inbox/` gets attachments.
 

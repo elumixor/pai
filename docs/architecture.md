@@ -36,6 +36,8 @@ editor ext ──┘      only)         ↔ cwd ↔ sessionId)
 | Desktop client | Tauri 2, the UI in plain TypeScript | A native webview around a ~100 KB bundle: it starts instantly, has only the six surfaces the work needs, and carries no extension ecosystem. The window is all it asks of Rust. |
 | Offline | cache every read, queue every write | The app is local files, so it opens without the box; reads fall back to the last answer and writes wait in an outbox. Settings stay the daemon's, so clients cannot disagree. |
 | Binding | the Tailscale address, automatically | The daemon finds its own 100.64/10 address and binds there, so other devices reach it with no tunnel and the internet still cannot. |
+| Two machines, one set of files | Syncthing | Bidirectional, offline-first and built for an intermittent peer; no VPN, no open port, and a reconnect resolves itself. The daemon supervises it like any other child. |
+| A domain of your own | Caddy, run as root by a script | Ports 80 and 443 need privileges the daemon deliberately does not have, so the gateway is installed once rather than managed by the daemon. |
 | Reaching it from outside | Tailscale Funnel, gated on a token | Funnel gives a hostname and a certificate without opening a port; the token is what makes publishing an RCE endpoint defensible. The daemon refuses to publish without one. |
 | Editor baseline | VS Code extension | Runs unmodified in desktop VS Code and in `code-server` in the browser. Webview panels mean no fork is needed for real UI. |
 | Editor rich tier | the existing Zed fork | Already has the status bar, hooks and sidebar work. It extends the same API; it does not replace it. |
