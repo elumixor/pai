@@ -53,6 +53,7 @@ export async function overview(pane: HTMLElement) {
       ["api", status.host.api],
       ["reachable at", status.host.baseUrl ?? "(not set)"],
       ["telegram", status.settings.telegram ? "on" : "off"],
+      ["editor", status.editor.enabled ? `${status.editor.url} ${status.editor.running ? "" : "(starting)"}` : "off"],
     ]),
     el("h2", {}, "Settings"),
     pairs([

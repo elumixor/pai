@@ -6,6 +6,7 @@ import { startTelegram } from "./clients/telegram.ts";
 import { killAll, noteInterrupted, reapIdle, relayTasksToMain, resumeInterrupted, warmUp } from "./domain/sessions.ts";
 import { closeAll as closeTerminals } from "./domain/terminals.ts";
 import { startBrowser } from "./domain/browser.ts";
+import { startEditor } from "./domain/editor.ts";
 import { bus } from "./core/bus.ts";
 import { disconnectUser } from "./clients/tg-user.ts";
 import { startAutoUpdate } from "./host/update.ts";
@@ -18,6 +19,7 @@ refresh();
 relayTasksToMain();
 const server = startServer();
 const stopBrowser = startBrowser();
+const stopEditor = startEditor();
 const bot = startTelegram();
 // Before warmUp: it revives the main session, whose freshly persisted state would
 // otherwise look like a turn that a restart cut off.
@@ -39,6 +41,7 @@ function shutdown(signal: string) {
   killAll();
   closeTerminals();
   stopBrowser();
+  stopEditor();
   void disconnectUser();
   void bot?.stop();
   void server.stop(true);

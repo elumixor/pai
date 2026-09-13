@@ -87,6 +87,8 @@ Cutover copies `.env`, `pai.db` and `workspace/memory`, then the GCP instance is
 ### Phase 4 — the clients
 
 The web app gains the session views and the terminal. The VS Code extension follows:
-`editor/vscode` is threads, projects and terminals as views over the same endpoints, with
-Remote-SSH opening a project where its sessions already run. The Telegram fork is last, and
-only once the protocol has been in use long enough to be stable.
+`editor/vscode` is threads, projects and terminals as views over the same endpoints. It is
+served by the daemon itself, through code-server on port 8788, so the editor is a URL on the
+tailnet rather than something installed on a laptop, and an update of the daemon is an update
+of the editor. The Telegram fork is last, and only once the protocol has been in use long
+enough to be stable.

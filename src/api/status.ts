@@ -2,6 +2,7 @@ import { $ } from "bun";
 import { config } from "../core/config.ts";
 import * as memory from "../domain/memory.ts";
 import { all as allProjects } from "../domain/catalog.ts";
+import { editorStatus } from "../domain/editor.ts";
 
 /** What the dashboard shows about the daemon itself: where it runs and how it is set up. */
 export async function status() {
@@ -16,6 +17,7 @@ export async function status() {
       baseUrl: config.baseUrl || undefined,
       api: `http://${config.host}:${config.port}`,
     },
+    editor: editorStatus(),
     settings: {
       workspace: config.workspace,
       devRoot: config.devRoot,

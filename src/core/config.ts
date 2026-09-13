@@ -33,6 +33,17 @@ export const config = {
   port: Number(env.PAI_PORT ?? 8787),
   host: env.PAI_BIND ?? "127.0.0.1",
 
+  /**
+   * The browser editor (code-server with the pai extension), started and supervised by the
+   * daemon on the same address as the API. PAI_NO_EDITOR=1 turns it off.
+   */
+  editor: {
+    enabled: !bool(env.PAI_NO_EDITOR),
+    port: Number(env.PAI_EDITOR_PORT ?? 8788),
+    host: env.PAI_EDITOR_BIND ?? env.PAI_BIND ?? "127.0.0.1",
+    password: env.PAI_EDITOR_PASSWORD ?? "",
+  },
+
   /** Shared Playwright MCP server, one per daemon. */
   browserPort: Number(env.PAI_BROWSER_PORT ?? 8931),
 

@@ -61,12 +61,13 @@ bun run daemon                     # foreground
 bun run src/clients/cli.ts install # service + `pai` command on PATH
 ```
 
-`bun run editor` serves VS Code in a browser with the pai extension installed: threads,
-projects and terminals from the daemon, next to the files. It runs on the box, not on the
-laptop — `bun run editor --install` leaves a `pai-editor` systemd service behind, bound to
-the same address as the API, so `http://pai:8788` opens the editor from any device on the
-tailnet with nothing running locally. `infra/bootstrap.ts` installs it with the daemon.
-Run it in the foreground (`bun run editor`) to serve it from the machine you are on.
+The daemon also serves an editor: code-server — VS Code in a browser, not a fork — with the
+pai extension in it, on port 8788 of the same address as the API. It is a child of the
+daemon, so it comes up with it, comes back if it dies, and is rebuilt from the checkout on
+every start; a new version needs nothing installed by hand. `http://pai:8788` over the
+tailnet is threads, projects and terminals next to the files they are about. `PAI_NO_EDITOR=1`
+turns it off, `PAI_EDITOR_PASSWORD` puts a password on it, and `bun run editor` serves it
+alone for working on the extension.
 
 The dashboard is the daemon's own web app at `<baseUrl>/app` — `http://pai:8787/app` over
 the tailnet, or through `ssh -L 8787:127.0.0.1:8787 pai`.

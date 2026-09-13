@@ -64,7 +64,8 @@ from tasks are injected into the main conversation.
 - `src/clients/cli.ts` — the CLI over the HTTP API.
 - `src/protocol/rich.ts` — metadata trailer: plain text for stock clients, structured for ours.
 - `src/host/` — `update.ts` and the launchd/systemd installers.
-- `editor/vscode/` — the VS Code extension (threads, projects, terminals over the API). `bun run editor` builds it, installs it into code-server and serves the browser editor on 8788, bound to `PAI_BIND` (`PAI_EDITOR_PORT`, `PAI_EDITOR_BIND`, `PAI_EDITOR_PASSWORD`); `--install` / `--uninstall` is the `pai-editor` systemd service on the box.
+- `src/domain/editor.ts` — code-server on 8788, a supervised child of the daemon: builds `editor/vscode`, copies it into the extensions directory and registers it. `PAI_NO_EDITOR`, `PAI_EDITOR_PORT`, `PAI_EDITOR_BIND`, `PAI_EDITOR_PASSWORD`.
+- `editor/vscode/` — the VS Code extension: threads, projects and terminals over the API. `bun run editor` serves it without the daemon.
 - `app/` — the web app (sessions, terminals) built to `app/dist` and served at `/app`.
 - `infra/` — `provision.ts` (Hetzner), `cloud-init.yaml`, `bootstrap.ts`, borg backup.
 - `menubar/main.swift` — menu bar status app; compiled and loaded by `install` on macOS.

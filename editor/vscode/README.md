@@ -20,16 +20,17 @@ Works in VS Code, Cursor, VSCodium and `code-server` in the browser.
 
 ## Run
 
-From the repo root, `bun run editor` does everything: builds the extension, packages it,
-installs code-server if it is missing, installs the extension into it and serves the editor.
-`bun run editor --install` makes that a systemd service on the box instead, which is how the
-editor is reachable in a browser over the tailnet without anything running locally.
+The daemon does this by itself (`src/domain/editor.ts`): on every start it builds the
+extension, copies it into code-server's extensions directory, registers it and serves the
+editor on port 8788. Nothing is installed by hand and an update of the daemon is an update of
+the extension.
 
-## Build
+`bun run editor` from the repo root does the same without the rest of the daemon, which is
+how to work on the extension; reload the editor window after a rebuild.
+
+For a desktop VS Code, point it at the box instead:
 
 ```sh
-bun install
-bun run build          # out/extension.js
-bun run package        # pai.vsix
+bunx @vscode/vsce package --no-dependencies -o pai.vsix
 code --install-extension pai.vsix
 ```

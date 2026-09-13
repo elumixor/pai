@@ -9,9 +9,20 @@
   "engines": {
     "vscode": "^1.90.0"
   },
-  "categories": ["Other"],
+  "categories": [
+    "Other"
+  ],
   "main": "./out/extension.js",
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true,
+      "description": "The extension only talks to the pai daemon over HTTP."
+    },
+    "virtualWorkspaces": true
+  },
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -124,17 +135,5 @@
         }
       }
     }
-  },
-  "scripts": {
-    "build": "bun run scripts/build.ts",
-    "package": "bunx @vscode/vsce package --no-dependencies -o pai.vsix"
-  },
-  "dependencies": {
-    "ws": "^8.18.0"
-  },
-  "devDependencies": {
-    "@types/bun": "^1.4.2",
-    "@types/vscode": "^1.90.0",
-    "@types/ws": "^8.5.12"
   }
 }

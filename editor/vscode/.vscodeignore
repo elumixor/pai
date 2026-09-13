@@ -1,5 +1,0 @@
-src/**
-scripts/**
-node_modules/**
-tsconfig.json
-.vscodeignore

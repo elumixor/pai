@@ -44,6 +44,7 @@ export interface Status {
   readonly uptime: number;
   readonly version: string;
   readonly host: { readonly hostname: string; readonly platform: string; readonly baseUrl?: string; readonly api: string };
+  readonly editor: { readonly enabled: boolean; readonly url?: string; readonly running: boolean };
   readonly settings: {
     readonly workspace: string;
     readonly devRoot: string;
