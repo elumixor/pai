@@ -87,6 +87,15 @@ export const config = {
     session: env.TELEGRAM_USER_SESSION ?? "",
   },
 
+  /**
+   * A shared secret every client must present once the daemon is reachable from anywhere but
+   * loopback and the tailnet. Without it `public` refuses to expose anything.
+   */
+  token: setting("PAI_TOKEN") ?? "",
+
+  /** Put the daemon on the public internet through Tailscale Funnel (https, no firewall change). */
+  public: bool(setting("PAI_PUBLIC")),
+
   /** Where this daemon is reachable on the tailnet; clients link back to it. */
   baseUrl: (setting("PAI_BASE_URL") ?? "").replace(/\/$/, ""),
 

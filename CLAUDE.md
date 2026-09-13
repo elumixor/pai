@@ -22,7 +22,7 @@ bun run src/clients/cli.ts projects
 bun run src/clients/cli.ts cost                    # Hetzner spend per month (HCLOUD_TOKEN in .env)
 bun run src/clients/cli.ts memory [query]
 bun run src/clients/cli.ts update [--check] [--force]  # pull, reinstall, rebuild menubar, restart
-bun run desktop [--build]                          # the desktop app (dev, or a .app/.dmg)
+bun run desktop [--build|--install]                # the desktop app (dev, a .app/.dmg, or /Applications)
 ```
 
 `--json` on any command. Session ids in full or as the 6-char short form. After
@@ -59,7 +59,8 @@ from tasks are injected into the main conversation.
 - `src/domain/browser.ts` — one Playwright MCP server per daemon over HTTP; sessions connect instead of spawning `npx`.
 - `src/domain/prompts.ts` — instructions appended to the Claude Code system prompt, per session kind.
 - `src/domain/catalog.ts` — coding projects under `~/dev`; `projects.json` overrides.
-- `src/api/` — `server.ts` (transport, the terminal websocket, the app), `routes.ts`, `events.ts` (SSE), `port.ts`, `app.ts`.
+- `src/api/` — `server.ts` (transport, the terminal websocket, the app), `routes.ts`, `events.ts` (SSE), `port.ts`, `app.ts` (`/app` dashboard, `/ui` client), `auth.ts` (`PAI_TOKEN`; loopback and the bundles are exempt).
+- `src/domain/publish.ts` — `PAI_PUBLIC=1` runs Tailscale Funnel, but only with a token set.
 - `src/clients/telegram.ts` — grammY frontend: routing by topic / reply, draft streaming, live cards, question keyboards, attachments.
 - `src/clients/tg-user.ts` — the user's own Telegram account (gramjs, `TELEGRAM_USER_SESSION`) as the `tg` MCP server.
 - `src/clients/cli.ts` — the CLI over the HTTP API.

@@ -7,6 +7,7 @@ import type { Entry, PaiEvent, ProjectSummary, SessionSummary, Status, TerminalS
  */
 
 const BASE_KEY = "pai.baseUrl";
+const TOKEN_KEY = "pai.token";
 const CACHE_PREFIX = "pai.cache:";
 const OUTBOX_KEY = "pai.outbox";
 
@@ -32,8 +33,30 @@ interface Queued {
   readonly at: number;
 }
 
-/** Where a daemon usually is: this machine, then the box on the tailnet. */
-const CANDIDATES = ["http://127.0.0.1:8787", "http://pai:8787"];
+/**
+ * Where a daemon usually is. Served by the daemon itself (`/ui`), it is simply this page's
+ * own origin; in the desktop app it is this machine, then the box on the tailnet.
+ */
+const servedByDaemon = location.protocol.startsWith("http") && location.pathname.startsWith("/ui");
+const CANDIDATES = [...(servedByDaemon ? [location.origin] : []), "http://127.0.0.1:8787", "http://pai:8787"];
+
+/** The shared secret, if the daemon asks for one. A link may carry it: `…/ui/?token=…`. */
+const fromLink = new URLSearchParams(location.search).get("token");
+if (fromLink) localStorage.setItem(TOKEN_KEY, fromLink);
+
+export const token = () => localStorage.getItem(TOKEN_KEY) ?? "";
+export const setToken = (value: string) => localStorage.setItem(TOKEN_KEY, value.trim());
+
+/** EventSource and WebSocket cannot carry a header, so those URLs carry the token instead. */
+export function withToken(url: string) {
+  if (!token()) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token())}`;
+}
+
+const headers = (extra?: Record<string, string>) => ({
+  ...extra,
+  ...(token() ? { authorization: `Bearer ${token()}` } : {}),
+});
 
 export const baseUrl = () => localStorage.getItem(BASE_KEY) ?? CANDIDATES[0]!;
 
@@ -42,7 +65,7 @@ export async function resolveBase() {
   if (localStorage.getItem(BASE_KEY)) return baseUrl();
   for (const candidate of CANDIDATES) {
     try {
-      const response = await fetch(`${candidate}/health`, { signal: AbortSignal.timeout(2500) });
+      const response = await fetch(`${candidate}/health`, { headers: headers(), signal: AbortSignal.timeout(2500) });
       if (response.ok) {
         setBaseUrl(candidate);
         return candidate;
@@ -89,7 +112,7 @@ const cache = {
 /** A GET that prefers the daemon and settles for the last answer it gave. */
 export async function get<T>(path: string): Promise<T> {
   try {
-    const response = await fetch(baseUrl() + path, { signal: AbortSignal.timeout(8000) });
+    const response = await fetch(baseUrl() + path, { headers: headers(), signal: AbortSignal.timeout(8000) });
     if (!response.ok) throw new Error(`${path}: ${response.status}`);
     const data = (await response.json()) as T;
     setOnline(true);
@@ -108,7 +131,7 @@ export async function send(path: string, body: unknown, method = "POST"): Promis
   try {
     const response = await fetch(baseUrl() + path, {
       method,
-      headers: { "content-type": "application/json" },
+      headers: headers({ "content-type": "application/json" }),
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(20000),
     });
@@ -136,7 +159,7 @@ export async function flush() {
     try {
       const response = await fetch(baseUrl() + item.path, {
         method: item.method,
-        headers: { "content-type": "application/json" },
+        headers: headers({ "content-type": "application/json" }),
         body: JSON.stringify(item.body),
         signal: AbortSignal.timeout(20000),
       });
@@ -167,7 +190,7 @@ export function follow(session: string | undefined, onEvent: (event: PaiEvent) =
 
   const connect = () => {
     if (stopped) return;
-    source = new EventSource(`${baseUrl()}/events?follow=1${session ? `&session=${session}` : ""}`);
+    source = new EventSource(withToken(`${baseUrl()}/events?follow=1${session ? `&session=${session}` : ""}`));
     source.addEventListener("message", (message) => {
       setOnline(true);
       onEvent(JSON.parse(message.data as string) as PaiEvent);

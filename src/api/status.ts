@@ -3,6 +3,7 @@ import { config } from "../core/config.ts";
 import * as memory from "../domain/memory.ts";
 import { all as allProjects } from "../domain/catalog.ts";
 import { editorStatus } from "../domain/editor.ts";
+import { publicUrl } from "../domain/publish.ts";
 
 /** What the dashboard shows about the daemon itself: where it runs and how it is set up. */
 export async function status() {
@@ -16,6 +17,7 @@ export async function status() {
       platform: process.platform,
       baseUrl: config.baseUrl || undefined,
       api: `http://${config.host}:${config.port}`,
+      publicUrl: publicUrl(),
     },
     editor: editorStatus(),
     settings: {
@@ -25,6 +27,8 @@ export async function status() {
       updateChannel: config.updateChannel,
       autoUpdate: config.autoUpdate,
       telegram: config.telegram.enabled,
+      tokenSet: Boolean(config.token),
+      published: config.public,
       idleShutdownMinutes: Math.round(config.idleShutdownMs / 60000),
     },
     counts: { projects: allProjects().length, memories: memory.all().length },

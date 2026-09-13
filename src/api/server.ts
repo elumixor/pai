@@ -5,6 +5,7 @@ import { logger } from "../core/log.ts";
 import { freePort } from "./port.ts";
 import { handle, json } from "./routes.ts";
 import { serveApp } from "./app.ts";
+import { authorized, rememberToken, tokenFromRequest, unauthorized } from "./auth.ts";
 
 const log = logger("server");
 
@@ -37,13 +38,17 @@ export function startServer() {
     port: config.port,
     idleTimeout: 0,
     fetch(req, bunServer): Response | Promise<Response> | undefined {
-      const { pathname } = new URL(req.url);
+      const url = new URL(req.url);
+      const { pathname } = url;
       if (req.method === "OPTIONS") return withCors(new Response(null, { status: 204 }));
-      if (pathname === "/") return Response.redirect("/app/", 302);
-      if (pathname === "/app" || pathname.startsWith("/app/")) return serveApp(pathname);
+      if (!authorized(req, url, bunServer.requestIP(req)?.address)) return withCors(unauthorized());
+      const remember = (response: Response) => rememberToken(response, tokenFromRequest(req, url));
+      if (pathname === "/") return Response.redirect("/ui/", 302);
+      if (pathname === "/app" || pathname.startsWith("/app/")) return serveApp(pathname).then(remember);
+      if (pathname === "/ui" || pathname.startsWith("/ui/")) return serveApp(pathname).then(remember);
 
       const terminalId = STREAM_PATH.exec(pathname)?.[1];
-      if (!terminalId) return handle(req).then(withCors);
+      if (!terminalId) return handle(req).then(withCors).then(remember);
       if (!getTerminal(terminalId)) return json({ error: "no such terminal" }, 404);
       // An upgraded request has no response; Bun takes the socket over from here.
       if (bunServer.upgrade(req, { data: { terminalId } })) return undefined;

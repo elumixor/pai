@@ -1,4 +1,4 @@
-import { baseUrl, flush, outbox, send, setBaseUrl, settings } from "./api.ts";
+import { baseUrl, flush, outbox, send, setBaseUrl, setToken, settings, token } from "./api.ts";
 import { clear, el } from "./dom.ts";
 
 /**
@@ -20,6 +20,16 @@ export async function settingsView(pane: HTMLElement) {
         value: baseUrl(),
         onchange: (event: Event) => {
           setBaseUrl((event.target as HTMLInputElement).value);
+          location.reload();
+        },
+      }),
+      el("label", {}, "token"),
+      el("input", {
+        value: token(),
+        type: "password",
+        placeholder: "only if the daemon asks for one",
+        onchange: (event: Event) => {
+          setToken((event.target as HTMLInputElement).value);
           location.reload();
         },
       }),

@@ -2,9 +2,10 @@
 /**
  * `bun run desktop` — the desktop app: builds the UI into `desktop/ui/dist`, then hands over
  * to the Tauri CLI. `--build` produces the bundle (a .app and a .dmg on macOS) instead of
- * running it; any other arguments are passed through.
+ * running it, `--install` puts that app in /Applications and opens it; any other arguments
+ * are passed through. The same bundle is what the daemon serves at `/ui`.
  */
-import { cp, mkdir } from "node:fs/promises";
+import { cp, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../src/core/config.ts";
 
@@ -29,13 +30,26 @@ export async function buildUi() {
   await cp(join(config.repo, "node_modules", "@xterm", "xterm", "css", "xterm.css"), join(dist, "xterm.css"));
 }
 
+async function install() {
+  const app = join(config.repo, "desktop", "src-tauri", "target", "release", "bundle", "macos", "pai.app");
+  const target = "/Applications/pai.app";
+  await rm(target, { recursive: true, force: true });
+  await cp(app, target, { recursive: true });
+  // A locally built app has no quarantine flag, but a rebuilt one keeps the old signature.
+  await Bun.spawn(["codesign", "--force", "--deep", "--sign", "-", target], { stdout: "ignore", stderr: "ignore" }).exited;
+  console.log(`installed ${target} — it is in Applications now`);
+}
+
 if (import.meta.main) {
   await buildUi();
   const args = process.argv.slice(2);
-  const build = args.includes("--build");
+  const wantsInstall = args.includes("--install");
+  const build = args.includes("--build") || wantsInstall;
   const proc = Bun.spawn(
-    ["bunx", "@tauri-apps/cli@latest", build ? "build" : "dev", ...args.filter((a) => a !== "--build")],
+    ["bunx", "@tauri-apps/cli@latest", build ? "build" : "dev", ...args.filter((a) => !a.startsWith("--build") && !a.startsWith("--install"))],
     { cwd: join(config.repo, "desktop"), stdout: "inherit", stderr: "inherit", stdin: "inherit" },
   );
-  process.exit(await proc.exited);
+  const code = await proc.exited;
+  if (code === 0 && wantsInstall) await install();
+  process.exit(code);
 }

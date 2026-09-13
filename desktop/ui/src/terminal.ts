@@ -1,6 +1,6 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import { baseUrl, get, send } from "./api.ts";
+import { baseUrl, get, send, token, withToken } from "./api.ts";
 import { clear, el } from "./dom.ts";
 import type { TerminalSummary } from "./types.ts";
 
@@ -13,7 +13,7 @@ export async function terminal(pane: HTMLElement, project?: string) {
   try {
     const response = await fetch(`${baseUrl()}/terminals`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...(token() ? { authorization: `Bearer ${token()}` } : {}) },
       body: JSON.stringify(project ? { project } : {}),
     });
     summary = (await response.json()) as TerminalSummary;
@@ -32,7 +32,7 @@ export async function terminal(pane: HTMLElement, project?: string) {
   term.open(host);
   fit.fit();
 
-  const socket = new WebSocket(`${baseUrl().replace(/^http/, "ws")}/terminals/${summary.id}/stream`);
+  const socket = new WebSocket(withToken(`${baseUrl().replace(/^http/, "ws")}/terminals/${summary.id}/stream`));
   socket.addEventListener("message", (event) => term.write(String(event.data)));
   term.onData((data) => socket.readyState === WebSocket.OPEN && socket.send(data));
   const resize = () => {

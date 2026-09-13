@@ -19,8 +19,12 @@ It opens offline: reads fall back to the last answer the daemon gave, and a mess
 while the box is unreachable waits in an outbox and goes out when it answers.
 
 ```sh
-bun run desktop          # build the UI, run the window
-bun run desktop:build    # a .app and a .dmg in desktop/src-tauri/target/release/bundle
+bun run desktop           # build the UI, run the window
+bun run desktop:build     # a .app and a .dmg in desktop/src-tauri/target/release/bundle
+bun run desktop:install   # the same app, in /Applications
 ```
+
+The daemon serves this same bundle at `/ui`, so the client is also a web page: open
+`http://pai:8787/ui/` — or the public address, with the token in the link.
 
 `ui/` is the whole client; `src-tauri/` is an empty Rust shell that opens a window.

@@ -61,7 +61,8 @@ bun run daemon                     # foreground
 bun run src/clients/cli.ts install # service + `pai` command on PATH
 ```
 
-The desktop app (`bun run desktop`) is the fast client: a Tauri window — a native webview
+The desktop app (`bun run desktop:install` puts it in `/Applications`, `bun run desktop` runs
+it from the checkout) is the fast client: a Tauri window — a native webview
 around a small bundle, no Electron — with six things in it and nothing else. Threads grouped
 by project in the sidebar, the conversation of a thread as `claude --resume` shows it, a file
 tree and a viewer for the selected project, a terminal on the box, and the daemon's settings.
@@ -78,9 +79,27 @@ turns it off, `PAI_EDITOR_PASSWORD` puts a password on it, and `bun run editor` 
 alone for working on the extension. It is the fallback for a machine with nothing installed;
 the desktop app is the one to reach for.
 
+The same client is a web page: the daemon serves it at `/ui`, so `http://pai:8787/ui/` is the
+whole thing in a browser with nothing installed.
+
 The API, the dashboard and the editor bind to this machine's Tailscale address when it has
 one, and to loopback when it does not — so a box on the tailnet is reachable from other
 devices without a tunnel and without being on the internet. `PAI_BIND` overrides it.
+
+## Reaching it from anywhere
+
+The API is remote code execution, so nothing leaves the tailnet without a token. Set
+`PAI_TOKEN` to a long random string, then pick one of:
+
+- `PAI_PUBLIC=1` — the daemon runs Tailscale Funnel for itself and logs the address:
+  `https://pai.<tailnet>.ts.net/ui/?token=…`, a real certificate, no firewall rule, no port
+  forwarding. Without a token it refuses to publish.
+- `PAI_BIND=0.0.0.0` and open the port on the host firewall — plain
+  `http://<public ip>:8787/ui/?token=…`, no certificate.
+
+The token travels in the link once, is kept in a cookie and in the client's own settings, and
+is required on every request that is not the client bundle itself. Requests from loopback (the
+CLI, the daemon's own children) are exempt.
 
 The dashboard is the daemon's own web app at `<baseUrl>/app` — `http://pai:8787/app` over
 the tailnet, or through `ssh -L 8787:127.0.0.1:8787 pai`.

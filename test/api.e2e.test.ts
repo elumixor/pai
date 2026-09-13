@@ -129,6 +129,11 @@ describe("api", () => {
     expect((await get("/health")).headers.get("access-control-allow-origin")).toBe("*");
   });
 
+  it("serves the client bundle at /ui", async () => {
+    const res = await get("/ui/");
+    expect([200, 503]).toContain(res.status);
+  });
+
   it("404s an unknown route", async () => {
     expect((await get("/nope")).status).toBe(404);
   });
@@ -141,10 +146,10 @@ describe("api", () => {
 });
 
 describe("the web app", () => {
-  it("redirects the root to the app", async () => {
+  it("redirects the root to the client", async () => {
     const res = await fetch(`${base}/`, { redirect: "manual" });
     expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toContain("/app/");
+    expect(res.headers.get("location")).toContain("/ui/");
   });
 
   it("serves the built page", async () => {

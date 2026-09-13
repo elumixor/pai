@@ -12,7 +12,9 @@
     "editor": "bun run scripts/editor.ts",
     "postinstall": "chmod +x node_modules/node-pty/prebuilds/*/spawn-helper 2>/dev/null || true",
     "desktop": "bun run scripts/desktop.ts",
-    "desktop:build": "bun run scripts/desktop.ts --build"
+    "desktop:build": "bun run scripts/desktop.ts --build",
+    "build:ui": "bun -e 'const {buildUi} = await import(\"./scripts/desktop.ts\"); await buildUi(); console.log(\"built desktop/ui/dist\")'",
+    "desktop:install": "bun run scripts/desktop.ts --install"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.263",
