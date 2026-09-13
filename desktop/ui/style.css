@@ -167,3 +167,5 @@ aside {
 .row-inline { display: flex; gap: 8px; align-items: center; }
 
 .empty { color: var(--dim); padding: 14px; }
+.notice { padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.notice p { margin: 0; }

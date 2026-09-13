@@ -88,8 +88,10 @@ devices without a tunnel and without being on the internet. `PAI_BIND` overrides
 
 ## Reaching it from anywhere
 
-The API is remote code execution, so nothing leaves the tailnet without a token. Set
-`PAI_TOKEN` to a long random string, then pick one of:
+There is no token by default and none is needed on the tailnet — it is a closed network and
+the daemon is bound to it. A token only exists for the moment the daemon is reachable from
+somewhere else: the API is remote code execution, so nothing leaves the tailnet unauthenticated.
+Set `PAI_TOKEN` to a long random string, then pick one of:
 
 - `PAI_PUBLIC=1` — the daemon runs Tailscale Funnel for itself and logs the address:
   `https://pai.<tailnet>.ts.net/ui/?token=…`, a real certificate, no firewall rule, no port

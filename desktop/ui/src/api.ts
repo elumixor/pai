@@ -40,6 +40,12 @@ interface Queued {
 const servedByDaemon = location.protocol.startsWith("http") && location.pathname.startsWith("/ui");
 const CANDIDATES = [...(servedByDaemon ? [location.origin] : []), "http://127.0.0.1:8787", "http://pai:8787"];
 
+/** In the desktop app, the address the rest of pai already agreed on (`~/.config/pai/menubar`). */
+async function configured() {
+  const tauri = (globalThis as { __TAURI__?: { core: { invoke(name: string): Promise<string | null> } } }).__TAURI__;
+  return tauri ? ((await tauri.core.invoke("configured_base_url").catch(() => null)) ?? undefined) : undefined;
+}
+
 /** The shared secret, if the daemon asks for one. A link may carry it: `…/ui/?token=…`. */
 const fromLink = new URLSearchParams(location.search).get("token");
 if (fromLink) localStorage.setItem(TOKEN_KEY, fromLink);
@@ -63,7 +69,7 @@ export const baseUrl = () => localStorage.getItem(BASE_KEY) ?? CANDIDATES[0]!;
 /** First run has no address to talk to, so the usual places are tried before anything renders. */
 export async function resolveBase() {
   if (localStorage.getItem(BASE_KEY)) return baseUrl();
-  for (const candidate of CANDIDATES) {
+  for (const candidate of [...((await configured()) ? [(await configured())!] : []), ...CANDIDATES]) {
     try {
       const response = await fetch(`${candidate}/health`, { headers: headers(), signal: AbortSignal.timeout(2500) });
       if (response.ok) {
@@ -109,6 +115,9 @@ const cache = {
   },
 };
 
+/** Why the last request failed, so the client can say something better than "offline". */
+export let lastError = "";
+
 /** A GET that prefers the daemon and settles for the last answer it gave. */
 export async function get<T>(path: string): Promise<T> {
   try {
@@ -119,6 +128,7 @@ export async function get<T>(path: string): Promise<T> {
     cache.write(path, data);
     return data;
   } catch (err) {
+    lastError = (err as Error).message;
     const cached = cache.read<T>(path);
     setOnline(false);
     if (cached !== undefined) return cached;

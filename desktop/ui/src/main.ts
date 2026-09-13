@@ -1,4 +1,4 @@
-import { baseUrl, flush, follow, isOnline, onConnection, outbox, resolveBase, send, status } from "./api.ts";
+import { baseUrl, flush, follow, isOnline, lastError, onConnection, outbox, resolveBase, send, status } from "./api.ts";
 import { clear, el } from "./dom.ts";
 import { viewer } from "./files.ts";
 import { settingsView } from "./settings.ts";
@@ -20,15 +20,7 @@ const show = async (open: () => Promise<(() => void) | void> | (() => void) | vo
 
 const refreshSidebar = () =>
   void sidebar(side, handlers).catch(() => {
-    clear(
-      side,
-      el(
-        "div.groups",
-        {},
-        el("p.empty", {}, `No daemon at ${baseUrl()}, and nothing cached yet.`),
-        el("p.empty", {}, el("button.action", { onclick: () => void show(() => settingsView(pane)) }, "Set its address")),
-      ),
-    );
+    clear(side, el("div.groups", {}, unreachable()));
   });
 
 const handlers = {
@@ -46,6 +38,22 @@ document.getElementById("new-task")!.addEventListener("click", async () => {
   await send("/task", { title, text });
   refreshSidebar();
 });
+
+/** Offline is usually one of two things: the wrong address, or a daemon that is not running. */
+function unreachable() {
+  return el(
+    "div.notice",
+    {},
+    el("p", {}, `Cannot reach ${baseUrl()}.`),
+    lastError ? el("p.dim", {}, lastError) : undefined,
+    el(
+      "div.row-inline",
+      {},
+      el("button.action", { onclick: refreshSidebar }, "Retry"),
+      el("button.action", { onclick: () => void show(() => settingsView(pane)) }, "Change address"),
+    ),
+  );
+}
 
 onConnection((online) => {
   const queued = outbox().length;
