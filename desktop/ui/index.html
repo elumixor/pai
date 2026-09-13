@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>pai</title>
+    <link rel="stylesheet" href="./xterm.css" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="top">
+      <span class="brand">pai</span>
+      <span id="state" class="state">…</span>
+      <span class="grow"></span>
+      <button id="new-task" class="action">New task</button>
+      <button id="refresh" class="action">Refresh</button>
+      <button id="settings" class="action">Settings</button>
+    </header>
+    <main>
+      <aside id="side"></aside>
+      <section id="pane"></section>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,187 @@
+import type { Entry, PaiEvent, ProjectSummary, SessionSummary, Status, TerminalSummary } from "./types.ts";
+
+/**
+ * The daemon, with the app's offline story in one place: every GET is cached, a failed GET
+ * falls back to that cache, and anything that writes is queued until the daemon answers
+ * again. The app itself is local files, so it opens whether or not the box is reachable.
+ */
+
+const BASE_KEY = "pai.baseUrl";
+const CACHE_PREFIX = "pai.cache:";
+const OUTBOX_KEY = "pai.outbox";
+
+export interface Transcript {
+  readonly role: "user" | "assistant";
+  readonly ts: string;
+  readonly text: string;
+  readonly thinking?: string;
+  readonly tools?: readonly { readonly name: string; readonly input?: string }[];
+  readonly meta?: boolean;
+}
+
+export interface Settings {
+  readonly editable: readonly string[];
+  readonly effective: Record<string, string>;
+  readonly overrides: Record<string, string>;
+}
+
+interface Queued {
+  readonly path: string;
+  readonly method: string;
+  readonly body: unknown;
+  readonly at: number;
+}
+
+/** Where a daemon usually is: this machine, then the box on the tailnet. */
+const CANDIDATES = ["http://127.0.0.1:8787", "http://pai:8787"];
+
+export const baseUrl = () => localStorage.getItem(BASE_KEY) ?? CANDIDATES[0]!;
+
+/** First run has no address to talk to, so the usual places are tried before anything renders. */
+export async function resolveBase() {
+  if (localStorage.getItem(BASE_KEY)) return baseUrl();
+  for (const candidate of CANDIDATES) {
+    try {
+      const response = await fetch(`${candidate}/health`, { signal: AbortSignal.timeout(2500) });
+      if (response.ok) {
+        setBaseUrl(candidate);
+        return candidate;
+      }
+    } catch {
+      /* try the next one */
+    }
+  }
+  return baseUrl();
+}
+export const setBaseUrl = (url: string) => localStorage.setItem(BASE_KEY, url.replace(/\/$/, ""));
+
+let online = true;
+const listeners = new Set<(online: boolean) => void>();
+
+export function onConnection(listener: (online: boolean) => void) {
+  listeners.add(listener);
+  listener(online);
+}
+
+function setOnline(next: boolean) {
+  if (next === online) return;
+  online = next;
+  for (const listener of listeners) listener(online);
+  if (next) void flush();
+}
+
+export const isOnline = () => online;
+
+const cache = {
+  read<T>(path: string): T | undefined {
+    const raw = localStorage.getItem(CACHE_PREFIX + path);
+    return raw ? (JSON.parse(raw) as T) : undefined;
+  },
+  write(path: string, value: unknown) {
+    try {
+      localStorage.setItem(CACHE_PREFIX + path, JSON.stringify(value));
+    } catch {
+      /* a full quota is not worth failing a render over */
+    }
+  },
+};
+
+/** A GET that prefers the daemon and settles for the last answer it gave. */
+export async function get<T>(path: string): Promise<T> {
+  try {
+    const response = await fetch(baseUrl() + path, { signal: AbortSignal.timeout(8000) });
+    if (!response.ok) throw new Error(`${path}: ${response.status}`);
+    const data = (await response.json()) as T;
+    setOnline(true);
+    cache.write(path, data);
+    return data;
+  } catch (err) {
+    const cached = cache.read<T>(path);
+    setOnline(false);
+    if (cached !== undefined) return cached;
+    throw err;
+  }
+}
+
+/** A write goes to the daemon, or into the outbox to be replayed when it answers again. */
+export async function send(path: string, body: unknown, method = "POST"): Promise<{ queued: boolean }> {
+  try {
+    const response = await fetch(baseUrl() + path, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!response.ok) throw new Error(`${path}: ${response.status}`);
+    setOnline(true);
+    return { queued: false };
+  } catch {
+    queue({ path, method, body, at: Date.now() });
+    setOnline(false);
+    return { queued: true };
+  }
+}
+
+export const outbox = (): Queued[] => JSON.parse(localStorage.getItem(OUTBOX_KEY) ?? "[]") as Queued[];
+
+function queue(item: Queued) {
+  localStorage.setItem(OUTBOX_KEY, JSON.stringify([...outbox(), item]));
+}
+
+/** Replays what was written while the daemon was away, oldest first, and stops at the first failure. */
+export async function flush() {
+  const pending = outbox();
+  while (pending.length) {
+    const item = pending[0]!;
+    try {
+      const response = await fetch(baseUrl() + item.path, {
+        method: item.method,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(item.body),
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!response.ok) throw new Error(String(response.status));
+    } catch {
+      break;
+    }
+    pending.shift();
+    localStorage.setItem(OUTBOX_KEY, JSON.stringify(pending));
+  }
+  return outbox().length;
+}
+
+export const tasks = () => get<{ live: SessionSummary[]; recent: SessionSummary[] }>("/tasks");
+export const projects = () => get<ProjectSummary[]>("/projects");
+export const status = () => get<Status>("/health");
+export const settings = () => get<Settings>("/settings");
+export const terminals = () => get<TerminalSummary[]>("/terminals");
+export const entries = (path: string) => get<Entry[]>(`/files?path=${encodeURIComponent(path)}`);
+export const file = (path: string) => get<{ path: string; content: string; truncated?: boolean }>(`/file?path=${encodeURIComponent(path)}`);
+export const transcript = (session: string, limit = 300) =>
+  get<Transcript[]>(`/transcript?session=${session}&limit=${limit}`);
+
+/** The daemon's event stream. Reconnects by itself; silence is simply treated as offline. */
+export function follow(session: string | undefined, onEvent: (event: PaiEvent) => void) {
+  let source: EventSource | undefined;
+  let stopped = false;
+
+  const connect = () => {
+    if (stopped) return;
+    source = new EventSource(`${baseUrl()}/events?follow=1${session ? `&session=${session}` : ""}`);
+    source.addEventListener("message", (message) => {
+      setOnline(true);
+      onEvent(JSON.parse(message.data as string) as PaiEvent);
+    });
+    source.addEventListener("error", () => {
+      setOnline(false);
+      source?.close();
+      setTimeout(connect, 4000);
+    });
+  };
+
+  connect();
+  return () => {
+    stopped = true;
+    source?.close();
+  };
+}

@@ -14,3 +14,6 @@ menubar/pai-menubar
 app/dist
 editor/vscode/out
 editor/vscode/*.vsix
+desktop/ui/dist
+desktop/src-tauri/target
+desktop/src-tauri/gen

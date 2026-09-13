@@ -61,13 +61,26 @@ bun run daemon                     # foreground
 bun run src/clients/cli.ts install # service + `pai` command on PATH
 ```
 
+The desktop app (`bun run desktop`) is the fast client: a Tauri window — a native webview
+around a small bundle, no Electron — with six things in it and nothing else. Threads grouped
+by project in the sidebar, the conversation of a thread as `claude --resume` shows it, a file
+tree and a viewer for the selected project, a terminal on the box, and the daemon's settings.
+It opens offline: every read is cached, and a message written with the box unreachable waits
+in an outbox and is sent when it answers. Settings live on the daemon, so every client agrees
+on them.
+
 The daemon also serves an editor: code-server — VS Code in a browser, not a fork — with the
 pai extension in it, on port 8788 of the same address as the API. It is a child of the
 daemon, so it comes up with it, comes back if it dies, and is rebuilt from the checkout on
 every start; a new version needs nothing installed by hand. `http://pai:8788` over the
 tailnet is threads, projects and terminals next to the files they are about. `PAI_NO_EDITOR=1`
 turns it off, `PAI_EDITOR_PASSWORD` puts a password on it, and `bun run editor` serves it
-alone for working on the extension.
+alone for working on the extension. It is the fallback for a machine with nothing installed;
+the desktop app is the one to reach for.
+
+The API, the dashboard and the editor bind to this machine's Tailscale address when it has
+one, and to loopback when it does not — so a box on the tailnet is reachable from other
+devices without a tunnel and without being on the internet. `PAI_BIND` overrides it.
 
 The dashboard is the daemon's own web app at `<baseUrl>/app` — `http://pai:8787/app` over
 the tailnet, or through `ssh -L 8787:127.0.0.1:8787 pai`.

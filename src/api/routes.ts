@@ -10,6 +10,8 @@ import { events } from "./events.ts";
 import { messagePage } from "./message.ts";
 import { status } from "./status.ts";
 import * as files from "../domain/files.ts";
+import * as settings from "../domain/settings.ts";
+import { transcript } from "../domain/transcript.ts";
 import { cost as hostingCost } from "../domain/hetzner.ts";
 
 const log = logger("api");
@@ -41,6 +43,23 @@ export async function handle(req: Request): Promise<Response> {
     if (path === "/file") return json(await files.read(url.searchParams.get("path") ?? ""));
 
     if (path === "/roots") return json(files.roots());
+
+    // A thread's conversation as it is on disk, which is what `claude --resume` shows.
+    if (path === "/transcript") {
+      const raw = url.searchParams.get("session") ?? "main";
+      const session = raw === "main" ? sessions.main() : sessions.find(raw);
+      const id = session?.id ?? sessions.resolveId(raw) ?? raw;
+      const limit = Number(url.searchParams.get("limit") ?? 200);
+      return json(await transcript(id, session?.cwd, limit));
+    }
+
+    if (path === "/settings" && req.method === "PATCH") {
+      const changes = await body<Record<string, unknown>>(req);
+      return json(await settings.write(changes));
+    }
+
+    if (path === "/settings")
+      return json({ editable: settings.EDITABLE, effective: settings.effective(), overrides: await settings.current() });
 
     if (path === "/docs") return json(files.documents());
 

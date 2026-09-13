@@ -33,6 +33,9 @@ editor ext ──┘      only)         ↔ cwd ↔ sessionId)
 | Linux CI | GitHub-hosted | Self-hosted runners would steal CPU from the sessions the box exists for. |
 | Release flow | tag push, host pulls | `PAI_UPDATE_CHANNEL=tag`; nothing reaches into the host, so no deploy key is handed to CI. |
 | Terminals | in the API | A PTY over WebSocket, rendered by xterm.js. This is how software gets installed on the box without SSH. |
+| Desktop client | Tauri 2, the UI in plain TypeScript | A native webview around a ~100 KB bundle: it starts instantly, has only the six surfaces the work needs, and carries no extension ecosystem. The window is all it asks of Rust. |
+| Offline | cache every read, queue every write | The app is local files, so it opens without the box; reads fall back to the last answer and writes wait in an outbox. Settings stay the daemon's, so clients cannot disagree. |
+| Binding | the Tailscale address, automatically | The daemon finds its own 100.64/10 address and binds there, so other devices reach it with no tunnel and the internet still cannot. |
 | Editor baseline | VS Code extension | Runs unmodified in desktop VS Code and in `code-server` in the browser. Webview panels mean no fork is needed for real UI. |
 | Editor rich tier | the existing Zed fork | Already has the status bar, hooks and sidebar work. It extends the same API; it does not replace it. |
 | Telegram baseline | stock Bot API | Everything the mockups showed — project chips, status lines, separators — is bold text, edited messages and glyphs. |
@@ -90,5 +93,9 @@ The web app gains the session views and the terminal. The VS Code extension foll
 `editor/vscode` is threads, projects and terminals as views over the same endpoints. It is
 served by the daemon itself, through code-server on port 8788, so the editor is a URL on the
 tailnet rather than something installed on a laptop, and an update of the daemon is an update
-of the editor. The Telegram fork is last, and only once the protocol has been in use long
-enough to be stable.
+of the editor — the fallback surface for a machine with nothing installed.
+
+The desktop app (`desktop/`) is the client the work actually happens in: a Tauri window over
+the same API, with threads grouped by project, a thread's conversation from its transcript, a
+file tree and viewer, a terminal and the daemon's settings. The Telegram fork is last, and
+only once the protocol has been in use long enough to be stable.

@@ -132,6 +132,7 @@ export interface SessionRow {
   kind: SessionKind;
   title: string;
   project: string | null;
+  cwd: string | null;
   threadId: number | null;
   state: string;
   startedAt: number;
@@ -154,6 +155,7 @@ export function recent(limit = 20, kind?: SessionKind): SessionRow[] {
     kind: r.kind,
     title: r.title,
     project: r.project,
+    cwd: r.cwd,
     threadId: r.thread_id,
     state: live.get(r.session_id)?.state ?? "detached",
     startedAt: r.started_at,

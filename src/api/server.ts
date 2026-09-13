@@ -15,6 +15,21 @@ interface TerminalSocket {
   unsubscribe?: () => void;
 }
 
+/**
+ * The desktop app runs from its own origin (`tauri://localhost`), so the API has to say that
+ * a different origin may read it. The tailnet is the boundary; there is no cookie to steal.
+ */
+const CORS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
+  "access-control-allow-headers": "content-type",
+};
+
+function withCors(response: Response) {
+  for (const [name, value] of Object.entries(CORS)) response.headers.set(name, value);
+  return response;
+}
+
 export function startServer() {
   freePort(config.port);
   const server = Bun.serve<TerminalSocket, string>({
@@ -23,11 +38,12 @@ export function startServer() {
     idleTimeout: 0,
     fetch(req, bunServer): Response | Promise<Response> | undefined {
       const { pathname } = new URL(req.url);
+      if (req.method === "OPTIONS") return withCors(new Response(null, { status: 204 }));
       if (pathname === "/") return Response.redirect("/app/", 302);
       if (pathname === "/app" || pathname.startsWith("/app/")) return serveApp(pathname);
 
       const terminalId = STREAM_PATH.exec(pathname)?.[1];
-      if (!terminalId) return handle(req);
+      if (!terminalId) return handle(req).then(withCors);
       if (!getTerminal(terminalId)) return json({ error: "no such terminal" }, 404);
       // An upgraded request has no response; Bun takes the socket over from here.
       if (bunServer.upgrade(req, { data: { terminalId } })) return undefined;

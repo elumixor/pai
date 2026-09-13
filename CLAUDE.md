@@ -22,6 +22,7 @@ bun run src/clients/cli.ts projects
 bun run src/clients/cli.ts cost                    # Hetzner spend per month (HCLOUD_TOKEN in .env)
 bun run src/clients/cli.ts memory [query]
 bun run src/clients/cli.ts update [--check] [--force]  # pull, reinstall, rebuild menubar, restart
+bun run desktop [--build]                          # the desktop app (dev, or a .app/.dmg)
 ```
 
 `--json` on any command. Session ids in full or as the 6-char short form. After
@@ -62,10 +63,13 @@ from tasks are injected into the main conversation.
 - `src/clients/telegram.ts` — grammY frontend: routing by topic / reply, draft streaming, live cards, question keyboards, attachments.
 - `src/clients/tg-user.ts` — the user's own Telegram account (gramjs, `TELEGRAM_USER_SESSION`) as the `tg` MCP server.
 - `src/clients/cli.ts` — the CLI over the HTTP API.
+- `src/domain/transcript.ts` — a thread's conversation read from `~/.claude/projects` (`GET /transcript`).
+- `src/domain/settings.ts` — the editable settings in `data/config.json`, merged over the environment at import (`GET`/`PATCH /settings`; a change needs a restart).
 - `src/protocol/rich.ts` — metadata trailer: plain text for stock clients, structured for ours.
 - `src/host/` — `update.ts` and the launchd/systemd installers.
 - `src/domain/editor.ts` — code-server on 8788, a supervised child of the daemon: builds `editor/vscode`, copies it into the extensions directory and registers it. `PAI_NO_EDITOR`, `PAI_EDITOR_PORT`, `PAI_EDITOR_BIND`, `PAI_EDITOR_PASSWORD`.
 - `editor/vscode/` — the VS Code extension: threads, projects and terminals over the API. `bun run editor` serves it without the daemon.
+- `desktop/` — the Tauri desktop app: `ui/` is the whole client (threads by project, transcript, files, terminal, settings) with an offline cache and an outbox; `src-tauri/` is an empty Rust shell. `bun run desktop`, `bun run desktop:build`.
 - `app/` — the web app (sessions, terminals) built to `app/dist` and served at `/app`.
 - `infra/` — `provision.ts` (Hetzner), `cloud-init.yaml`, `bootstrap.ts`, borg backup.
 - `menubar/main.swift` — menu bar status app; compiled and loaded by `install` on macOS.

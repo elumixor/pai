@@ -9,6 +9,9 @@ const scratch = mkdtempSync(join(tmpdir(), "pai-e2e-"));
 process.env.PAI_DB = join(scratch, "pai.db");
 process.env.PAI_PORT = "8899";
 process.env.PAI_NO_TELEGRAM = "1";
+process.env.PAI_NO_EDITOR = "1";
+process.env.PAI_CONFIG = join(scratch, "config.json");
+process.env.PAI_CLAUDE_PROJECTS = join(scratch, "claude-projects");
 
 const { startServer } = await import("../src/api/server.ts");
 const { closeAll } = await import("../src/domain/terminals.ts");
@@ -85,6 +88,45 @@ describe("api", () => {
     const res = await get("/projects");
     expect(res.status).toBe(200);
     expect(Array.isArray(await res.json())).toBe(true);
+  });
+
+  it("reads and writes the editable settings", async () => {
+    const before = (await (await get("/settings")).json()) as {
+      editable: string[];
+      effective: Record<string, string>;
+      overrides: Record<string, string>;
+    };
+    expect(before.editable).toContain("PAI_MAIN_MODEL");
+    expect(before.effective.PAI_MAIN_MODEL).toBeTruthy();
+
+    const patch = await fetch(`${base}/settings`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ PAI_MAIN_MODEL: "opus" }),
+    });
+    expect(((await patch.json()) as { overrides: Record<string, string> }).overrides.PAI_MAIN_MODEL).toBe("opus");
+
+    const after = (await (await get("/settings")).json()) as { overrides: Record<string, string> };
+    expect(after.overrides.PAI_MAIN_MODEL).toBe("opus");
+
+    const refused = await fetch(`${base}/settings`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ PATH: "/tmp" }),
+    });
+    expect(refused.status).toBe(500);
+  });
+
+  it("answers with an empty transcript for a session it has never seen", async () => {
+    const messages = (await (await get("/transcript?session=nosuch")).json()) as unknown[];
+    expect(messages).toEqual([]);
+  });
+
+  it("allows another origin to read it", async () => {
+    const preflight = await fetch(`${base}/health`, { method: "OPTIONS" });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
+    expect((await get("/health")).headers.get("access-control-allow-origin")).toBe("*");
   });
 
   it("404s an unknown route", async () => {
