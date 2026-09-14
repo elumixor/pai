@@ -3,7 +3,7 @@ import { config } from "../core/config.ts";
 import * as memory from "../domain/memory.ts";
 import { all as allProjects } from "../domain/catalog.ts";
 import { editorStatus } from "../domain/editor.ts";
-import { publicUrl } from "../domain/publish.ts";
+import { publicStatus, publicUrl } from "../domain/publish.ts";
 import { syncStatus } from "../domain/sync.ts";
 
 /** What the dashboard shows about the daemon itself: where it runs and how it is set up. */
@@ -21,6 +21,7 @@ export async function status() {
       publicUrl: publicUrl(),
     },
     editor: editorStatus(),
+    public: publicStatus(),
     sync: syncStatus(),
     settings: {
       workspace: config.workspace,

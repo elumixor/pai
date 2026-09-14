@@ -12,8 +12,8 @@ reimplements what the API already does does not get built.
 ```
 Telegram   ──┐
 web app    ──┼──►  pai API  ──►  session manager  ──►  Claude Agent SDK
-CLI        ──┤     (tailnet      (thread ↔ project      (resume, permissions)
-editor ext ──┘      only)         ↔ cwd ↔ sessionId)
+CLI        ──┤     (token        (thread ↔ project      (resume, permissions)
+editor ext ──┘      gated)        ↔ cwd ↔ sessionId)
                                         │
                                    ~/dev/**  ── git ──►  GitHub
                                         │
@@ -26,8 +26,7 @@ editor ext ──┘      only)         ↔ cwd ↔ sessionId)
 | --- | --- | --- |
 | Host | Hetzner CX43 | 8 vCPU / 16 GB / 160 GB for ~€12/mo, ~10 ms from Prague. The GCP e2-micro it replaces has 0.95 GB and already swaps. |
 | GCP | dropped | Free-tier e2-micro is the only cheap shape and it is too small; anything adequate costs several times Hetzner. |
-| Remote access | Tailscale | `tailscale ssh`, port 22 closed, the API bound to the tailnet interface. Nothing public. |
-| Ingress for the web app | Tailscale, not a public tunnel | The API is remote code execution by design. It gets an identity boundary, not a URL. |
+| Remote access | one public https address, token-gated | Nothing else to install on a phone or a laptop. The daemon runs Caddy for itself and refuses to publish without a token; Tailscale remains an option, not a requirement. |
 | Terraform | after the box works | `cloud-init` plus a snapshot covers a single host. Terraform earns its place at several resources. |
 | Backups | borg → Hetzner Storage Box | `pai.db`, `workspace/memory`, and project checkouts live on one disk today. |
 | Linux CI | GitHub-hosted | Self-hosted runners would steal CPU from the sessions the box exists for. |
@@ -37,8 +36,7 @@ editor ext ──┘      only)         ↔ cwd ↔ sessionId)
 | Offline | cache every read, queue every write | The app is local files, so it opens without the box; reads fall back to the last answer and writes wait in an outbox. Settings stay the daemon's, so clients cannot disagree. |
 | Binding | the Tailscale address, automatically | The daemon finds its own 100.64/10 address and binds there, so other devices reach it with no tunnel and the internet still cannot. |
 | Two machines, one set of files | Syncthing | Bidirectional, offline-first and built for an intermittent peer; no VPN, no open port, and a reconnect resolves itself. The daemon supervises it like any other child. |
-| A domain of your own | Caddy, run as root by a script | Ports 80 and 443 need privileges the daemon deliberately does not have, so the gateway is installed once rather than managed by the daemon. |
-| Reaching it from outside | Tailscale Funnel, gated on a token | Funnel gives a hostname and a certificate without opening a port; the token is what makes publishing an RCE endpoint defensible. The daemon refuses to publish without one. |
+| Reaching it from outside | Caddy as a child of the daemon, `<ip>.sslip.io` or a domain | A certificate with no DNS to own, ports 80/443 through one `setcap`, the Hetzner firewall opened by the daemon. The token is what makes publishing an RCE endpoint defensible; the daemon refuses without one. |
 | Editor baseline | VS Code extension | Runs unmodified in desktop VS Code and in `code-server` in the browser. Webview panels mean no fork is needed for real UI. |
 | Editor rich tier | the existing Zed fork | Already has the status bar, hooks and sidebar work. It extends the same API; it does not replace it. |
 | Telegram baseline | stock Bot API | Everything the mockups showed — project chips, status lines, separators — is bold text, edited messages and glyphs. |

@@ -82,10 +82,6 @@ the desktop app is the one to reach for.
 The same client is a web page: the daemon serves it at `/ui`, so `http://pai:8787/ui/` is the
 whole thing in a browser with nothing installed.
 
-The API, the dashboard and the editor bind to this machine's Tailscale address when it has
-one, and to loopback when it does not — so a box on the tailnet is reachable from other
-devices without a tunnel and without being on the internet. `PAI_BIND` overrides it.
-
 ## The same files on two machines
 
 `PAI_SYNC=1` gives the daemon a Syncthing of its own and shares two folders with the other
@@ -108,27 +104,33 @@ keep working on a plane.
 
 ## Reaching it from anywhere
 
-There is no token by default and none is needed on the tailnet — it is a closed network and
-the daemon is bound to it. A token only exists for the moment the daemon is reachable from
-somewhere else: the API is remote code execution, so nothing leaves the tailnet unauthenticated.
-Set `PAI_TOKEN` to a long random string, then pick one of:
+Two settings, nothing installed on any other device:
 
-- `PAI_PUBLIC=1` — the daemon runs Tailscale Funnel for itself: `https://pai.<tailnet>.ts.net/`
-  is the client, `…/editor` is code-server. A real certificate, no firewall rule, no port
-  forwarding. Without a token it refuses to publish.
-- A domain of your own: point an A record at the host, open 80 and 443
-  (`bun run infra/firewall.ts 80 443`), then `sudo PAI_DOMAIN=pai.example.com bun run
-  infra/gateway.ts` installs Caddy in front — `https://pai.example.com/` for the client and
-  `https://pai.example.com/editor` for the editor, with certificates renewed for you.
-- `PAI_BIND=0.0.0.0` and an open port — plain `http://<public ip>:8787/ui/?token=…`, no
-  certificate.
+```sh
+pai settings PAI_TOKEN=<a long random string> PAI_PUBLIC=1   # or the dashboard's settings page
+pai restart
+```
 
-The token travels in the link once, is kept in a cookie and in the client's own settings, and
-is required on every request that is not the client bundle itself. Requests from loopback (the
-CLI, the daemon's own children) are exempt.
+The daemon then runs Caddy as a child of its own: TLS on 80 and 443 with a real certificate,
+`/` the client and the API, `/editor` code-server. The hostname is `PAI_DOMAIN` when you have
+a domain pointed at the host, and `https://<public ip with dashes>.sslip.io` when you do not —
+sslip.io resolves any such name to the address inside it, so no DNS of yours is involved. On
+Hetzner the daemon opens 80 and 443 on the project firewall itself (`HCLOUD_TOKEN` in
+`.env`); elsewhere those two ports are yours to open. `pai status` prints the address.
 
-The dashboard is the daemon's own web app at `<baseUrl>/app` — `http://pai:8787/app` over
-the tailnet, or through `ssh -L 8787:127.0.0.1:8787 pai`.
+The token is what makes this defensible: the API is remote code execution, so the daemon
+refuses to publish without one, and every request that is not the client bundle must carry
+it — `Authorization: Bearer`, `?token=` in a link (kept in a cookie from then on), or the
+client's own settings. The editor asks for the same token as its password. Requests from
+loopback are exempt, except those the proxy forwarded.
+
+Open `<address>/ui/?token=<token>` in any browser for the client, `<address>/editor` for VS
+Code, `<address>/app` for the dashboard. Write the address on the first line of
+`~/.config/pai/menubar` and the token on the second, and the menu bar app and the desktop
+app on that machine use them too.
+
+There is no token by default and none is needed on a tailnet: the daemon binds its
+Tailscale address when it has one, and loopback when it does not (`PAI_BIND` overrides it).
 
 Then message the bot. `/new <title>` starts a task by hand; anything else is plain
 language. Enable topics for the bot in @BotFather (Bot Settings → Threads Settings →

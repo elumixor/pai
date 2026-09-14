@@ -16,13 +16,16 @@ struct Tasks: Decodable { let live: [Task]; let recent: [Task] }
 struct HealthHost: Decodable { let hostname: String; let baseUrl: String? }
 struct Health: Decodable { let ok: Bool; let version: String?; let host: HealthHost? }
 
-/// The daemon may run on this Mac or on the host over the tailnet. `~/.config/pai/menubar`
-/// holds the base URL when it is the latter; without it, the local daemon is assumed.
-let base: String = {
+/// The daemon may run on this Mac or on a host elsewhere. `~/.config/pai/menubar` holds the
+/// base URL on its first line when it is the latter, and the token on a second line when the
+/// daemon asks for one; without the file, the local daemon is assumed.
+let configured: [String] = {
     let file = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/pai/menubar")
-    let configured = (try? String(contentsOf: file, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
-    return configured?.isEmpty == false ? configured! : "http://127.0.0.1:8787"
+    let text = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
+    return text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
 }()
+let base: String = configured.first.map { $0.hasSuffix("/") ? String($0.dropLast()) : $0 } ?? "http://127.0.0.1:8787"
+let token: String = configured.count > 1 ? configured[1] : ""
 
 /// lucide.dev cake-slice (ISC), drawn as a template image so the menu bar tints it.
 let cakeSVG = """
@@ -60,6 +63,7 @@ final class App: NSObject, NSApplicationDelegate {
     func get<T: Decodable>(_ path: String, _ type: T.Type, _ done: @escaping (T?) -> Void) {
         var req = URLRequest(url: URL(string: base + path)!)
         req.timeoutInterval = 2
+        if !token.isEmpty { req.setValue("Bearer " + token, forHTTPHeaderField: "Authorization") }
         URLSession.shared.dataTask(with: req) { data, _, _ in
             let value = data.flatMap { try? JSONDecoder().decode(T.self, from: $0) }
             DispatchQueue.main.async { done(value) }
@@ -145,6 +149,7 @@ final class App: NSObject, NSApplicationDelegate {
     /// Works wherever the daemon runs: it exits, and launchd or systemd brings it back.
     @objc func restart() {
         var req = URLRequest(url: URL(string: base + "/restart")!)
+        if !token.isEmpty { req.setValue("Bearer " + token, forHTTPHeaderField: "Authorization") }
         req.httpMethod = "POST"
         req.timeoutInterval = 3
         URLSession.shared.dataTask(with: req).resume()

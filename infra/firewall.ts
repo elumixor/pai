@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 /**
  * Opens ports on the Hetzner firewall in front of the host — the one that has no inbound
- * rules at all, which is why a public address times out. Only for a host meant to answer on
- * a domain of its own; Funnel needs none of this.
+ * rules at all, which is why a public address times out. A published daemon opens 80 and
+ * 443 for itself; this is for anything else, and for closing them again.
  *
  *   bun run infra/firewall.ts 80 443        # open
  *   bun run infra/firewall.ts --close       # back to nothing inbound

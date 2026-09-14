@@ -62,7 +62,8 @@ export const config = {
     enabled: !bool(setting("PAI_NO_EDITOR")),
     port: Number(setting("PAI_EDITOR_PORT") ?? 8788),
     host: setting("PAI_EDITOR_BIND") ?? setting("PAI_BIND") ?? tailnetAddress() ?? "127.0.0.1",
-    password: env.PAI_EDITOR_PASSWORD ?? "",
+    /** On a public daemon the editor is a shell in a browser, so it falls back to the token. */
+    password: env.PAI_EDITOR_PASSWORD ?? (bool(setting("PAI_PUBLIC")) ? (setting("PAI_TOKEN") ?? "") : ""),
   },
 
   /** Shared Playwright MCP server, one per daemon. */
@@ -89,14 +90,14 @@ export const config = {
 
   /**
    * A shared secret every client must present once the daemon is reachable from anywhere but
-   * loopback and the tailnet. Without it `public` refuses to expose anything.
+   * loopback. Without it `public` refuses to expose anything.
    */
   token: setting("PAI_TOKEN") ?? "",
 
-  /** Put the daemon on the public internet through Tailscale Funnel (https, no firewall change). */
+  /** Put the daemon on the public internet: Caddy on 80/443, run by the daemon, https included. */
   public: bool(setting("PAI_PUBLIC")),
 
-  /** A domain of your own, served by Caddy instead of Funnel. Empty means the tailnet name. */
+  /** A domain of your own pointing at this host. Empty means `<public ip>.sslip.io`. */
   domain: setting("PAI_DOMAIN") ?? "",
 
   /**

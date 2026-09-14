@@ -19,8 +19,11 @@ function flag(name: string): string | undefined {
   return i >= 0 ? args[i + 1] : undefined;
 }
 
+// The daemon may be bound to an address other than loopback, where its own token applies.
+const auth: Record<string, string> = config.token ? { authorization: `Bearer ${config.token}` } : {};
+
 async function api(path: string, init?: RequestInit) {
-  const res = await fetch(base + path, init);
+  const res = await fetch(base + path, { ...init, headers: { ...auth, ...(init?.headers as Record<string, string>) } });
   const text = await res.text();
   try {
     return JSON.parse(text) as any;
@@ -31,6 +34,8 @@ async function api(path: string, init?: RequestInit) {
 
 const post = (path: string, data: unknown) =>
   api(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) });
+const patch = (path: string, data: unknown) =>
+  api(path, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(data) });
 
 function out(data: unknown, pretty?: () => string) {
   if (jsonOut || !pretty) console.log(JSON.stringify(data, null, 2));
@@ -81,6 +86,9 @@ const usage = `pai
   tail [id] [--raw]            follow the event stream
   events [id]                  recent events
   projects [--refresh]         coding projects as the assistant sees them
+  status                       version, address, public URL, editor, sync
+  settings [KEY=value …]       read or change the daemon's settings; a change needs a restart
+  restart                      restart the daemon
   cost                         what the host costs per month, priced from Hetzner
   memory [query]               what the assistant remembers; a query searches
   sync [device id]             file sync between machines; with an id, pair with that machine
@@ -193,11 +201,7 @@ try {
     case "sync": {
       const peer = positional[0];
       if (peer) {
-        await fetch(`${base}/settings`, {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ PAI_SYNC: "1", PAI_SYNC_PEER: peer }),
-        });
+        await patch("/settings", { PAI_SYNC: "1", PAI_SYNC_PEER: peer });
         await post("/restart", {});
         console.log(`paired with ${peer}; the daemon is restarting to pick it up`);
         break;
@@ -216,6 +220,42 @@ try {
     case "projects": {
       const data = await api(`/projects${args.includes("--refresh") ? "?refresh=1" : ""}`);
       out(data, () => data.map((p: any) => `${p.slug.padEnd(28)} ${p.summary.slice(0, 80)}`).join("\n"));
+      break;
+    }
+    case "status": {
+      const data = await api("/health");
+      out(data, () =>
+        [
+          `version   ${data.version}`,
+          `host      ${data.host.hostname} (${data.host.platform}), api ${data.host.api}`,
+          `public    ${data.public?.url ?? "(off)"}${data.public?.state && data.public.state !== "up" ? ` — ${data.public.state}${data.public.reason ? `: ${data.public.reason}` : ""}` : ""}`,
+          `editor    ${data.editor?.enabled ? `${data.editor.running ? "running" : "starting"} at ${data.editor.url}` : "off"}`,
+          `sync      ${data.sync?.enabled ? (data.sync.running ? "running" : "starting") : "off"}`,
+          `telegram  ${data.settings.telegram ? "on" : "off"}`,
+          `token     ${data.settings.tokenSet ? "set" : "none"}`,
+          `sessions  ${data.counts.projects} projects, ${data.counts.memories} memories`,
+        ].join("\n"),
+      );
+      break;
+    }
+    case "settings": {
+      const changes = Object.fromEntries(positional.filter((a) => a.includes("=")).map((a) => a.split(/=(.*)/s).slice(0, 2)));
+      if (Object.keys(changes).length) {
+        const data = await patch("/settings", changes);
+        out(data, () => `${Object.keys(changes).join(", ")} written; restart the daemon to apply (\`pai restart\`)`);
+        break;
+      }
+      const data = await api("/settings");
+      out(data, () =>
+        data.editable
+          .map((key: string) => `${key.padEnd(24)} ${data.effective[key] || "(unset)"}${key in data.overrides ? "  *" : ""}`)
+          .join("\n"),
+      );
+      break;
+    }
+    case "restart": {
+      const data = await post("/restart", {});
+      out(data, () => "restarting");
       break;
     }
     case "cost": {

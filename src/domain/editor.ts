@@ -105,13 +105,14 @@ async function settings() {
   const path = join(userDir, "User", "settings.json");
   await mkdir(join(path, ".."), { recursive: true });
   const current = existsSync(path) ? (JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>) : {};
-  const daemon = config.baseUrl || `http://127.0.0.1:${config.port}`;
+  const daemon = `http://${config.host}:${config.port}`;
   await writeFile(
     path,
     JSON.stringify(
       {
         ...current,
         "pai.baseUrl": daemon,
+        "pai.token": config.token,
         // The box runs the user's own code by design; a trust prompt would only disable extensions.
         "security.workspace.trust.enabled": false,
       },

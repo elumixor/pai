@@ -126,7 +126,12 @@
         "pai.baseUrl": {
           "type": "string",
           "default": "http://localhost:8787",
-          "description": "Base URL of the pai daemon (the tailnet address of the box)."
+          "description": "Base URL of the pai daemon."
+        },
+        "pai.token": {
+          "type": "string",
+          "default": "",
+          "description": "The daemon's PAI_TOKEN, when it has one."
         },
         "pai.sshHost": {
           "type": "string",

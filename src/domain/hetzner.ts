@@ -3,8 +3,11 @@ import { config } from "../core/config.ts";
 
 const API = "https://api.hetzner.cloud/v1";
 
-async function api<T>(path: string): Promise<T> {
-  const res = await fetch(`${API}${path}`, { headers: { authorization: `Bearer ${config.hcloudToken}` } });
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API}${path}`, {
+    ...init,
+    headers: { authorization: `Bearer ${config.hcloudToken}`, "content-type": "application/json" },
+  });
   if (!res.ok) throw new Error(`hetzner api ${res.status}: ${(await res.text()).slice(0, 400)}`);
   return (await res.json()) as T;
 }
@@ -127,4 +130,49 @@ export async function cost(): Promise<Cost> {
   }
 
   return { currency: pricing.currency, monthlyTotal: lines.reduce((sum, l) => sum + l.monthly, 0), lines };
+}
+
+interface Rule {
+  readonly direction: "in" | "out";
+  readonly protocol: string;
+  readonly port?: string;
+  readonly source_ips?: readonly string[];
+  readonly destination_ips?: readonly string[];
+  readonly description?: string | null;
+}
+
+/**
+ * Opens TCP ports to the world on the project's firewall, keeping every rule already there.
+ * Returns whether anything changed. The daemon uses it to publish itself on 80 and 443.
+ */
+export async function openInbound(ports: readonly number[]) {
+  requireToken();
+  const { firewalls } = await api<{ firewalls: { id: number; rules: Rule[] }[] }>("/firewalls");
+  const firewall = firewalls[0];
+  if (!firewall) throw new Error("this project has no firewall");
+  const open = (port: number) =>
+    firewall.rules.some(
+      (rule) => rule.direction === "in" && rule.protocol === "tcp" && rule.port === String(port) && rule.source_ips?.includes("0.0.0.0/0"),
+    );
+  const missing = ports.filter((port) => !open(port));
+  if (!missing.length) return false;
+  const rules: Rule[] = [
+    ...firewall.rules.map(({ direction, protocol, port, source_ips, destination_ips, description }) => ({
+      direction,
+      protocol,
+      port,
+      source_ips,
+      destination_ips,
+      description,
+    })),
+    ...missing.map((port) => ({
+      direction: "in" as const,
+      protocol: "tcp",
+      port: String(port),
+      source_ips: ["0.0.0.0/0", "::/0"],
+      description: `pai ${port}`,
+    })),
+  ];
+  await api(`/firewalls/${firewall.id}/actions/set_rules`, { method: "POST", body: JSON.stringify({ rules }) });
+  return true;
 }

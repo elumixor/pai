@@ -40,12 +40,18 @@ export function baseUrl() {
   return (vscode.workspace.getConfiguration("pai").get<string>("baseUrl") ?? "").replace(/\/$/, "");
 }
 
+/** The daemon's token, when it asks for one; the daemon writes it into the editor's settings. */
+const token = () => vscode.workspace.getConfiguration("pai").get<string>("token") ?? "";
+const headers = (extra?: Record<string, string>) => ({ ...extra, ...(token() ? { authorization: `Bearer ${token()}` } : {}) });
+
+/** A socket cannot carry a header, so its URL carries the token. */
 export function socketUrl(path: string) {
-  return `${baseUrl().replace(/^http/, "ws")}${path}`;
+  const url = `${baseUrl().replace(/^http/, "ws")}${path}`;
+  return token() ? `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token())}` : url;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${baseUrl()}${path}`, init);
+  const response = await fetch(`${baseUrl()}${path}`, { ...init, headers: headers(init?.headers as Record<string, string>) });
   if (!response.ok) throw new Error(`${path} → ${response.status} ${response.statusText}`);
   return (await response.json()) as T;
 }
@@ -66,7 +72,7 @@ export const history = (session: string) => get<PaiEvent[]>(`/events?session=${s
  */
 export async function* follow(session: string | undefined, signal: AbortSignal) {
   const query = session ? `?follow=1&session=${session}` : "?follow=1";
-  const response = await fetch(`${baseUrl()}/events${query}`, { signal });
+  const response = await fetch(`${baseUrl()}/events${query}`, { signal, headers: headers() });
   if (!response.body) return;
   const reader = response.body.getReader();
   const decoder = new TextDecoder();

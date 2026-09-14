@@ -42,6 +42,11 @@ describe("auth", () => {
     expect(authorized(req, url, "127.0.0.1")).toBe(true);
   });
 
+  it("does not exempt loopback for a request the daemon's own proxy forwarded", () => {
+    const { req, url } = request("/tasks", { headers: { "x-forwarded-for": "203.0.113.4" } });
+    expect(authorized(req, url, "127.0.0.1")).toBe(false);
+  });
+
   it("remembers a token that arrived in a link", () => {
     const { req, url } = request("/ui/?token=secret-token");
     const response = rememberToken(new Response("ok"), tokenFromRequest(req, url));

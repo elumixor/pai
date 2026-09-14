@@ -1,15 +1,15 @@
 # The host
 
-pai runs on one Hetzner Cloud server, reachable only over Tailscale.
+pai runs on one Hetzner Cloud server. It publishes itself on https; Tailscale is there for ssh.
 
 | | |
 | --- | --- |
 | Type | CX43 — 8 vCPU, 16 GB, 160 GB, €15.99/mo (Nuremberg) |
-| Address | `pai` on the tailnet, `100.70.170.72`; the public address exists but nothing may enter through it |
+| Address | `5.75.134.57`, published as `https://5-75-134-57.sslip.io` (client, API, `/editor`); `pai` / `100.70.170.72` on the tailnet for ssh |
 | Image | Ubuntu 24.04 |
-| Inbound | nothing; a Hetzner firewall with no rules, `tailscale ssh` for access |
+| Inbound | 80 and 443, opened by the daemon; `tailscale ssh` for a shell |
 | Service | `pai.service`, a systemd user unit with lingering enabled |
-| Browser editor | code-server with the pai extension, started by the daemon on the API's address, port 8788 |
+| Browser editor | code-server with the pai extension, started by the daemon, at `/editor` on the public address |
 | Updates | the host pulls the newest `v*` tag by itself (`PAI_UPDATE_CHANNEL=tag`) |
 | Backups | borg → Hetzner Storage Box, nightly |
 
@@ -63,7 +63,7 @@ HCLOUD_TOKEN=... bun run infra/provision.ts --delete
 
 ## Getting back in
 
-The firewall has no inbound rules, so Tailscale is the only way to the machine. Install it
+The firewall lets in only 80 and 443, so Tailscale is the only way to a shell. Install it
 on whatever you are holding and the host answers to `pai`. If Tailscale itself is what
 broke, open port 22 to your own address for as long as the repair takes:
 
@@ -90,8 +90,5 @@ outside it and have to come across by hand, or old conversations are lost:
 
 ## Notes
 
-- The daemon binds `127.0.0.1`. Reach the API and the web app through the tailnet with
-  `ssh -L 8787:127.0.0.1:8787 pai`, or bind it to the Tailscale interface when the web
-  app is ready to be used from a phone.
 - Whisper builds from source on first use; on this shape that is a few minutes once.
 - If Tailscale ever fails to come up, the Hetzner console is the way back in.

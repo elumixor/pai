@@ -40,10 +40,10 @@ interface Queued {
 const servedByDaemon = location.protocol.startsWith("http") && location.pathname.startsWith("/ui");
 const CANDIDATES = [...(servedByDaemon ? [location.origin] : []), "http://127.0.0.1:8787", "http://pai:8787"];
 
-/** In the desktop app, the address the rest of pai already agreed on (`~/.config/pai/menubar`). */
-async function configured() {
+/** In the desktop app, the address and token the rest of pai already agreed on (`~/.config/pai/menubar`). */
+async function configured(what: "configured_base_url" | "configured_token") {
   const tauri = (globalThis as { __TAURI__?: { core: { invoke(name: string): Promise<string | null> } } }).__TAURI__;
-  return tauri ? ((await tauri.core.invoke("configured_base_url").catch(() => null)) ?? undefined) : undefined;
+  return tauri ? ((await tauri.core.invoke(what).catch(() => null)) ?? undefined) : undefined;
 }
 
 /** The shared secret, if the daemon asks for one. A link may carry it: `…/ui/?token=…`. */
@@ -69,7 +69,12 @@ export const baseUrl = () => localStorage.getItem(BASE_KEY) ?? CANDIDATES[0]!;
 /** First run has no address to talk to, so the usual places are tried before anything renders. */
 export async function resolveBase() {
   if (localStorage.getItem(BASE_KEY)) return baseUrl();
-  for (const candidate of [...((await configured()) ? [(await configured())!] : []), ...CANDIDATES]) {
+  if (!token()) {
+    const known = await configured("configured_token");
+    if (known) setToken(known);
+  }
+  const preferred = await configured("configured_base_url");
+  for (const candidate of [...(preferred ? [preferred] : []), ...CANDIDATES]) {
     try {
       const response = await fetch(`${candidate}/health`, { headers: headers(), signal: AbortSignal.timeout(2500) });
       if (response.ok) {
@@ -157,7 +162,7 @@ export async function get<T>(path: string): Promise<T> {
 
 /** Everywhere a daemon might be, apart from the one that just failed. */
 async function alternatives() {
-  const configuredUrl = await configured();
+  const configuredUrl = await configured("configured_base_url");
   return [...(configuredUrl ? [configuredUrl] : []), ...CANDIDATES].filter((candidate) => candidate !== baseUrl());
 }
 
