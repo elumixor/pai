@@ -233,6 +233,7 @@ try {
           `sync      ${data.sync?.enabled ? (data.sync.running ? "running" : "starting") : "off"}`,
           `telegram  ${data.settings.telegram ? "on" : "off"}`,
           `token     ${data.settings.tokenSet ? "set" : "none"}`,
+          `google    ${data.settings.google ? `on, allowed: ${data.settings.google.join(", ") || "(nobody — set PAI_GOOGLE_ALLOWED)"}` : "off"}`,
           `sessions  ${data.counts.projects} projects, ${data.counts.memories} memories`,
         ].join("\n"),
       );

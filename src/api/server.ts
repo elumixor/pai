@@ -5,7 +5,8 @@ import { logger } from "../core/log.ts";
 import { freePort } from "./port.ts";
 import { handle, json } from "./routes.ts";
 import { serveApp } from "./app.ts";
-import { authorized, rememberToken, tokenFromRequest, unauthorized } from "./auth.ts";
+import { authorized, identified, isPage, rememberToken, tokenFromRequest, unauthorized } from "./auth.ts";
+import { googleConfigured, handleAuth, loginUrl, wantsHtml } from "./google.ts";
 
 const log = logger("server");
 
@@ -41,7 +42,13 @@ export function startServer() {
       const url = new URL(req.url);
       const { pathname } = url;
       if (req.method === "OPTIONS") return withCors(new Response(null, { status: 204 }));
-      if (!authorized(req, url, bunServer.requestIP(req)?.address)) return withCors(unauthorized());
+      if (pathname.startsWith("/auth/")) return handleAuth(req, url).then((response) => response ?? json({ error: "not found" }, 404));
+      const local = !req.headers.has("x-forwarded-for") && ["127.0.0.1", "::1"].includes(bunServer.requestIP(req)?.address ?? "");
+      if (!authorized(req, url, bunServer.requestIP(req)?.address) || (googleConfigured() && isPage(pathname) && !local && !identified(req, url))) {
+        // A person in a browser is sent to sign in; a program gets the 401 it can act on.
+        if (googleConfigured() && wantsHtml(req) && req.method === "GET") return Response.redirect(loginUrl(pathname + url.search), 302);
+        return withCors(unauthorized());
+      }
       const remember = (response: Response) => rememberToken(response, tokenFromRequest(req, url));
       if (pathname === "/") return Response.redirect("/ui/", 302);
       if (pathname === "/app" || pathname.startsWith("/app/")) return serveApp(pathname).then(remember);

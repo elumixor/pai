@@ -26,7 +26,7 @@ editor ext ──┘      gated)        ↔ cwd ↔ sessionId)
 | --- | --- | --- |
 | Host | Hetzner CX43 | 8 vCPU / 16 GB / 160 GB for ~€12/mo, ~10 ms from Prague. The GCP e2-micro it replaces has 0.95 GB and already swaps. |
 | GCP | dropped | Free-tier e2-micro is the only cheap shape and it is too small; anything adequate costs several times Hetzner. |
-| Remote access | one public https address, token-gated | Nothing else to install on a phone or a laptop. The daemon runs Caddy for itself and refuses to publish without a token; Tailscale remains an option, not a requirement. |
+| Remote access | one public https address; Google sign-in for people, a token for programs | Nothing else to install on a phone or a laptop. The daemon runs Caddy for itself and refuses to publish with neither; Tailscale remains an option, not a requirement. |
 | Terraform | after the box works | `cloud-init` plus a snapshot covers a single host. Terraform earns its place at several resources. |
 | Backups | borg → Hetzner Storage Box | `pai.db`, `workspace/memory`, and project checkouts live on one disk today. |
 | Linux CI | GitHub-hosted | Self-hosted runners would steal CPU from the sessions the box exists for. |

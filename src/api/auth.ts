@@ -1,32 +1,53 @@
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { config } from "../core/config.ts";
 
 /**
- * One shared token, checked on everything but the client bundle itself. It is what makes a
- * public URL safe to hand out: the API is remote code execution, so an unauthenticated
- * request must never reach it. Loopback is exempt — the CLI and the daemon's own children
- * talk to it that way — unless the request came through the reverse proxy.
+ * Who may talk to the daemon once it is reachable from anywhere but loopback. Two ways in:
+ *
+ * - A browser signs in with Google (`google.ts`) and carries a signed session cookie.
+ * - A program presents the shared token: `Authorization: Bearer`, `?token=`, or the cookie a
+ *   link left behind. The CLI, the menu bar, the desktop app and the editor extension do this.
+ *
+ * The API is remote code execution, so an unauthenticated request must never reach it.
+ * Loopback is exempt — the CLI and the daemon's own children talk to it that way — unless the
+ * request came through the daemon's own reverse proxy, which marks what it forwards.
  */
 
-const COOKIE = "pai_token";
+const TOKEN_COOKIE = "pai_token";
+const SESSION_COOKIE = "pai_session";
+const SESSION_DAYS = 30;
 
-/** Paths a browser must be able to load before it can present a token. */
-const PUBLIC_PATHS = [/^\/app(\/|$)/, /^\/ui(\/|$)/, /^\/m\//];
+/** Paths a browser must be able to load before it can present anything. */
+const PUBLIC_PATHS = [/^\/app(\/|$)/, /^\/ui(\/|$)/, /^\/m\//, /^\/auth\//];
+
+/** The pages themselves; with Google sign-in these send a stranger to sign in rather than render. */
+export const isPage = (pathname: string) => /^\/(ui|app)\/?$/.test(pathname);
+
+export interface Session {
+  readonly email: string;
+  readonly exp: number;
+}
 
 export const tokenFromRequest = (req: Request, url: URL) =>
   req.headers.get("authorization")?.replace(/^Bearer /i, "") ??
   url.searchParams.get("token") ??
-  /(?:^|;\s*)pai_token=([^;]+)/.exec(req.headers.get("cookie") ?? "")?.[1];
+  cookie(req, TOKEN_COOKIE);
 
 export function authorized(req: Request, url: URL, address?: string) {
-  if (!config.token) return true;
+  if (!config.token && !config.google.clientId) return true;
   if (PUBLIC_PATHS.some((pattern) => pattern.test(url.pathname))) return true;
-  // Behind the daemon's own Caddy every request arrives from loopback; the proxy marks them.
   if ((address === "127.0.0.1" || address === "::1") && !req.headers.has("x-forwarded-for")) return true;
-  return tokenFromRequest(req, url) === config.token;
+  return identified(req, url);
 }
 
+/** Whether the request itself says who it is from: a session, or the token. */
+export const identified = (req: Request, url: URL) =>
+  (Boolean(config.token) && tokenFromRequest(req, url) === config.token) || Boolean(sessionFromRequest(req));
+
 export const unauthorized = () =>
-  new Response(JSON.stringify({ error: "a token is required" }), {
+  new Response(JSON.stringify({ error: "sign in, or present the token" }), {
     status: 401,
     headers: { "content-type": "application/json" },
   });
@@ -34,6 +55,63 @@ export const unauthorized = () =>
 /** A token that arrived in the query is kept in a cookie, so the page's own requests carry it. */
 export function rememberToken(response: Response, token: string | undefined) {
   if (token && token === config.token)
-    response.headers.append("set-cookie", `${COOKIE}=${token}; Path=/; Max-Age=31536000; SameSite=Lax`);
+    response.headers.append("set-cookie", `${TOKEN_COOKIE}=${token}; Path=/; Max-Age=31536000; SameSite=Lax`);
   return response;
 }
+
+// --- sessions ---------------------------------------------------------------------------
+
+export function sessionFromRequest(req: Request): Session | undefined {
+  const session = verify<Session>(cookie(req, SESSION_COOKIE) ?? "");
+  return session && session.exp > Date.now() ? session : undefined;
+}
+
+export function sessionCookie(email: string, req: Request) {
+  const exp = Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000;
+  const secure = req.headers.get("x-forwarded-proto") === "https" ? "; Secure" : "";
+  return `${SESSION_COOKIE}=${sign({ email, exp })}; Path=/; Max-Age=${SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax${secure}`;
+}
+
+export const clearSession = () => `${SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`;
+
+/** Where this daemon is, as the browser sees it — through the proxy when there is one. */
+export function origin(req: Request, url: URL) {
+  const proto = req.headers.get("x-forwarded-proto") ?? url.protocol.replace(":", "");
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? url.host;
+  return `${proto}://${host}`;
+}
+
+// --- signing ----------------------------------------------------------------------------
+
+/** A key of this daemon's own, made once; a session outlives a restart but not a new host. */
+const keyPath = join(config.dbPath, "..", "session.key");
+let key: Buffer | undefined;
+function secret() {
+  if (key) return key;
+  if (!existsSync(keyPath)) {
+    mkdirSync(join(keyPath, ".."), { recursive: true });
+    writeFileSync(keyPath, randomBytes(32).toString("base64url"), { mode: 0o600 });
+  }
+  key = Buffer.from(readFileSync(keyPath, "utf8").trim(), "base64url");
+  return key;
+}
+
+export function sign(payload: object) {
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  return `${body}.${createHmac("sha256", secret()).update(body).digest("base64url")}`;
+}
+
+export function verify<T>(signed: string): T | undefined {
+  const [body, mac] = signed.split(".");
+  if (!body || !mac) return undefined;
+  const expected = createHmac("sha256", secret()).update(body).digest("base64url");
+  if (expected.length !== mac.length || !timingSafeEqual(Buffer.from(expected), Buffer.from(mac))) return undefined;
+  try {
+    return JSON.parse(Buffer.from(body, "base64url").toString()) as T;
+  } catch {
+    return undefined;
+  }
+}
+
+const cookie = (req: Request, name: string) =>
+  new RegExp(`(?:^|;\\s*)${name}=([^;]+)`).exec(req.headers.get("cookie") ?? "")?.[1];

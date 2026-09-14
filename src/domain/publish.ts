@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { config } from "../core/config.ts";
 import { logger } from "../core/log.ts";
 import { openInbound } from "./hetzner.ts";
+import { googleConfigured } from "../api/google.ts";
 
 const log = logger("publish");
 
@@ -16,8 +17,8 @@ const log = logger("publish");
  * `<public ip>.sslip.io` — a wildcard DNS service that resolves to the address in its own
  * name, so a certificate arrives without owning a domain.
  *
- * Nothing is published without a token: the API is remote code execution, and Caddy puts it
- * one request away from anyone. Behind Caddy every request looks like it came from loopback,
+ * Nothing is published without a way to say no: the API is remote code execution, and Caddy
+ * puts it one request away from anyone. Google sign-in for people, the token for programs. Behind Caddy every request looks like it came from loopback,
  * so `auth.ts` refuses the loopback exemption to anything that carries `x-forwarded-for`.
  *
  * On Hetzner the host's firewall is opened on 80 and 443 by the daemon itself when
@@ -38,10 +39,10 @@ export const publicStatus = () => ({ enabled: config.public, state, url, reason:
 
 export function startPublic() {
   if (!config.public) return () => {};
-  if (!config.token) {
-    log.warn("PAI_PUBLIC is set but PAI_TOKEN is empty — refusing to publish an open daemon");
+  if (!config.token && !googleConfigured()) {
+    log.warn("PAI_PUBLIC is set with neither PAI_TOKEN nor Google sign-in — refusing to publish an open daemon");
     state = "failed";
-    reason = "PAI_TOKEN is empty";
+    reason = "no PAI_TOKEN and no PAI_GOOGLE_CLIENT_ID";
     return () => {};
   }
   stopping = false;
@@ -130,8 +131,15 @@ async function allowLowPorts(bin: string) {
 async function writeConfig(host: string) {
   const api = `${config.host}:${config.port}`;
   const editor = `${config.editor.host}:${config.editor.port}`;
-  const editorBlock = config.editor.enabled
+  // With Google sign-in the daemon vouches for each editor request; otherwise code-server asks for the token.
+  const guard = googleConfigured()
     ? `
+	forward_auth /editor/* ${api} {
+		uri /auth/check
+	}`
+    : "";
+  const editorBlock = config.editor.enabled
+    ? `${guard}
 	redir /editor /editor/ 301
 	handle_path /editor/* {
 		reverse_proxy ${editor}

@@ -104,10 +104,10 @@ keep working on a plane.
 
 ## Reaching it from anywhere
 
-Two settings, nothing installed on any other device:
+One setting and nothing installed on any other device:
 
 ```sh
-pai settings PAI_TOKEN=<a long random string> PAI_PUBLIC=1   # or the dashboard's settings page
+pai settings PAI_PUBLIC=1     # or the dashboard's settings page
 pai restart
 ```
 
@@ -118,19 +118,25 @@ sslip.io resolves any such name to the address inside it, so no DNS of yours is 
 Hetzner the daemon opens 80 and 443 on the project firewall itself (`HCLOUD_TOKEN` in
 `.env`); elsewhere those two ports are yours to open. `pai status` prints the address.
 
-The token is what makes this defensible: the API is remote code execution, so the daemon
-refuses to publish without one, and every request that is not the client bundle must carry
-it — `Authorization: Bearer`, `?token=` in a link (kept in a cookie from then on), or the
-client's own settings. The editor asks for the same token as its password. Requests from
-loopback are exempt, except those the proxy forwarded.
+The API is remote code execution, so the daemon refuses to publish unless it can say no to
+strangers. Two ways in, and either alone is enough:
 
-Open `<address>/ui/?token=<token>` in any browser for the client, `<address>/editor` for VS
-Code, `<address>/app` for the dashboard. Write the address on the first line of
-`~/.config/pai/menubar` and the token on the second, and the menu bar app and the desktop
-app on that machine use them too.
+- **Sign in with Google**, for people in a browser. `PAI_GOOGLE_CLIENT_ID` and
+  `PAI_GOOGLE_CLIENT_SECRET` in `.env` are an OAuth client of yours (Google Cloud console,
+  type "Web application", with `<address>/auth/google/callback` among its redirect URIs);
+  `PAI_GOOGLE_ALLOWED` is the emails that may get in. A page opened without a session is sent
+  to Google and comes back with a cookie good for 30 days; the editor is behind the same
+  sign-in, checked by Caddy on every request. `/auth/logout` ends it.
+- **A token**, for programs. `PAI_TOKEN` is presented as `Authorization: Bearer`, as
+  `?token=` in a link (kept in a cookie from then on), or in a client's settings. The CLI,
+  the menu bar, the desktop app and the editor extension use it. Write the address on the
+  first line of `~/.config/pai/menubar` and the token on the second, and the menu bar app
+  and the desktop app on that machine are configured. Without Google sign-in the editor asks
+  for the token as its password.
 
-There is no token by default and none is needed on a tailnet: the daemon binds its
-Tailscale address when it has one, and loopback when it does not (`PAI_BIND` overrides it).
+Requests from loopback are exempt, except those the proxy forwarded. There is no token and
+no sign-in by default, and none is needed on a tailnet: the daemon binds its Tailscale
+address when it has one, and loopback when it does not (`PAI_BIND` overrides it).
 
 Then message the bot. `/new <title>` starts a task by hand; anything else is plain
 language. Enable topics for the bot in @BotFather (Bot Settings → Threads Settings →

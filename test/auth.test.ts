@@ -8,7 +8,7 @@ process.env.PAI_DB = join(scratch, "pai.db");
 process.env.PAI_CONFIG = join(scratch, "config.json");
 process.env.PAI_TOKEN = "secret-token";
 
-const { authorized, rememberToken, tokenFromRequest } = await import("../src/api/auth.ts");
+const { authorized, rememberToken, sessionCookie, sessionFromRequest, sign, tokenFromRequest, verify } = await import("../src/api/auth.ts");
 
 const request = (path: string, init?: RequestInit) => {
   const url = new URL(`http://pai.example${path}`);
@@ -45,6 +45,21 @@ describe("auth", () => {
   it("does not exempt loopback for a request the daemon's own proxy forwarded", () => {
     const { req, url } = request("/tasks", { headers: { "x-forwarded-for": "203.0.113.4" } });
     expect(authorized(req, url, "127.0.0.1")).toBe(false);
+  });
+
+  it("accepts a session a Google sign-in left behind, and refuses a forged one", () => {
+    const cookie = sessionCookie("someone@example.com", request("/auth/google/callback").req).split(";")[0]!;
+    const { req, url } = request("/tasks", { headers: { cookie } });
+    expect(authorized(req, url, "203.0.113.4")).toBe(true);
+    expect(sessionFromRequest(req)?.email).toBe("someone@example.com");
+
+    const forged = request("/tasks", { headers: { cookie: `${cookie.slice(0, -4)}AAAA` } });
+    expect(authorized(forged.req, forged.url, "203.0.113.4")).toBe(false);
+  });
+
+  it("signs and verifies its own payloads", () => {
+    expect(verify<{ a: number }>(sign({ a: 1 }))?.a).toBe(1);
+    expect(verify("nonsense")).toBeUndefined();
   });
 
   it("remembers a token that arrived in a link", () => {

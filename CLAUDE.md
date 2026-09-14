@@ -63,8 +63,8 @@ from tasks are injected into the main conversation.
 - `src/domain/browser.ts` — one Playwright MCP server per daemon over HTTP; sessions connect instead of spawning `npx`.
 - `src/domain/prompts.ts` — instructions appended to the Claude Code system prompt, per session kind.
 - `src/domain/catalog.ts` — coding projects under `~/dev`; `projects.json` overrides.
-- `src/api/` — `server.ts` (transport, the terminal websocket, the app), `routes.ts`, `events.ts` (SSE), `port.ts`, `app.ts` (`/app` dashboard, `/ui` client), `auth.ts` (`PAI_TOKEN`; loopback and the bundles are exempt).
-- `src/domain/publish.ts` — `PAI_PUBLIC=1` runs Caddy as a child: https on 80/443 for `PAI_DOMAIN` or `<ip>.sslip.io`, `/` the client, `/editor` code-server; opens the Hetzner firewall itself. Only with a token set.
+- `src/api/` — `server.ts` (transport, the terminal websocket, the app), `routes.ts`, `events.ts` (SSE), `port.ts`, `app.ts` (`/app` dashboard, `/ui` client), `auth.ts` (`PAI_TOKEN` for programs, a signed session cookie for browsers; loopback and the bundles are exempt), `google.ts` (Sign in with Google: `PAI_GOOGLE_CLIENT_ID/SECRET` in `.env`, `PAI_GOOGLE_ALLOWED` emails; `/auth/check` is Caddy's forward_auth for the editor).
+- `src/domain/publish.ts` — `PAI_PUBLIC=1` runs Caddy as a child: https on 80/443 for `PAI_DOMAIN` or `<ip>.sslip.io`, `/` the client, `/editor` code-server; opens the Hetzner firewall itself. Only with a token or Google sign-in configured.
 - `src/domain/sync.ts` — Syncthing as a child of the daemon: `devRoot` and `~/.claude/projects` shared with `PAI_SYNC_PEER`. `pai sync [device id]`.
 - `src/clients/telegram.ts` — grammY frontend: routing by topic / reply, draft streaming, live cards, question keyboards, attachments.
 - `src/clients/tg-user.ts` — the user's own Telegram account (gramjs, `TELEGRAM_USER_SESSION`) as the `tg` MCP server.

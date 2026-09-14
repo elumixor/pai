@@ -62,8 +62,11 @@ export const config = {
     enabled: !bool(setting("PAI_NO_EDITOR")),
     port: Number(setting("PAI_EDITOR_PORT") ?? 8788),
     host: setting("PAI_EDITOR_BIND") ?? setting("PAI_BIND") ?? tailnetAddress() ?? "127.0.0.1",
-    /** On a public daemon the editor is a shell in a browser, so it falls back to the token. */
-    password: env.PAI_EDITOR_PASSWORD ?? (bool(setting("PAI_PUBLIC")) ? (setting("PAI_TOKEN") ?? "") : ""),
+    /**
+     * On a public daemon the editor is a shell in a browser. With Google sign-in the proxy
+     * guards it; otherwise it falls back to the token as its password.
+     */
+    password: env.PAI_EDITOR_PASSWORD ?? (bool(setting("PAI_PUBLIC")) && !env.PAI_GOOGLE_CLIENT_ID ? (setting("PAI_TOKEN") ?? "") : ""),
   },
 
   /** Shared Playwright MCP server, one per daemon. */
@@ -93,6 +96,19 @@ export const config = {
    * loopback. Without it `public` refuses to expose anything.
    */
   token: setting("PAI_TOKEN") ?? "",
+
+  /**
+   * Sign in with Google for the browser surfaces. The client id and secret are an OAuth
+   * client of yours (Google Cloud console); the allowlist is who may get in.
+   */
+  google: {
+    clientId: env.PAI_GOOGLE_CLIENT_ID ?? "",
+    clientSecret: env.PAI_GOOGLE_CLIENT_SECRET ?? "",
+    allowed: (setting("PAI_GOOGLE_ALLOWED") ?? "")
+      .split(/[,\s]+/)
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  },
 
   /** Put the daemon on the public internet: Caddy on 80/443, run by the daemon, https included. */
   public: bool(setting("PAI_PUBLIC")),
