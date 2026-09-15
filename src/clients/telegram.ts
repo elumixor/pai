@@ -371,13 +371,14 @@ class Frontend {
     switch (e.kind) {
       case "task.created":
         await this.openTopic(s);
+        await this.announceChild(s);
         break;
       case "session.input":
         await this.draft(s, "");
         this.scheduleCard(s);
         break;
       case "session.delta":
-        await this.draft(s, String(e.payload.text));
+        await this.draft(s, String(e.payload.turn ?? e.payload.text));
         break;
       case "session.tool":
         this.scheduleCard(s);
@@ -432,6 +433,13 @@ class Frontend {
       s.cardId = sent.message_id;
       s.persist();
     }
+  }
+
+  /** A task another session started shows up in that session's topic, so the user can follow it from there. */
+  private async announceChild(s: Session) {
+    const parent = s.parent ? sessions.find(s.parent) : undefined;
+    if (!parent || parent.threadId === null || parent.threadId === s.threadId) return;
+    await this.send(parent, `↳ started ${this.tag(s)}`, parent);
   }
 
   private tag(s: Session) {
@@ -551,7 +559,7 @@ class Frontend {
     const age = Math.max(1, Math.round((now() - startedAt(s)) / 60_000));
     const meta = [s.kind === "code" ? `code · ${esc(s.project ?? "")}` : "task", `${s.turns} turn${s.turns === 1 ? "" : "s"}`, `$${s.costUsd.toFixed(2)}`, `${age}m`];
     const lines = [`${STATUS[st]} <b>${esc(s.title)}</b> <code>${s.shortId}</code>`, meta.join(" · ")];
-    if (s.lastTool && st === "busy") lines.push(`⚙ ${esc(s.lastTool.slice(0, 100))}`);
+    if (st === "busy") for (const t of s.recentTools) lines.push(`⚙ ${esc(t.slice(0, 100))}`);
     if (st === "waiting") lines.push("❓ waiting for your answer");
     if (config.baseUrl) lines.push(`<a href="${config.baseUrl}/app/?s=${s.shortId}">details</a>`);
     return lines.join("\n");

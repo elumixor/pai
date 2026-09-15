@@ -89,10 +89,10 @@ export function paiTools(kind: "main" | "task" | "code", ref: SessionRef) {
     ),
   ];
 
-  const mainOnly = [
+  const tasks = [
     tool(
       "start_task",
-      "Start a task in its own Telegram topic and its own context, running in parallel. Give it a short title (topic name) and a complete prompt: everything the task needs, since it does not see this conversation. Pass a project slug for coding work in one of the user's repos.",
+      "Start a task in its own Telegram topic and its own context, running in parallel; it reports back here when it finishes. Give it a short title (topic name) and a complete prompt: everything the task needs, since it does not see this conversation. Pass a project slug for coding work in one of the user's repos — the `pai` project is this assistant's own code.",
       {
         title: z.string().max(60).describe("short topic name, e.g. 'Find game designer'"),
         prompt: z.string().describe("the full instruction for the task"),
@@ -100,7 +100,8 @@ export function paiTools(kind: "main" | "task" | "code", ref: SessionRef) {
       },
       async ({ title, prompt, project }) => {
         try {
-          const s = sessions.spawnTask({ title, project });
+          const me = self();
+          const s = sessions.spawnTask({ title, project, parent: me.kind === "main" ? undefined : me.id });
           s.send(prompt);
           return ok({ started: true, task: s.shortId, title: s.title, kind: s.kind, project: s.project });
         } catch (err) {
@@ -170,7 +171,7 @@ export function paiTools(kind: "main" | "task" | "code", ref: SessionRef) {
   return createSdkMcpServer({
     name: "pai",
     version: "1.0.0",
-    tools: kind === "main" ? [...common, ...mainOnly] : common,
+    tools: [...common, ...tasks],
   });
 }
 

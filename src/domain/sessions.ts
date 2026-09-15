@@ -37,6 +37,8 @@ export interface SpawnTask {
   title: string;
   project?: string;
   threadId?: number | null;
+  /** The session that asked for it; the task's reports go there as well as to the main conversation. */
+  parent?: string | null;
 }
 
 /** A task session: its own topic, its own context. With a project it runs in that repo. */
@@ -51,7 +53,7 @@ export function spawnTask(opts: SpawnTask): Session {
     cwd = proj.path;
     project = proj.slug;
   }
-  const session = new Session({ kind, title: opts.title.trim() || UNTITLED, cwd, project, threadId: opts.threadId });
+  const session = new Session({ kind, title: opts.title.trim() || UNTITLED, cwd, project, threadId: opts.threadId, parent: opts.parent });
   live.set(session.id, session);
   log.info(`spawned ${kind} ${session.shortId} "${opts.title}"`);
   prewarm("task");
@@ -89,7 +91,7 @@ function workingDirectory(recorded: string, project: string | null) {
 /** Resumes a session whose process died but whose transcript is still on disk. */
 export function revive(sessionId: string): Session | undefined {
   const row = db.query("SELECT * FROM sessions WHERE session_id = ?").get(sessionId) as
-    | { kind: SessionKind; title: string; cwd: string; project: string | null; thread_id: number | null }
+    | { kind: SessionKind; title: string; cwd: string; project: string | null; thread_id: number | null; parent_id: string | null }
     | undefined;
   if (!row) return undefined;
   const session = new Session({
@@ -98,6 +100,7 @@ export function revive(sessionId: string): Session | undefined {
     cwd: workingDirectory(row.cwd, row.project),
     project: row.project ?? undefined,
     threadId: row.thread_id,
+    parent: row.parent_id,
     resume: sessionId,
   });
   live.set(session.id, session);
@@ -155,6 +158,7 @@ export interface SessionRow {
   project: string | null;
   cwd: string | null;
   threadId: number | null;
+  parent: string | null;
   state: string;
   startedAt: number;
   lastActivity: number;
@@ -178,6 +182,7 @@ export function recent(limit = 20, kind?: SessionKind): SessionRow[] {
     project: r.project,
     cwd: r.cwd,
     threadId: r.thread_id,
+    parent: r.parent_id ?? null,
     state: live.get(r.session_id)?.state ?? "detached",
     startedAt: r.started_at,
     lastActivity: r.last_activity,
@@ -248,7 +253,8 @@ export function reapIdle() {
 
 /**
  * What tasks report becomes part of the main conversation, so "did it finish?"
- * needs no tool call and works regardless of which frontend was attached.
+ * needs no tool call and works regardless of which frontend was attached. A task started
+ * by another session reports to that session too.
  */
 export function relayTasksToMain() {
   bus.on("event", (e: PaiEvent) => {
@@ -258,19 +264,21 @@ export function relayTasksToMain() {
     if (!s || s.kind === "main") return;
     const tag = `[task ${s.shortId} · ${s.title}]`;
     const mainId = kv.get(MAIN_KEY);
-    const m = mainId ? find(mainId) : undefined;
-    if (!m || m.state === "dead") return;
-    if (e.kind === "memory.saved") {
-      m.inject(`${tag} ${e.payload.updated ? "updated" : "saved"} memory ${e.payload.name} (${e.payload.type}): ${e.payload.description}`);
-    } else if (e.kind === "memory.forgotten") {
-      m.inject(`${tag} forgot memory ${e.payload.name}`);
-    } else if (e.kind === "session.turn_end") {
-      const text = String(e.payload.text ?? "").trim();
-      if (text) m.inject(`${tag} reported:\n${text.slice(0, 1500)}`);
-    } else if (e.kind === "session.question") {
-      m.inject(`${tag} is waiting for the user to answer a question.`);
-    } else if (e.kind === "session.error") {
-      m.inject(`${tag} failed: ${e.payload.message}`);
+    const targets = new Set([mainId, s.parent].filter((id): id is string => Boolean(id)).map((id) => find(id)));
+    for (const m of targets) {
+      if (!m || m.state === "dead" || m === s) continue;
+      if (e.kind === "memory.saved") {
+        m.inject(`${tag} ${e.payload.updated ? "updated" : "saved"} memory ${e.payload.name} (${e.payload.type}): ${e.payload.description}`);
+      } else if (e.kind === "memory.forgotten") {
+        m.inject(`${tag} forgot memory ${e.payload.name}`);
+      } else if (e.kind === "session.turn_end") {
+        const text = String(e.payload.text ?? "").trim();
+        if (text) m.inject(`${tag} reported:\n${text.slice(0, 1500)}`);
+      } else if (e.kind === "session.question") {
+        m.inject(`${tag} is waiting for the user to answer a question.`);
+      } else if (e.kind === "session.error") {
+        m.inject(`${tag} failed: ${e.payload.message}`);
+      }
     }
   });
 }

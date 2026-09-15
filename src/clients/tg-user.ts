@@ -1,11 +1,14 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
+import { join } from "node:path";
 import { TelegramClient, Api } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 import { config } from "../core/config.ts";
 import { logger } from "../core/log.ts";
+import { transcribe } from "../domain/transcribe.ts";
 
 const log = logger("tg-user");
+const INBOX = join(config.workspace, "inbox");
 
 let client: TelegramClient | undefined;
 
@@ -156,6 +159,35 @@ export function telegramUserTools() {
           const sent = await c.sendMessage(entity, { message: text, replyTo: reply_to });
           log.info(`sent to ${name(entity)}: ${text.slice(0, 60)}`);
           return ok({ sent: true, chat: name(entity), id: sent.id });
+        },
+      ),
+      tool(
+        "download_media",
+        "Downloads a message's media (voice, photo, document) into the inbox. Voice/audio notes are transcribed to text automatically.",
+        { peer: peerArg, message_id: z.number().describe("the message id, as returned by read_chat/search_messages") },
+        async ({ peer, message_id }) => {
+          const c = await tg();
+          const entity = await resolve(c, peer);
+          const [msg] = await c.getMessages(entity, { ids: [message_id] });
+          if (!msg?.media) throw new Error(`message ${message_id} has no media`);
+          const data = await msg.downloadMedia();
+          if (!data || typeof data === "string") throw new Error("download failed");
+
+          const isVoice = Boolean(msg.voice);
+          const fnAttr = (msg.document?.attributes ?? []).find((a): a is Api.DocumentAttributeFilename => a instanceof Api.DocumentAttributeFilename);
+          const fallback = isVoice ? `voice-${message_id}.ogg` : msg.photo ? `photo-${message_id}.jpg` : `file-${message_id}`;
+          const path = join(INBOX, (fnAttr?.fileName ?? fallback).replace(/[^\w.-]+/g, "_"));
+          await Bun.write(path, data);
+
+          if (isVoice || msg.audio) {
+            try {
+              const text = await transcribe(path);
+              return ok({ saved: path, transcript: text || null });
+            } catch (err) {
+              return ok({ saved: path, transcript: null, transcribeError: (err as Error).message });
+            }
+          }
+          return ok({ saved: path });
         },
       ),
       tool(

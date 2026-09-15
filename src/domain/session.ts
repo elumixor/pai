@@ -120,6 +120,8 @@ export interface SessionOptions {
   cwd: string;
   project?: string;
   threadId?: number | null;
+  /** The session that started this one, when it was not the user. Its results are relayed there. */
+  parent?: string | null;
   /** Resume an existing on-disk session instead of starting a fresh one. */
   resume?: string;
 }
@@ -139,11 +141,14 @@ export class Session {
   readonly project?: string;
   title: string;
   threadId: number | null;
+  readonly parent: string | null;
   cardId: number | null = null;
   state: SessionState = "starting";
   costUsd = 0;
   turns = 0;
   lastTool = "";
+  /** The tool calls of the turn in progress, newest last, so a client can show what led here. */
+  recentTools: string[] = [];
 
   private q?: Query;
   private inbox: SDKUserMessage[] = [];
@@ -151,7 +156,9 @@ export class Session {
   private closed = false;
   private warm?: Warm;
   private turnText: string[] = [];
+  /** The text block being streamed, and the turn's completed blocks before it. */
   private streamText = "";
+  private turnStream = "";
   /** True between a user turn being sent and its result; injected context produces results too, which are not turns. */
   private activeTurn = false;
   pending?: PendingQuestion;
@@ -173,6 +180,7 @@ export class Session {
     this.project = opts.project;
     this.title = opts.title;
     this.threadId = opts.threadId ?? null;
+    this.parent = opts.parent ?? null;
     if (opts.resume) {
       const row = db.query("SELECT card_id, cost_usd, turns FROM sessions WHERE session_id = ?").get(this.id) as
         | { card_id: number | null; cost_usd: number; turns: number }
@@ -283,23 +291,30 @@ export class Session {
         const e = m.event as { type: string; delta?: { type: string; text?: string } };
         if (e.type === "content_block_delta" && e.delta?.type === "text_delta" && e.delta.text) {
           this.streamText += e.delta.text;
-          bus.emitEvent("session.delta", { text: this.streamText }, this.id);
+          // `text` is the block being written, `turn` everything the turn has said so far: a
+          // transcript view grows one entry per block, a draft shows the whole reply.
+          bus.emitEvent("session.delta", { text: this.streamText, turn: this.turnStream + this.streamText }, this.id);
         }
-        if (e.type === "message_stop" || e.type === "content_block_start") {
-          // A new block or message begins: the previous text block is complete.
-          if (e.type === "content_block_start" && this.streamText) this.streamText += "\n\n";
+        if (e.type === "content_block_start" && this.streamText) {
+          // A new block begins: the previous text block is complete.
+          this.turnStream += `${this.streamText}\n\n`;
+          this.streamText = "";
         }
         break;
       }
 
       case "assistant": {
+        // A subagent's messages carry the id of the Agent call that runs it; clients nest them under it.
+        const parent = m.parent_tool_use_id ?? undefined;
         for (const block of m.message.content as Record<string, any>[]) {
           if (block.type === "text" && block.text) {
+            if (parent) continue;
             this.turnText.push(block.text);
             bus.emitEvent("session.text", { text: block.text }, this.id);
           } else if (block.type === "tool_use") {
             this.lastTool = summarizeTool(block.name, block.input);
-            bus.emitEvent("session.tool", { id: block.id, name: block.name, summary: this.lastTool }, this.id);
+            this.recentTools = [...this.recentTools.slice(-(RECENT_TOOLS - 1)), this.lastTool];
+            bus.emitEvent("session.tool", { id: block.id, name: block.name, summary: this.lastTool, parent }, this.id);
           }
         }
         break;
@@ -308,10 +323,11 @@ export class Session {
       case "user": {
         // What a tool returned comes back as a user message; the clients show it under the call.
         const content = m.message.content;
+        const parent = m.parent_tool_use_id ?? undefined;
         if (Array.isArray(content))
           for (const block of content as Record<string, any>[])
             if (block.type === "tool_result")
-              bus.emitEvent("session.tool_result", { id: block.tool_use_id, result: resultPreview(block.content) }, this.id);
+              bus.emitEvent("session.tool_result", { id: block.tool_use_id, result: resultPreview(block.content), parent }, this.id);
         break;
       }
 
@@ -324,6 +340,8 @@ export class Session {
         const text = this.turnText.join("\n\n").trim() || (m.subtype === "success" ? m.result : "");
         this.turnText = [];
         this.streamText = "";
+        this.turnStream = "";
+        this.recentTools = [];
         if (!this.activeTurn && !text) {
           this.state = "idle";
           this.persist();
@@ -466,8 +484,8 @@ export class Session {
 
   persist() {
     db.prepare(
-      `INSERT INTO sessions (session_id, short_id, kind, title, cwd, project, thread_id, card_id, state, started_at, last_activity, cost_usd, turns)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO sessions (session_id, short_id, kind, title, cwd, project, thread_id, card_id, state, started_at, last_activity, cost_usd, turns, parent_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(session_id) DO UPDATE SET state=excluded.state, title=excluded.title, thread_id=excluded.thread_id,
          card_id=excluded.card_id, last_activity=excluded.last_activity, cost_usd=excluded.cost_usd, turns=excluded.turns`,
     ).run(
@@ -484,6 +502,7 @@ export class Session {
       now(),
       this.costUsd,
       this.turns,
+      this.parent,
     );
   }
 
@@ -496,10 +515,12 @@ export class Session {
       project: this.project,
       cwd: this.cwd,
       threadId: this.threadId,
+      parent: this.parent,
       state: this.state,
       costUsd: this.costUsd,
       turns: this.turns,
       lastTool: this.lastTool,
+      recentTools: this.recentTools,
       queued: this.inbox.length,
       waiting: Boolean(this.pending),
     };
@@ -509,6 +530,8 @@ export class Session {
     return this.summary();
   }
 }
+
+const RECENT_TOOLS = 5;
 
 export function summarizeTool(name: string, input: Record<string, any> | undefined): string {
   const short = name.replace(/^mcp__/, "").replace(/__/g, ":");

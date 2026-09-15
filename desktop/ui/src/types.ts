@@ -9,6 +9,10 @@ export interface SessionSummary {
   readonly project?: string;
   readonly waiting?: boolean;
   readonly lastTool?: string;
+  /** The tool calls of the turn in progress. */
+  readonly recentTools?: readonly string[];
+  /** The session that started this one, if it was not the user. */
+  readonly parent?: string | null;
   readonly turns?: number;
   readonly costUsd?: number;
   readonly lastActivity?: number | string;

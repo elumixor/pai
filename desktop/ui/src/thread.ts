@@ -186,6 +186,7 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
       icon(session.kind === "main" ? "bot" : session.kind === "claude" ? "terminal" : "message", 14),
       heading,
       el("span.dim.ellipsis", { title: session.cwd ?? "" }, session.kind === "main" ? "main" : (session.project ?? session.cwd?.replace(/^.*\//, "") ?? "")),
+      session.parent ? el("span.dim", { title: `started by session ${session.parent}` }, `↳ from ${session.parent.slice(0, 6)}`) : undefined,
       stateTag,
       el("span.grow"),
       el("button.iconbtn", { title: "interrupt", onclick: () => void send("/stop", { id }) }, icon("stop", 14)),
@@ -221,7 +222,7 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
   };
 
   const stop = follow(id, (event) => {
-    const payload = event.payload as { text?: string; summary?: string; name?: string; id?: string; result?: string; questions?: Question[]; status?: string; level?: string };
+    const payload = event.payload as { text?: string; summary?: string; name?: string; id?: string; parent?: string; result?: string; questions?: Question[]; status?: string; level?: string };
     switch (event.kind) {
       case "session.input":
         break;
@@ -239,7 +240,9 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
         const entry = toolLine({ id: payload.id, name: payload.name ?? "tool", input: payload.summary });
         entry.classList.add("live");
         if (payload.id) liveTools.set(payload.id, entry);
-        log.append(entry);
+        // A subagent's calls sit under the Agent call that runs it.
+        const host = payload.parent ? liveTools.get(payload.parent) : undefined;
+        (host ?? log).append(entry);
         break;
       }
       case "session.tool_result": {

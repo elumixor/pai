@@ -90,9 +90,11 @@ export async function handle(req: Request): Promise<Response> {
 
     if (path === "/docs") return json(files.documents());
 
-    // The service manager brings the daemon back, which is what "restart" means here.
+    // The service manager brings the daemon back, which is what "restart" means here. A signal,
+    // not exit(): the daemon's own shutdown notes which turns it cut off, and the next start
+    // resumes them — a session that restarts the daemon from a tool call is one of them.
     if (path === "/restart" && req.method === "POST") {
-      setTimeout(() => process.exit(0), 300);
+      setTimeout(() => process.kill(process.pid, "SIGTERM"), 300);
       return json({ restarting: true });
     }
 

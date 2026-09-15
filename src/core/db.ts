@@ -78,6 +78,8 @@ CREATE TABLE IF NOT EXISTS kv (
 // Columns added after the first release; ALTER is the migration.
 if (!(db.query("PRAGMA table_info(projects)").all() as { name: string }[]).some((c) => c.name === "kind"))
   db.exec("ALTER TABLE projects ADD COLUMN kind TEXT NOT NULL DEFAULT 'repo'");
+if (!(db.query("PRAGMA table_info(sessions)").all() as { name: string }[]).some((c) => c.name === "parent_id"))
+  db.exec("ALTER TABLE sessions ADD COLUMN parent_id TEXT");
 
 export function now() {
   return Date.now();

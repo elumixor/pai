@@ -241,6 +241,7 @@ main.b-empty #thread-b { display: none; }
 .entry.tool .mark { color: var(--busy); }
 .entry.tool.live .mark { animation: pulse 1.2s ease-in-out infinite; }
 .entry.tool .body { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.entry.tool .entry.tool { margin-left: 1.5rem; }
 .tool-name { color: var(--text); font-weight: 600; }
 .tool-args { color: var(--dim); }
 .entry.tool .result { grid-column: 2; display: grid; grid-template-columns: 16px 1fr; column-gap: 6px; color: var(--dim); }

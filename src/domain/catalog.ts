@@ -229,7 +229,10 @@ function overrides(): Record<string, Override> {
 }
 
 export function scan(): Project[] {
-  const repos = findRepos(config.devRoot, config.scanDepth).sort();
+  const repos = findRepos(config.devRoot, config.scanDepth);
+  // The daemon's own checkout is a project too, wherever it lives: changes to pai are coding work like any other.
+  if (existsSync(join(config.repo, ".git")) && !repos.includes(config.repo)) repos.push(config.repo);
+  repos.sort();
   const contexts = findContexts().sort();
   const custom = overrides();
   const taken = new Set<string>();
