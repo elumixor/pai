@@ -1,10 +1,12 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, foldGutter, indentOnInput, LanguageDescription, StreamLanguage, type StreamParser } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
+import { markdown as markdownLanguage } from "@codemirror/lang-markdown";
+import { markdown as renderMarkdown } from "./markdown.ts";
 import { properties } from "@codemirror/legacy-modes/mode/properties";
 import { shell } from "@codemirror/legacy-modes/mode/shell";
 import { yaml as yamlMode } from "@codemirror/legacy-modes/mode/yaml";
-import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
+import { highlightSelectionMatches } from "@codemirror/search";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { drawSelection, EditorView, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers } from "@codemirror/view";
 import { linter, lintGutter, type Diagnostic as LintDiagnostic } from "@codemirror/lint";
@@ -22,6 +24,8 @@ import { current, onTheme } from "./theme.ts";
  */
 async function language(path: string, text: string): Promise<Extension> {
   const name = basename(path);
+  // Markdown with its fences coloured by the language named after the backticks.
+  if (/\.(md|markdown|mdx)$/i.test(name)) return markdownLanguage({ codeLanguages: languages });
   // A script with no extension says what it is on its first line.
   const shebang = /^#!.*\b(\w+)\s*$/.exec(text.split("\n", 1)[0] ?? "")?.[1];
   if (shebang && /^(sh|bash|zsh|fish|dash)$/.test(shebang)) return StreamLanguage.define(shell);
@@ -92,9 +96,23 @@ const TS_EXT = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
 
 export async function editor(pane: HTMLElement, path: string) {
   const status = el("span.dim", {}, "");
-  const head = el("header.panel-head", {}, icon("file", 13), el("h2", {}, basename(path)), el("span.dim.ellipsis", { title: path }, path), el("span.grow"), status);
+  const isMarkdown = /\.(md|markdown|mdx)$/i.test(path);
+  const previewButton = isMarkdown ? el("button.iconbtn", { title: "preview (⌘⇧P)" }, icon("book", 13)) : undefined;
+  const head = el("header.panel-head", {}, icon("file", 13), el("h2", {}, basename(path)), el("span.dim.ellipsis", { title: path }, path), el("span.grow"), status, previewButton);
   const host = el("div.cm-host");
-  clear(pane, head, host);
+  const preview = el("div.md-preview.scroll", { hidden: true });
+  clear(pane, head, host, preview);
+  // Markdown can be read rendered; the editor keeps its state underneath and comes back on toggle.
+  let previewing = false;
+  const togglePreview = () => {
+    previewing = !previewing;
+    if (previewing) clear(preview, renderMarkdown(view.state.doc.toString()));
+    preview.toggleAttribute("hidden", !previewing);
+    host.toggleAttribute("hidden", previewing);
+    previewButton?.classList.toggle("on", previewing);
+    if (!previewing) view.focus();
+  };
+  previewButton?.addEventListener("click", togglePreview);
 
   let contents;
   try {
@@ -163,7 +181,15 @@ export async function editor(pane: HTMLElement, path: string) {
         highlightSelectionMatches(),
         theme.of(editorTheme(current())),
         await language(path, contents.text),
-        keymap.of([{ key: "Mod-s", run: () => (void save(), true) }, indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+        // No find panel: searching is vim's `/`, `?`, `n`, `:%s`. ⌘F is the app's (reveal the file in the tree).
+        keymap.of([
+          { key: "Mod-s", run: () => (void save(), true) },
+          { key: "Mod-f", run: () => false },
+          ...(isMarkdown ? [{ key: "Mod-Shift-p", run: () => (togglePreview(), true) }] : []),
+          indentWithTab,
+          ...defaultKeymap,
+          ...historyKeymap,
+        ]),
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !dirty) {
             dirty = true;

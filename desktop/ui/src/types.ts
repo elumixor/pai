@@ -100,6 +100,12 @@ export interface ContextItem {
   readonly body?: string;
 }
 
+export interface SlashCommand {
+  readonly name: string;
+  readonly description: string;
+  readonly argumentHint: string;
+}
+
 export interface Diagnostic {
   readonly line: number;
   readonly column: number;

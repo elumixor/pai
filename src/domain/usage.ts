@@ -73,14 +73,15 @@ async function accessToken(): Promise<string | undefined> {
  */
 function windows(usage: OauthUsage): Window[] {
   const out: Window[] = [];
-  if (usage.five_hour) out.push({ name: "Session", percent: Math.round(usage.five_hour.utilization), resetsAt: usage.five_hour.resets_at, length: SESSION_WINDOW });
-  if (usage.seven_day) out.push({ name: "Weekly", percent: Math.round(usage.seven_day.utilization), resetsAt: usage.seven_day.resets_at, length: WEEKLY_WINDOW });
+  if (typeof usage.five_hour?.utilization === "number") out.push({ name: "Session", percent: Math.round(usage.five_hour.utilization), resetsAt: usage.five_hour.resets_at, length: SESSION_WINDOW });
+  if (typeof usage.seven_day?.utilization === "number") out.push({ name: "Weekly", percent: Math.round(usage.seven_day.utilization), resetsAt: usage.seven_day.resets_at, length: WEEKLY_WINDOW });
   for (const limit of usage.limits ?? [])
     if (limit.kind === "weekly_scoped" && limit.scope?.model)
       out.push({ name: limit.scope.model.display_name ?? "Model", percent: Math.round(limit.percent), resetsAt: limit.resets_at, length: WEEKLY_WINDOW });
   for (const [key, value] of Object.entries(usage)) {
     if (!key.startsWith("seven_day_") || !value || typeof value !== "object" || key === "seven_day_oauth_apps") continue;
     const period = value as Period;
+    if (typeof period.utilization !== "number") continue;
     const name = titleCase(key.slice("seven_day_".length));
     if (!out.some((w) => w.name.toLowerCase() === name.toLowerCase())) out.push({ name, percent: Math.round(period.utilization), resetsAt: period.resets_at, length: WEEKLY_WINDOW });
   }

@@ -24,6 +24,9 @@ export const SHORTCUTS: { keys: string; what: string }[] = [
   { keys: "⌃B", what: "focus the file tree" },
   { keys: "⌃N", what: "new thread in the selected project" },
   { keys: "⌘S · :w", what: "save the file (it also saves when the editor loses focus)" },
+  { keys: "⌘⇧P", what: "markdown: toggle the rendered preview" },
+  { keys: "⌘F", what: "reveal the open file in the tree · search in a file is vim's / and ?" },
+  { keys: "/", what: "at the start of a message: a slash command (skills, plugins, built-ins)" },
   { keys: "⇧click", what: "open a thread in the lower pane" },
   { keys: "@", what: "in a message: mention a file of the project" },
 ];

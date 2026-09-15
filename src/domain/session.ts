@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { query, startup, type Options, type Query, type SDKMessage, type SDKUserMessage, type WarmQuery } from "@anthropic-ai/claude-agent-sdk";
+import { query, startup, type Options, type Query, type SDKMessage, type SDKUserMessage, type SlashCommand, type WarmQuery } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "../core/config.ts";
 import { db, now } from "../core/db.ts";
 import { bus } from "../core/bus.ts";
@@ -92,6 +92,9 @@ const log = logger("session");
 
 export type SessionKind = "main" | "task" | "code";
 
+/** Commands that only make sense at a terminal, or that pai handles itself. */
+const HIDDEN_COMMANDS = new Set(["exit", "quit", "login", "logout", "statusline", "terminal-setup", "vim", "theme", "config", "ide", "resume", "clear", "doctor", "bug", "install-github-app", "mcp", "add-dir", "hooks", "permissions", "agents", "keybindings", "heapdump", "color", "auto-mode-setup", "workflow-launch-exec", "fast"]);
+
 /** The title of a thread nobody has named yet. */
 export const UNTITLED = "new thread";
 export type SessionState = "starting" | "idle" | "busy" | "dead";
@@ -152,6 +155,8 @@ export class Session {
   /** True between a user turn being sent and its result; injected context produces results too, which are not turns. */
   private activeTurn = false;
   pending?: PendingQuestion;
+  /** The slash commands this session's process accepts, minus the ones bound to a terminal. */
+  commands: SlashCommand[] = [];
 
   /** A user turn is out and its reply has not come back yet. */
   get awaitingReply() {
@@ -202,6 +207,8 @@ export class Session {
         }
       }
       this.q = q ?? query({ prompt: this.input(), options });
+      // A control request, answered before the first turn — a resumed session sits idle until then.
+      void this.loadCommands();
       bus.emitEvent(resume ? "session.resumed" : "session.started", this.summary(), this.id);
       if (!resume) this.inject(`You are session ${this.shortId} (${this.kind}), titled "${this.title}".`);
       await this.pump();
@@ -264,7 +271,12 @@ export class Session {
           this.state = this.activeTurn || this.inbox.length > 0 ? "busy" : "idle";
           this.persist();
         }
+        if (m.subtype === "init") void this.loadCommands(new Set(m.terminal_slash_commands ?? []));
+        if (m.subtype === "commands_changed") void this.loadCommands();
         if (m.subtype === "status" && m.status === "compacting") bus.emitEvent("session.status", { status: "compacting" }, this.id);
+        // What a local slash command printed, and the loop's own notices (hook feedback, warnings).
+        if (m.subtype === "local_command_output") bus.emitEvent("session.notice", { text: m.content, level: "output" }, this.id);
+        if (m.subtype === "informational" && m.level !== "info") bus.emitEvent("session.notice", { text: m.content, level: m.level }, this.id);
         break;
 
       case "stream_event": {
@@ -356,6 +368,20 @@ export class Session {
       this.persist();
     }
     bus.emitEvent("session.input", { text }, this.id);
+  }
+
+  private terminalCommands = new Set<string>();
+
+  /** Asks the process for its slash commands (skills, plugins, built-ins) and tells the clients. */
+  private async loadCommands(terminal?: Set<string>) {
+    if (terminal) this.terminalCommands = terminal;
+    try {
+      const all = (await this.q?.supportedCommands()) ?? [];
+      this.commands = all.filter((c) => !this.terminalCommands.has(c.name) && !HIDDEN_COMMANDS.has(c.name) && !c.name.startsWith("__"));
+      bus.emitEvent("session.commands", { count: this.commands.length }, this.id);
+    } catch (err) {
+      log.debug(`${this.shortId} commands: ${(err as Error).message}`);
+    }
   }
 
   /** Append context to the transcript without spending a model turn on it. */

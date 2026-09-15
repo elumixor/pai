@@ -185,6 +185,13 @@ export async function handle(req: Request): Promise<Response> {
     const memoryPath = /^\/memory\/([a-z0-9-]+)$/.exec(path);
     if (memoryPath?.[1] && req.method === "DELETE") return json({ forgotten: memory.forget(memoryPath[1]) });
 
+    // The slash commands a session's process accepts; a session that is not live falls back to the main one's.
+    if (path === "/commands") {
+      const raw = url.searchParams.get("session") ?? "main";
+      const s = (raw === "main" ? sessions.main() : sessions.find(raw)) ?? sessions.main();
+      return json(s.commands.length ? s.commands : sessions.main().commands);
+    }
+
     if (path === "/memory") return json(memory.recall(url.searchParams.get("q") ?? "", url.searchParams.get("project") ?? undefined));
 
     // What each kind of session is given, for the dashboard.

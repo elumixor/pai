@@ -1,4 +1,4 @@
-import type { Automation, ContextItem, Diagnostic, DiskSession, Entry, ModuleInfo, PaiEvent, ProjectSummary, SessionSummary, Status, TerminalSummary, Usage } from "./types.ts";
+import type { Automation, ContextItem, Diagnostic, SlashCommand, DiskSession, Entry, ModuleInfo, PaiEvent, ProjectSummary, SessionSummary, Status, TerminalSummary, Usage } from "./types.ts";
 
 /**
  * The daemon, with the app's offline story in one place: every GET is cached, a failed GET
@@ -253,6 +253,7 @@ export const sync = () =>
     folders: { id: string; state?: string; needBytes?: number; path?: string }[];
   }>("/sync");
 export const usage = () => get<Usage>("/usage");
+export const commands = (session: string) => get<SlashCommand[]>(`/commands?session=${session}`);
 export const diagnostics = (path: string, fresh = false) => get<{ project?: string; items: Diagnostic[] }>(`/diagnostics?path=${encodeURIComponent(path)}${fresh ? "&fresh=1" : ""}`);
 export const modules = () => get<ModuleInfo[]>("/modules");
 export const patchModule = (name: string, changes: Record<string, string>) => send(`/modules/${name}`, changes, "PATCH");

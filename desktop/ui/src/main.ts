@@ -3,7 +3,7 @@ import { dashboard } from "./dashboard.ts";
 import { clear, el, sheet, until } from "./dom.ts";
 import "./theme.ts";
 import { editor, emptyEditor } from "./editor.ts";
-import { tree } from "./files.ts";
+import { tree, type Tree } from "./files.ts";
 import { icon, type IconName } from "./icons.ts";
 import { palette, type Command } from "./palette.ts";
 import { addProjectDialog, allThreads, projectOf, rail } from "./rail.ts";
@@ -155,10 +155,13 @@ const refreshRail = () =>
     })
     .catch(() => clear(railCol, unreachable()));
 
+let fileTree: Tree | undefined;
+
 function selectProject(project: ProjectSummary | undefined) {
   const changed = state.project !== project?.slug;
   state.project = project?.slug;
   save();
+  fileTree = project ? tree(project.path, openFile, () => state.file) : undefined;
   clear(
     filesCol,
     el(
@@ -169,7 +172,7 @@ function selectProject(project: ProjectSummary | undefined) {
       project?.repo ? el("a.iconbtn", { href: project.repo, target: "_blank", rel: "noreferrer", title: project.repo }, icon("github", 13)) : undefined,
       project ? el("button.iconbtn", { title: "new terminal here", onclick: () => void terminals.open() }, icon("terminal", 13)) : undefined,
     ),
-    el("div.tree-scroll", {}, project ? tree(project.path, openFile, () => state.file) : el("p.hint", {}, "Pick a project on the right to browse it.")),
+    el("div.tree-scroll", {}, fileTree ?? el("p.hint", {}, "Pick a project on the right to browse it.")),
   );
   if (changed) railCol.querySelectorAll(".group").forEach((g) => g.classList.toggle("selected", g.querySelector(".name")?.textContent === project?.slug));
 }
@@ -305,6 +308,10 @@ document.addEventListener("keydown", (event) => {
   if (meta && event.key.toLowerCase() === "k") {
     event.preventDefault();
     openPalette();
+  } else if (meta && event.key.toLowerCase() === "f" && !event.shiftKey) {
+    // ⌘F: the open file, found in the tree.
+    event.preventDefault();
+    if (state.file) void fileTree?.reveal(state.file);
   } else if (meta && (event.key === "1" || event.key === "2")) {
     event.preventDefault();
     showView(event.key === "1" ? "work" : "dashboard");

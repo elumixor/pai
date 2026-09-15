@@ -1,8 +1,8 @@
-import { fileIndex, follow, isOnline, send, transcript, type Transcript, type TranscriptTool } from "./api.ts";
+import { commands as listCommands, fileIndex, follow, isOnline, send, transcript, type Transcript, type TranscriptTool } from "./api.ts";
 import { clear, el } from "./dom.ts";
 import { icon } from "./icons.ts";
 import { markdown } from "./markdown.ts";
-import type { PaiEvent, Question, SessionSummary } from "./types.ts";
+import type { PaiEvent, Question, SessionSummary, SlashCommand } from "./types.ts";
 
 export interface ThreadHandlers {
   /** Move this thread to the other pane. */
@@ -54,39 +54,71 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
     drawChips();
   });
 
-  // `@` opens a file picker over the project; the chosen path goes in as text the model can read.
+  // One popup for both `@file` and `/command`: what it lists and what it inserts differ, the keys do not.
+  interface Suggestion {
+    readonly label: string;
+    readonly hint?: string;
+    readonly insert: string;
+  }
   const mentions = el("div.mentions", { hidden: true });
   let index: string[] | undefined;
-  let mentionStart = -1;
-  const closeMentions = () => {
+  let slash: SlashCommand[] | undefined;
+  let menuStart = -1;
+  let shown: Suggestion[] = [];
+  const closeMenu = () => {
     mentions.setAttribute("hidden", "");
-    mentionStart = -1;
+    menuStart = -1;
+    shown = [];
   };
-  const pickMention = (relative: string) => {
-    const root = handlers.projectPath?.();
-    const path = root ? `${root}/${relative}` : relative;
-    input.value = `${input.value.slice(0, mentionStart)}@${path} ${input.value.slice(input.selectionStart)}`;
-    closeMentions();
+  const pick = (item: Suggestion) => {
+    input.value = `${input.value.slice(0, menuStart)}${item.insert}${input.value.slice(input.selectionStart)}`;
+    closeMenu();
     input.focus();
+    input.selectionStart = input.selectionEnd = menuStart + item.insert.length;
     grow();
   };
-  const showMentions = async (query: string) => {
+  const showMenu = (items: Suggestion[]) => {
+    shown = items;
+    if (!items.length) return closeMenu();
+    clear(
+      mentions,
+      ...items.map((item, i) =>
+        el("button.mention", { class: `mention${i === 0 ? " active" : ""}`, onmousedown: (e: Event) => (e.preventDefault(), pick(item)) }, el("span.label", {}, item.label), item.hint ? el("span.dim.ellipsis", {}, item.hint) : undefined),
+      ),
+    );
+    mentions.removeAttribute("hidden");
+  };
+  const showFiles = async (query: string) => {
     const root = handlers.projectPath?.();
-    if (!root) return closeMentions();
+    if (!root) return closeMenu();
     index ??= await fileIndex(root).catch(() => []);
     const q = query.toLowerCase();
-    const hits = index.filter((f) => f.toLowerCase().includes(q)).slice(0, 8);
-    if (!hits.length) return closeMentions();
-    clear(mentions, ...hits.map((hit, i) => el("button.mention", { class: `mention${i === 0 ? " active" : ""}`, onmousedown: (e: Event) => (e.preventDefault(), pickMention(hit)) }, hit)));
-    mentions.removeAttribute("hidden");
+    showMenu(index.filter((f) => f.toLowerCase().includes(q)).slice(0, 8).map((f) => ({ label: f, insert: `@${root}/${f} ` })));
+  };
+  // The commands are the process's own: skills, plugins, and Claude Code's built-ins that make sense off a terminal.
+  const showCommands = async (query: string) => {
+    slash ??= await listCommands(id).catch(() => []);
+    const q = query.toLowerCase();
+    showMenu(
+      slash
+        .filter((c) => c.name.toLowerCase().includes(q) || c.description.toLowerCase().includes(q))
+        .sort((a, b) => Number(b.name.toLowerCase().startsWith(q)) - Number(a.name.toLowerCase().startsWith(q)) || a.name.localeCompare(b.name))
+        .slice(0, 10)
+        .map((c) => ({ label: `/${c.name}${c.argumentHint ? ` ${c.argumentHint}` : ""}`, hint: c.description, insert: `/${c.name} ` })),
+    );
   };
   input.addEventListener("input", () => {
     const before = input.value.slice(0, input.selectionStart);
     const at = before.lastIndexOf("@");
     if (at >= 0 && (at === 0 || /\s/.test(before[at - 1]!)) && !/\s/.test(before.slice(at + 1))) {
-      mentionStart = at;
-      void showMentions(before.slice(at + 1));
-    } else closeMentions();
+      menuStart = at;
+      return void showFiles(before.slice(at + 1));
+    }
+    if (before.startsWith("/") && !/\s/.test(before)) {
+      menuStart = 0;
+      return void showCommands(before.slice(1));
+    }
+    closeMenu();
   });
   const stateTag = el("span.tag", {}, session.state);
   let adopted = session.kind !== "claude";
@@ -103,7 +135,7 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
     if (!text && !attachments.length) return;
     input.value = "";
     grow();
-    closeMentions();
+    closeMenu();
     const images = attachments.splice(0).map(({ media_type, data }) => ({ media_type, data }));
     drawChips();
     log.querySelector(".hint")?.remove();
@@ -124,9 +156,9 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
 
   input.addEventListener("input", grow);
   input.addEventListener("keydown", (event) => {
-    if (mentionStart >= 0 && !mentions.hasAttribute("hidden")) {
+    if (menuStart >= 0 && shown.length) {
       const rows = [...mentions.querySelectorAll<HTMLElement>(".mention")];
-      const active = rows.findIndex((r) => r.classList.contains("active"));
+      const active = Math.max(0, rows.findIndex((r) => r.classList.contains("active")));
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         const next = (active + (event.key === "ArrowDown" ? 1 : rows.length - 1)) % rows.length;
@@ -135,10 +167,10 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
       }
       if (event.key === "Enter" || event.key === "Tab") {
         event.preventDefault();
-        pickMention(rows[active]?.textContent ?? "");
+        if (shown[active]) pick(shown[active]);
         return;
       }
-      if (event.key === "Escape") return closeMentions();
+      if (event.key === "Escape") return closeMenu();
     }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
@@ -189,7 +221,7 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
   };
 
   const stop = follow(id, (event) => {
-    const payload = event.payload as { text?: string; summary?: string; name?: string; id?: string; result?: string; questions?: Question[]; status?: string };
+    const payload = event.payload as { text?: string; summary?: string; name?: string; id?: string; result?: string; questions?: Question[]; status?: string; level?: string };
     switch (event.kind) {
       case "session.input":
         break;
@@ -229,6 +261,10 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
         break;
       case "session.status":
         stateTag.textContent = payload.status ?? "busy";
+        break;
+      case "session.notice":
+        // A slash command's output, or the loop's own notice (hook feedback, warnings).
+        log.append(el("div.entry.notice", { class: `entry notice ${payload.level ?? ""}` }, el("span.mark", {}, payload.level === "output" ? "⏺" : "!"), el("pre.body", {}, payload.text ?? "")));
         break;
       case "session.turn_end":
         finishLive();
