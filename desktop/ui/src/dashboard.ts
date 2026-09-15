@@ -10,12 +10,12 @@ const minutes = (seconds: number) => {
 
 /** The daemon at a glance: where it runs, how it is set up, what the subscription has left. */
 export async function dashboard(pane: HTMLElement) {
-  clear(pane, el("header.panel-head", {}, icon("layout", 14), el("h2", {}, "Dashboard")), el("div.empty", {}, el("p", {}, "…")));
+  clear(pane, el("header.sheet-head", {}, icon("layout", 14), el("h2", {}, "Dashboard")), el("p.hint", {}, "…"));
   let health;
   try {
     health = await status();
   } catch {
-    clear(pane, el("header.panel-head", {}, icon("layout", 14), el("h2", {}, "Dashboard")), el("div.empty", {}, el("p", {}, `Cannot reach ${baseUrl()}.`)));
+    clear(pane, el("header.sheet-head", {}, icon("layout", 14), el("h2", {}, "Dashboard")), el("p.hint", {}, `Cannot reach ${baseUrl()}.`));
     return;
   }
   const [quota, syncState] = await Promise.all([usage().catch(() => undefined), sync().catch(() => undefined)]);
@@ -26,9 +26,9 @@ export async function dashboard(pane: HTMLElement) {
 
   clear(
     pane,
-    el("header.panel-head", {}, icon("layout", 14), el("h2", {}, "Dashboard"), el("span.dim", {}, health.host.hostname)),
+    el("header.sheet-head", {}, icon("layout", 14), el("h2", {}, "Dashboard"), el("span.dim", {}, health.host.hostname)),
     el(
-      "div.scroll.cards",
+      "div.cards",
       {},
       card(
         "Daemon",
@@ -38,7 +38,6 @@ export async function dashboard(pane: HTMLElement) {
         row("api", link(health.host.api)),
         health.host.publicUrl ? row("public", link(health.host.publicUrl)) : undefined,
         health.editor.url ? row("editor", link(health.editor.url)) : undefined,
-        row("dashboard", link(`${baseUrl()}/app/`, "the classic dashboard")),
       ),
       card(
         "Claude",

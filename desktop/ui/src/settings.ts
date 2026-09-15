@@ -17,9 +17,9 @@ export async function settingsView(pane: HTMLElement) {
 
   clear(
     pane,
-    el("header.panel-head", {}, icon("settings", 14), el("h2", {}, "Settings"), el("span.grow"), note),
+    el("header.sheet-head", {}, icon("settings", 14), el("h2", {}, "Settings"), el("span.grow"), note),
     el(
-      "div.scroll",
+      "div",
       {},
       el("h3.section-title", {}, "This app"),
       el(

@@ -69,25 +69,25 @@ button { cursor: pointer; }
 main {
   flex: 1; min-height: 0;
   display: grid;
-  grid-template-columns: var(--w-files) 5px minmax(240px, 1fr) 5px var(--w-threads) 5px var(--w-rail);
+  grid-template-columns: var(--w-files) 1px minmax(240px, 1fr) 1px var(--w-threads) 1px var(--w-rail);
+  background: var(--line);
 }
 .col { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--panel); }
-.col-files { border-right: 1px solid var(--line); }
-body.desktop main { padding-top: 0; }
-.col-center { display: grid; grid-template-rows: minmax(120px, 1fr) 5px var(--h-dock); background: var(--bg); }
-.col-threads { display: grid; grid-template-rows: minmax(120px, 1fr) 5px var(--h-second); border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+.col-center { display: grid; grid-template-rows: minmax(120px, 1fr) 1px var(--h-dock); background: var(--line); }
+.col-threads { display: grid; grid-template-rows: minmax(120px, 1fr) 1px var(--h-second); background: var(--line); }
 main.b-empty .col-threads { grid-template-rows: 1fr 0 0; }
 main.b-empty .col-threads .handle { pointer-events: none; }
 main.b-empty #thread-b { display: none; }
 .panel { min-height: 0; min-width: 0; display: flex; flex-direction: column; background: var(--panel); overflow: hidden; }
 .col-center .panel { border-radius: 0; }
-#dock { border-top: 1px solid var(--line); }
-#thread-b { border-top: 1px solid var(--line); }
-
+/* The handle is the 1px line itself, with an invisible 7px grab area around it. */
 .handle { background: transparent; position: relative; z-index: 2; }
-.handle.v { cursor: col-resize; margin: 0 -2px; width: 9px; }
-.handle.h { cursor: row-resize; margin: -2px 0; height: 9px; }
-.handle:hover, .handle.active { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+.handle.v { cursor: col-resize; margin: 0 -3px; width: 7px; }
+.handle.h { cursor: row-resize; margin: -3px 0; height: 7px; }
+.handle::after { content: ""; position: absolute; inset: 0; margin: auto; background: transparent; transition: background 0.1s; }
+.handle.v::after { width: 1px; }
+.handle.h::after { height: 1px; }
+.handle:hover::after, .handle.active::after { background: var(--accent); }
 
 /* ---- panel chrome --------------------------------------------------------------------- */
 .panel-head {
@@ -292,7 +292,11 @@ time { color: var(--dim); font-size: 10.5px; }
 .compose { display: flex; flex: 0 0 auto; }
 
 
-/* ---- settings & dashboard -------------------------------------------------------------- */
+/* ---- settings & dashboard, as sheets ------------------------------------------------- */
+dialog.sheet.wide { width: min(720px, 94vw); max-height: 84vh; }
+.sheet-body { display: flex; flex-direction: column; max-height: 84vh; overflow-y: auto; padding: 0 0 12px; }
+.sheet-head { display: flex; align-items: center; gap: 8px; padding: 14px 16px 10px; color: var(--dim); position: sticky; top: 0; background: var(--panel); border-bottom: 1px solid var(--line); }
+.sheet-head h2 { margin: 0; font-size: 14px; color: var(--text); }
 .section-title { margin: 14px 16px 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); }
 .settings { display: flex; flex-direction: column; gap: 8px; padding: 0 16px 16px; max-width: 760px; }
 .field { display: grid; grid-template-columns: 160px 1fr; gap: 12px; align-items: center; }

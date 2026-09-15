@@ -1,15 +1,11 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { css } from "@codemirror/lang-css";
-import { html } from "@codemirror/lang-html";
-import { javascript } from "@codemirror/lang-javascript";
-import { json } from "@codemirror/lang-json";
-import { markdown } from "@codemirror/lang-markdown";
-import { python } from "@codemirror/lang-python";
-import { rust } from "@codemirror/lang-rust";
-import { yaml } from "@codemirror/lang-yaml";
-import { bracketMatching, defaultHighlightStyle, foldGutter, indentOnInput, syntaxHighlighting, type LanguageSupport } from "@codemirror/language";
+import { bracketMatching, defaultHighlightStyle, foldGutter, indentOnInput, LanguageDescription, StreamLanguage, syntaxHighlighting, type StreamParser } from "@codemirror/language";
+import { languages } from "@codemirror/language-data";
+import { properties } from "@codemirror/legacy-modes/mode/properties";
+import { shell } from "@codemirror/legacy-modes/mode/shell";
+import { yaml as yamlMode } from "@codemirror/legacy-modes/mode/yaml";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
-import { Compartment, EditorState } from "@codemirror/state";
+import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { drawSelection, EditorView, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers } from "@codemirror/view";
 import { Vim, vim } from "@replit/codemirror-vim";
@@ -17,45 +13,49 @@ import { file, saveFile } from "./api.ts";
 import { basename, clear, el } from "./dom.ts";
 import { icon } from "./icons.ts";
 
-/** The language by file extension; anything else is plain text with line numbers. */
-function language(path: string): LanguageSupport | undefined {
-  const ext = path.split(".").pop()?.toLowerCase() ?? "";
-  switch (ext) {
-    case "ts":
-    case "mts":
-    case "cts":
-      return javascript({ typescript: true });
-    case "tsx":
-      return javascript({ typescript: true, jsx: true });
-    case "js":
-    case "mjs":
-    case "cjs":
-      return javascript();
-    case "jsx":
-      return javascript({ jsx: true });
-    case "json":
-    case "jsonc":
-      return json();
-    case "md":
-    case "markdown":
-      return markdown();
-    case "css":
-      return css();
-    case "html":
-    case "svelte":
-    case "vue":
-      return html();
-    case "rs":
-      return rust();
-    case "py":
-      return python();
-    case "yml":
-    case "yaml":
-      return yaml();
-    default:
-      return undefined;
-  }
+/**
+ * The language for a file. Every mode CodeMirror knows is here — the common ones bundled,
+ * the rest fetched on first use — plus the extension-less files a home directory is full of.
+ */
+async function language(path: string, text: string): Promise<Extension> {
+  const name = basename(path);
+  // A script with no extension says what it is on its first line.
+  const shebang = /^#!.*\b(\w+)\s*$/.exec(text.split("\n", 1)[0] ?? "")?.[1];
+  if (shebang && /^(sh|bash|zsh|fish|dash)$/.test(shebang)) return StreamLanguage.define(shell);
+  if (shebang && /^(bun|node|deno)$/.test(shebang)) return LanguageDescription.matchLanguageName(languages, "typescript")?.load() ?? [];
+  if (shebang && /^python\d?$/.test(shebang)) return LanguageDescription.matchLanguageName(languages, "python")?.load() ?? [];
+  const byName = LEGACY_BY_NAME[name.replace(/^\./, "")];
+  if (byName) return StreamLanguage.define(byName);
+  const description = LanguageDescription.matchFilename(languages, name);
+  if (description) return description.load();
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  const legacy = LEGACY_BY_EXT[ext];
+  return legacy ? StreamLanguage.define(legacy) : [];
 }
+
+/** Vimscript has no mode of its own; comments, strings and the command word are enough to read one. */
+const vimMode: StreamParser<unknown> = {
+  token(stream) {
+    if (stream.sol() && stream.match(/^\s*"/)) {
+      stream.skipToEnd();
+      return "comment";
+    }
+    if (stream.match(/^'[^']*'/) || stream.match(/^"[^"]*"/)) return "string";
+    if (stream.sol() || stream.string.slice(0, stream.pos).trim() === "") {
+      if (stream.match(/^\s*[a-zA-Z]+/)) return "keyword";
+    }
+    if (stream.match(/^<[^>]+>/)) return "atom";
+    if (stream.match(/^\d+/)) return "number";
+    stream.next();
+    return null;
+  },
+};
+
+const LEGACY_BY_NAME: Record<string, StreamParser<unknown>> = {
+  zshrc: shell, bashrc: shell, bash_profile: shell, profile: shell, zprofile: shell, zshenv: shell,
+  gitconfig: properties, gitignore: properties, condarc: yamlMode, env: properties, editorconfig: properties, npmrc: properties,
+};
+const LEGACY_BY_EXT: Record<string, StreamParser<unknown>> = { vim: vimMode, conf: properties, ini: properties, terminfo: properties, sh: shell, zsh: shell };
 
 const dark = () => matchMedia("(prefers-color-scheme: dark)").matches;
 
@@ -119,7 +119,7 @@ export async function editor(pane: HTMLElement, path: string) {
         highlightSelectionMatches(),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
         theme.of(dark() ? oneDark : []),
-        language(path) ?? [],
+        await language(path, contents.text),
         keymap.of([{ key: "Mod-s", run: () => (void save(), true) }, indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap]),
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !dirty) {

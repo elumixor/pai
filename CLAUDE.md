@@ -65,7 +65,7 @@ from tasks are injected into the main conversation.
 - `src/domain/browser.ts` — one Playwright MCP server per daemon over HTTP; sessions connect instead of spawning `npx`.
 - `src/domain/prompts.ts` — instructions appended to the Claude Code system prompt, per session kind.
 - `src/domain/catalog.ts` — coding projects under `~/dev`; `projects.json` overrides.
-- `src/api/` — `server.ts` (transport, the terminal websocket, the app), `routes.ts`, `events.ts` (SSE), `port.ts`, `app.ts` (`/app` dashboard, `/ui` client), `auth.ts` (`PAI_TOKEN` for programs, a signed session cookie for browsers; loopback and the bundles are exempt), `google.ts` (Sign in with Google: `PAI_GOOGLE_CLIENT_ID/SECRET` in `.env`, `PAI_GOOGLE_ALLOWED` emails; `/auth/check` is Caddy's forward_auth for the editor).
+- `src/api/` — `server.ts` (transport, the terminal websocket, the client), `routes.ts`, `events.ts` (SSE), `port.ts`, `app.ts` (serves the client at `/ui`), `auth.ts` (`PAI_TOKEN` for programs, a signed session cookie for browsers; loopback and the bundles are exempt), `google.ts` (Sign in with Google: `PAI_GOOGLE_CLIENT_ID/SECRET` in `.env`, `PAI_GOOGLE_ALLOWED` emails; `/auth/check` is Caddy's forward_auth for the editor).
 - `src/domain/publish.ts` — `PAI_PUBLIC=1` runs Caddy as a child: https on 80/443 for `PAI_DOMAIN` or `<ip>.sslip.io`, `/` the client, `/editor` code-server; opens the Hetzner firewall itself. Only with a token or Google sign-in configured.
 - `src/domain/sync.ts` — Syncthing as a child of the daemon: `devRoot` and `~/.claude/projects` shared with `PAI_SYNC_PEER`. `pai sync [device id]`.
 - `src/clients/telegram.ts` — grammY frontend: routing by topic / reply, draft streaming, live cards, question keyboards, attachments.
@@ -79,7 +79,6 @@ from tasks are injected into the main conversation.
 - `editor/vscode/` — the VS Code extension: threads, projects and terminals over the API. `bun run editor` serves it without the daemon.
 - `desktop/` — the Tauri desktop app: `ui/` is the whole client — files, a viewer, a terminal dock, two thread panes, projects with their threads, dashboard and settings — with an offline cache and an outbox; `src-tauri/` is an empty Rust shell. `bun run dev` for the loop, `bun run desktop` for the window, `bun run desktop:build` for the bundle.
 - `src/domain/usage.ts` — the Claude subscription's windows (`GET /usage`) with the Claude Code login on the machine, plus what the sessions cost.
-- `app/` — the web app (sessions, terminals) built to `app/dist` and served at `/app`.
 - `infra/` — `provision.ts` (Hetzner), `cloud-init.yaml`, `bootstrap.ts`, borg backup, `gateway.ts` (Caddy for a domain of your own, needs root), `firewall.ts` (open ports on the Hetzner firewall).
 - `menubar/main.swift` — menu bar status app: pai tasks plus the Claude quota rings (session and model-scoped weekly, token read from the Claude Code keychain item); compiled and loaded by `install` on macOS.
 - `workspace/` — the assistant's cwd; `CLAUDE.md` there is the persona, `inbox/` gets attachments.

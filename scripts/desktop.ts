@@ -19,7 +19,9 @@ export async function buildUi() {
     outdir: dist,
     target: "browser",
     minify: true,
-    naming: "[dir]/[name].js",
+    // Editor languages load on first use, so they are chunks next to the main bundle.
+    splitting: true,
+    naming: { entry: "[dir]/[name].js", chunk: "chunks/[name]-[hash].js" },
   });
   if (!result.success) {
     for (const log of result.logs) console.error(log);

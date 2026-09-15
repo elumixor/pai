@@ -33,10 +33,10 @@ async function waitFor(predicate: () => boolean, timeoutMs = 5000) {
 }
 
 beforeAll(() => {
-  // The app is a build artefact; a clean checkout (CI) has not made it yet.
-  if (!existsSync(join(import.meta.dir, "..", "app", "dist", "index.html"))) {
-    const built = Bun.spawnSync({ cmd: ["bun", "run", "scripts/build-app.ts"] });
-    if (built.exitCode !== 0) throw new Error("could not build the web app for the test run");
+  // The client is a build artefact; a clean checkout (CI) has not made it yet.
+  if (!existsSync(join(import.meta.dir, "..", "desktop", "ui", "dist", "index.html"))) {
+    const built = Bun.spawnSync({ cmd: ["bun", "run", "build:ui"] });
+    if (built.exitCode !== 0) throw new Error("could not build the client for the test run");
   }
   server = startServer();
 });
@@ -153,19 +153,19 @@ describe("the web app", () => {
   });
 
   it("serves the built page", async () => {
-    const res = await get("/app/");
+    const res = await get("/ui/");
     expect(res.status).toBe(200);
     expect(await res.text()).toContain("<title>pai</title>");
   });
 
   it("serves the bundle", async () => {
-    const res = await get("/app/main.js");
+    const res = await get("/ui/main.js");
     expect(res.status).toBe(200);
     expect((await res.text()).length).toBeGreaterThan(1000);
   });
 
   it("refuses to escape the build directory", async () => {
-    const res = await get("/app/../../package.json");
+    const res = await get("/ui/../../package.json");
     expect(await res.text()).not.toContain("\"name\": \"pai\"");
   });
 });

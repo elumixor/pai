@@ -248,7 +248,7 @@ final class App: NSObject, NSApplicationDelegate {
     func poll() {
         get("/health", Health.self) { h in
             self.up = h?.ok ?? false
-            self.dashboard = (h?.host?.baseUrl ?? base) + "/app/"
+            self.dashboard = (h?.host?.baseUrl ?? base) + "/ui/"
             self.version = h?.version ?? ""
             if !self.up { self.live = []; self.recent = []; self.render(); return }
             self.get("/tasks", Tasks.self) { t in self.live = t?.live ?? []; self.recent = t?.recent ?? []; self.render() }

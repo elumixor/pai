@@ -51,7 +51,8 @@ export function startServer() {
       }
       const remember = (response: Response) => rememberToken(response, tokenFromRequest(req, url));
       if (pathname === "/") return Response.redirect("/ui/", 302);
-      if (pathname === "/app" || pathname.startsWith("/app/")) return serveApp(pathname).then(remember);
+      // The dashboard used to live here; the client has it now.
+      if (pathname === "/app" || pathname.startsWith("/app/")) return Response.redirect("/ui/", 302);
       if (pathname === "/ui" || pathname.startsWith("/ui/")) return serveApp(pathname).then(remember);
 
       const terminalId = STREAM_PATH.exec(pathname)?.[1];

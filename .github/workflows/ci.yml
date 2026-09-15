@@ -19,7 +19,6 @@ jobs:
           bun-version: latest
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
-      - run: bun run build:app
       - run: bun run build:ui
       - run: bun run test
 
@@ -41,7 +40,6 @@ jobs:
         with:
           workspaces: desktop/src-tauri
       - run: bun install --frozen-lockfile
-      - run: bun run build:app
       - run: bun run build:ui
       - name: desktop app (universal, ad-hoc signed)
         working-directory: desktop
@@ -55,8 +53,7 @@ jobs:
           cp "out/pai-${tag}-macos.dmg" out/pai-macos.dmg
           # The daemon as it runs on a host: the checkout at this tag plus the built bundles.
           git archive --format=tar --prefix=pai/ HEAD | tar -x -C out
-          mkdir -p out/pai/app out/pai/desktop/ui
-          cp -R app/dist out/pai/app/dist
+          mkdir -p out/pai/desktop/ui
           cp -R desktop/ui/dist out/pai/desktop/ui/dist
           (cd out && zip -qr "pai-daemon-${tag}.zip" pai && rm -rf pai)
           ls -la out

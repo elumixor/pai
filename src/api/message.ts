@@ -19,7 +19,7 @@ export function messagePage(payload: string): Response {
     return page(
       `<h1>${escapeHtml(meta.session)}</h1><dl>${rows
         .map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`)
-        .join("")}</dl><p><a href="/app/">open pai</a></p>`,
+        .join("")}</dl><p><a href="/ui/">open pai</a></p>`,
     );
   } catch (err) {
     const detail = err instanceof RichProtocolError ? err.message : "unreadable link";

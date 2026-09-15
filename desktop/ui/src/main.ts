@@ -1,6 +1,6 @@
 import { baseUrl, fileIndex, flush, follow, inDesktop, isOnline, lastError, onConnection, outbox, projects, resolveBase, send, status, usage } from "./api.ts";
 import { dashboard } from "./dashboard.ts";
-import { ask, clear, el, until } from "./dom.ts";
+import { ask, clear, el, sheet, until } from "./dom.ts";
 import { editor, emptyEditor } from "./editor.ts";
 import { tree } from "./files.ts";
 import { icon, type IconName } from "./icons.ts";
@@ -38,8 +38,8 @@ const openFile = (path: string) => {
   save();
   void showCenter(() => editor(viewerPane, path));
 };
-const showDashboard = () => void showCenter(() => dashboard(viewerPane));
-const showSettings = () => void showCenter(() => settingsView(viewerPane));
+const showDashboard = () => void dashboard(sheet("dashboard"));
+const showSettings = () => void settingsView(sheet("settings"));
 const showEditor = () => (state.file ? openFile(state.file) : emptyEditor(viewerPane));
 
 // ---- the two thread panes ----------------------------------------------------------------

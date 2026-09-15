@@ -30,7 +30,6 @@ if (args.includes("--uninstall")) {
 }
 
 await run("dependencies", [bun, "install"]);
-await run("web app", [bun, "run", "build:app"]);
 await run("client", [bun, "run", "build:ui"]);
 await run("daemon service", [bun, "run", "src/clients/cli.ts", "install", ...args.filter((a) => a === "--no-menubar")]);
 if (process.platform === "darwin" && !args.includes("--no-app"))

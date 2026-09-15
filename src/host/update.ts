@@ -83,7 +83,6 @@ export async function update(force = false): Promise<UpdateResult> {
   }
   await run("bun install", $`${process.execPath} install`.cwd(config.repo).nothrow().quiet());
   // process.execPath, not "bun": the service's PATH is not a login shell's.
-  await run("build web app", $`${process.execPath} run scripts/build-app.ts`.cwd(config.repo).nothrow().quiet());
   // The client the daemon serves at /ui is the desktop app's bundle; it is built the same way.
   await run("build client", $`${process.execPath} run build:ui`.cwd(config.repo).nothrow().quiet());
   if (process.platform === "darwin") {

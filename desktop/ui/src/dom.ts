@@ -93,5 +93,19 @@ export function dialog(spec: DialogSpec): Promise<Record<string, string> | undef
   });
 }
 
+/** A wide sheet whose content a view renders into; closes on Escape or a click outside. Returns the content node. */
+export function sheet(name: string) {
+  const body = el("div.sheet-body");
+  const box = el("dialog.sheet.wide", { class: `sheet wide ${name}`, onclick: (event: Event) => event.target === box && close() }, body) as HTMLDialogElement;
+  const close = () => {
+    box.close();
+    box.remove();
+  };
+  box.addEventListener("close", () => box.isConnected && box.remove());
+  document.body.append(box);
+  box.showModal();
+  return body;
+}
+
 /** One question, one answer. */
 export const ask = async (label: string, initial = "") => (await dialog({ title: label, fields: [{ name: "value", label: "", value: initial, required: true }] }))?.value;
