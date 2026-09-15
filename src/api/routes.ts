@@ -1,5 +1,6 @@
 import { config } from "../core/config.ts";
-import { all as allProjects, refresh } from "../domain/catalog.ts";
+import { all as allProjects, clone, CloneError, refresh } from "../domain/catalog.ts";
+import { usage } from "../domain/usage.ts";
 import { recentEvents, waitFor } from "../core/bus.ts";
 import * as sessions from "../domain/sessions.ts";
 import * as terminals from "../domain/terminals.ts";
@@ -81,10 +82,24 @@ export async function handle(req: Request): Promise<Response> {
 
     if (path === "/update") return json(await updateStatus());
 
+    // A project is added by cloning it: the checkout lands under devRoot like every other one.
+    if (path === "/projects" && req.method === "POST") {
+      const { url: source, name } = await body<{ url: string; name?: string }>(req);
+      try {
+        return json(clone(source, name), 201);
+      } catch (err) {
+        if (err instanceof CloneError) return json({ error: err.message }, 400);
+        throw err;
+      }
+    }
+
     if (path === "/projects") {
       if (url.searchParams.get("refresh")) refresh();
       return json(allProjects());
     }
+
+    // The subscription's limits and what the sessions have cost, for the clients' status line.
+    if (path === "/usage") return json(await usage());
 
     // A turn in the main conversation, identical to a Telegram message in the root chat.
     if (path === "/chat" && req.method === "POST") {

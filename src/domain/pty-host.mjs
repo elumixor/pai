@@ -17,6 +17,16 @@ const term = spawn(shell, [], {
 const send = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 
 term.onData((data) => send({ type: "data", data }));
+
+// What is running in the foreground — the shell itself, or vim, bun, ssh… — so a client can
+// label the terminal by it. Polled, because node-pty has no event for a title change.
+let lastProcess;
+setInterval(() => {
+  const name = term.process;
+  if (name === lastProcess) return;
+  lastProcess = name;
+  send({ type: "process", name });
+}, 1500).unref();
 term.onExit(({ exitCode }) => {
   send({ type: "exit", exitCode });
   process.exit(0);

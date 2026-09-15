@@ -1,4 +1,5 @@
-import { readdirSync, existsSync, readFileSync } from "node:fs";
+import { readdirSync, existsSync, readFileSync, mkdirSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { basename, join } from "node:path";
 import { config } from "../core/config.ts";
 import { db, now } from "../core/db.ts";
@@ -11,6 +12,51 @@ export interface Project {
   path: string;
   summary: string;
   aliases: string[];
+  /** The repository on the web, when `origin` points at one. */
+  repo?: string;
+}
+
+export class CloneError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CloneError";
+  }
+}
+
+const repoUrls = new Map<string, string | undefined>();
+
+/** `git@github.com:me/thing.git` and `https://github.com/me/thing.git` both become the page. */
+function remoteUrl(path: string): string | undefined {
+  if (repoUrls.has(path)) return repoUrls.get(path);
+  const raw = read(join(path, ".git", "config"))?.match(/\[remote "origin"\][^[]*?url\s*=\s*(\S+)/)?.[1];
+  // `github.com-personal` and the like are ssh host aliases for the same site.
+  const url = raw
+    ?.replace(/^git@([^:]+):/, "https://$1/")
+    .replace(/^ssh:\/\/git@/, "https://")
+    .replace(/^(https:\/\/)(github\.com|gitlab\.com|bitbucket\.org)[\w-]*\//, "$1$2/")
+    .replace(/\.git$/, "");
+  repoUrls.set(path, url?.startsWith("http") ? url : undefined);
+  return repoUrls.get(path);
+}
+
+/**
+ * Adds a project by cloning it under `devRoot`. The directory name is the repository's
+ * unless one is given; an existing directory is an error rather than a merge.
+ */
+export function clone(url: string, name?: string): Project {
+  const source = url.trim();
+  if (!/^(https?:\/\/|git@|ssh:\/\/)[\w.@:/~-]+$/.test(source)) throw new CloneError("not a git url");
+  const dir = (name?.trim() || basename(source).replace(/\.git$/, "")).replace(/[^\w.-]/g, "");
+  if (!dir) throw new CloneError("cannot tell the directory name from that url");
+  const target = join(config.devRoot, dir);
+  if (existsSync(target)) throw new CloneError(`${target} already exists`);
+  mkdirSync(config.devRoot, { recursive: true });
+  const res = spawnSync("git", ["clone", "--quiet", source, target], { encoding: "utf8", timeout: 5 * 60 * 1000 });
+  if (res.status !== 0) throw new CloneError(res.stderr.trim() || `git clone exited with ${res.status}`);
+  refresh();
+  const project = get(dir);
+  if (!project) throw new CloneError(`cloned, but ${target} is not a project`);
+  return project;
 }
 
 const IGNORED = new Set(["node_modules", ".git", "temp", "gen", "dist", "build"]);
@@ -197,7 +243,7 @@ export function all(): Project[] {
     summary: string;
     aliases: string;
   }[];
-  return rows.map((r) => ({ ...r, aliases: JSON.parse(r.aliases) as string[] }));
+  return rows.map((r) => ({ ...r, aliases: JSON.parse(r.aliases) as string[], repo: remoteUrl(r.path) }));
 }
 
 export function get(slug: string): Project | undefined {

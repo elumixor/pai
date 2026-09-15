@@ -43,6 +43,7 @@ export class Terminal {
   #cols: number;
   #rows: number;
   #exitCode?: number;
+  #processName?: string;
 
   constructor(options: TerminalOptions) {
     this.cwd = options.cwd;
@@ -75,6 +76,11 @@ export class Terminal {
     return this.#exitCode === undefined;
   }
 
+  /** The foreground process, as the pty reports it; the shell's name until something runs. */
+  get processName() {
+    return this.#processName;
+  }
+
   get scrollback() {
     return this.#scrollback;
   }
@@ -84,6 +90,7 @@ export class Terminal {
       id: this.id,
       cwd: this.cwd,
       project: this.project,
+      process: this.#processName,
       cols: this.#cols,
       rows: this.#rows,
       startedAt: this.startedAt,
@@ -134,7 +141,7 @@ export class Terminal {
 
   #handle(line: string) {
     if (!line.trim()) return;
-    let message: { type: string; data?: string; exitCode?: number };
+    let message: { type: string; data?: string; exitCode?: number; name?: string };
     try {
       message = JSON.parse(line);
     } catch {
@@ -143,6 +150,10 @@ export class Terminal {
     }
     if (message.type === "exit") {
       this.#exitCode = message.exitCode ?? 0;
+      return;
+    }
+    if (message.type === "process") {
+      this.#processName = message.name;
       return;
     }
     if (message.type !== "data" || message.data === undefined) return;
