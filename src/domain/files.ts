@@ -1,4 +1,4 @@
-import { readdirSync, statSync } from "node:fs";
+import { readdirSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { config } from "../core/config.ts";
 
@@ -82,6 +82,40 @@ export async function read(path: string): Promise<FileContents> {
   const truncated = stats.size > MAX_BYTES;
   const text = truncated ? await handle.slice(0, MAX_BYTES).text() : await handle.text();
   return { path: file, text, truncated };
+}
+
+/** Saves what the editor has; the file has to exist already, this is not how files are created. */
+export function write(path: string, text: string): FileContents {
+  const file = resolveWithin(path);
+  if (!statSync(file, { throwIfNoEntry: false })?.isFile()) throw new FileAccessError("not a file", path);
+  writeFileSync(file, text);
+  return { path: file, text, truncated: false };
+}
+
+const INDEX_IGNORED = new Set([".git", "node_modules", "dist", "build", "target", ".svelte-kit", ".next", "out", "coverage"]);
+const MAX_INDEX = 8000;
+
+/** Every file under a directory, relative to it, for a search box; build output and dependencies are left out. */
+export function index(path: string): readonly string[] {
+  const root = resolveWithin(path);
+  const out: string[] = [];
+  const walk = (dir: string, prefix: string) => {
+    if (out.length >= MAX_INDEX) return;
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (INDEX_IGNORED.has(entry.name) || (entry.name.startsWith(".") && entry.name !== ".env")) continue;
+      if (entry.isDirectory()) walk(join(dir, entry.name), `${prefix}${entry.name}/`);
+      else if (entry.isFile()) out.push(`${prefix}${entry.name}`);
+      if (out.length >= MAX_INDEX) return;
+    }
+  };
+  walk(root, "");
+  return out;
 }
 
 /** The markdown worth reading from the dashboard: the persona, and the repo's own docs. */

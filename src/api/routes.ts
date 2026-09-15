@@ -42,7 +42,14 @@ export async function handle(req: Request): Promise<Response> {
 
     if (path === "/files") return json(files.list(url.searchParams.get("path") ?? config.devRoot));
 
+    if (path === "/file" && req.method === "PUT") {
+      const { path: target, text } = await body<{ path: string; text: string }>(req);
+      return json(files.write(target, text));
+    }
+
     if (path === "/file") return json(await files.read(url.searchParams.get("path") ?? ""));
+
+    if (path === "/files/index") return json(files.index(url.searchParams.get("path") ?? config.devRoot));
 
     if (path === "/roots") return json(files.roots());
 

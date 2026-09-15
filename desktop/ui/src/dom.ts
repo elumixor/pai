@@ -44,31 +44,54 @@ export function until(iso: string | undefined) {
 
 export const basename = (path: string) => path.split("/").filter(Boolean).pop() ?? path;
 
-/** A one-line prompt box in the page rather than the browser's dialog, which Tauri lacks. */
-export function ask(placeholder: string, initial = ""): Promise<string | undefined> {
+export interface Field {
+  readonly name: string;
+  readonly label: string;
+  readonly placeholder?: string;
+  readonly value?: string;
+  readonly required?: boolean;
+}
+
+export interface DialogSpec {
+  readonly title: string;
+  readonly description?: string;
+  readonly fields: readonly Field[];
+  readonly submit?: string;
+}
+
+/** A small sheet with a few fields, in the page's own style; the browser's `prompt` is not available in a Tauri window. */
+export function dialog(spec: DialogSpec): Promise<Record<string, string> | undefined> {
   return new Promise((resolve) => {
-    const input = el("input", { value: initial, placeholder }) as HTMLInputElement;
-    const close = (value?: string) => {
-      overlay.remove();
-      resolve(value?.trim() || undefined);
+    const inputs = spec.fields.map((field) => el("input", { name: field.name, value: field.value ?? "", placeholder: field.placeholder ?? "", required: Boolean(field.required) }) as HTMLInputElement);
+    const close = (values?: Record<string, string>) => {
+      sheet.close();
+      sheet.remove();
+      resolve(values);
     };
-    const overlay = el(
-      "div.overlay",
-      { onclick: (event: Event) => event.target === overlay && close() },
+    const sheet = el(
+      "dialog.sheet",
+      { onclick: (event: Event) => event.target === sheet && close(), onclose: () => sheet.isConnected && close() },
       el(
-        "form.prompt",
+        "form",
         {
+          method: "dialog",
           onsubmit: (event: Event) => {
             event.preventDefault();
-            close(input.value);
+            close(Object.fromEntries(inputs.map((input) => [input.name, input.value.trim()])));
           },
         },
-        input,
-        el("div.prompt-actions", {}, el("button.btn", { type: "button", onclick: () => close() }, "Cancel"), el("button.btn.primary", { type: "submit" }, "OK")),
+        el("h3", {}, spec.title),
+        spec.description ? el("p.dim", {}, spec.description) : undefined,
+        ...spec.fields.map((field, index) => el("label.sheet-field", {}, el("span", {}, field.label), inputs[index]!)),
+        el("div.sheet-actions", {}, el("button.btn", { type: "button", onclick: () => close() }, "Cancel"), el("button.btn.primary", { type: "submit" }, spec.submit ?? "OK")),
       ),
-    );
-    document.body.append(overlay);
-    input.focus();
-    input.select();
+    ) as HTMLDialogElement;
+    sheet.addEventListener("keydown", (event) => event.key === "Escape" && close());
+    document.body.append(sheet);
+    sheet.showModal();
+    inputs[0]?.focus();
   });
 }
+
+/** One question, one answer. */
+export const ask = async (label: string, initial = "") => (await dialog({ title: label, fields: [{ name: "value", label: "", value: initial, required: true }] }))?.value;

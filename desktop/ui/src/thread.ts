@@ -20,7 +20,7 @@ export interface ThreadHandlers {
 export function thread(pane: HTMLElement, session: SessionSummary, handlers: ThreadHandlers): () => void {
   const id = session.sessionId;
   const log = el("div.tui");
-  const input = el("textarea", { rows: 1, placeholder: "Message… (enter sends)" }) as HTMLTextAreaElement;
+  const input = el("textarea", { rows: 1, placeholder: "Message…", spellcheck: false }) as HTMLTextAreaElement;
   const note = el("span.note");
   const stateTag = el("span.tag", {}, session.state);
   let adopted = session.kind !== "claude";
@@ -72,7 +72,7 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
       el("button.iconbtn", { title: "close", onclick: handlers.close }, icon("x", 14)),
     ),
     log,
-    el("footer.compose.tui-compose", {}, el("span.prompt-char", {}, "❯"), input, el("button.iconbtn.send", { title: "send (enter)", onclick: () => void submit() }, icon("send", 15)), note),
+    el("footer.compose.tui-compose", {}, el("div.compose-row", {}, el("span.prompt-char", {}, "❯"), input), el("div.compose-foot", {}, el("span.dim", {}, session.project ?? (session.kind === "main" ? "workspace" : session.cwd?.replace(/^.*\//, "") ?? "")), el("span.grow"), note, el("span.dim", {}, "enter to send · shift+enter newline"))),
   );
 
   void (async () => {

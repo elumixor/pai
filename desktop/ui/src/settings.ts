@@ -1,4 +1,6 @@
-import { baseUrl, flush, outbox, send, setBaseUrl, setToken, settings, sync, token } from "./api.ts";
+import { baseUrl, flush, inDesktop, outbox, send, setBaseUrl, setToken, settings, sync, token } from "./api.ts";
+
+export const DOWNLOAD = "https://github.com/elumixor/pai/releases/latest/download/pai-macos.dmg";
 import { clear, el } from "./dom.ts";
 import { icon } from "./icons.ts";
 
@@ -46,6 +48,9 @@ export async function settingsView(pane: HTMLElement) {
             },
           }),
         ),
+        inDesktop
+          ? undefined
+          : field("desktop app", el("a", { href: DOWNLOAD }, "Download for macOS"), "the same client as a window; after installing run `xattr -cr /Applications/pai.app` once"),
         field(
           "outbox",
           el(

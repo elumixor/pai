@@ -1,5 +1,5 @@
 import { addProject, projects, tasks, threadsIn } from "./api.ts";
-import { ask, clear, el } from "./dom.ts";
+import { clear, dialog, el } from "./dom.ts";
 import { icon } from "./icons.ts";
 import { save, state } from "./state.ts";
 import type { DiskSession, ProjectSummary, SessionSummary } from "./types.ts";
@@ -21,17 +21,15 @@ const stateClass = (session: SessionSummary) => {
   return "dead";
 };
 
-/** Threads grouped by the project they run in; the main conversation is its own group at the top. */
+/** The project a session belongs to: the one it was started in, or the one whose directory holds its cwd. */
+export const projectOf = (session: SessionSummary, catalog: ProjectSummary[]) =>
+  session.project ?? catalog.find((project) => session.cwd === project.path || session.cwd?.startsWith(`${project.path}/`))?.slug ?? "workspace";
+
+/** Threads grouped by project. The main conversation runs in the workspace inside the pai checkout, so it lands there. */
 function group(sessions: SessionSummary[], catalog: ProjectSummary[]) {
   const groups = new Map<string, SessionSummary[]>();
-  const keyOf = (session: SessionSummary) => {
-    if (session.kind === "main") return "main";
-    if (session.project) return session.project;
-    const match = catalog.find((project) => session.cwd?.startsWith(project.path));
-    return match?.slug ?? "workspace";
-  };
   for (const session of sessions) {
-    const key = keyOf(session);
+    const key = projectOf(session, catalog);
     groups.set(key, [...(groups.get(key) ?? []), session]);
   }
   return groups;
@@ -50,7 +48,8 @@ const fromDisk = (found: DiskSession): SessionSummary => ({
 });
 
 const activity = (session: SessionSummary) => {
-  if (session.state === "busy" || session.state === "starting" || session.waiting) return Number.MAX_SAFE_INTEGER;
+  if (session.kind === "main") return Number.MAX_SAFE_INTEGER;
+  if (session.state === "busy" || session.state === "starting" || session.waiting) return Number.MAX_SAFE_INTEGER - 1;
   return session.lastActivity ? new Date(session.lastActivity).getTime() : 0;
 };
 
@@ -66,6 +65,24 @@ export async function allThreads(catalog: ProjectSummary[]) {
   return [...known, ...extra].sort((a, b) => activity(b) - activity(a));
 }
 
+/** Asks for a repository to clone under devRoot and adds it. */
+export async function addProjectDialog() {
+  const answer = await dialog({
+    title: "Add a project",
+    description: "A project is a git checkout under ~/dev on the box. Paste the repository to clone — GitHub or anywhere git can reach.",
+    fields: [
+      { name: "url", label: "Repository", placeholder: "git@github.com:you/thing.git", required: true },
+      { name: "name", label: "Directory", placeholder: "defaults to the repository's name" },
+    ],
+    submit: "Clone",
+  });
+  if (!answer?.url) return false;
+  const result = await addProject(answer.url, answer.name || undefined);
+  if (result.error) alert(result.error);
+  else if (result.queued) alert("queued — the daemon is offline");
+  return !result.error;
+}
+
 /**
  * The right-hand rail: every project with its threads under it, a GitHub link where there
  * is a repository, a way to start a thread in a project, and a way to add a project.
@@ -74,22 +91,20 @@ export async function rail(root: HTMLElement, handlers: RailHandlers) {
   const catalog = await projects();
   const sessions = await allThreads(catalog);
   const groups = group(sessions, catalog);
-  const keys = [...new Set([...groups.keys(), ...catalog.map((p) => p.slug)])].sort((a, b) =>
-    a === "main" ? -1 : b === "main" ? 1 : a.localeCompare(b),
-  );
+  const keys = [...new Set([...catalog.map((p) => p.slug), ...groups.keys()])].sort((a, b) => a.localeCompare(b));
 
   const threadRow = (session: SessionSummary) =>
     el(
       "button.thread",
       {
-        class: `thread${isOpen(session) ? " open" : ""}`,
-        title: `${session.title || session.shortId}\nclick: open above · shift+click: open below`,
+        class: `thread${isOpen(session) ? " open" : ""}${session.kind === "main" ? " main" : ""}`,
+        "data-session": session.sessionId,
+        title: `${session.title || session.shortId}\nclick: open · shift+click: open in the lower pane`,
         onclick: (event: Event) => handlers.openThread(session, (event as MouseEvent).shiftKey ? "b" : "a"),
       },
       el("span", { class: `dot ${stateClass(session)}` }),
-      el("span.label", {}, session.title || session.shortId),
+      el("span.label", {}, session.kind === "main" ? "assistant" : session.title || session.shortId),
       session.kind === "claude" ? icon("terminal", 11) : undefined,
-      session.waiting ? el("span.tag", {}, "?") : undefined,
     );
 
   const groupNode = (key: string) => {
@@ -97,9 +112,7 @@ export async function rail(root: HTMLElement, handlers: RailHandlers) {
     const threads = groups.get(key) ?? [];
     const collapsed = state.collapsed.includes(key);
     const selected = project && state.project === project.slug;
-    // A long list scrolls inside its group rather than pushing the other projects off the screen.
     const list = el("div.threads", { hidden: collapsed, class: `threads${threads.length > VISIBLE_THREADS ? " long" : ""}` }, ...threads.map(threadRow));
-    if (!threads.length && !collapsed && key === "main") list.append(el("p.hint", {}, "no conversation yet"));
     const toggle = el(
       "button.iconbtn.chev",
       {
@@ -115,32 +128,37 @@ export async function rail(root: HTMLElement, handlers: RailHandlers) {
           save();
         },
       },
-      icon("chevron", 14),
+      icon("chevron", 13),
     );
     return el(
       "section.group",
       { class: `group${selected ? " selected" : ""}` },
       el(
         "header.group-head",
-        { onclick: () => handlers.selectProject(project) },
-        key === "main" ? icon("bot", 14) : icon("folder", 14),
-        el("span.name", {}, key === "main" ? "assistant" : key),
+        {
+          title: threads.length ? "open the latest thread" : "browse the files",
+          onclick: () => {
+            handlers.selectProject(project);
+            if (threads[0]) handlers.openThread(threads[0], "a");
+          },
+        },
+        el("span.name", {}, key),
         el("span.count", {}, threads.length ? String(threads.length) : ""),
-        key === "main"
-          ? undefined
-          : el(
+        project
+          ? el(
               "button.iconbtn",
               {
                 title: `new thread in ${key}`,
                 onclick: (event: Event) => {
                   event.stopPropagation();
-                  handlers.newThread(project?.slug);
+                  handlers.newThread(project.slug);
                 },
               },
-              icon("plus", 14),
-            ),
+              icon("plus", 13),
+            )
+          : undefined,
         project?.repo
-          ? el("a.iconbtn", { href: project.repo, target: "_blank", rel: "noreferrer", title: project.repo, onclick: (e: Event) => e.stopPropagation() }, icon("github", 14))
+          ? el("a.iconbtn", { href: project.repo, target: "_blank", rel: "noreferrer", title: project.repo, onclick: (e: Event) => e.stopPropagation() }, icon("github", 13))
           : undefined,
         toggle,
       ),
@@ -152,19 +170,16 @@ export async function rail(root: HTMLElement, handlers: RailHandlers) {
     "button.add-project",
     {
       onclick: async () => {
-        const url = await ask("git url to clone under ~/dev");
-        if (!url) return;
-        add.classList.add("busy");
-        const result = await addProject(url);
-        add.classList.remove("busy");
-        if (result.error) alert(result.error);
-        else if (result.queued) alert("queued — the daemon is offline");
-        else void rail(root, handlers);
+        if (await addProjectDialog()) void rail(root, handlers);
       },
     },
-    icon("plus", 15),
+    icon("plus", 14),
     el("span", {}, "Add project"),
   );
 
-  clear(root, el("div.rail-scroll", {}, ...keys.map(groupNode)), add);
+  // A redraw keeps the scroll where it was; otherwise every event would jump the list to the top.
+  const scrolled = root.querySelector(".rail-scroll")?.scrollTop ?? 0;
+  const scroller = el("div.rail-scroll", {}, ...keys.map(groupNode));
+  clear(root, scroller, add);
+  scroller.scrollTop = scrolled;
 }

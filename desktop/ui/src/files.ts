@@ -1,5 +1,5 @@
-import { entries, file } from "./api.ts";
-import { basename, clear, el } from "./dom.ts";
+import { entries } from "./api.ts";
+import { el } from "./dom.ts";
 import { icon } from "./icons.ts";
 import type { Entry } from "./types.ts";
 
@@ -27,7 +27,7 @@ async function level(parent: HTMLElement, path: string, open: (path: string) => 
       "button.file",
       {
         class: `file${entry.directory ? " dir" : ""}${current?.() === entry.path ? " current" : ""}`,
-        style: `padding-left:${10 + depth * 14}px`,
+        style: `padding-left:${8 + depth * 12}px`,
         title: entry.path,
         onclick: async () => {
           if (!entry.directory) {
@@ -47,36 +47,8 @@ async function level(parent: HTMLElement, path: string, open: (path: string) => 
         },
       },
       chevron ?? el("span.spacer"),
-      icon(entry.directory ? "folder" : "file", 13),
       el("span.label", {}, entry.name),
     );
     parent.append(row, children);
   }
-}
-
-const EXT_LANG: Record<string, string> = { ts: "ts", tsx: "tsx", js: "js", json: "json", md: "md", css: "css", html: "html", rs: "rust", py: "py", swift: "swift", sh: "sh", yml: "yaml", yaml: "yaml", toml: "toml" };
-
-/** The viewer: text as it is, with line numbers, and no editing — that is a session's job. */
-export async function viewer(pane: HTMLElement, path: string) {
-  const ext = path.split(".").pop() ?? "";
-  clear(
-    pane,
-    el("header.panel-head", {}, icon("file", 14), el("h2", {}, basename(path)), el("span.dim.ellipsis", {}, path), el("span.grow"), el("span.tag", {}, EXT_LANG[ext] ?? ext)),
-  );
-  try {
-    const { text, truncated } = await file(path);
-    const lines = text.split("\n");
-    pane.append(el("div.code", {}, el("pre.gutter", {}, lines.map((_, index) => String(index + 1)).join("\n")), el("pre.source", {}, text)));
-    if (truncated) pane.append(el("p.hint", {}, "truncated"));
-  } catch {
-    pane.append(el("div.empty", {}, el("p", {}, "This file is not cached and the daemon is not reachable.")));
-  }
-}
-
-export function emptyViewer(pane: HTMLElement) {
-  clear(
-    pane,
-    el("header.panel-head", {}, icon("code", 14), el("h2", {}, "Editor")),
-    el("div.empty", {}, icon("file", 28), el("p", {}, "Pick a file on the left to read it here."), el("p.dim", {}, "Editing is a thread's job: ask it.")),
-  );
 }

@@ -266,6 +266,8 @@ export const openTerminal = async (project?: string, cwd?: string) => {
 export const closeTerminal = (id: string) =>
   fetch(`${baseUrl()}/terminals/${id}`, { method: "DELETE", headers: headers() }).catch(() => undefined);
 export const entries = (path: string) => get<Entry[]>(`/files?path=${encodeURIComponent(path)}`);
+export const saveFile = (path: string, text: string) => send("/file", { path, text }, "PUT");
+export const fileIndex = (path: string) => get<string[]>(`/files/index?path=${encodeURIComponent(path)}`);
 export const file = (path: string) => get<{ path: string; text: string; truncated?: boolean }>(`/file?path=${encodeURIComponent(path)}`);
 export const transcript = (session: string, cwd?: string, limit = 300) =>
   get<Transcript[]>(`/transcript?session=${session}&limit=${limit}${cwd ? `&cwd=${encodeURIComponent(cwd)}` : ""}`);

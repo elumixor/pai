@@ -6,11 +6,11 @@ import { icon } from "./icons.ts";
 import { save, state } from "./state.ts";
 import type { TerminalSummary } from "./types.ts";
 
-/** What is running, as a short label with an icon: the shell name until something else takes over. */
+/** What is running, as a glyph: the shell until something else takes over. */
 const PROCESS_ICON: Record<string, string> = { bun: "🥟", node: "⬢", vim: "✎", nvim: "✎", ssh: "⇄", git: "⑂", claude: "✦", python: "🐍", python3: "🐍", cargo: "⚙", top: "◔", htop: "◔" };
 const processLabel = (name: string | undefined) => {
   const short = name ? basename(name) : "";
-  return { glyph: PROCESS_ICON[short] ?? ">_", name: short };
+  return { glyph: PROCESS_ICON[short] ?? "›", name: short };
 };
 
 const theme = () => {
@@ -68,6 +68,17 @@ export function dock(pane: HTMLElement, project: () => { slug?: string; path?: s
     render();
   };
 
+  const open = async () => {
+    const { slug } = project();
+    try {
+      const opened = await openTerminal(slug);
+      await refresh();
+      attach(opened);
+    } catch {
+      clear(host, el("p.hint", {}, "A terminal needs the daemon; it is not reachable."));
+    }
+  };
+
   const render = () => {
     clear(
       list,
@@ -82,7 +93,7 @@ export function dock(pane: HTMLElement, project: () => { slug?: string; path?: s
           },
           el("span.glyph", {}, glyph),
           el("span.label", {}, basename(summary.cwd)),
-          el("span.proc", {}, name),
+          name ? el("span.proc", {}, name) : undefined,
           el(
             "span.iconbtn.close",
             {
@@ -98,32 +109,15 @@ export function dock(pane: HTMLElement, project: () => { slug?: string; path?: s
                 await refresh();
               },
             },
-            icon("x", 12),
+            icon("x", 11),
           ),
         );
       }),
-      el(
-        "button.term-tab.new",
-        {
-          title: "new terminal in the selected project",
-          onclick: async () => {
-            const { slug } = project();
-            try {
-              const opened = await openTerminal(slug);
-              await refresh();
-              attach(opened);
-            } catch {
-              clear(host, el("p.hint", {}, "A terminal needs the daemon; it is not reachable."));
-            }
-          },
-        },
-        icon("plus", 14),
-        el("span.label", {}, "terminal"),
-      ),
+      el("button.term-tab.new", { title: "new terminal in the selected project", onclick: open }, icon("plus", 13), el("span.label", {}, "new")),
     );
   };
 
-  const placeholder = () => el("div.empty", {}, icon("terminal", 24), el("p", {}, "No terminal open."), el("p.dim", {}, "One shell per project is usually enough."));
+  const placeholder = () => el("div.empty", {}, icon("terminal", 22), el("p.dim", {}, "No terminal open."));
 
   const refresh = async () => {
     try {
@@ -150,6 +144,7 @@ export function dock(pane: HTMLElement, project: () => { slug?: string; path?: s
 
   return {
     refresh,
+    open,
     dispose: () => {
       clearInterval(timer);
       detach();
