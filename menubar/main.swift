@@ -172,12 +172,15 @@ func ringImage(_ w: QuotaWindow, diameter: CGFloat = 18, stale: Bool = false) ->
         let used = arc(center: center, radius: innerRadius, fraction: Double(w.percent) / 100)
         used.lineWidth = innerWidth; used.lineCapStyle = .round; used.stroke()
 
-        let text = NSAttributedString(string: String(min(99, w.percent)), attributes: [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: diameter * 0.34, weight: .bold),
-            .foregroundColor: color,
-        ])
-        let size = text.size()
-        text.draw(at: NSPoint(x: center.x - size.width / 2, y: center.y - size.height / 2))
+        // A dark outline behind the digits keeps them readable over the arcs in either appearance.
+        let label = String(min(99, w.percent))
+        let font = NSFont.monospacedDigitSystemFont(ofSize: diameter * 0.36, weight: .heavy)
+        let size = NSAttributedString(string: label, attributes: [.font: font]).size()
+        let origin = NSPoint(x: center.x - size.width / 2, y: center.y - size.height / 2)
+        NSAttributedString(string: label, attributes: [
+            .font: font, .strokeColor: NSColor.black.withAlphaComponent(0.85), .strokeWidth: 40,
+        ]).draw(at: origin)
+        NSAttributedString(string: label, attributes: [.font: font, .foregroundColor: color]).draw(at: origin)
         return true
     }
     return image
