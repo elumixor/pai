@@ -7,6 +7,8 @@ import { yaml as yamlMode } from "@codemirror/legacy-modes/mode/yaml";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { drawSelection, EditorView, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers } from "@codemirror/view";
+import { linter, lintGutter, type Diagnostic as LintDiagnostic } from "@codemirror/lint";
+import { diagnostics as fetchDiagnostics } from "./api.ts";
 import { Vim, vim } from "@replit/codemirror-vim";
 import { file, saveFile } from "./api.ts";
 import { basename, clear, el } from "./dom.ts";
@@ -67,6 +69,27 @@ Vim.defineEx("wq", "wq", () => void saveCurrent?.());
  * The editor: CodeMirror with vim keys, the language by extension, `:w` or ⌘S to save
  * through the daemon. The file is what is on the box, so a session can pick the change up.
  */
+/** Line numbers as vim shows them with `relativenumber`: the distance from the cursor, the real number on its line. */
+const relativeNumbers = lineNumbers({
+  formatNumber: (line, state) => {
+    const cursor = state.doc.lineAt(state.selection.main.head).number;
+    return line === cursor ? String(line) : String(Math.abs(line - cursor));
+  },
+});
+
+/** A JSON file's own syntax error, without asking the daemon. */
+function jsonLint(text: string): LintDiagnostic[] {
+  try {
+    JSON.parse(text);
+    return [];
+  } catch (err) {
+    const at = Number(/position (\d+)/.exec((err as Error).message)?.[1] ?? 0);
+    return [{ from: Math.min(at, text.length), to: Math.min(at + 1, text.length), severity: "error", message: (err as Error).message }];
+  }
+}
+
+const TS_EXT = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
+
 export async function editor(pane: HTMLElement, path: string) {
   const status = el("span.dim", {}, "");
   const head = el("header.panel-head", {}, icon("file", 13), el("h2", {}, basename(path)), el("span.dim.ellipsis", { title: path }, path), el("span.grow"), status);
@@ -94,6 +117,7 @@ export async function editor(pane: HTMLElement, path: string) {
     else if (result.queued) status.textContent = "queued — saved when the daemon answers";
     else {
       dirty = false;
+      fresh = true;
       mark();
       status.textContent = "saved";
       setTimeout(mark, 1500);
@@ -102,13 +126,33 @@ export async function editor(pane: HTMLElement, path: string) {
   saveCurrent = save;
 
   const theme = new Compartment();
+  // Type errors come from tsc on the daemon: fetched when the file opens and after a save.
+  let fresh = false;
+  const tsLint = linter(
+    async (view) => {
+      if (!TS_EXT.test(path)) return [];
+      const result = await fetchDiagnostics(path, fresh).catch(() => ({ items: [] }));
+      fresh = false;
+      const doc = view.state.doc;
+      return result.items
+        .filter((d) => d.line <= doc.lines)
+        .map((d) => {
+          const line = doc.line(d.line);
+          const from = Math.min(line.from + d.column - 1, line.to);
+          return { from, to: line.to, severity: d.severity, message: `${d.message} (${d.code})` };
+        });
+    },
+    { delay: 1500, needsRefresh: (update) => update.docChanged },
+  );
   const view = new EditorView({
     parent: host,
     state: EditorState.create({
       doc: contents.text,
       extensions: [
         vim(),
-        lineNumbers(),
+        relativeNumbers,
+        lintGutter(),
+        path.endsWith(".json") ? linter((v) => jsonLint(v.state.doc.toString())) : tsLint,
         highlightActiveLineGutter(),
         highlightActiveLine(),
         history(),
@@ -127,6 +171,8 @@ export async function editor(pane: HTMLElement, path: string) {
           }
         }),
         EditorState.readOnly.of(Boolean(contents.truncated)),
+        // Leaving the editor saves it, like an editor with autosave.
+        EditorView.domEventHandlers({ blur: () => void (dirty && save()) }),
       ],
     }),
   });

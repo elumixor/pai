@@ -1,4 +1,4 @@
-import { follow, isOnline, send, transcript, type Transcript, type TranscriptTool } from "./api.ts";
+import { fileIndex, follow, isOnline, send, transcript, type Transcript, type TranscriptTool } from "./api.ts";
 import { clear, el } from "./dom.ts";
 import { icon } from "./icons.ts";
 import { markdown } from "./markdown.ts";
@@ -8,7 +8,27 @@ export interface ThreadHandlers {
   /** Move this thread to the other pane. */
   readonly swap?: () => void;
   readonly close: () => void;
+  /** The directory `@` mentions are resolved in. */
+  readonly projectPath?: () => string | undefined;
 }
+
+interface Attachment {
+  readonly media_type: string;
+  readonly data: string;
+  readonly preview: string;
+}
+
+/** A pasted image as the base64 the API takes, plus a data URL for the chip. */
+const readImage = (file: File) =>
+  new Promise<Attachment>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      const url = String(reader.result);
+      resolve({ media_type: file.type, data: url.slice(url.indexOf(",") + 1), preview: url });
+    };
+    reader.readAsDataURL(file);
+  });
 
 /**
  * A thread, drawn the way the terminal draws it: `❯` before what you typed, `⏺` before
@@ -20,10 +40,57 @@ export interface ThreadHandlers {
 export function thread(pane: HTMLElement, session: SessionSummary, handlers: ThreadHandlers): () => void {
   const id = session.sessionId;
   const log = el("div.tui");
-  const input = el("textarea", { rows: 1, placeholder: "Message…", spellcheck: false }) as HTMLTextAreaElement;
+  const input = el("textarea", { rows: 1, placeholder: "Message… (@ mentions a file, paste an image)", spellcheck: false }) as HTMLTextAreaElement;
   const note = el("span.note");
+  const chips = el("div.chips.attachments");
+  const attachments: Attachment[] = [];
+  const drawChips = () =>
+    clear(chips, ...attachments.map((a, i) => el("span.chip.image", {}, el("img", { src: a.preview, alt: "" }), el("button.iconbtn", { title: "remove", onclick: () => (attachments.splice(i, 1), drawChips()) }, icon("x", 11)))));
+  input.addEventListener("paste", async (event) => {
+    const files = [...(event.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+    if (!files.length) return;
+    event.preventDefault();
+    for (const file of files) attachments.push(await readImage(file));
+    drawChips();
+  });
+
+  // `@` opens a file picker over the project; the chosen path goes in as text the model can read.
+  const mentions = el("div.mentions", { hidden: true });
+  let index: string[] | undefined;
+  let mentionStart = -1;
+  const closeMentions = () => {
+    mentions.setAttribute("hidden", "");
+    mentionStart = -1;
+  };
+  const pickMention = (relative: string) => {
+    const root = handlers.projectPath?.();
+    const path = root ? `${root}/${relative}` : relative;
+    input.value = `${input.value.slice(0, mentionStart)}@${path} ${input.value.slice(input.selectionStart)}`;
+    closeMentions();
+    input.focus();
+    grow();
+  };
+  const showMentions = async (query: string) => {
+    const root = handlers.projectPath?.();
+    if (!root) return closeMentions();
+    index ??= await fileIndex(root).catch(() => []);
+    const q = query.toLowerCase();
+    const hits = index.filter((f) => f.toLowerCase().includes(q)).slice(0, 8);
+    if (!hits.length) return closeMentions();
+    clear(mentions, ...hits.map((hit, i) => el("button.mention", { class: `mention${i === 0 ? " active" : ""}`, onmousedown: (e: Event) => (e.preventDefault(), pickMention(hit)) }, hit)));
+    mentions.removeAttribute("hidden");
+  };
+  input.addEventListener("input", () => {
+    const before = input.value.slice(0, input.selectionStart);
+    const at = before.lastIndexOf("@");
+    if (at >= 0 && (at === 0 || /\s/.test(before[at - 1]!)) && !/\s/.test(before.slice(at + 1))) {
+      mentionStart = at;
+      void showMentions(before.slice(at + 1));
+    } else closeMentions();
+  });
   const stateTag = el("span.tag", {}, session.state);
   let adopted = session.kind !== "claude";
+  const heading = el("h2.ellipsis", { title: session.title }, session.title || session.shortId);
 
   const scroll = () => (log.scrollTop = log.scrollHeight);
   const grow = () => {
@@ -33,13 +100,19 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
 
   const submit = async () => {
     const text = input.value.trim();
-    if (!text) return;
+    if (!text && !attachments.length) return;
     input.value = "";
     grow();
-    log.append(userLine(text));
+    closeMentions();
+    const images = attachments.splice(0).map(({ media_type, data }) => ({ media_type, data }));
+    drawChips();
+    log.querySelector(".hint")?.remove();
+    log.append(userLine(text || "(image)"));
     scroll();
+    // A thread nobody named takes its name from the first message, as the daemon does.
+    if (heading.textContent === "new thread" && text) heading.textContent = text.replace(/\s+/g, " ").slice(0, 60);
     // A terminal conversation is resumed by the daemon on its first message from here.
-    const body = adopted ? { id, text } : { id, text, cwd: session.cwd, title: session.title };
+    const body = { id, text, images, ...(adopted ? {} : { cwd: session.cwd, title: session.title }) };
     const result = await send("/send", body);
     if (result.error) note.textContent = result.error;
     else if (result.queued) note.textContent = "queued — sent when the daemon answers";
@@ -51,6 +124,22 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
 
   input.addEventListener("input", grow);
   input.addEventListener("keydown", (event) => {
+    if (mentionStart >= 0 && !mentions.hasAttribute("hidden")) {
+      const rows = [...mentions.querySelectorAll<HTMLElement>(".mention")];
+      const active = rows.findIndex((r) => r.classList.contains("active"));
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const next = (active + (event.key === "ArrowDown" ? 1 : rows.length - 1)) % rows.length;
+        rows.forEach((r, i) => r.classList.toggle("active", i === next));
+        return;
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault();
+        pickMention(rows[active]?.textContent ?? "");
+        return;
+      }
+      if (event.key === "Escape") return closeMentions();
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void submit();
@@ -63,7 +152,7 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
       "header.panel-head",
       {},
       icon(session.kind === "main" ? "bot" : session.kind === "claude" ? "terminal" : "message", 14),
-      el("h2.ellipsis", { title: session.title }, session.title || session.shortId),
+      heading,
       el("span.dim.ellipsis", { title: session.cwd ?? "" }, session.kind === "main" ? "main" : (session.project ?? session.cwd?.replace(/^.*\//, "") ?? "")),
       stateTag,
       el("span.grow"),
@@ -72,16 +161,17 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
       el("button.iconbtn", { title: "close", onclick: handlers.close }, icon("x", 14)),
     ),
     log,
-    el("footer.compose.tui-compose", {}, el("div.compose-row", {}, el("span.prompt-char", {}, "❯"), input), el("div.compose-foot", {}, el("span.dim", {}, session.project ?? (session.kind === "main" ? "workspace" : session.cwd?.replace(/^.*\//, "") ?? "")), el("span.grow"), note, el("span.dim", {}, "enter to send · shift+enter newline"))),
+    el("footer.compose.tui-compose", {}, mentions, chips, el("div.compose-row", {}, el("span.prompt-char", {}, "❯"), input), el("div.compose-foot", {}, el("span.dim", {}, session.project ?? (session.kind === "main" ? "workspace" : session.cwd?.replace(/^.*\//, "") ?? "")), el("span.grow"), note, el("span.dim", {}, "enter to send · shift+enter newline"))),
   );
 
   void (async () => {
     try {
       const history = await transcript(id, session.cwd);
-      clear(log, ...history.flatMap(render));
-      if (!history.length) log.append(el("p.hint", {}, "Nothing here yet."));
+      // Prepended: something may already have been typed while the transcript was on its way.
+      log.prepend(...history.flatMap(render));
+      if (!history.length && !log.childElementCount) log.append(el("p.hint", {}, "Nothing here yet."));
     } catch {
-      log.append(el("p.hint", {}, "No transcript cached for this thread yet."));
+      if (!log.childElementCount) log.append(el("p.hint", {}, "No transcript cached for this thread yet."));
     }
     if (!isOnline()) note.textContent = "offline — showing the last transcript this app saw";
     scroll();
@@ -98,7 +188,7 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
     liveTools.clear();
   };
 
-  return follow(id, (event) => {
+  const stop = follow(id, (event) => {
     const payload = event.payload as { text?: string; summary?: string; name?: string; id?: string; result?: string; questions?: Question[]; status?: string };
     switch (event.kind) {
       case "session.input":
@@ -152,8 +242,12 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
         return;
     }
     scroll();
-  });
+  }, { deltas: true, replay: false });
+  return stop;
 }
+
+/** The compose box of a thread pane, for keyboard focus. */
+export const composeOf = (pane: HTMLElement) => pane.querySelector<HTMLTextAreaElement>(".tui-compose textarea");
 
 function userLine(text: string) {
   return el("div.entry.user", {}, el("span.mark", {}, "❯"), el("div.body", {}, text));

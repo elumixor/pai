@@ -100,6 +100,14 @@ export interface ContextItem {
   readonly body?: string;
 }
 
+export interface Diagnostic {
+  readonly line: number;
+  readonly column: number;
+  readonly message: string;
+  readonly severity: "error" | "warning";
+  readonly code: string;
+}
+
 export interface Question {
   readonly question: string;
   readonly header: string;

@@ -91,6 +91,9 @@ export function closeWarm() {
 const log = logger("session");
 
 export type SessionKind = "main" | "task" | "code";
+
+/** The title of a thread nobody has named yet. */
+export const UNTITLED = "new thread";
 export type SessionState = "starting" | "idle" | "busy" | "dead";
 
 export interface Question {
@@ -344,6 +347,8 @@ export class Session {
     for (const img of opts.images ?? [])
       content.push({ type: "image", source: { type: "base64", media_type: img.media_type, data: img.data } });
     this.inbox.push({ type: "user", message: { role: "user", content }, parent_tool_use_id: null });
+    // A thread started without a title is named after what was first said in it.
+    if (this.title === UNTITLED && text.trim()) this.title = text.replace(/\s+/g, " ").trim().slice(0, 60);
     this.activeTurn = true;
     this.wake?.();
     if (this.state === "idle") {

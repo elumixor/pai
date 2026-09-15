@@ -34,11 +34,18 @@ const WEEKLY_WINDOW = 7 * 24 * 3600;
 const TTL = 2 * 60 * 1000;
 const BACKOFF = 5 * 60 * 1000;
 
-interface OauthUsage {
-  five_hour?: { utilization: number; resets_at?: string };
-  seven_day?: { utilization: number; resets_at?: string };
+interface Period {
+  utilization: number;
+  resets_at?: string;
+}
+
+interface OauthUsage extends Record<string, unknown> {
+  five_hour?: Period;
+  seven_day?: Period;
   limits?: { kind: string; percent: number; resets_at?: string; scope?: { model?: { display_name?: string } } }[];
 }
+
+const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
 /**
  * Claude Code keeps its OAuth token in the login keychain on macOS and in
@@ -60,25 +67,23 @@ async function accessToken(): Promise<string | undefined> {
   }
 }
 
+/**
+ * Every window the API reports: the five-hour session, the general week, each model-scoped
+ * week (`limits`, and the older `seven_day_<model>` fields). The client picks which to show.
+ */
 function windows(usage: OauthUsage): Window[] {
   const out: Window[] = [];
-  if (usage.five_hour)
-    out.push({
-      name: "Session",
-      percent: Math.round(usage.five_hour.utilization),
-      resetsAt: usage.five_hour.resets_at,
-      length: SESSION_WINDOW,
-    });
-  const model = usage.limits?.find((limit) => limit.kind === "weekly_scoped" && limit.scope?.model);
-  if (model)
-    out.push({
-      name: model.scope?.model?.display_name ?? "Model",
-      percent: Math.round(model.percent),
-      resetsAt: model.resets_at,
-      length: WEEKLY_WINDOW,
-    });
-  else if (usage.seven_day)
-    out.push({ name: "Weekly", percent: Math.round(usage.seven_day.utilization), resetsAt: usage.seven_day.resets_at, length: WEEKLY_WINDOW });
+  if (usage.five_hour) out.push({ name: "Session", percent: Math.round(usage.five_hour.utilization), resetsAt: usage.five_hour.resets_at, length: SESSION_WINDOW });
+  if (usage.seven_day) out.push({ name: "Weekly", percent: Math.round(usage.seven_day.utilization), resetsAt: usage.seven_day.resets_at, length: WEEKLY_WINDOW });
+  for (const limit of usage.limits ?? [])
+    if (limit.kind === "weekly_scoped" && limit.scope?.model)
+      out.push({ name: limit.scope.model.display_name ?? "Model", percent: Math.round(limit.percent), resetsAt: limit.resets_at, length: WEEKLY_WINDOW });
+  for (const [key, value] of Object.entries(usage)) {
+    if (!key.startsWith("seven_day_") || !value || typeof value !== "object" || key === "seven_day_oauth_apps") continue;
+    const period = value as Period;
+    const name = titleCase(key.slice("seven_day_".length));
+    if (!out.some((w) => w.name.toLowerCase() === name.toLowerCase())) out.push({ name, percent: Math.round(period.utilization), resetsAt: period.resets_at, length: WEEKLY_WINDOW });
+  }
   return out;
 }
 

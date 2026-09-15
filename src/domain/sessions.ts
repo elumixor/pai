@@ -1,4 +1,4 @@
-import { Session, closeWarm, prewarm, rewarm, type SessionKind } from "./session.ts";
+import { Session, UNTITLED, closeWarm, prewarm, rewarm, type SessionKind } from "./session.ts";
 import { db, kv, now } from "../core/db.ts";
 import { existsSync } from "node:fs";
 import { config } from "../core/config.ts";
@@ -51,7 +51,7 @@ export function spawnTask(opts: SpawnTask): Session {
     cwd = proj.path;
     project = proj.slug;
   }
-  const session = new Session({ kind, title: opts.title, cwd, project, threadId: opts.threadId });
+  const session = new Session({ kind, title: opts.title.trim() || UNTITLED, cwd, project, threadId: opts.threadId });
   live.set(session.id, session);
   log.info(`spawned ${kind} ${session.shortId} "${opts.title}"`);
   prewarm("task");

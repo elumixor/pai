@@ -131,6 +131,7 @@ export function dock(pane: HTMLElement, project: () => { slug?: string; path?: s
   };
 
   clear(pane, el("div.dock", {}, list, host));
+  pane.dataset.focusTarget = "terminal";
   clear(host, placeholder());
   void refresh().then(() => {
     const remembered = known.find((t) => t.id === state.terminal);
@@ -142,6 +143,7 @@ export function dock(pane: HTMLElement, project: () => { slug?: string; path?: s
   return {
     refresh,
     open,
+    focus: () => (term ? term.focus() : void open()),
     dispose: () => {
       clearInterval(timer);
       detach();

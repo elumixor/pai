@@ -5,6 +5,7 @@ import { context } from "../domain/context.ts";
 import { byName as moduleByName, describeModules } from "../modules/index.ts";
 import { poll as linkedinPoll } from "../modules/linkedin.ts";
 import { usage } from "../domain/usage.ts";
+import { diagnostics } from "../domain/diagnostics.ts";
 import { recentEvents, waitFor } from "../core/bus.ts";
 import * as sessions from "../domain/sessions.ts";
 import * as terminals from "../domain/terminals.ts";
@@ -54,6 +55,9 @@ export async function handle(req: Request): Promise<Response> {
     if (path === "/file") return json(await files.read(url.searchParams.get("path") ?? ""));
 
     if (path === "/files/index") return json(files.index(url.searchParams.get("path") ?? config.devRoot));
+
+    // Type errors for a file, from tsc on the project around it.
+    if (path === "/diagnostics") return json(await diagnostics(url.searchParams.get("path") ?? "", url.searchParams.get("fresh") === "1"));
 
     if (path === "/roots") return json(files.roots());
 
@@ -138,11 +142,11 @@ export async function handle(req: Request): Promise<Response> {
     }
 
     if (path === "/send" && req.method === "POST") {
-      const { id, text, wait, cwd, title } = await body<{ id: string; text: string; wait?: boolean; cwd?: string; title?: string }>(req);
+      const { id, text, wait, cwd, title, images } = await body<{ id: string; text: string; wait?: boolean; cwd?: string; title?: string; images?: { media_type: string; data: string }[] }>(req);
       const s = resolveLive(id) ?? (cwd ? sessions.adopt(id, cwd, title ?? "") : undefined);
       if (!s) return json({ error: "no such session" }, 404);
       const done = wait ? waitFor("session.turn_end", s.id, TURN_TIMEOUT) : undefined;
-      s.send(text);
+      s.send(text, { images });
       if (!done) return json(s.summary());
       return json({ session: s.shortId, ...(await done).payload });
     }
@@ -246,8 +250,8 @@ export async function handle(req: Request): Promise<Response> {
     if (path === "/events") {
       const raw = url.searchParams.get("session") ?? undefined;
       const sessionId = raw ? (sessions.find(raw)?.id ?? sessions.resolveId(raw) ?? raw) : undefined;
-      if (!url.searchParams.get("follow")) return json(recentEvents(sessionId, 200));
-      return events(sessionId);
+      if (!url.searchParams.get("follow")) return json(recentEvents(sessionId, Number(url.searchParams.get("limit") ?? 200)));
+      return events(sessionId, { deltas: url.searchParams.get("deltas") === "1", replay: url.searchParams.get("replay") !== "0" });
     }
 
     return json({ error: "not found" }, 404);

@@ -4,10 +4,9 @@ import { tags } from "@lezer/highlight";
 import type { Theme } from "./themes.ts";
 
 /** CodeMirror's colours from a theme: the syntax palette for tokens, the chrome for the rest. */
-export function editorTheme(theme: Theme) {
+export function highlightStyle(theme: Theme) {
   const s = theme.syntax;
-  const u = theme.ui;
-  const highlight = HighlightStyle.define([
+  return HighlightStyle.define([
     { tag: [tags.comment, tags.lineComment, tags.blockComment, tags.docComment], color: s.comment, fontStyle: "italic" },
     { tag: [tags.keyword, tags.controlKeyword, tags.moduleKeyword, tags.operatorKeyword, tags.definitionKeyword], color: s.keyword },
     { tag: [tags.string, tags.special(tags.string), tags.character, tags.docString], color: s.string },
@@ -30,6 +29,11 @@ export function editorTheme(theme: Theme) {
     { tag: tags.strikethrough, textDecoration: "line-through" },
     { tag: [tags.meta, tags.processingInstruction, tags.contentSeparator], color: s.comment },
   ]);
+}
+
+export function editorTheme(theme: Theme) {
+  const u = theme.ui;
+  const highlight = highlightStyle(theme);
   const chrome = EditorView.theme(
     {
       "&": { color: u.text, backgroundColor: u.codeBg },

@@ -155,22 +155,22 @@ main.b-empty #thread-b { display: none; }
 .source { white-space: pre; }
 
 /* ---- terminals ------------------------------------------------------------------------ */
-.dock { flex: 1; display: grid; grid-template-columns: 150px 1fr; min-height: 0; }
-.term-list { display: flex; flex-direction: column; gap: 1px; padding: 4px; border-right: 1px solid var(--line); overflow-y: auto; background: var(--panel); }
+.dock { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.term-list { display: flex; flex-direction: row; gap: 2px; padding: 3px 6px; border-bottom: 1px solid var(--line); overflow-x: auto; background: var(--panel); flex: 0 0 auto; }
 .term-tab {
-  display: flex; align-items: center; gap: 6px; height: 24px;
-  padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--dim); text-align: left; font-size: 11.5px;
+  display: flex; align-items: center; gap: 5px; height: 22px; max-width: 200px;
+  padding: 0 7px; border: 0; border-radius: 6px; background: transparent; color: var(--dim); text-align: left; font-size: 11.5px; white-space: nowrap; flex: 0 0 auto;
 }
-.term-tab .glyph { width: 12px; font-size: 11px; text-align: center; color: var(--busy); flex: 0 0 auto; }
-.term-tab .label { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.term-tab .proc { font-family: var(--mono); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 1 auto; }
-.term-tab .close { margin-left: auto; width: 16px; height: 16px; opacity: 0; flex: 0 0 auto; }
+.term-tab .glyph { width: 10px; font-size: 10px; text-align: center; color: var(--busy); }
+.term-tab .label { color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+.term-tab .proc { font-family: var(--mono); font-size: 10px; overflow: hidden; text-overflow: ellipsis; }
+.term-tab .close { width: 16px; height: 16px; opacity: 0; }
 .term-tab:hover { background: var(--panel-2); }
-.term-tab:hover .close { opacity: 1; }
+.term-tab:hover .close, .term-tab.current .close { opacity: 1; }
 .term-tab.current { background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .term-tab.dead { opacity: 0.5; }
 .term-tab.new .label { color: var(--dim); }
-.term-host { min-width: 0; min-height: 0; padding: 6px 8px; background: var(--code-bg); }
+.term-host { flex: 1; min-width: 0; min-height: 0; padding: 6px 8px; background: var(--code-bg); }
 .term-host .xterm { height: 100%; }
 .term-host .empty { background: transparent; }
 
@@ -366,6 +366,31 @@ dialog.sheet.wide { width: min(720px, 94vw); max-height: 84vh; }
 .sw-code { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; }
 .sw-line { display: block; height: 4px; border-radius: 2px; opacity: 0.9; }
 .sw-name { padding-left: 2px; }
+
+/* ---- settings layout ------------------------------------------------------------------- */
+dialog.settings { width: min(860px, 94vw); height: 78vh; }
+dialog.settings .sheet-body { padding: 0; max-height: none; height: 100%; overflow: hidden; }
+.settings-layout { display: grid; grid-template-columns: 200px 1fr; height: 100%; }
+.settings-side { display: flex; flex-direction: column; gap: 8px; padding: 12px 8px; border-right: 1px solid var(--line); background: var(--panel-2); }
+.settings-search-box { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--code-bg); color: var(--dim); }
+.settings-search { flex: 1; border: 0; background: transparent; outline: none; font-size: 12px; min-width: 0; }
+.settings-nav { display: flex; flex-direction: column; gap: 2px; }
+.settings-main { display: flex; flex-direction: column; min-height: 0; }
+.settings-main .sheet-head { position: static; }
+.settings-body { flex: 1; overflow-y: auto; padding: 4px 16px 16px; }
+.checks { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 4px; }
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); }
+.tooltip { position: fixed; z-index: 30; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--panel); color: var(--text); font-size: 11.5px; box-shadow: var(--shadow); pointer-events: none; font-family: var(--mono); }
+.tooltip .dim { font-size: 10.5px; }
+
+/* ---- compose extras: mentions and images ------------------------------------------------ */
+.mentions { display: flex; flex-direction: column; margin-bottom: 4px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); overflow: hidden; }
+.mention { padding: 5px 10px; border: 0; background: transparent; color: var(--text); text-align: left; font-family: var(--mono); font-size: 11.5px; }
+.mention.active, .mention:hover { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.attachments { margin-bottom: 4px; }
+.attachments:empty { display: none; }
+.chip.image { display: inline-flex; align-items: center; gap: 4px; padding: 2px; border: 1px solid var(--line-2); border-radius: 6px; }
+.chip.image img { height: 40px; border-radius: 4px; }
 
 /* ---- sheets: dialogs and the palette -------------------------------------------------- */
 dialog.sheet { border: 1px solid var(--line-2); border-radius: 12px; padding: 0; background: var(--panel); color: var(--text); box-shadow: var(--shadow); width: min(460px, 90vw); }

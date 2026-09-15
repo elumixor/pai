@@ -1,4 +1,4 @@
-import type { Automation, ContextItem, DiskSession, Entry, ModuleInfo, PaiEvent, ProjectSummary, SessionSummary, Status, TerminalSummary, Usage } from "./types.ts";
+import type { Automation, ContextItem, Diagnostic, DiskSession, Entry, ModuleInfo, PaiEvent, ProjectSummary, SessionSummary, Status, TerminalSummary, Usage } from "./types.ts";
 
 /**
  * The daemon, with the app's offline story in one place: every GET is cached, a failed GET
@@ -253,6 +253,7 @@ export const sync = () =>
     folders: { id: string; state?: string; needBytes?: number; path?: string }[];
   }>("/sync");
 export const usage = () => get<Usage>("/usage");
+export const diagnostics = (path: string, fresh = false) => get<{ project?: string; items: Diagnostic[] }>(`/diagnostics?path=${encodeURIComponent(path)}${fresh ? "&fresh=1" : ""}`);
 export const modules = () => get<ModuleInfo[]>("/modules");
 export const patchModule = (name: string, changes: Record<string, string>) => send(`/modules/${name}`, changes, "PATCH");
 export const pollModule = (name: string) => send(`/modules/${name}/poll`, {});
@@ -285,14 +286,22 @@ export const transcript = (session: string, cwd?: string, limit = 300) =>
   get<Transcript[]>(`/transcript?session=${session}&limit=${limit}${cwd ? `&cwd=${encodeURIComponent(cwd)}` : ""}`);
 export const threadsIn = (cwd: string) => get<DiskSession[]>(`/threads?cwd=${encodeURIComponent(cwd)}`);
 
+export interface FollowOptions {
+  /** Text as it streams; a thread view wants it, the rail does not. */
+  readonly deltas?: boolean;
+  /** The last events before connecting; off for a view that already has the transcript. */
+  readonly replay?: boolean;
+}
+
 /** The daemon's event stream. Reconnects by itself; silence is simply treated as offline. */
-export function follow(session: string | undefined, onEvent: (event: PaiEvent) => void) {
+export function follow(session: string | undefined, onEvent: (event: PaiEvent) => void, options: FollowOptions = {}) {
   let source: EventSource | undefined;
   let stopped = false;
 
   const connect = () => {
     if (stopped) return;
-    source = new EventSource(withToken(`${baseUrl()}/events?follow=1${session ? `&session=${session}` : ""}`));
+    const query = `follow=1${session ? `&session=${session}` : ""}${options.deltas ? "&deltas=1" : ""}${options.replay === false ? "&replay=0" : ""}`;
+    source = new EventSource(withToken(`${baseUrl()}/events?${query}`));
     source.addEventListener("message", (message) => {
       setOnline(true);
       onEvent(JSON.parse(message.data as string) as PaiEvent);

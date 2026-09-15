@@ -104,7 +104,7 @@ export function sheet(name: string) {
   box.addEventListener("close", () => box.isConnected && box.remove());
   document.body.append(box);
   box.showModal();
-  return body;
+  return { body, close };
 }
 
 /** One question, one answer. */

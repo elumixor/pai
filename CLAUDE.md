@@ -81,6 +81,7 @@ from tasks are injected into the main conversation.
 - `src/domain/usage.ts` — the Claude subscription's windows (`GET /usage`) with the Claude Code login on the machine, plus what the sessions cost.
 - `src/modules/` — the module registry (`index.ts`): each module = tools for sessions + a prompt paragraph + bus events + settings, described for the dashboard (`GET /modules`). Built-ins are described there; `linkedin.ts` is the first real one (Voyager API with `li_at`/`JSESSIONID` cookies, `linkedin.message` events, `linkedin_*` tools).
 - `src/domain/automations.ts` — `on <event> → notify | turn | task`, rows in the `automations` table, run from the bus; tasks capped at 6/h. `GET/POST/PATCH/DELETE /automations`.
+- `src/domain/diagnostics.ts` — `GET /diagnostics?path=` runs tsc on the project around a file (cached a minute per project); the client's editor shows them inline.
 - `src/domain/context.ts` — what each session kind is given (instructions, memories, skills, tools) with the surfaces that see it, for the dashboard's context view (`GET /context`).
 - Projects are repos under `devRoot` or **contexts**: `workspace/projects/<slug>/` with a `CLAUDE.md` (voice, rules) and project-scoped memories (`project:` in the frontmatter, `remember` with `scope: "project"`). `POST /projects {name, about}` creates one; a task in it runs with that directory as cwd.
 - `infra/` — `provision.ts` (Hetzner), `cloud-init.yaml`, `bootstrap.ts`, borg backup, `gateway.ts` (Caddy for a domain of your own, needs root), `firewall.ts` (open ports on the Hetzner firewall).

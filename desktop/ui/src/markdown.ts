@@ -1,4 +1,30 @@
+import { LanguageDescription } from "@codemirror/language";
+import { languages } from "@codemirror/language-data";
+import { highlightTree } from "@lezer/highlight";
 import { el } from "./dom.ts";
+import { highlightStyle } from "./highlight.ts";
+import { current } from "./theme.ts";
+
+const ALIASES: Record<string, string> = { ts: "typescript", js: "javascript", sh: "shell", bash: "shell", zsh: "shell", yml: "yaml", py: "python", rs: "rust", md: "markdown" };
+
+/** Colours a code block with the editor's grammar for its language, once that grammar is loaded. */
+export async function highlightInto(node: HTMLElement, code: string, lang: string) {
+  const name = ALIASES[lang.toLowerCase()] ?? lang;
+  const description = LanguageDescription.matchLanguageName(languages, name, true);
+  if (!description) return;
+  const support = await description.load();
+  const tree = support.language.parser.parse(code);
+  const style = highlightStyle(current());
+  const fragment = document.createDocumentFragment();
+  let at = 0;
+  highlightTree(tree, style, (from, to, classes) => {
+    if (from > at) fragment.append(code.slice(at, from));
+    fragment.append(el("span", { class: classes }, code.slice(from, to)));
+    at = to;
+  });
+  if (at < code.length) fragment.append(code.slice(at));
+  node.replaceChildren(fragment);
+}
 
 /**
  * Enough markdown for a conversation: fenced code, inline code, bold, italic, links, lists
@@ -17,7 +43,9 @@ export function markdown(source: string): DocumentFragment {
       index += 1;
       while (index < lines.length && !/^```\s*$/.test(lines[index]!)) code.push(lines[index++]!);
       index += 1;
-      out.append(el("pre.md-code", { "data-lang": fence[1] ?? "" }, el("code", {}, code.join("\n"))));
+      const block = el("code", {}, code.join("\n"));
+      out.append(el("pre.md-code", { "data-lang": fence[1] ?? "" }, block));
+      if (fence[1]) void highlightInto(block, code.join("\n"), fence[1]);
       continue;
     }
     const heading = /^(#{1,6})\s+(.*)$/.exec(line);
