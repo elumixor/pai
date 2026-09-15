@@ -34,7 +34,11 @@ over HTTP; Telegram, the web app, the CLI and the menu bar are all clients of it
   **Terminals**, **Files** (projects, workspace and the repo, read-only), and
   **Library** (the instruction documents and long-term memory).
 - A menu bar item on macOS shows what is running and opens the dashboard. It reads its base
-  URL from `~/.config/pai/menubar`, so it works against a daemon on another machine.
+  URL from `~/.config/pai/menubar`, so it works against a daemon on another machine. Next to
+  it sit two rings for the Claude subscription, read with the Claude Code login on the Mac:
+  the five-hour session window and the model-scoped weekly limit. The thin outer arc is the
+  time left in the window, the coloured inner arc the share used, the percentage in the
+  middle; the menu spells out the reset times.
 
 ## Layout
 

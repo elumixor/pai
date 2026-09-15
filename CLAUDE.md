@@ -78,7 +78,7 @@ from tasks are injected into the main conversation.
 - `desktop/` — the Tauri desktop app: `ui/` is the whole client (threads by project, transcript, files, terminal, settings) with an offline cache and an outbox; `src-tauri/` is an empty Rust shell. `bun run desktop`, `bun run desktop:build`.
 - `app/` — the web app (sessions, terminals) built to `app/dist` and served at `/app`.
 - `infra/` — `provision.ts` (Hetzner), `cloud-init.yaml`, `bootstrap.ts`, borg backup, `gateway.ts` (Caddy for a domain of your own, needs root), `firewall.ts` (open ports on the Hetzner firewall).
-- `menubar/main.swift` — menu bar status app; compiled and loaded by `install` on macOS.
+- `menubar/main.swift` — menu bar status app: pai tasks plus the Claude quota rings (session and model-scoped weekly, token read from the Claude Code keychain item); compiled and loaded by `install` on macOS.
 - `workspace/` — the assistant's cwd; `CLAUDE.md` there is the persona, `inbox/` gets attachments.
 
 ## Tests
