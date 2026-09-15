@@ -1,4 +1,4 @@
-import type { DiskSession, Entry, PaiEvent, ProjectSummary, SessionSummary, Status, TerminalSummary, Usage } from "./types.ts";
+import type { Automation, ContextItem, DiskSession, Entry, ModuleInfo, PaiEvent, ProjectSummary, SessionSummary, Status, TerminalSummary, Usage } from "./types.ts";
 
 /**
  * The daemon, with the app's offline story in one place: every GET is cached, a failed GET
@@ -253,6 +253,18 @@ export const sync = () =>
     folders: { id: string; state?: string; needBytes?: number; path?: string }[];
   }>("/sync");
 export const usage = () => get<Usage>("/usage");
+export const modules = () => get<ModuleInfo[]>("/modules");
+export const patchModule = (name: string, changes: Record<string, string>) => send(`/modules/${name}`, changes, "PATCH");
+export const pollModule = (name: string) => send(`/modules/${name}/poll`, {});
+export const automations = () => get<Automation[]>("/automations");
+export const createAutomation = (input: Partial<Automation>) => send("/automations", input);
+export const updateAutomation = (id: number, changes: Partial<Automation>) => send(`/automations/${id}`, changes, "PATCH");
+export const deleteAutomation = (id: number) => send(`/automations/${id}`, {}, "DELETE");
+export const contextItems = () => get<{ surfaces: string[]; items: ContextItem[] }>("/context");
+export const createContextProject = (name: string, about: string) => send("/projects", { name, about });
+export const rememberMemory = (input: { name: string; type: string; description: string; body: string; project?: string }) => send("/memory", input);
+export const forgetMemory = (name: string) => send(`/memory/${name}`, {}, "DELETE");
+export const recentEvents = (limit = 60) => get<PaiEvent[]>(`/events?limit=${limit}`);
 export const addProject = (url: string, name?: string) => send("/projects", { url, name });
 export const openTerminal = async (project?: string, cwd?: string) => {
   const response = await fetch(`${baseUrl()}/terminals`, {

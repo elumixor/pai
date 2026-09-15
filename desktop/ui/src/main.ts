@@ -1,6 +1,7 @@
 import { baseUrl, fileIndex, flush, follow, inDesktop, isOnline, lastError, onConnection, outbox, projects, resolveBase, send, status, usage } from "./api.ts";
 import { dashboard } from "./dashboard.ts";
 import { ask, clear, el, sheet, until } from "./dom.ts";
+import "./theme.ts";
 import { editor, emptyEditor } from "./editor.ts";
 import { tree } from "./files.ts";
 import { icon, type IconName } from "./icons.ts";
@@ -10,7 +11,6 @@ import { DOWNLOAD, settingsView } from "./settings.ts";
 import { splits } from "./splits.ts";
 import { save, state } from "./state.ts";
 import { dock } from "./terminals.ts";
-import "./theme.ts";
 import { thread } from "./thread.ts";
 import type { ProjectSummary, SessionSummary } from "./types.ts";
 
@@ -39,7 +39,32 @@ const openFile = (path: string) => {
   save();
   void showCenter(() => editor(viewerPane, path));
 };
-const showDashboard = () => void dashboard(sheet("dashboard"));
+// ---- the two views: work and dashboard ---------------------------------------------------
+
+const dashboardRoot = $("dashboard");
+let dashboardView: ReturnType<typeof dashboard> | undefined;
+let view: "work" | "dashboard" = "work";
+function showView(next: "work" | "dashboard") {
+  view = next;
+  main.hidden = next !== "work";
+  dashboardRoot.hidden = next !== "dashboard";
+  document.body.classList.toggle("in-dashboard", next === "dashboard");
+  if (next === "dashboard") {
+    dashboardView ??= dashboard(dashboardRoot, {
+      openFile: (path) => {
+        showView("work");
+        openFile(path);
+      },
+      selectProject: (slug) => {
+        showView("work");
+        const project = catalog.find((p) => p.slug === slug);
+        if (project) selectProject(project);
+      },
+    });
+    void dashboardView.show("overview");
+  } else window.dispatchEvent(new Event("resize"));
+}
+const showDashboard = () => showView(view === "dashboard" ? "work" : "dashboard");
 const showSettings = () => void settingsView(sheet("settings"));
 const showEditor = () => (state.file ? openFile(state.file) : emptyEditor(viewerPane));
 
@@ -181,7 +206,7 @@ function renderStatusRight(editorUrl?: string) {
     statusRight,
     el("span.stat.dim", { title: `daemon at ${baseUrl()}` }, baseUrl().replace(/^https?:\/\//, "")),
     navButton("zap", "Search everything (⌘K)", openPalette),
-    navButton("layout", "Dashboard", showDashboard),
+    navButton("layout", "Dashboard (⌘2) · Work (⌘1)", showDashboard),
     navButton("code", "Editor", showEditor),
     editorUrl ? el("a.iconbtn.slim", { title: "VS Code in the browser", href: editorUrl, target: "_blank", rel: "noreferrer" }, icon("external", 13)) : undefined,
     navButton("settings", "Settings", showSettings),
@@ -208,8 +233,9 @@ onConnection((online) => {
 
 async function commands(): Promise<Command[]> {
   const actions: Command[] = [
-    { id: "dashboard", title: "Dashboard", group: "view", icon: "layout", run: showDashboard },
-    { id: "editor", title: "Editor", group: "view", icon: "code", run: showEditor },
+    { id: "dashboard", title: "Dashboard", group: "view", icon: "layout", run: () => showView("dashboard") },
+    { id: "work", title: "Work view", group: "view", icon: "code", run: () => showView("work") },
+    { id: "editor", title: "Editor", group: "view", icon: "code", run: () => (showView("work"), showEditor()) },
     { id: "settings", title: "Settings", group: "view", icon: "settings", run: showSettings },
     { id: "new-thread", title: `New thread${state.project ? ` in ${state.project}` : ""}`, group: "action", icon: "message", run: () => void newThread(state.project) },
     { id: "new-terminal", title: `New terminal${state.project ? ` in ${state.project}` : ""}`, group: "action", icon: "terminal", run: () => void terminals.open() },
@@ -239,6 +265,9 @@ document.addEventListener("keydown", (event) => {
   if (meta && event.key.toLowerCase() === "k") {
     event.preventDefault();
     openPalette();
+  } else if (meta && (event.key === "1" || event.key === "2")) {
+    event.preventDefault();
+    showView(event.key === "1" ? "work" : "dashboard");
   } else if (event.metaKey && event.key === "," && event.shiftKey === !inDesktop) {
     // ⌘, in the app; a browser keeps that one for itself, so ⌘⇧, on the web.
     event.preventDefault();

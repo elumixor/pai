@@ -90,6 +90,20 @@ the desktop app is the one to reach for.
 The same client is a web page: the daemon serves it at `/ui`, so `http://pai:8787/ui/` is the
 whole thing in a browser with nothing installed.
 
+## Modules, automations, context
+
+The dashboard (⌘2 in the client) is where pai is put together. **Modules** are what it is made
+of — the Telegram bot, your own Telegram account, the browser, memory, tasks, LinkedIn, the
+editor, the public address, sync — each with the tools it gives sessions, the paragraph it adds
+to the prompt, the events it emits and its switches. **Automations** are `on <event> →
+<action>` rules: notify you on Telegram, hand the main conversation a turn, or start a task in a
+project — the LinkedIn module's `linkedin.message` into a notification is the two-click case.
+**Projects** are repositories, or *contexts*: a directory with a `CLAUDE.md` for its voice and
+rules and memories of its own, for work that has no code — a job search, hiring. **Context**
+lists everything a session is given (instructions, memories, skills, tools) with which surfaces
+see it — pai's main, task and code sessions, or a `claude` started in a terminal — and edits it
+in place.
+
 ## The same files on two machines
 
 `PAI_SYNC=1` gives the daemon a Syncthing of its own and shares two folders with the other

@@ -60,7 +60,7 @@ export interface DialogSpec {
 }
 
 /** A small sheet with a few fields, in the page's own style; the browser's `prompt` is not available in a Tauri window. */
-export function dialog(spec: DialogSpec): Promise<Record<string, string> | undefined> {
+export function dialog(spec: DialogSpec): Promise<Record<string, string | undefined> | undefined> {
   return new Promise((resolve) => {
     const inputs = spec.fields.map((field) => el("input", { name: field.name, value: field.value ?? "", placeholder: field.placeholder ?? "", required: Boolean(field.required) }) as HTMLInputElement);
     const close = (values?: Record<string, string>) => {

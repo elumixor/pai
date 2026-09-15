@@ -142,6 +142,7 @@ export async function rail(root: HTMLElement, handlers: RailHandlers) {
             if (threads[0]) handlers.openThread(threads[0], "a");
           },
         },
+        project?.kind === "context" ? icon("book", 12) : undefined,
         el("span.name", {}, key),
         el("span.count", {}, threads.length ? String(threads.length) : ""),
         project

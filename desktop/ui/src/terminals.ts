@@ -3,7 +3,8 @@ import { Terminal } from "@xterm/xterm";
 import { baseUrl, closeTerminal, openTerminal, send, terminals as listTerminals, withToken } from "./api.ts";
 import { basename, clear, el } from "./dom.ts";
 import { icon } from "./icons.ts";
-import { isDark, onTheme } from "./theme.ts";
+import { terminalTheme } from "./highlight.ts";
+import { current, onTheme } from "./theme.ts";
 import { save, state } from "./state.ts";
 import type { TerminalSummary } from "./types.ts";
 
@@ -14,11 +15,7 @@ const processLabel = (name: string | undefined) => {
   return { glyph: PROCESS_ICON[short] ?? "›", name: short };
 };
 
-const theme = () => {
-  return isDark()
-    ? { background: "#0d0f14", foreground: "#d6dae2", cursor: "#8b9cff", selectionBackground: "#2d3550" }
-    : { background: "#fbfbfd", foreground: "#1d2230", cursor: "#4a5bd6", selectionBackground: "#d4dafc" };
-};
+const theme = () => terminalTheme(current());
 
 /**
  * The terminal dock: a list of the shells open on the box, one of them shown in an xterm.

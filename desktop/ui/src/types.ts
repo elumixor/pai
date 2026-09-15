@@ -35,6 +35,7 @@ export interface ProjectSummary {
   readonly slug: string;
   readonly path: string;
   readonly summary: string;
+  readonly kind?: "repo" | "context";
   readonly repo?: string;
 }
 
@@ -50,6 +51,53 @@ export interface Usage {
   readonly costUsd: number;
   readonly fetchedAt?: string;
   readonly error?: string;
+}
+
+export interface ModuleSetting {
+  readonly key: string;
+  readonly label: string;
+  readonly hint?: string;
+  readonly secret?: boolean;
+  readonly type?: "text" | "toggle" | "number";
+  readonly value: string;
+}
+
+export interface ModuleInfo {
+  readonly name: string;
+  readonly title: string;
+  readonly description: string;
+  readonly kind: "channel" | "tools" | "source" | "service";
+  readonly enabled: boolean;
+  readonly status: Record<string, unknown>;
+  readonly tools?: { readonly server: string; readonly names: readonly string[]; readonly kinds: readonly string[] };
+  readonly prompt?: { readonly text: string; readonly kinds: readonly string[] };
+  readonly events?: readonly { readonly kind: string; readonly description: string }[];
+  readonly settings?: readonly ModuleSetting[];
+  readonly live: boolean;
+}
+
+export interface Automation {
+  readonly id: number;
+  readonly name: string;
+  readonly event: string;
+  readonly filter: string;
+  readonly action: "notify" | "turn" | "task";
+  readonly project: string;
+  readonly template: string;
+  readonly enabled: boolean;
+  readonly runs: number;
+  readonly lastRun: number | null;
+}
+
+export interface ContextItem {
+  readonly kind: "instruction" | "memory" | "skill" | "tool";
+  readonly name: string;
+  readonly description: string;
+  readonly source: string;
+  readonly editable: boolean;
+  readonly surfaces: readonly string[];
+  readonly project?: string;
+  readonly body?: string;
 }
 
 export interface Question {

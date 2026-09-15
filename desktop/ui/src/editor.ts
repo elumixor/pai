@@ -1,18 +1,18 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { bracketMatching, defaultHighlightStyle, foldGutter, indentOnInput, LanguageDescription, StreamLanguage, syntaxHighlighting, type StreamParser } from "@codemirror/language";
+import { bracketMatching, foldGutter, indentOnInput, LanguageDescription, StreamLanguage, type StreamParser } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { properties } from "@codemirror/legacy-modes/mode/properties";
 import { shell } from "@codemirror/legacy-modes/mode/shell";
 import { yaml as yamlMode } from "@codemirror/legacy-modes/mode/yaml";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
-import { oneDark } from "@codemirror/theme-one-dark";
 import { drawSelection, EditorView, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers } from "@codemirror/view";
 import { Vim, vim } from "@replit/codemirror-vim";
 import { file, saveFile } from "./api.ts";
 import { basename, clear, el } from "./dom.ts";
 import { icon } from "./icons.ts";
-import { isDark, onTheme } from "./theme.ts";
+import { editorTheme } from "./highlight.ts";
+import { current, onTheme } from "./theme.ts";
 
 /**
  * The language for a file. Every mode CodeMirror knows is here — the common ones bundled,
@@ -117,8 +117,7 @@ export async function editor(pane: HTMLElement, path: string) {
         indentOnInput(),
         bracketMatching(),
         highlightSelectionMatches(),
-        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-        theme.of(isDark() ? oneDark : []),
+        theme.of(editorTheme(current())),
         await language(path, contents.text),
         keymap.of([{ key: "Mod-s", run: () => (void save(), true) }, indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap]),
         EditorView.updateListener.of((update) => {
@@ -132,7 +131,7 @@ export async function editor(pane: HTMLElement, path: string) {
     }),
   });
   if (contents.truncated) status.textContent = "truncated · read only";
-  const stopTheme = onTheme(() => view.dispatch({ effects: theme.reconfigure(isDark() ? oneDark : []) }));
+  const stopTheme = onTheme(() => view.dispatch({ effects: theme.reconfigure(editorTheme(current())) }));
   view.focus();
 
   return () => {
