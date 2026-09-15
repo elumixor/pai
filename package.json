@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "daemon": "bun run src/daemon.ts",
+    "dev": "bun run scripts/dev.ts",
+    "install": "bun run scripts/install.ts",
     "cli": "bun run src/clients/cli.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p desktop/ui",
     "test": "bun run scripts/test.ts",
