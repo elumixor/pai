@@ -9,16 +9,29 @@
   </head>
   <body>
     <header class="top">
-      <span class="brand">pai</span>
-      <span id="state" class="state">…</span>
-      <span class="grow"></span>
-      <button id="new-task" class="action">New task</button>
-      <button id="refresh" class="action">Refresh</button>
-      <button id="settings" class="action">Settings</button>
+      <div class="top-left">
+        <span class="brand">pai</span>
+        <span id="state" class="state">…</span>
+      </div>
+      <nav id="nav" class="nav"></nav>
+      <div class="top-right" id="top-right"></div>
     </header>
-    <main>
-      <aside id="side"></aside>
-      <section id="pane"></section>
+    <main id="main">
+      <aside id="files" class="col col-files"></aside>
+      <div class="handle v" data-resize="--w-files" data-edge="start"></div>
+      <section class="col col-center">
+        <div id="viewer" class="panel"></div>
+        <div class="handle h" data-resize="--h-dock" data-edge="end"></div>
+        <div id="dock" class="panel"></div>
+      </section>
+      <div class="handle v" data-resize="--w-threads" data-edge="end"></div>
+      <section class="col col-threads">
+        <div id="thread-a" class="panel thread-slot"></div>
+        <div class="handle h" data-resize="--h-second" data-edge="end"></div>
+        <div id="thread-b" class="panel thread-slot"></div>
+      </section>
+      <div class="handle v" data-resize="--w-rail" data-edge="end"></div>
+      <aside id="rail" class="col col-rail"></aside>
     </main>
     <script type="module" src="./main.js"></script>
   </body>

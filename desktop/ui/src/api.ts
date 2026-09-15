@@ -1,4 +1,4 @@
-import type { Entry, PaiEvent, ProjectSummary, SessionSummary, Status, TerminalSummary } from "./types.ts";
+import type { Entry, PaiEvent, ProjectSummary, SessionSummary, Status, TerminalSummary, Usage } from "./types.ts";
 
 /**
  * The daemon, with the app's offline story in one place: every GET is cached, a failed GET
@@ -40,10 +40,23 @@ interface Queued {
 const servedByDaemon = location.protocol.startsWith("http") && location.pathname.startsWith("/ui");
 const CANDIDATES = [...(servedByDaemon ? [location.origin] : []), "http://127.0.0.1:8787", "http://pai:8787"];
 
-/** In the desktop app, the address and token the rest of pai already agreed on (`~/.config/pai/menubar`). */
+const tauri = (globalThis as { __TAURI__?: { core: { invoke(name: string): Promise<string | null> } } }).__TAURI__;
+
+/** Whether this is the desktop window, as opposed to the same bundle in a browser tab. */
+export const inDesktop = Boolean(tauri);
+
+let devConfig: Promise<{ baseUrl?: string; token?: string }> | undefined;
+
+/**
+ * The address and token the rest of pai already agreed on (`~/.config/pai/menubar`): the
+ * desktop shell reads the file; `bun run dev` serves it at `/__config`.
+ */
 async function configured(what: "configured_base_url" | "configured_token") {
-  const tauri = (globalThis as { __TAURI__?: { core: { invoke(name: string): Promise<string | null> } } }).__TAURI__;
-  return tauri ? ((await tauri.core.invoke(what).catch(() => null)) ?? undefined) : undefined;
+  if (tauri) return (await tauri.core.invoke(what).catch(() => null)) ?? undefined;
+  if (servedByDaemon) return undefined;
+  devConfig ??= fetch("/__config").then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  const found = await devConfig;
+  return what === "configured_base_url" ? found.baseUrl : found.token;
 }
 
 /** The shared secret, if the daemon asks for one. A link may carry it: `…/ui/?token=…`. */
@@ -166,23 +179,29 @@ async function alternatives() {
   return [...(configuredUrl ? [configuredUrl] : []), ...CANDIDATES].filter((candidate) => candidate !== baseUrl());
 }
 
-/** A write goes to the daemon, or into the outbox to be replayed when it answers again. */
-export async function send(path: string, body: unknown, method = "POST"): Promise<{ queued: boolean }> {
+/**
+ * A write goes to the daemon, or into the outbox to be replayed when it answers again. A
+ * request the daemon refused is not queued: it would be refused again, so the error is
+ * returned instead.
+ */
+export async function send(path: string, body: unknown, method = "POST"): Promise<{ queued: boolean; error?: string; data?: unknown }> {
+  let response: Response;
   try {
-    const response = await fetch(baseUrl() + path, {
+    response = await fetch(baseUrl() + path, {
       method,
       headers: headers({ "content-type": "application/json" }),
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(5 * 60 * 1000),
     });
-    if (!response.ok) throw new Error(`${path}: ${response.status}`);
-    setOnline(true);
-    return { queued: false };
   } catch {
     queue({ path, method, body, at: Date.now() });
     setOnline(false);
     return { queued: true };
   }
+  setOnline(true);
+  const data: unknown = await response.json().catch(() => undefined);
+  if (!response.ok) return { queued: false, error: (data as { error?: string } | undefined)?.error ?? `${path}: ${response.status}` };
+  return { queued: false, data };
 }
 
 export const outbox = (): Queued[] => JSON.parse(localStorage.getItem(OUTBOX_KEY) ?? "[]") as Queued[];
@@ -226,6 +245,19 @@ export const sync = () =>
     peer: string;
     folders: { id: string; state?: string; needBytes?: number; path?: string }[];
   }>("/sync");
+export const usage = () => get<Usage>("/usage");
+export const addProject = (url: string, name?: string) => send("/projects", { url, name });
+export const openTerminal = async (project?: string, cwd?: string) => {
+  const response = await fetch(`${baseUrl()}/terminals`, {
+    method: "POST",
+    headers: headers({ "content-type": "application/json" }),
+    body: JSON.stringify({ ...(project ? { project } : {}), ...(cwd ? { cwd } : {}) }),
+  });
+  if (!response.ok) throw new Error(`terminal: ${response.status}`);
+  return (await response.json()) as TerminalSummary;
+};
+export const closeTerminal = (id: string) =>
+  fetch(`${baseUrl()}/terminals/${id}`, { method: "DELETE", headers: headers() }).catch(() => undefined);
 export const entries = (path: string) => get<Entry[]>(`/files?path=${encodeURIComponent(path)}`);
 export const file = (path: string) => get<{ path: string; content: string; truncated?: boolean }>(`/file?path=${encodeURIComponent(path)}`);
 export const transcript = (session: string, limit = 300) =>
