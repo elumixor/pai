@@ -3,6 +3,7 @@ import { Terminal } from "@xterm/xterm";
 import { baseUrl, closeTerminal, openTerminal, send, terminals as listTerminals, withToken } from "./api.ts";
 import { basename, clear, el } from "./dom.ts";
 import { icon } from "./icons.ts";
+import { isDark, onTheme } from "./theme.ts";
 import { save, state } from "./state.ts";
 import type { TerminalSummary } from "./types.ts";
 
@@ -14,8 +15,7 @@ const processLabel = (name: string | undefined) => {
 };
 
 const theme = () => {
-  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
-  return dark
+  return isDark()
     ? { background: "#0d0f14", foreground: "#d6dae2", cursor: "#8b9cff", selectionBackground: "#2d3550" }
     : { background: "#fbfbfd", foreground: "#1d2230", cursor: "#4a5bd6", selectionBackground: "#d4dafc" };
 };
@@ -140,7 +140,7 @@ export function dock(pane: HTMLElement, project: () => { slug?: string; path?: s
     if (remembered) attach(remembered);
   });
   const timer = setInterval(() => void refresh(), 5000);
-  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => term && (term.options.theme = theme()));
+  onTheme(() => term && (term.options.theme = theme()));
 
   return {
     refresh,

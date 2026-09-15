@@ -10,6 +10,7 @@ import { DOWNLOAD, settingsView } from "./settings.ts";
 import { splits } from "./splits.ts";
 import { save, state } from "./state.ts";
 import { dock } from "./terminals.ts";
+import "./theme.ts";
 import { thread } from "./thread.ts";
 import type { ProjectSummary, SessionSummary } from "./types.ts";
 
@@ -238,6 +239,10 @@ document.addEventListener("keydown", (event) => {
   if (meta && event.key.toLowerCase() === "k") {
     event.preventDefault();
     openPalette();
+  } else if (event.metaKey && event.key === "," && event.shiftKey === !inDesktop) {
+    // ⌘, in the app; a browser keeps that one for itself, so ⌘⇧, on the web.
+    event.preventDefault();
+    showSettings();
   } else if (event.ctrlKey && event.key === "Tab") {
     event.preventDefault();
     cycleThread(event.shiftKey ? -1 : 1);

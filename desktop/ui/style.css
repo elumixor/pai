@@ -43,6 +43,49 @@
   }
 }
 
+:root[data-theme="light"] {
+    --bg: #f3f4f8;
+    --panel: #ffffff;
+    --panel-2: #f7f8fb;
+    --line: #e4e7ee;
+    --line-2: #d3d8e3;
+    --text: #1d2230;
+    --dim: #6b7382;
+    --accent: #4a5bd6;
+    --accent-ink: #ffffff;
+    --busy: #c98a1c;
+    --idle: #2f9e57;
+    --warn: #d9781a;
+    --hot: #d9433f;
+    --code-bg: #fbfbfd;
+    --user-bg: #eef1ff;
+    --user-line: #d4dafc;
+    --shadow: 0 8px 30px rgba(20, 30, 60, 0.12);
+    color-scheme: light;
+  }
+:root[data-theme="dark"] {
+  --bg: #0b0d12;
+  --panel: #11141b;
+  --panel-2: #161a23;
+  --line: #1f2430;
+  --line-2: #2a3040;
+  --text: #d6dae2;
+  --dim: #7f8797;
+  --accent: #8b9cff;
+  --accent-ink: #0b0d12;
+  --busy: #e5b567;
+  --idle: #7fd08a;
+  --warn: #f2a25b;
+  --hot: #f27d7d;
+  --code-bg: #0d0f14;
+  --user-bg: #1a2033;
+  --user-line: #2b3552;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  --radius: 10px;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 body {
@@ -312,6 +355,22 @@ dialog.sheet.wide { width: min(720px, 94vw); max-height: 84vh; }
 .kv .k { color: var(--dim); flex: 0 0 96px; }
 .kv .v { min-width: 0; overflow-wrap: anywhere; }
 .kv .v a { display: inline-flex; align-items: center; gap: 4px; }
+
+/* ---- settings ------------------------------------------------------------------------- */
+.settings-list { display: flex; flex-direction: column; padding: 6px 16px 10px; }
+.setting { display: grid; grid-template-columns: 20px 1fr auto; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); color: var(--dim); }
+.setting:last-child { border-bottom: 0; }
+.setting-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.setting-title { color: var(--text); font-size: 13px; font-weight: 500; }
+.setting .dim { font-size: 11px; }
+.setting input { width: 260px; padding: 6px 9px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--code-bg); color: var(--text); font-family: var(--mono); font-size: 12px; }
+.setting input:focus { outline: none; border-color: var(--accent); }
+.setting .btn { display: inline-flex; align-items: center; gap: 6px; }
+.segmented { display: inline-flex; padding: 2px; border-radius: 9px; background: var(--code-bg); border: 1px solid var(--line); }
+.seg { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--dim); font-size: 12px; }
+.seg.on { background: var(--panel-2); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,0.25); }
+.kbd { font-family: var(--mono); font-size: 11px; }
+.settings-list .section-title { margin: 14px 0 2px; }
 
 /* ---- sheets: dialogs and the palette -------------------------------------------------- */
 dialog.sheet { border: 1px solid var(--line-2); border-radius: 12px; padding: 0; background: var(--panel); color: var(--text); box-shadow: var(--shadow); width: min(460px, 90vw); }

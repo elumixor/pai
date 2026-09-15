@@ -12,6 +12,7 @@ import { Vim, vim } from "@replit/codemirror-vim";
 import { file, saveFile } from "./api.ts";
 import { basename, clear, el } from "./dom.ts";
 import { icon } from "./icons.ts";
+import { isDark, onTheme } from "./theme.ts";
 
 /**
  * The language for a file. Every mode CodeMirror knows is here — the common ones bundled,
@@ -57,7 +58,6 @@ const LEGACY_BY_NAME: Record<string, StreamParser<unknown>> = {
 };
 const LEGACY_BY_EXT: Record<string, StreamParser<unknown>> = { vim: vimMode, conf: properties, ini: properties, terminfo: properties, sh: shell, zsh: shell };
 
-const dark = () => matchMedia("(prefers-color-scheme: dark)").matches;
 
 let saveCurrent: (() => Promise<void>) | undefined;
 Vim.defineEx("write", "w", () => void saveCurrent?.());
@@ -118,7 +118,7 @@ export async function editor(pane: HTMLElement, path: string) {
         bracketMatching(),
         highlightSelectionMatches(),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-        theme.of(dark() ? oneDark : []),
+        theme.of(isDark() ? oneDark : []),
         await language(path, contents.text),
         keymap.of([{ key: "Mod-s", run: () => (void save(), true) }, indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap]),
         EditorView.updateListener.of((update) => {
@@ -132,13 +132,11 @@ export async function editor(pane: HTMLElement, path: string) {
     }),
   });
   if (contents.truncated) status.textContent = "truncated · read only";
-  const scheme = matchMedia("(prefers-color-scheme: dark)");
-  const onScheme = () => view.dispatch({ effects: theme.reconfigure(scheme.matches ? oneDark : []) });
-  scheme.addEventListener("change", onScheme);
+  const stopTheme = onTheme(() => view.dispatch({ effects: theme.reconfigure(isDark() ? oneDark : []) }));
   view.focus();
 
   return () => {
-    scheme.removeEventListener("change", onScheme);
+    stopTheme();
     if (saveCurrent === save) saveCurrent = undefined;
     view.destroy();
   };
