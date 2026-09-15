@@ -5,7 +5,7 @@ pai runs on one Hetzner Cloud server. It publishes itself on https; Tailscale is
 | | |
 | --- | --- |
 | Type | CX43 — 8 vCPU, 16 GB, 160 GB, €15.99/mo (Nuremberg) |
-| Address | `5.75.134.57`, published as `https://5-75-134-57.sslip.io` (client, API, `/editor`); `pai` / `100.70.170.72` on the tailnet for ssh |
+| Address | `5.75.134.57`, published as `https://pai.atmagaming.com` (client, API, `/editor`; an A record at GoDaddy); `pai` / `100.70.170.72` on the tailnet for ssh |
 | Image | Ubuntu 24.04 |
 | Inbound | 80 and 443, opened by the daemon; `tailscale ssh` for a shell |
 | Service | `pai.service`, a systemd user unit with lingering enabled |
