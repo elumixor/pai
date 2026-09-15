@@ -84,11 +84,16 @@ const headers = (extra?: Record<string, string>) => ({
   ...(token() ? { authorization: `Bearer ${token()}` } : {}),
 });
 
-export const baseUrl = () => localStorage.getItem(BASE_KEY) ?? CANDIDATES[0]!;
+/**
+ * Served by the daemon, the page's own origin is the API — a remembered address from an
+ * earlier visit (the tailnet one, say) would be a different origin, or plain http under an
+ * https page, which the browser refuses. The stored address is for the desktop app.
+ */
+export const baseUrl = () => (servedByDaemon ? location.origin : (localStorage.getItem(BASE_KEY) ?? CANDIDATES[0]!));
 
 /** First run has no address to talk to, so the usual places are tried before anything renders. */
 export async function resolveBase() {
-  if (localStorage.getItem(BASE_KEY)) return baseUrl();
+  if (servedByDaemon || localStorage.getItem(BASE_KEY)) return baseUrl();
   if (!token()) {
     const known = await configured("configured_token");
     if (known) setToken(known);
