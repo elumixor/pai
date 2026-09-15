@@ -58,21 +58,25 @@ over HTTP; Telegram, the web app, the CLI and the menu bar are all clients of it
 ## Setup
 
 ```sh
-bun install
 cp .env.example .env               # TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID
-bun run build:app
-bun run daemon                     # foreground
-bun run src/clients/cli.ts install # service + `pai` command on PATH
+bun run install                    # builds everything, installs the service, `pai` on PATH, the Mac app
+bun run daemon                     # or: the daemon in the foreground
+bun run dev                        # the client in a browser, rebuilt on every save
 ```
 
-The desktop app (`bun run desktop:install` puts it in `/Applications`, `bun run desktop` runs
-it from the checkout) is the fast client: a Tauri window — a native webview
-around a small bundle, no Electron — with six things in it and nothing else. Threads grouped
-by project in the sidebar, the conversation of a thread as `claude --resume` shows it, a file
-tree and a viewer for the selected project, a terminal on the box, and the daemon's settings.
-It opens offline: every read is cached, and a message written with the box unreachable waits
-in an outbox and is sent when it answers. Settings live on the daemon, so every client agrees
-on them.
+`bun run install --no-app` skips the desktop build, which is the slow part. A release (a
+`v*` tag) publishes the Mac app as `pai-macos.dmg` on GitHub — the client links to it — and
+tells the host to update itself.
+
+The desktop app is the fast client: a Tauri window — a native webview around a small bundle,
+no Electron — laid out like an editor. The file tree of the selected project on the left with
+the subscription's usage under it; a file viewer in the middle with a dock of terminals on
+the box beneath it, each labelled by its directory and what is running in it; a thread and,
+if you want one, a second thread beside it; on the right every project with its threads, a
+link to its repository, a way to start a thread in it and a way to add a project by cloning
+it. Dashboard and settings open in the middle. It opens offline: every read is cached, and a
+message written with the box unreachable waits in an outbox and is sent when it answers.
+Settings live on the daemon, so every client agrees on them.
 
 The daemon also serves an editor: code-server — VS Code in a browser, not a fork — with the
 pai extension in it, on port 8788 of the same address as the API. It is a child of the

@@ -6,6 +6,9 @@ on:
     tags: ["v*"]
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -15,6 +18,106 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
-      - run: bunx tsc --noEmit
+      - run: bun run typecheck
       - run: bun run build:app
+      - run: bun run build:ui
       - run: bun run test
+
+  # A tag builds the desktop app and a daemon archive, publishes them as a release, and tells
+  # the host to update itself. Nothing reaches into the host: it pulls the tag it is told about.
+  build:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: check
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - run: bun install --frozen-lockfile
+      - run: bun run build:app
+      - run: bun run build:ui
+      - name: desktop app (universal, ad-hoc signed)
+        working-directory: desktop
+        run: bunx @tauri-apps/cli@latest build --target universal-apple-darwin
+      - name: collect
+        run: |
+          set -eu
+          tag="${GITHUB_REF_NAME}"
+          mkdir -p out
+          cp desktop/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg "out/pai-${tag}-macos.dmg"
+          cp "out/pai-${tag}-macos.dmg" out/pai-macos.dmg
+          # The daemon as it runs on a host: the checkout at this tag plus the built bundles.
+          git archive --format=tar --prefix=pai/ HEAD | tar -x -C out
+          mkdir -p out/pai/app out/pai/desktop/ui
+          cp -R app/dist out/pai/app/dist
+          cp -R desktop/ui/dist out/pai/desktop/ui/dist
+          (cd out && zip -qr "pai-daemon-${tag}.zip" pai && rm -rf pai)
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: out/*
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: out
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+          generate_release_notes: true
+          body: |
+            **Mac app**: download `pai-macos.dmg`, drag pai to Applications, then — the app is ad-hoc signed, not notarised — run once:
+
+            ```sh
+            xattr -cr /Applications/pai.app
+            ```
+
+            **Daemon**: `pai-daemon-<version>.zip` is the checkout with the bundles built; a host that runs `pai` updates itself from this tag.
+
+  # The host follows tags (PAI_UPDATE_CHANNEL=tag); this asks it to look now instead of on
+  # its next poll, and waits until it answers with the new version.
+  deploy:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: release
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: ask the host to update
+        env:
+          PAI_URL: ${{ secrets.PAI_URL }}
+          PAI_TOKEN: ${{ secrets.PAI_TOKEN }}
+        run: |
+          set -eu
+          if [ -z "${PAI_URL:-}" ] || [ -z "${PAI_TOKEN:-}" ]; then
+            echo "PAI_URL / PAI_TOKEN not set — the host will pick the tag up on its own"; exit 0
+          fi
+          curl -sS -X POST "$PAI_URL/update" -H "authorization: Bearer $PAI_TOKEN" -H "content-type: application/json" -d '{"force":false}'
+          echo
+          for i in $(seq 1 36); do
+            sleep 5
+            version=$(curl -sS "$PAI_URL/health" -H "authorization: Bearer $PAI_TOKEN" | jq -r .version || true)
+            echo "host says $version"
+            [ "$version" = "$GITHUB_REF_NAME" ] && exit 0
+          done
+          echo "host did not come back on $GITHUB_REF_NAME"; exit 1
+      - name: summary
+        run: |
+          {
+            echo "## ${GITHUB_REF_NAME}"
+            echo
+            echo "- client: ${{ secrets.PAI_URL }}/ui/"
+            echo "- Mac app: https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/pai-macos.dmg"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -30,7 +30,7 @@ editor ext ──┘      gated)        ↔ cwd ↔ sessionId)
 | Terraform | after the box works | `cloud-init` plus a snapshot covers a single host. Terraform earns its place at several resources. |
 | Backups | borg → Hetzner Storage Box | `pai.db`, `workspace/memory`, and project checkouts live on one disk today. |
 | Linux CI | GitHub-hosted | Self-hosted runners would steal CPU from the sessions the box exists for. |
-| Release flow | tag push, host pulls | `PAI_UPDATE_CHANNEL=tag`; nothing reaches into the host, so no deploy key is handed to CI. |
+| Release flow | tag push; CI builds the Mac app and a release, then asks the host to update | `PAI_UPDATE_CHANNEL=tag`; CI holds only the API token, and the host pulls the tag itself — no deploy key. |
 | Terminals | in the API | A PTY over WebSocket, rendered by xterm.js. This is how software gets installed on the box without SSH. |
 | Desktop client | Tauri 2, the UI in plain TypeScript | A native webview around a ~100 KB bundle: it starts instantly, has only the six surfaces the work needs, and carries no extension ecosystem. The window is all it asks of Rust. |
 | Offline | cache every read, queue every write | The app is local files, so it opens without the box; reads fall back to the last answer and writes wait in an outbox. Settings stay the daemon's, so clients cannot disagree. |

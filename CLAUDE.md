@@ -27,6 +27,8 @@ bun run src/clients/cli.ts sync [device id]        # file sync between machines;
 bun run src/clients/cli.ts status                  # version, address, public URL, editor, sync
 bun run src/clients/cli.ts settings [KEY=value …]  # read or change data/config.json; a change needs restart
 bun run src/clients/cli.ts restart
+bun run dev                                        # the client in a browser, rebuilt on save (port 5180)
+bun run install [--no-app]                         # bundles, the service, `pai` on PATH, the Mac app in /Applications
 ```
 
 `--json` on any command. Session ids in full or as the 6-char short form. After
@@ -75,11 +77,19 @@ from tasks are injected into the main conversation.
 - `src/host/` — `update.ts` and the launchd/systemd installers.
 - `src/domain/editor.ts` — code-server on 8788, a supervised child of the daemon: builds `editor/vscode`, copies it into the extensions directory and registers it. `PAI_NO_EDITOR`, `PAI_EDITOR_PORT`, `PAI_EDITOR_BIND`, `PAI_EDITOR_PASSWORD`.
 - `editor/vscode/` — the VS Code extension: threads, projects and terminals over the API. `bun run editor` serves it without the daemon.
-- `desktop/` — the Tauri desktop app: `ui/` is the whole client (threads by project, transcript, files, terminal, settings) with an offline cache and an outbox; `src-tauri/` is an empty Rust shell. `bun run desktop`, `bun run desktop:build`.
+- `desktop/` — the Tauri desktop app: `ui/` is the whole client — files, a viewer, a terminal dock, two thread panes, projects with their threads, dashboard and settings — with an offline cache and an outbox; `src-tauri/` is an empty Rust shell. `bun run dev` for the loop, `bun run desktop` for the window, `bun run desktop:build` for the bundle.
+- `src/domain/usage.ts` — the Claude subscription's windows (`GET /usage`) with the Claude Code login on the machine, plus what the sessions cost.
 - `app/` — the web app (sessions, terminals) built to `app/dist` and served at `/app`.
 - `infra/` — `provision.ts` (Hetzner), `cloud-init.yaml`, `bootstrap.ts`, borg backup, `gateway.ts` (Caddy for a domain of your own, needs root), `firewall.ts` (open ports on the Hetzner firewall).
 - `menubar/main.swift` — menu bar status app: pai tasks plus the Claude quota rings (session and model-scoped weekly, token read from the Claude Code keychain item); compiled and loaded by `install` on macOS.
 - `workspace/` — the assistant's cwd; `CLAUDE.md` there is the persona, `inbox/` gets attachments.
+
+## Releasing
+
+A `v*` tag (`npm version <bump> && git push --follow-tags`) runs CI: checks, then on macOS the
+universal desktop app and a daemon archive, a GitHub release with both (`pai-macos.dmg` is the
+stable name the client links to), then `POST /update` on the host (`PAI_URL`, `PAI_TOKEN`
+repository secrets) and a wait until `/health` reports the tag.
 
 ## Tests
 
