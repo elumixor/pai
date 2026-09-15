@@ -7,6 +7,9 @@ mkdirSync(dirname(config.dbPath), { recursive: true });
 
 export const db = new Database(config.dbPath, { create: true });
 db.exec("PRAGMA journal_mode = WAL;");
+// Another process on the same file (a test run, the CLI) holds the write lock for moments,
+// not seconds; waiting is right, failing the daemon's turn with SQLITE_BUSY is not.
+db.exec("PRAGMA busy_timeout = 5000;");
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS projects (

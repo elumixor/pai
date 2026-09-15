@@ -24,13 +24,21 @@ async function ensureTool(bin: string, brewPkg: string, aptPkg = brewPkg) {
   await run(["sudo", "apt-get", "install", "-y", "-qq", aptPkg]);
 }
 
-/** No apt/Ubuntu package for whisper-cli exists reliably, so on Linux it's built from source once. */
-async function ensureWhisperCli() {
-  if (Bun.which("whisper-cli")) return;
-  if (process.platform === "darwin") return run(["brew", "install", "whisper-cpp"]);
+/**
+ * No apt/Ubuntu package for whisper-cli exists reliably, so on Linux it's built from source once.
+ * Resolves to a full path rather than relying on PATH: `~/.local/bin` isn't on the daemon's
+ * (systemd/launchd) PATH, so a bare "whisper-cli" spawn fails even once the binary exists.
+ */
+async function ensureWhisperCli(): Promise<string> {
+  const onPath = Bun.which("whisper-cli");
+  if (onPath) return onPath;
+  if (process.platform === "darwin") {
+    await run(["brew", "install", "whisper-cpp"]);
+    return Bun.which("whisper-cli") ?? "whisper-cli";
+  }
 
   const bin = join(LOCAL_BIN, "whisper-cli");
-  if (await Bun.file(bin).exists()) return;
+  if (await Bun.file(bin).exists()) return bin;
   log.info("building whisper.cpp from source (first run only)");
   if (!(await Bun.file(join(WHISPER_SRC, "CMakeLists.txt")).exists())) {
     await run(["git", "clone", "--depth", "1", "https://github.com/ggml-org/whisper.cpp", WHISPER_SRC]);
@@ -39,6 +47,7 @@ async function ensureWhisperCli() {
   await run(["cmake", "--build", "build", "-j", "--config", "Release", "--target", "whisper-cli"], WHISPER_SRC);
   await mkdir(LOCAL_BIN, { recursive: true });
   await run(["cp", join(WHISPER_SRC, "build", "bin", "whisper-cli"), bin]);
+  return bin;
 }
 
 async function ensureModel() {
@@ -51,7 +60,7 @@ async function ensureModel() {
 
 /** Transcribes a voice message file (any format ffmpeg reads) to text using local whisper.cpp. */
 export async function transcribe(audioPath: string): Promise<string> {
-  await Promise.all([ensureTool("ffmpeg", "ffmpeg"), ensureWhisperCli()]);
+  const [, whisperCli] = await Promise.all([ensureTool("ffmpeg", "ffmpeg"), ensureWhisperCli()]);
   await ensureModel();
 
   const wavPath = `${audioPath}.wav`;
@@ -62,7 +71,7 @@ export async function transcribe(audioPath: string): Promise<string> {
   if ((await conv.exited) !== 0) throw new Error("ffmpeg conversion failed");
 
   try {
-    const proc = Bun.spawn(["whisper-cli", "-m", MODEL_PATH, "-f", wavPath, "-nt", "-np", "-l", "auto"], {
+    const proc = Bun.spawn([whisperCli, "-m", MODEL_PATH, "-f", wavPath, "-nt", "-np", "-l", "auto"], {
       stdout: "pipe",
       stderr: "ignore",
     });

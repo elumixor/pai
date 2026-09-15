@@ -130,8 +130,14 @@ export const config = {
     home: resolve(setting("PAI_SYNC_HOME") ?? join(homedir(), ".config", "pai-syncthing")),
   },
 
-  /** Where this daemon is reachable on the tailnet; clients link back to it. */
-  baseUrl: (setting("PAI_BASE_URL") ?? "").replace(/\/$/, ""),
+  /**
+   * Where clients link back to this daemon. Explicit `PAI_BASE_URL` wins; otherwise a public
+   * daemon with a domain links to its https address, and anything else has no links.
+   */
+  baseUrl: (
+    setting("PAI_BASE_URL") ??
+    (bool(setting("PAI_PUBLIC")) && setting("PAI_DOMAIN") ? `https://${setting("PAI_DOMAIN")}` : "")
+  ).replace(/\/$/, ""),
 
   /** The LinkedIn inbox, through the site's own API with cookies from a signed-in browser. */
   linkedin: {
