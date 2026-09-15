@@ -12,7 +12,7 @@ import { messagePage } from "./message.ts";
 import { status } from "./status.ts";
 import * as files from "../domain/files.ts";
 import * as settings from "../domain/settings.ts";
-import { transcript } from "../domain/transcript.ts";
+import { sessionsIn, transcript } from "../domain/transcript.ts";
 import { syncProgress, syncStatus } from "../domain/sync.ts";
 import { cost as hostingCost } from "../domain/hetzner.ts";
 
@@ -52,7 +52,14 @@ export async function handle(req: Request): Promise<Response> {
       const session = raw === "main" ? sessions.main() : sessions.find(raw);
       const id = session?.id ?? sessions.resolveId(raw) ?? raw;
       const limit = Number(url.searchParams.get("limit") ?? 200);
-      return json(await transcript(id, session?.cwd, limit));
+      return json(await transcript(id, session?.cwd ?? url.searchParams.get("cwd") ?? undefined, limit));
+    }
+
+    // Conversations held in a directory, terminal ones included; `/send` with a cwd adopts one.
+    if (path === "/threads") {
+      const cwd = url.searchParams.get("cwd");
+      if (!cwd) return json({ error: "cwd required" }, 400);
+      return json(await sessionsIn(cwd, Number(url.searchParams.get("limit") ?? 30)));
     }
 
     // What the machines are agreeing on: the device id to pair with, and what is still in flight.
@@ -119,8 +126,8 @@ export async function handle(req: Request): Promise<Response> {
     }
 
     if (path === "/send" && req.method === "POST") {
-      const { id, text, wait } = await body<{ id: string; text: string; wait?: boolean }>(req);
-      const s = resolveLive(id);
+      const { id, text, wait, cwd, title } = await body<{ id: string; text: string; wait?: boolean; cwd?: string; title?: string }>(req);
+      const s = resolveLive(id) ?? (cwd ? sessions.adopt(id, cwd, title ?? "") : undefined);
       if (!s) return json({ error: "no such session" }, 404);
       const done = wait ? waitFor("session.turn_end", s.id, TURN_TIMEOUT) : undefined;
       s.send(text);

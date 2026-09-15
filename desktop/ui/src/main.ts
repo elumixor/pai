@@ -1,9 +1,9 @@
-import { baseUrl, flush, follow, inDesktop, isOnline, lastError, onConnection, outbox, projects, resolveBase, send, status, tasks, usage } from "./api.ts";
+import { baseUrl, flush, follow, inDesktop, isOnline, lastError, onConnection, outbox, projects, resolveBase, send, status, usage } from "./api.ts";
 import { dashboard } from "./dashboard.ts";
 import { ask, clear, el, until } from "./dom.ts";
 import { emptyViewer, tree, viewer } from "./files.ts";
 import { icon, type IconName } from "./icons.ts";
-import { rail } from "./rail.ts";
+import { allThreads, rail } from "./rail.ts";
 import { settingsView } from "./settings.ts";
 import { splits } from "./splits.ts";
 import { save, state } from "./state.ts";
@@ -70,9 +70,9 @@ function emptySlot(slot: "a" | "b") {
 
 function openThread(session: SessionSummary, slot: "a" | "b") {
   const other = slot === "a" ? "b" : "a";
-  if (slotState[other]() === session.shortId) emptySlot(other);
+  if (slotState[other]() === session.sessionId) emptySlot(other);
   disposeThread[slot]();
-  setSlot(slot, session.shortId);
+  setSlot(slot, session.sessionId);
   main.classList.toggle("b-empty", !state.threadB);
   disposeThread[slot] = thread(slots[slot], session, {
     close: () => {
@@ -80,7 +80,7 @@ function openThread(session: SessionSummary, slot: "a" | "b") {
       refreshRail();
     },
     swap: () => {
-      const across = sessions.find((s) => s.shortId === slotState[other]());
+      const across = sessions.find((s) => s.sessionId === slotState[other]());
       openThread(session, other);
       if (across) openThread(across, slot);
       else emptySlot(slot);
@@ -107,8 +107,7 @@ async function newThread(project?: string) {
 const refreshRail = () =>
   rail(railCol, { openThread, selectProject, newThread })
     .then(async () => {
-      const { live, recent } = await tasks();
-      sessions = [...live, ...recent.filter((r) => !live.some((l) => l.shortId === r.shortId))];
+      sessions = await allThreads(catalog);
     })
     .catch(() => clear(railCol, unreachable()));
 
@@ -224,7 +223,7 @@ void (async () => {
   await refreshAll();
   if (state.file) openFile(state.file);
   for (const slot of ["a", "b"] as const) {
-    const remembered = sessions.find((s) => s.shortId === slotState[slot]());
+    const remembered = sessions.find((s) => s.sessionId === slotState[slot]());
     if (remembered) openThread(remembered, slot);
     else emptySlot(slot);
   }

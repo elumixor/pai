@@ -3,7 +3,7 @@ import { db, kv, now } from "../core/db.ts";
 import { existsSync } from "node:fs";
 import { config } from "../core/config.ts";
 import { bus, type PaiEvent } from "../core/bus.ts";
-import { get as getProject } from "./catalog.ts";
+import { all as allProjects, get as getProject } from "./catalog.ts";
 import { logger } from "../core/log.ts";
 
 const log = logger("sessions");
@@ -102,6 +102,27 @@ export function revive(sessionId: string): Session | undefined {
   });
   live.set(session.id, session);
   log.info(`revived ${session.shortId} "${row.title}"`);
+  return session;
+}
+
+/**
+ * Takes over a conversation the daemon has never seen — one started with `claude` in a
+ * terminal — by resuming its transcript. From here on it is a session like any other.
+ */
+export function adopt(sessionId: string, cwd: string, title: string): Session {
+  const known = ensureLive(sessionId);
+  if (known) return known;
+  const project = getProject(cwd) ?? allProjects().find((p) => cwd === p.path || cwd.startsWith(`${p.path}/`));
+  const session = new Session({
+    kind: project ? "code" : "task",
+    title: title.slice(0, 80) || sessionId.slice(0, 8),
+    cwd: workingDirectory(cwd, project?.slug ?? null),
+    project: project?.slug,
+    resume: sessionId,
+  });
+  live.set(session.id, session);
+  log.info(`adopted ${session.shortId} "${session.title}" from ${cwd}`);
+  bus.emitEvent("task.created", session.summary(), session.id);
   return session;
 }
 

@@ -4,6 +4,7 @@ import { config } from "../core/config.ts";
 import { db, now } from "../core/db.ts";
 import { bus } from "../core/bus.ts";
 import { logger } from "../core/log.ts";
+import { resultPreview } from "./transcript.ts";
 import { paiTools, type SessionRef } from "./tools.ts";
 import { browserMcp } from "./browser.ts";
 import { instructionsFor } from "./prompts.ts";
@@ -281,9 +282,19 @@ export class Session {
             bus.emitEvent("session.text", { text: block.text }, this.id);
           } else if (block.type === "tool_use") {
             this.lastTool = summarizeTool(block.name, block.input);
-            bus.emitEvent("session.tool", { name: block.name, summary: this.lastTool }, this.id);
+            bus.emitEvent("session.tool", { id: block.id, name: block.name, summary: this.lastTool }, this.id);
           }
         }
+        break;
+      }
+
+      case "user": {
+        // What a tool returned comes back as a user message; the clients show it under the call.
+        const content = m.message.content;
+        if (Array.isArray(content))
+          for (const block of content as Record<string, any>[])
+            if (block.type === "tool_result")
+              bus.emitEvent("session.tool_result", { id: block.tool_use_id, result: resultPreview(block.content) }, this.id);
         break;
       }
 

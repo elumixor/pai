@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -12,8 +12,11 @@ import { join } from "node:path";
 const projectsDir = process.env.PAI_CLAUDE_PROJECTS ?? join(homedir(), ".claude", "projects");
 
 export interface TranscriptTool {
+  readonly id?: string;
   readonly name: string;
   readonly input?: string;
+  /** The first lines of what the tool returned, as the terminal shows them under the call. */
+  readonly result?: string;
 }
 
 export interface TranscriptMessage {
@@ -43,6 +46,8 @@ export function transcriptPath(sessionId: string, cwd?: string) {
 
 interface Block {
   type: string;
+  id?: string;
+  tool_use_id?: string;
   text?: string;
   thinking?: string;
   name?: string;
@@ -55,7 +60,26 @@ interface Entry {
   timestamp?: string;
   isMeta?: boolean;
   isSidechain?: boolean;
+  cwd?: string;
+  sessionId?: string;
   message?: { role?: string; content?: string | Block[] };
+}
+
+const RESULT_LINES = 4;
+const RESULT_CHARS = 400;
+
+/** What a tool returned, cut to what fits under the call. */
+export function resultPreview(content: unknown): string {
+  const text =
+    typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? content.map((block: Block) => (block.type === "text" ? (block.text ?? "") : `[${block.type}]`)).join("\n")
+        : JSON.stringify(content ?? "");
+  const lines = text.split("\n").filter((line) => line.trim());
+  const cut = lines.slice(0, RESULT_LINES).join("\n").slice(0, RESULT_CHARS);
+  const more = lines.length - RESULT_LINES;
+  return more > 0 ? `${cut}\n… +${more} lines` : cut;
 }
 
 export async function transcript(sessionId: string, cwd?: string, limit = 200): Promise<TranscriptMessage[]> {
@@ -63,6 +87,8 @@ export async function transcript(sessionId: string, cwd?: string, limit = 200): 
   if (!path) return [];
   const lines = (await Bun.file(path).text()).split("\n");
   const messages: TranscriptMessage[] = [];
+  // Tool results arrive as user entries; they belong under the call they answer.
+  const tools = new Map<string, { name: string; input?: string; result?: string }>();
 
   for (const line of lines) {
     if (!line.trim()) continue;
@@ -74,10 +100,92 @@ export async function transcript(sessionId: string, cwd?: string, limit = 200): 
     }
     if (entry.isSidechain) continue;
     if (entry.type !== "user" && entry.type !== "assistant") continue;
+    const content = entry.message?.content;
+    if (Array.isArray(content))
+      for (const block of content) {
+        if (block.type === "tool_result" && block.tool_use_id) {
+          const tool = tools.get(block.tool_use_id);
+          if (tool) tool.result = resultPreview(block.content);
+        }
+      }
     const message = toMessage(entry);
-    if (message) messages.push(message);
+    if (!message) continue;
+    for (const tool of message.tools ?? []) if (tool.id) tools.set(tool.id, tool as { name: string; input?: string; result?: string });
+    messages.push(message);
   }
   return messages.slice(-limit);
+}
+
+export interface DiskSession {
+  readonly sessionId: string;
+  readonly cwd: string;
+  readonly title: string;
+  readonly lastActivity: string;
+}
+
+/** A first prompt with an image pasted into it is one very long line, so the head grows until a whole prompt fits. */
+const HEAD_BYTES = [64 * 1024, 2 * 1024 * 1024, 16 * 1024 * 1024];
+const titles = new Map<string, { mtime: number; session: DiskSession }>();
+
+/** The first thing the user typed, which is how the terminal names a conversation. */
+async function describe(path: string, sessionId: string, cwd: string): Promise<DiskSession | undefined> {
+  const file = Bun.file(path);
+  for (const bytes of HEAD_BYTES) {
+    const found = await titleIn(await file.slice(0, bytes).text(), sessionId, cwd);
+    if (found) return found;
+    if (bytes >= file.size) return undefined;
+  }
+  return undefined;
+}
+
+function titleIn(head: string, sessionId: string, cwd: string): DiskSession | undefined {
+  const lines = head.split("\n");
+  lines.pop(); // the last line is cut off
+  for (const line of lines) {
+    if (!line.includes('"type":"user"')) continue;
+    let entry: Entry;
+    try {
+      entry = JSON.parse(line) as Entry;
+    } catch {
+      continue;
+    }
+    if (entry.type !== "user" || entry.isMeta || entry.isSidechain) continue;
+    const content = entry.message?.content;
+    const text = typeof content === "string" ? content : (content ?? []).find((block) => block.type === "text")?.text;
+    if (!text || isInjected(text)) continue;
+    const title = text.replace(/\s+/g, " ").trim().slice(0, 80);
+    return { sessionId, cwd: entry.cwd ?? cwd, title, lastActivity: "" };
+  }
+  return undefined;
+}
+
+/**
+ * Every Claude Code conversation held in a directory — the ones started from a terminal
+ * included — newest first. Read from the transcripts, so nothing has to have gone through
+ * the daemon for a thread to be here.
+ */
+export async function sessionsIn(cwd: string, limit = 30): Promise<DiskSession[]> {
+  const dir = join(projectsDir, slug(cwd));
+  if (!existsSync(dir)) return [];
+  const files = readdirSync(dir)
+    .filter((name) => name.endsWith(".jsonl"))
+    .map((name) => ({ name, path: join(dir, name), mtime: statSync(join(dir, name)).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime)
+    .slice(0, limit);
+  const out: DiskSession[] = [];
+  for (const file of files) {
+    const id = file.name.slice(0, -".jsonl".length);
+    const cached = titles.get(file.path);
+    let session = cached?.mtime === file.mtime ? cached.session : undefined;
+    if (!session) {
+      const found = await describe(file.path, id, cwd);
+      if (!found) continue;
+      session = found;
+      titles.set(file.path, { mtime: file.mtime, session });
+    }
+    out.push({ ...session, lastActivity: new Date(file.mtime).toISOString() });
+  }
+  return out;
 }
 
 function toMessage(entry: Entry): TranscriptMessage | undefined {
@@ -92,7 +200,7 @@ function toMessage(entry: Entry): TranscriptMessage | undefined {
   for (const block of content ?? []) {
     if (block.type === "text" && block.text) text.push(block.text);
     else if (block.type === "thinking" && block.thinking) thinking.push(block.thinking);
-    else if (block.type === "tool_use" && block.name) tools.push({ name: block.name, input: summarize(block.input) });
+    else if (block.type === "tool_use" && block.name) tools.push({ id: block.id, name: block.name, input: summarize(block.input) });
   }
   // A user entry with no text is a tool result: the call it answers is already shown.
   if (!text.length && !tools.length && !thinking.length) return undefined;

@@ -1,8 +1,11 @@
-import { addProject, projects, tasks } from "./api.ts";
+import { addProject, projects, tasks, threadsIn } from "./api.ts";
 import { ask, clear, el } from "./dom.ts";
 import { icon } from "./icons.ts";
 import { save, state } from "./state.ts";
-import type { ProjectSummary, SessionSummary } from "./types.ts";
+import type { DiskSession, ProjectSummary, SessionSummary } from "./types.ts";
+
+/** How many threads a project shows before its list starts scrolling. */
+const VISIBLE_THREADS = 8;
 
 export interface RailHandlers {
   /** `slot` is where the thread opens: the top pane, or the one below it. */
@@ -34,15 +37,42 @@ function group(sessions: SessionSummary[], catalog: ProjectSummary[]) {
   return groups;
 }
 
-const isOpen = (session: SessionSummary) => state.threadA === session.shortId || state.threadB === session.shortId;
+const isOpen = (session: SessionSummary) => state.threadA === session.sessionId || state.threadB === session.sessionId;
+
+const fromDisk = (found: DiskSession): SessionSummary => ({
+  sessionId: found.sessionId,
+  shortId: found.sessionId.slice(0, 6),
+  kind: "claude",
+  title: found.title,
+  state: "detached",
+  cwd: found.cwd,
+  lastActivity: found.lastActivity,
+});
+
+const activity = (session: SessionSummary) => {
+  if (session.state === "busy" || session.state === "starting" || session.waiting) return Number.MAX_SAFE_INTEGER;
+  return session.lastActivity ? new Date(session.lastActivity).getTime() : 0;
+};
+
+/**
+ * Everything the daemon knows plus every conversation on disk under a project, terminal
+ * ones included: the ones `claude` was started with are threads here too.
+ */
+export async function allThreads(catalog: ProjectSummary[]) {
+  const [{ live, recent }, ...onDisk] = await Promise.all([tasks(), ...catalog.map((project) => threadsIn(project.path).catch(() => []))]);
+  const known = [...live, ...recent.filter((r) => !live.some((l) => l.sessionId === r.sessionId))];
+  const seen = new Set(known.map((s) => s.sessionId));
+  const extra = onDisk.flat().filter((found) => !seen.has(found.sessionId)).map(fromDisk);
+  return [...known, ...extra].sort((a, b) => activity(b) - activity(a));
+}
 
 /**
  * The right-hand rail: every project with its threads under it, a GitHub link where there
  * is a repository, a way to start a thread in a project, and a way to add a project.
  */
 export async function rail(root: HTMLElement, handlers: RailHandlers) {
-  const [{ live, recent }, catalog] = await Promise.all([tasks(), projects()]);
-  const sessions = [...live, ...recent.filter((r) => !live.some((l) => l.shortId === r.shortId))];
+  const catalog = await projects();
+  const sessions = await allThreads(catalog);
   const groups = group(sessions, catalog);
   const keys = [...new Set([...groups.keys(), ...catalog.map((p) => p.slug)])].sort((a, b) =>
     a === "main" ? -1 : b === "main" ? 1 : a.localeCompare(b),
@@ -58,6 +88,7 @@ export async function rail(root: HTMLElement, handlers: RailHandlers) {
       },
       el("span", { class: `dot ${stateClass(session)}` }),
       el("span.label", {}, session.title || session.shortId),
+      session.kind === "claude" ? icon("terminal", 11) : undefined,
       session.waiting ? el("span.tag", {}, "?") : undefined,
     );
 
@@ -66,7 +97,8 @@ export async function rail(root: HTMLElement, handlers: RailHandlers) {
     const threads = groups.get(key) ?? [];
     const collapsed = state.collapsed.includes(key);
     const selected = project && state.project === project.slug;
-    const list = el("div.threads", { hidden: collapsed }, ...threads.map(threadRow));
+    // A long list scrolls inside its group rather than pushing the other projects off the screen.
+    const list = el("div.threads", { hidden: collapsed, class: `threads${threads.length > VISIBLE_THREADS ? " long" : ""}` }, ...threads.map(threadRow));
     if (!threads.length && !collapsed && key === "main") list.append(el("p.hint", {}, "no conversation yet"));
     const toggle = el(
       "button.iconbtn.chev",
@@ -92,7 +124,7 @@ export async function rail(root: HTMLElement, handlers: RailHandlers) {
         "header.group-head",
         { onclick: () => handlers.selectProject(project) },
         key === "main" ? icon("bot", 14) : icon("folder", 14),
-        el("span.name", {}, key === "main" ? "pai" : key),
+        el("span.name", {}, key === "main" ? "assistant" : key),
         el("span.count", {}, threads.length ? String(threads.length) : ""),
         key === "main"
           ? undefined

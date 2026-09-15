@@ -1,6 +1,7 @@
 export interface SessionSummary {
   readonly sessionId: string;
   readonly shortId: string;
+  /** `main`, `task`, `code` — or `claude`, a conversation on disk the daemon has not run yet. */
   readonly kind: string;
   readonly title: string;
   readonly state: string;
@@ -10,6 +11,15 @@ export interface SessionSummary {
   readonly lastTool?: string;
   readonly turns?: number;
   readonly costUsd?: number;
+  readonly lastActivity?: number | string;
+}
+
+/** A conversation found in `~/.claude/projects`, terminal ones included. */
+export interface DiskSession {
+  readonly sessionId: string;
+  readonly cwd: string;
+  readonly title: string;
+  readonly lastActivity: string;
 }
 
 export interface TerminalSummary {

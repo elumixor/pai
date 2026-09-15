@@ -223,6 +223,7 @@ main.b-empty #thread-b .empty .icon { width: 14px; height: 14px; }
 .chev .icon { transition: transform 0.12s; transform: rotate(90deg); }
 .chev.closed .icon { transform: rotate(0); }
 .threads { display: flex; flex-direction: column; padding: 0 6px 4px; }
+.threads.long { max-height: 232px; overflow-y: auto; }
 .thread {
   display: flex; align-items: center; gap: 8px; width: 100%;
   padding: 4px 8px 4px 14px; border: 0; border-radius: 7px; background: none;
@@ -245,21 +246,37 @@ main.b-empty #thread-b .empty .icon { width: 14px; height: 14px; }
 .add-project:hover { border-color: var(--accent); color: var(--text); }
 .add-project.busy { opacity: 0.5; pointer-events: none; }
 
-/* ---- thread --------------------------------------------------------------------------- */
-.messages { flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
-.message { max-width: 92%; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-2); align-self: flex-start; }
-.message.user { align-self: flex-end; background: var(--user-bg); border-color: var(--user-line); }
-.message.meta { opacity: 0.55; }
-.message.live { border-style: dashed; }
-.message .text { overflow-wrap: anywhere; }
-.meta-row { display: flex; gap: 8px; align-items: baseline; margin-bottom: 2px; }
-.who { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); }
+/* ---- thread: the terminal's look --------------------------------------------------- */
+.tui {
+  flex: 1; overflow-y: auto; min-height: 0; padding: 10px 14px;
+  display: flex; flex-direction: column; gap: 6px;
+  background: var(--code-bg); font-family: var(--mono); font-size: 12px; line-height: 1.55;
+}
+.entry { display: grid; grid-template-columns: 16px 1fr; column-gap: 6px; }
+.entry .mark { color: var(--dim); text-align: center; user-select: none; }
+.entry .body { min-width: 0; overflow-wrap: anywhere; }
+.entry.user { margin-top: 8px; padding: 6px 8px 6px 4px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.entry.user .mark { color: var(--accent); font-weight: 700; }
+.entry.user .body { white-space: pre-wrap; color: var(--text); }
+.entry.assistant .mark { color: var(--idle); }
+.entry.assistant.live .mark { color: var(--busy); animation: pulse 1.2s ease-in-out infinite; }
+.entry.tool .mark { color: var(--busy); }
+.entry.tool.live .mark { animation: pulse 1.2s ease-in-out infinite; }
+.entry.tool .body { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tool-name { color: var(--text); font-weight: 600; }
+.tool-args { color: var(--dim); }
+.entry.tool .result { grid-column: 2; display: grid; grid-template-columns: 16px 1fr; column-gap: 6px; color: var(--dim); }
+.result .mark { color: var(--line-2); }
+.result pre.body { margin: 0; white-space: pre-wrap; font: inherit; opacity: 0.85; }
+.entry.meta { opacity: 0.45; font-size: 11px; }
+.entry.meta .body { white-space: nowrap; }
+.tui .md-p { margin: 0 0 4px; }
+.tui .md-code { background: color-mix(in srgb, var(--panel-2) 70%, transparent); }
+
+.tui-compose { background: var(--code-bg); align-items: center; font-family: var(--mono); }
+.prompt-char { color: var(--accent); font-weight: 700; }
+.tui-compose textarea { font-family: var(--mono); font-size: 12px; background: transparent; border-color: var(--line); }
 time { color: var(--dim); font-size: 10.5px; }
-.typing { color: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
-.tools { display: flex; flex-direction: column; gap: 2px; margin: 4px 0; }
-.tools:empty { display: none; }
-.tool { display: flex; gap: 8px; font-size: 11px; font-family: var(--mono); min-width: 0; }
-.tool .name { color: var(--accent); flex: 0 0 auto; }
 
 .md-p { margin: 0 0 6px; }
 .md-p:last-child { margin-bottom: 0; }

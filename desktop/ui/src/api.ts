@@ -1,4 +1,4 @@
-import type { Entry, PaiEvent, ProjectSummary, SessionSummary, Status, TerminalSummary, Usage } from "./types.ts";
+import type { DiskSession, Entry, PaiEvent, ProjectSummary, SessionSummary, Status, TerminalSummary, Usage } from "./types.ts";
 
 /**
  * The daemon, with the app's offline story in one place: every GET is cached, a failed GET
@@ -11,12 +11,19 @@ const TOKEN_KEY = "pai.token";
 const CACHE_PREFIX = "pai.cache:";
 const OUTBOX_KEY = "pai.outbox";
 
+export interface TranscriptTool {
+  readonly id?: string;
+  readonly name: string;
+  readonly input?: string;
+  readonly result?: string;
+}
+
 export interface Transcript {
   readonly role: "user" | "assistant";
   readonly ts: string;
   readonly text: string;
   readonly thinking?: string;
-  readonly tools?: readonly { readonly name: string; readonly input?: string }[];
+  readonly tools?: readonly TranscriptTool[];
   readonly meta?: boolean;
 }
 
@@ -259,9 +266,10 @@ export const openTerminal = async (project?: string, cwd?: string) => {
 export const closeTerminal = (id: string) =>
   fetch(`${baseUrl()}/terminals/${id}`, { method: "DELETE", headers: headers() }).catch(() => undefined);
 export const entries = (path: string) => get<Entry[]>(`/files?path=${encodeURIComponent(path)}`);
-export const file = (path: string) => get<{ path: string; content: string; truncated?: boolean }>(`/file?path=${encodeURIComponent(path)}`);
-export const transcript = (session: string, limit = 300) =>
-  get<Transcript[]>(`/transcript?session=${session}&limit=${limit}`);
+export const file = (path: string) => get<{ path: string; text: string; truncated?: boolean }>(`/file?path=${encodeURIComponent(path)}`);
+export const transcript = (session: string, cwd?: string, limit = 300) =>
+  get<Transcript[]>(`/transcript?session=${session}&limit=${limit}${cwd ? `&cwd=${encodeURIComponent(cwd)}` : ""}`);
+export const threadsIn = (cwd: string) => get<DiskSession[]>(`/threads?cwd=${encodeURIComponent(cwd)}`);
 
 /** The daemon's event stream. Reconnects by itself; silence is simply treated as offline. */
 export function follow(session: string | undefined, onEvent: (event: PaiEvent) => void) {
