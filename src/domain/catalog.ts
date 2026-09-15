@@ -1,4 +1,4 @@
-import { readdirSync, existsSync, readFileSync, mkdirSync } from "node:fs";
+import { readdirSync, existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { basename, join } from "node:path";
 import { config } from "../core/config.ts";
@@ -12,8 +12,47 @@ export interface Project {
   path: string;
   summary: string;
   aliases: string[];
+  /** A repo under devRoot, or a context: a directory under the workspace with instructions and memory of its own. */
+  kind: "repo" | "context";
   /** The repository on the web, when `origin` points at one. */
   repo?: string;
+}
+
+export const contextsDir = () => join(config.workspace, "projects");
+
+const CONTEXT_TEMPLATE = (name: string, about: string) => `# ${name}
+
+${about || "What this project is for."}
+
+## Voice
+
+How to write here: tone, length, language, what to avoid.
+
+## Preferences
+
+Standing decisions and constraints. Facts that change go to memory (remember with scope "project").
+`;
+
+/** A project that is not a repository: a directory with a CLAUDE.md, so a session in it has a voice and rules. */
+export function createContext(name: string, about = ""): Project {
+  const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  if (!slug) throw new CloneError("a project needs a name");
+  const target = join(contextsDir(), slug);
+  if (existsSync(target)) throw new CloneError(`${target} already exists`);
+  mkdirSync(target, { recursive: true });
+  writeFileSync(join(target, "CLAUDE.md"), CONTEXT_TEMPLATE(name.trim(), about.trim()));
+  refresh();
+  const project = get(slug);
+  if (!project) throw new CloneError(`created ${target}, but it did not index`);
+  return project;
+}
+
+function findContexts(): string[] {
+  const dir = contextsDir();
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+    .map((e) => join(dir, e.name));
 }
 
 export class CloneError extends Error {
@@ -191,20 +230,23 @@ function overrides(): Record<string, Override> {
 
 export function scan(): Project[] {
   const repos = findRepos(config.devRoot, config.scanDepth).sort();
+  const contexts = findContexts().sort();
   const custom = overrides();
   const taken = new Set<string>();
   const projects: Project[] = [];
-  for (const path of repos) {
-    const slug = slugFor(path, taken);
-    taken.add(slug);
-    const over = custom[slug] ?? {};
-    projects.push({
-      slug,
-      path,
-      summary: over.summary ?? describe(path),
-      aliases: [...new Set([...aliasesFor(slug), ...(over.aliases ?? [])])],
-    });
-  }
+  for (const [kind, paths] of [["repo", repos], ["context", contexts]] as const)
+    for (const path of paths) {
+      const slug = slugFor(path, taken);
+      taken.add(slug);
+      const over = custom[slug] ?? {};
+      projects.push({
+        slug,
+        path,
+        kind,
+        summary: over.summary ?? describe(path),
+        aliases: [...new Set([...aliasesFor(slug), ...(over.aliases ?? [])])],
+      });
+    }
   return projects;
 }
 
@@ -222,13 +264,13 @@ export function refresh(): Project[] {
   const projects = scan();
   const ts = now();
   const upsert = db.prepare(
-    `INSERT INTO projects (slug, path, summary, aliases, updated_at)
-     VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO projects (slug, path, summary, aliases, kind, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(slug) DO UPDATE SET path=excluded.path, summary=excluded.summary,
-       aliases=excluded.aliases, updated_at=excluded.updated_at`,
+       aliases=excluded.aliases, kind=excluded.kind, updated_at=excluded.updated_at`,
   );
   const tx = db.transaction((items: Project[]) => {
-    for (const p of items) upsert.run(p.slug, p.path, p.summary, JSON.stringify(p.aliases), ts);
+    for (const p of items) upsert.run(p.slug, p.path, p.summary, JSON.stringify(p.aliases), p.kind, ts);
     db.prepare("DELETE FROM projects WHERE updated_at < ?").run(ts);
   });
   tx(projects);
@@ -237,13 +279,14 @@ export function refresh(): Project[] {
 }
 
 export function all(): Project[] {
-  const rows = db.query("SELECT slug, path, summary, aliases FROM projects ORDER BY slug").all() as {
+  const rows = db.query("SELECT slug, path, summary, aliases, kind FROM projects ORDER BY slug").all() as {
     slug: string;
     path: string;
     summary: string;
     aliases: string;
+    kind: "repo" | "context";
   }[];
-  return rows.map((r) => ({ ...r, aliases: JSON.parse(r.aliases) as string[], repo: remoteUrl(r.path) }));
+  return rows.map((r) => ({ ...r, aliases: JSON.parse(r.aliases) as string[], repo: r.kind === "repo" ? remoteUrl(r.path) : undefined }));
 }
 
 export function get(slug: string): Project | undefined {

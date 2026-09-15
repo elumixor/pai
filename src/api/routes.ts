@@ -1,5 +1,9 @@
 import { config } from "../core/config.ts";
-import { all as allProjects, clone, CloneError, refresh } from "../domain/catalog.ts";
+import { all as allProjects, clone, CloneError, createContext, refresh } from "../domain/catalog.ts";
+import * as automations from "../domain/automations.ts";
+import { context } from "../domain/context.ts";
+import { byName as moduleByName, describeModules } from "../modules/index.ts";
+import { poll as linkedinPoll } from "../modules/linkedin.ts";
 import { usage } from "../domain/usage.ts";
 import { recentEvents, waitFor } from "../core/bus.ts";
 import * as sessions from "../domain/sessions.ts";
@@ -96,11 +100,12 @@ export async function handle(req: Request): Promise<Response> {
 
     if (path === "/update") return json(await updateStatus());
 
-    // A project is added by cloning it: the checkout lands under devRoot like every other one.
+    // A project is added by cloning a repository under devRoot, or as a context: a directory
+    // in the workspace with instructions and memory of its own.
     if (path === "/projects" && req.method === "POST") {
-      const { url: source, name } = await body<{ url: string; name?: string }>(req);
+      const { url: source, name, about } = await body<{ url?: string; name?: string; about?: string }>(req);
       try {
-        return json(clone(source, name), 201);
+        return json(source ? clone(source, name) : createContext(name ?? "", about), 201);
       } catch (err) {
         if (err instanceof CloneError) return json({ error: err.message }, 400);
         throw err;
@@ -164,7 +169,50 @@ export async function handle(req: Request): Promise<Response> {
       return json({ ok: true });
     }
 
-    if (path === "/memory") return json(memory.recall(url.searchParams.get("q") ?? ""));
+    if (path === "/memory" && req.method === "POST") {
+      const input = await body<memory.Remember>(req);
+      try {
+        return json(memory.remember(input), 201);
+      } catch (err) {
+        return json({ error: (err as Error).message }, 400);
+      }
+    }
+
+    const memoryPath = /^\/memory\/([a-z0-9-]+)$/.exec(path);
+    if (memoryPath?.[1] && req.method === "DELETE") return json({ forgotten: memory.forget(memoryPath[1]) });
+
+    if (path === "/memory") return json(memory.recall(url.searchParams.get("q") ?? "", url.searchParams.get("project") ?? undefined));
+
+    // What each kind of session is given, for the dashboard.
+    if (path === "/context") return json(context());
+
+    if (path === "/modules") return json(describeModules());
+
+    const modulePath = /^\/modules\/([a-z-]+)(?:\/(poll))?$/.exec(path);
+    if (modulePath?.[1]) {
+      const module = moduleByName(modulePath[1]);
+      if (!module) return json({ error: "no such module" }, 404);
+      if (modulePath[2] === "poll" && req.method === "POST") return json(module.name === "linkedin" ? await linkedinPoll() : { error: "nothing to poll" });
+      if (req.method === "PATCH") {
+        const changes = await body<Record<string, unknown>>(req);
+        const allowed = new Set(module.settings?.map((s) => s.key) ?? []);
+        for (const key of Object.keys(changes)) if (!allowed.has(key)) return json({ error: `${key} is not a setting of ${module.name}` }, 400);
+        return json(await settings.write(changes));
+      }
+      return json(describeModules().find((m) => m.name === module.name));
+    }
+
+    if (path === "/automations" && req.method === "POST") return json(automations.create(await body<automations.AutomationInput>(req)), 201);
+    if (path === "/automations") return json(automations.all());
+    const automationPath = /^\/automations\/(\d+)$/.exec(path);
+    if (automationPath?.[1]) {
+      const id = Number(automationPath[1]);
+      if (req.method === "DELETE") return json({ removed: automations.remove(id) });
+      if (req.method === "PATCH") {
+        const updated = automations.update(id, await body<Partial<automations.AutomationInput>>(req));
+        return updated ? json(updated) : json({ error: "no such automation" }, 404);
+      }
+    }
 
     if (path === "/cost")
       return json(await hostingCost().catch((err: Error) => ({ error: err.message })));

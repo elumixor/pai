@@ -47,7 +47,7 @@ export function spawnTask(opts: SpawnTask): Session {
   if (opts.project) {
     const proj = getProject(opts.project);
     if (!proj) throw new Error(`unknown project: ${opts.project}`);
-    kind = "code";
+    kind = proj.kind === "repo" ? "code" : "task";
     cwd = proj.path;
     project = proj.slug;
   }

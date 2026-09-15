@@ -8,6 +8,7 @@ import { resultPreview } from "./transcript.ts";
 import { paiTools, type SessionRef } from "./tools.ts";
 import { browserMcp } from "./browser.ts";
 import { instructionsFor } from "./prompts.ts";
+import { linkedinModule, linkedinTools } from "../modules/linkedin.ts";
 import { enabled as tgUserEnabled, telegramUserTools } from "../clients/tg-user.ts";
 
 /** Subprocesses spawned and initialised ahead of time, keyed by kind. Only kinds with a fixed cwd can be warmed. */
@@ -18,7 +19,7 @@ interface Warm {
 }
 const warm = new Map<SessionKind, Warm>();
 
-function build(kind: SessionKind, cwd: string, ref: SessionRef): Options {
+function build(kind: SessionKind, cwd: string, ref: SessionRef, project?: string): Options {
   return {
     cwd,
     model: kind === "main" ? config.models.main : config.models.task,
@@ -33,11 +34,12 @@ function build(kind: SessionKind, cwd: string, ref: SessionRef): Options {
     // interactive terminal and would race across pai's concurrent sessions.
     skills: "all",
     additionalDirectories: kind === "code" ? [config.workspace] : [],
-    systemPrompt: { type: "preset", preset: "claude_code", append: instructionsFor(kind) },
+    systemPrompt: { type: "preset", preset: "claude_code", append: instructionsFor(kind, project) },
     mcpServers: {
       pai: paiTools(kind, ref),
       ...(tgUserEnabled() ? { tg: telegramUserTools() } : {}),
       playwright: browserMcp(),
+      ...(linkedinModule.enabled() && linkedinModule.tools?.kinds.includes(kind) ? { linkedin: linkedinTools() } : {}),
     },
     canUseTool: async (tool, input) => {
       const s = ref.session;
@@ -179,7 +181,7 @@ export class Session {
   private start(resume: boolean) {
     this.resuming = resume;
     const ref: SessionRef = { session: this };
-    const options = build(this.kind, this.cwd, ref);
+    const options = build(this.kind, this.cwd, ref, this.project);
     options.title = this.title;
     if (resume) options.resume = this.id;
     else options.sessionId = this.id;

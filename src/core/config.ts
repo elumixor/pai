@@ -133,6 +133,14 @@ export const config = {
   /** Where this daemon is reachable on the tailnet; clients link back to it. */
   baseUrl: (setting("PAI_BASE_URL") ?? "").replace(/\/$/, ""),
 
+  /** The LinkedIn inbox, through the site's own API with cookies from a signed-in browser. */
+  linkedin: {
+    enabled: bool(setting("PAI_LINKEDIN")),
+    liAt: setting("PAI_LINKEDIN_LI_AT") ?? "",
+    jsessionid: (setting("PAI_LINKEDIN_JSESSIONID") ?? "").replace(/^"|"$/g, ""),
+    intervalMinutes: Number(setting("PAI_LINKEDIN_INTERVAL") ?? 5),
+  },
+
   models: {
     main: setting("PAI_MAIN_MODEL") ?? "sonnet",
     task: setting("PAI_TASK_MODEL") ?? "sonnet",

@@ -24,6 +24,10 @@ export const EDITABLE = [
   "PAI_NO_TELEGRAM",
   "PAI_EDITOR_PORT",
   "PAI_EDITOR_BIND",
+  "PAI_LINKEDIN",
+  "PAI_LINKEDIN_LI_AT",
+  "PAI_LINKEDIN_JSESSIONID",
+  "PAI_LINKEDIN_INTERVAL",
 ] as const;
 
 export type Editable = (typeof EDITABLE)[number];
@@ -53,6 +57,10 @@ export function effective() {
     PAI_NO_TELEGRAM: config.telegram.enabled ? "0" : "1",
     PAI_EDITOR_PORT: String(config.editor.port),
     PAI_EDITOR_BIND: config.editor.host,
+    PAI_LINKEDIN: config.linkedin.enabled ? "1" : "0",
+    PAI_LINKEDIN_LI_AT: config.linkedin.liAt ? "set" : "",
+    PAI_LINKEDIN_JSESSIONID: config.linkedin.jsessionid ? "set" : "",
+    PAI_LINKEDIN_INTERVAL: String(config.linkedin.intervalMinutes),
   } satisfies Record<Editable, string>;
 }
 

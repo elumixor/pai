@@ -12,6 +12,8 @@ import { startSync } from "./domain/sync.ts";
 import { bus } from "./core/bus.ts";
 import { disconnectUser } from "./clients/tg-user.ts";
 import { startAutoUpdate } from "./host/update.ts";
+import { startAutomations } from "./domain/automations.ts";
+import { startModules } from "./modules/index.ts";
 import { logger } from "./core/log.ts";
 
 const log = logger("daemon");
@@ -30,6 +32,8 @@ const bot = startTelegram();
 resumeInterrupted();
 warmUp();
 const stopAutoUpdate = startAutoUpdate();
+const stopAutomations = startAutomations();
+const stopModules = startModules();
 
 const catalogTimer = setInterval(refresh, 15 * 60 * 1000);
 const reaper = setInterval(reapIdle, 60 * 1000);
@@ -41,6 +45,8 @@ function shutdown(signal: string) {
   clearInterval(catalogTimer);
   clearInterval(reaper);
   stopAutoUpdate?.();
+  stopAutomations();
+  stopModules();
   noteInterrupted();
   killAll();
   closeTerminals();

@@ -19,6 +19,14 @@ const MAIN_THREAD = "main_thread_id";
 const STATUS = { starting: "🔵", busy: "🔵", idle: "🟢", waiting: "🟡", dead: "⚪", error: "🔴" } as const;
 const INBOX = join(config.workspace, "inbox");
 
+let notifier: ((text: string) => Promise<void>) | undefined;
+
+/** A message to the user in the root chat, from the daemon itself rather than a session. */
+export async function notify(text: string) {
+  if (!notifier) throw new Error("telegram is off; nothing to notify with");
+  await notifier(text);
+}
+
 export function startTelegram() {
   if (!config.telegram.enabled) return undefined;
   if (!config.telegram.token || !config.telegram.chatId) {
@@ -32,6 +40,10 @@ export function startTelegram() {
   bot.api.config.use(autoRetry({ maxRetryAttempts: 3 }));
   const chatId = config.telegram.chatId;
   const tg = new Frontend(bot, chatId);
+  notifier = async (text) => {
+    const thread = tg.topics ? await tg.ensureMainTopic() : undefined;
+    await bot.api.sendMessage(chatId, text.slice(0, 4000), { message_thread_id: thread, link_preview_options: { is_disabled: true } });
+  };
 
   bot.on("message", async (ctx) => {
     if (ctx.chat.id !== chatId) return;

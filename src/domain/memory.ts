@@ -19,6 +19,8 @@ export interface Memory {
   readonly description: string;
   readonly body: string;
   readonly updatedAt: string;
+  /** Set on a fact that only that project's sessions should carry. */
+  readonly project?: string;
 }
 
 const dir = join(config.workspace, "memory");
@@ -40,7 +42,7 @@ const slugify = (s: string) =>
     .replace(/^-+|-+$/g, "")
     .slice(0, MAX_NAME);
 
-const pathOf = (name: string) => join(dir, `${name}.md`);
+export const pathOf = (name: string) => join(dir, `${name}.md`);
 
 function parse(name: string, raw: string): Memory {
   const m = FRONTMATTER.exec(raw);
@@ -50,11 +52,12 @@ function parse(name: string, raw: string): Memory {
     if (i > 0) meta[line.slice(0, i).trim()] = line.slice(i + 1).trim();
   }
   const type = (MEMORY_TYPES as readonly string[]).includes(meta.type ?? "") ? (meta.type as MemoryType) : "fact";
-  return { name, type, description: meta.description ?? "", body: (m?.[2] ?? raw).trim(), updatedAt: meta.updated ?? "" };
+  return { name, type, description: meta.description ?? "", body: (m?.[2] ?? raw).trim(), updatedAt: meta.updated ?? "", project: meta.project || undefined };
 }
 
 function serialize(m: Memory): string {
-  return `---\nname: ${m.name}\ntype: ${m.type}\ndescription: ${m.description}\nupdated: ${m.updatedAt}\n---\n\n${m.body}\n`;
+  const project = m.project ? `project: ${m.project}\n` : "";
+  return `---\nname: ${m.name}\ntype: ${m.type}\ndescription: ${m.description}\n${project}updated: ${m.updatedAt}\n---\n\n${m.body}\n`;
 }
 
 export function all(): readonly Memory[] {
@@ -64,6 +67,9 @@ export function all(): readonly Memory[] {
     .map((f) => parse(f.slice(0, -3), readFileSync(join(dir, f), "utf8")))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
+
+/** What a session in `project` should carry: the shared facts plus that project's own. */
+export const visibleTo = (project?: string) => all().filter((m) => !m.project || m.project === project);
 
 export function get(name: string): Memory | undefined {
   return all().find((m) => m.name === name);
@@ -76,6 +82,7 @@ export interface Remember {
   readonly body: string;
   /** Session that saved it; the main conversation is told about saves made elsewhere. */
   readonly by?: string;
+  readonly project?: string;
 }
 
 /** Creates or replaces one memory. */
@@ -89,6 +96,7 @@ export function remember(input: Remember): Memory {
     description: input.description.replace(/\s+/g, " ").trim(),
     body: input.body.trim(),
     updatedAt: new Date().toISOString().slice(0, 10),
+    project: input.project || undefined,
   };
   mkdirSync(dir, { recursive: true });
   writeFileSync(pathOf(name), serialize(memory));
@@ -104,10 +112,10 @@ export function forget(name: string, by?: string): boolean {
 }
 
 /** Memories whose name, description, or body mention the query words, best match first. */
-export function recall(query: string): readonly Memory[] {
+export function recall(query: string, project?: string): readonly Memory[] {
   const words = query.toLowerCase().split(/\W+/).filter((w) => w.length > 1);
-  if (words.length === 0) return all();
-  return all()
+  if (words.length === 0) return visibleTo(project);
+  return visibleTo(project)
     .map((m) => {
       const head = `${m.name} ${m.description}`.toLowerCase();
       const body = m.body.toLowerCase();
@@ -121,7 +129,7 @@ export function recall(query: string): readonly Memory[] {
 }
 
 /** One line per memory, for the system prompt. */
-export function index(): string {
-  const lines = all().map((m) => `- ${m.name} (${m.type}): ${m.description}`);
+export function index(project?: string): string {
+  const lines = visibleTo(project).map((m) => `- ${m.name} (${m.type}${m.project ? `, ${m.project}` : ""}): ${m.description}`);
   return lines.length ? lines.join("\n") : "(nothing saved yet)";
 }

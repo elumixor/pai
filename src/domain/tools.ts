@@ -41,9 +41,9 @@ export function paiTools(kind: "main" | "task" | "code", ref: SessionRef) {
     ),
     tool(
       "list_projects",
-      "The user's coding projects: every git repo under the dev root with a one-line description.",
+      "The user's projects: every git repo under the dev root, plus the context projects (a directory with its own instructions and memory, for work that is not code — a job search, hiring).",
       {},
-      async () => ok(allProjects().map((p) => ({ slug: p.slug, summary: p.summary }))),
+      async () => ok(allProjects().map((p) => ({ slug: p.slug, kind: p.kind, summary: p.summary }))),
     ),
     tool(
       "describe_project",
@@ -66,10 +66,13 @@ export function paiTools(kind: "main" | "task" | "code", ref: SessionRef) {
         type: z.enum(memory.MEMORY_TYPES).describe("user: who the user is; person: someone they deal with; preference: how they want things done; project: ongoing work and constraints; reference: a URL, id, or pointer; fact: anything else"),
         description: z.string().max(160).describe("one line, shown in the index of every session"),
         body: z.string().max(4000).describe("the fact itself, with the why where it matters; absolute dates, not relative"),
+        scope: z.enum(["shared", "project"]).optional().describe("project: only sessions of this session's project carry it (voice, preferences, history of one project); default shared"),
       },
-      async (input) => {
+      async ({ scope, ...input }) => {
         try {
-          return ok({ saved: memory.remember({ ...input, by: self().id }).name });
+          const project = scope === "project" ? self().project : undefined;
+          if (scope === "project" && !project) return ok({ error: "this session has no project; save it shared" });
+          return ok({ saved: memory.remember({ ...input, by: self().id, project }).name });
         } catch (err) {
           return ok({ error: (err as Error).message });
         }
@@ -79,7 +82,7 @@ export function paiTools(kind: "main" | "task" | "code", ref: SessionRef) {
       "recall",
       "Read memories in full. A query matches names, descriptions, and bodies; empty returns everything. The system prompt has the index, so recall only when the body matters.",
       { query: z.string().optional() },
-      async ({ query }) => ok(memory.recall(query ?? "").map(({ name, type, description, body }) => ({ name, type, description, body }))),
+      async ({ query }) => ok(memory.recall(query ?? "", self().project).map(({ name, type, description, body, project }) => ({ name, type, description, body, project }))),
     ),
     tool("forget", "Delete a memory that is wrong or no longer true.", { name: z.string() }, async ({ name }) =>
       ok({ forgotten: memory.forget(name, self().id) }),
@@ -93,7 +96,7 @@ export function paiTools(kind: "main" | "task" | "code", ref: SessionRef) {
       {
         title: z.string().max(60).describe("short topic name, e.g. 'Find game designer'"),
         prompt: z.string().describe("the full instruction for the task"),
-        project: z.string().optional().describe("project slug from list_projects, for coding work"),
+        project: z.string().optional().describe("project slug from list_projects: a repo for coding work, a context project for work that has its own voice and memory"),
       },
       async ({ title, prompt, project }) => {
         try {

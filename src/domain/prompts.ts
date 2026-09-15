@@ -1,6 +1,7 @@
 import type { SessionKind } from "./session.ts";
 import { config } from "../core/config.ts";
 import { index as memoryIndex } from "./memory.ts";
+import { modules } from "../modules/index.ts";
 
 const COMMON = `
 You are pai, a personal assistant that the user talks to from Telegram on their phone.
@@ -21,9 +22,14 @@ Memory:
 - Save with remember when the user says to remember something, states a preference or correction, or when you learn something durable (people, accounts, standing decisions, how they like things done). Do it as it happens, without being asked twice, and say in a few words that it is saved.
 - Fix a memory that turns out wrong instead of keeping both; forget what stops being true.`;
 
-const memorySection = () => `\
+const memorySection = (project?: string) => `\
 What is on file (name (type): description):
-${memoryIndex()}`;
+${memoryIndex(project)}`;
+
+const moduleSection = (kind: SessionKind) => {
+  const lines = modules.filter((m) => m.enabled() && m.prompt?.kinds.includes(kind)).map((m) => `- ${m.prompt!.text}`);
+  return lines.length ? `\nAlso available:\n${lines.join("\n")}` : "";
+};
 
 const MAIN = `
 You are the main conversation. Most messages are conversation or quick lookups: answer them directly.
@@ -38,7 +44,17 @@ You are one task with a single goal, running in your own Telegram topic. If the 
 const CODE = `
 You are a coding session in one of the user's repositories. Work in the repo directly; commit when a piece of work is complete with a subject-only message under 10 words. Do not push. Report what changed and how it was verified.`;
 
-export function instructionsFor(kind: SessionKind): string {
+export function instructionsFor(kind: SessionKind, project?: string): string {
   const role = kind === "main" ? MAIN : kind === "code" ? CODE : TASK;
-  return `${COMMON}\n${role}\n${memorySection()}`;
+  return `${COMMON}\n${role}${moduleSection(kind)}\n${memorySection(project)}`;
+}
+
+/** The fixed paragraphs with the sessions they go to, for the dashboard's context view. */
+export function sections(): [name: string, text: string, kinds: SessionKind[]][] {
+  return [
+    ["common", COMMON.trim(), ["main", "task", "code"]],
+    ["main conversation", MAIN.trim(), ["main"]],
+    ["task", TASK.trim(), ["task"]],
+    ["coding session", CODE.trim(), ["code"]],
+  ];
 }

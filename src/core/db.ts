@@ -51,11 +51,30 @@ CREATE TABLE IF NOT EXISTS tg_messages (
   ts          INTEGER NOT NULL
 );
 
+-- on <event> -> <action>; see domain/automations.ts
+CREATE TABLE IF NOT EXISTS automations (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  name        TEXT NOT NULL,
+  event       TEXT NOT NULL,
+  filter      TEXT NOT NULL DEFAULT '',
+  action      TEXT NOT NULL,
+  project     TEXT NOT NULL DEFAULT '',
+  template    TEXT NOT NULL DEFAULT '',
+  enabled     INTEGER NOT NULL DEFAULT 1,
+  created_at  INTEGER NOT NULL,
+  runs        INTEGER NOT NULL DEFAULT 0,
+  last_run    INTEGER
+);
+
 CREATE TABLE IF NOT EXISTS kv (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
 `);
+
+// Columns added after the first release; ALTER is the migration.
+if (!(db.query("PRAGMA table_info(projects)").all() as { name: string }[]).some((c) => c.name === "kind"))
+  db.exec("ALTER TABLE projects ADD COLUMN kind TEXT NOT NULL DEFAULT 'repo'");
 
 export function now() {
   return Date.now();
