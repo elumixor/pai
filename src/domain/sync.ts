@@ -157,6 +157,8 @@ async function ensureFolders() {
 
   for (const folder of FOLDERS) {
     await mkdir(folder.path(), { recursive: true });
+    // The marker Syncthing wants in a shared directory; missing, the folder sits in an error state.
+    await mkdir(join(folder.path(), ".stfolder"), { recursive: true });
     // Build output is reproducible and enormous; syncing it would cost far more than it saves.
     await Bun.write(join(folder.path(), ".stignore"), IGNORES);
     await api("/config/folders", {
