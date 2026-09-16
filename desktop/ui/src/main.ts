@@ -1,8 +1,9 @@
 import { baseUrl, fileIndex, flush, follow, inDesktop, isOnline, lastError, onConnection, outbox, projects, resolveBase, send, status, usage } from "./api.ts";
-import { dashboard } from "./dashboard.ts";
+import { dashboard, type Page } from "./dashboard.ts";
 import { ago, clear, el, sheet, until } from "./dom.ts";
 import "./theme.ts";
 import { editor, emptyEditor } from "./editor.ts";
+import { current as currentRoute, navigate, onRoute, type Route } from "./router.ts";
 import { tree, type Tree } from "./files.ts";
 import { icon, type IconName } from "./icons.ts";
 import { palette, type Command } from "./palette.ts";
@@ -48,7 +49,7 @@ const openFile = (path: string) => {
 const dashboardRoot = $("dashboard");
 let dashboardView: ReturnType<typeof dashboard> | undefined;
 let view: "work" | "dashboard" = "work";
-function showView(next: "work" | "dashboard") {
+function showView(next: "work" | "dashboard", page: Page = "overview") {
   view = next;
   main.hidden = next !== "work";
   dashboardRoot.hidden = next !== "dashboard";
@@ -56,25 +57,39 @@ function showView(next: "work" | "dashboard") {
   if (next === "dashboard") {
     dashboardView ??= dashboard(dashboardRoot, {
       openFile: (path) => {
-        showView("work");
+        navigate("editor");
         openFile(path);
       },
       selectProject: (slug) => {
-        showView("work");
+        navigate("work");
         const project = catalog.find((p) => p.slug === slug);
         if (project) selectProject(project);
       },
     });
-    void dashboardView.show("overview");
+    void dashboardView.show(page);
   } else window.dispatchEvent(new Event("resize"));
 }
-const showDashboard = () => showView(view === "dashboard" ? "work" : "dashboard");
+const showDashboard = () => navigate(view === "dashboard" ? "work" : "dashboard");
 const showSettings = (section?: SettingsSection) => {
   if (document.querySelector("dialog.settings")) return;
   const { body, close } = sheet("settings");
-  settingsView(body, section, close);
+  settingsView(body, section, () => {
+    close();
+    if (currentRoute() === "settings") navigate("work", true);
+  });
 };
 const showEditor = () => (state.file ? openFile(state.file) : emptyEditor(viewerPane));
+
+/** Each address is one of the views: the dashboard's pages, the editor in the work view, the settings sheet over it. */
+function applyRoute(route: Route) {
+  const pages: Partial<Record<Route, Page>> = { dashboard: "overview", modules: "modules", automations: "automations", projects: "projects", context: "context" };
+  const page = pages[route];
+  if (page) return showView("dashboard", page);
+  showView("work");
+  if (route === "editor") showEditor();
+  if (route === "settings") showSettings();
+}
+onRoute(applyRoute);
 
 // ---- the two thread panes ----------------------------------------------------------------
 
@@ -247,9 +262,9 @@ function renderStatusRight(editorUrl?: string) {
     el("span.stat.dim", { title: `daemon at ${baseUrl()}` }, baseUrl().replace(/^https?:\/\//, "")),
     navButton("zap", "Search everything (⌘K)", openPalette),
     navButton("layout", "Dashboard (⌘2) · Work (⌘1)", showDashboard),
-    navButton("code", "Editor", showEditor),
+    navButton("code", "Editor", () => navigate("editor")),
     editorUrl ? el("a.iconbtn.slim", { title: "VS Code in the browser", href: editorUrl, target: "_blank", rel: "noreferrer" }, icon("external", 13)) : undefined,
-    navButton("settings", "Settings", () => showSettings()),
+    navButton("settings", "Settings", () => navigate("settings")),
   );
 }
 
@@ -273,10 +288,14 @@ onConnection((online) => {
 
 async function commands(): Promise<Command[]> {
   const actions: Command[] = [
-    { id: "dashboard", title: "Dashboard", group: "view", icon: "layout", run: () => showView("dashboard") },
-    { id: "work", title: "Work view", group: "view", icon: "code", run: () => showView("work") },
-    { id: "editor", title: "Editor", group: "view", icon: "code", run: () => (showView("work"), showEditor()) },
-    { id: "settings", title: "Settings", group: "view", icon: "settings", run: () => showSettings() },
+    { id: "dashboard", title: "Dashboard", group: "view", icon: "layout", run: () => navigate("dashboard") },
+    { id: "modules", title: "Modules", group: "view", icon: "zap", run: () => navigate("modules") },
+    { id: "automations", title: "Automations", group: "view", icon: "play", run: () => navigate("automations") },
+    { id: "projects", title: "Projects", group: "view", icon: "folder", run: () => navigate("projects") },
+    { id: "context", title: "Context", group: "view", icon: "book", run: () => navigate("context") },
+    { id: "work", title: "Work view", group: "view", icon: "code", run: () => navigate("work") },
+    { id: "editor", title: "Editor", group: "view", icon: "code", run: () => navigate("editor") },
+    { id: "settings", title: "Settings", group: "view", icon: "settings", run: () => navigate("settings") },
     { id: "new-thread", title: `New thread${state.project ? ` in ${state.project}` : ""}`, group: "action", icon: "message", run: () => void newThread(state.project) },
     { id: "new-terminal", title: `New terminal${state.project ? ` in ${state.project}` : ""}`, group: "action", icon: "terminal", run: () => void terminals.open() },
     { id: "add-project", title: "Add project", group: "action", icon: "plus", run: () => void addProjectDialog().then((added) => { if (added) void refreshAll(); }) },
@@ -317,17 +336,17 @@ document.addEventListener("keydown", (event) => {
     if (state.file) void fileTree?.reveal(state.file);
   } else if (meta && (event.key === "1" || event.key === "2")) {
     event.preventDefault();
-    showView(event.key === "1" ? "work" : "dashboard");
+    navigate(event.key === "1" ? "work" : "dashboard");
   } else if (event.metaKey && event.key === "," && event.shiftKey === !inDesktop) {
     // ⌘, in the app; a browser keeps that one for itself, so ⌘⇧, on the web.
     event.preventDefault();
-    showSettings();
+    navigate("settings");
   } else if (event.ctrlKey && event.key === "Tab") {
     event.preventDefault();
     cycleThread(event.shiftKey ? -1 : 1);
   } else if (event.ctrlKey && !event.metaKey && !event.altKey && FOCUS[event.key.toLowerCase()]) {
     event.preventDefault();
-    showView("work");
+    navigate("work");
     FOCUS[event.key.toLowerCase()]!();
   }
 });
@@ -373,6 +392,7 @@ void (async () => {
   }
   await refreshAll();
   if (state.file) openFile(state.file);
+  applyRoute(currentRoute());
   for (const slot of ["a", "b"] as const) {
     const remembered = sessions.find((s) => s.sessionId === slotState[slot]());
     if (remembered) openThread(remembered, slot);

@@ -13,6 +13,10 @@ export async function serveApp(pathname: string): Promise<Response> {
   const file = Bun.file(resolved);
   if (await file.exists()) return new Response(file);
 
+  // A route of the client's (`/ui/modules`) gets the app; the app's relative asset paths
+  // need the route without a trailing slash, and a missing asset is a 404, not the app.
+  if (rest.endsWith("/")) return Response.redirect(`/ui/${rest.replace(/\/+$/, "")}`, 302);
+  if (/\.[a-z0-9]+$/i.test(rest.split("/").pop() ?? "")) return new Response("not found", { status: 404 });
   const index = Bun.file(join(root, "index.html"));
   if (await index.exists()) return new Response(index);
   return new Response("not built; run `bun run build:ui`", { status: 503 });

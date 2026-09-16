@@ -5,6 +5,7 @@ import {
 import { ago, clear, dialog, el, until } from "./dom.ts";
 import { editor } from "./editor.ts";
 import { icon, type IconName } from "./icons.ts";
+import { linkTo, navigate, type Route } from "./router.ts";
 import type { Automation, ContextItem, ModuleInfo, ProjectSummary } from "./types.ts";
 
 /**
@@ -19,7 +20,7 @@ export interface DashboardHandlers {
   readonly selectProject: (slug: string) => void;
 }
 
-type Page = "overview" | "modules" | "automations" | "projects" | "context";
+export type Page = "overview" | "modules" | "automations" | "projects" | "context";
 const PAGES: { id: Page; label: string; icon: IconName }[] = [
   { id: "overview", label: "Overview", icon: "layout" },
   { id: "modules", label: "Modules", icon: "zap" },
@@ -61,7 +62,9 @@ export function dashboard(root: HTMLElement, handlers: DashboardHandlers) {
   clear(
     nav,
     el("div.dash-brand", {}, icon("bot", 16), el("span", {}, "pai")),
-    ...PAGES.map((p) => el("button.dash-link", { "data-page": p.id, onclick: () => void show(p.id) }, icon(p.icon, 14), el("span", {}, p.label))),
+    ...PAGES.map((p) => linkTo(p.id === "overview" ? "dashboard" : p.id, el("a.dash-link", { "data-page": p.id }, icon(p.icon, 14), el("span", {}, p.label)) as HTMLAnchorElement)),
+    el("span.grow"),
+    linkTo("work", el("a.dash-link", {}, icon("code", 14), el("span", {}, "Work")) as HTMLAnchorElement),
   );
   clear(root, nav, body);
 
@@ -433,7 +436,7 @@ export function dashboard(root: HTMLElement, handlers: DashboardHandlers) {
   }
 
   void show(page);
-  return { show };
+  return { show, page: () => page };
 }
 
 const surfaceDescription = (surface: string) =>

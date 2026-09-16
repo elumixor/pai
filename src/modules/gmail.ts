@@ -103,7 +103,14 @@ export function handleConnect(req: Request, url: URL): Response {
 /** The sign-in callback's second half: a code that came back for a mailbox rather than a login. */
 export async function finishConnect(req: Request, url: URL, label: string): Promise<Response> {
   const code = url.searchParams.get("code");
-  if (!code) return page(`Google did not grant access: ${escapeHtml(url.searchParams.get("error") ?? "unknown error")}.`, 400);
+  const refusal = url.searchParams.get("error");
+  if (!code) {
+    const why =
+      refusal === "access_denied"
+        ? ` The OAuth app is in testing mode, so Google only lets its listed testers in: add this Google account under <b>Audience → Test users</b> at <a href="https://console.cloud.google.com/auth/audience?project=${escapeHtml(config.google.clientId.split("-")[0] ?? "")}">console.cloud.google.com/auth/audience</a> (or publish the app), then connect again.`
+        : "";
+    return page(`Google did not grant access: ${escapeHtml(refusal ?? "unknown error")}.${why}`, 400);
+  }
 
   const tokenResponse = await fetch(TOKEN_URL, {
     method: "POST",
