@@ -9,6 +9,7 @@ import { paiTools, type SessionRef } from "./tools.ts";
 import { browserMcp } from "./browser.ts";
 import { instructionsFor } from "./prompts.ts";
 import { linkedinModule, linkedinTools } from "../modules/linkedin.ts";
+import { gmailModule, gmailTools } from "../modules/gmail.ts";
 import { enabled as tgUserEnabled, telegramUserTools } from "../clients/tg-user.ts";
 
 /** Subprocesses spawned and initialised ahead of time, keyed by kind. Only kinds with a fixed cwd can be warmed. */
@@ -40,6 +41,7 @@ function build(kind: SessionKind, cwd: string, ref: SessionRef, project?: string
       ...(tgUserEnabled() ? { tg: telegramUserTools() } : {}),
       playwright: browserMcp(),
       ...(linkedinModule.enabled() && linkedinModule.tools?.kinds.includes(kind) ? { linkedin: linkedinTools() } : {}),
+      ...(gmailModule.enabled() && gmailModule.tools?.kinds.includes(kind) ? { gmail: gmailTools() } : {}),
     },
     canUseTool: async (tool, input) => {
       const s = ref.session;

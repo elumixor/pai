@@ -73,6 +73,14 @@ CREATE TABLE IF NOT EXISTS kv (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+-- One row per Gmail account connected through /gmail/connect; see modules/gmail.ts.
+CREATE TABLE IF NOT EXISTS gmail_accounts (
+  label         TEXT PRIMARY KEY,
+  email         TEXT NOT NULL,
+  refresh_token TEXT NOT NULL,
+  created_at    INTEGER NOT NULL
+);
 `);
 
 // Columns added after the first release; ALTER is the migration.
