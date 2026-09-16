@@ -35,8 +35,17 @@ export interface Module {
   readonly prompt?: { readonly text: string; readonly kinds: readonly SessionKind[] };
   readonly events?: readonly { readonly kind: string; readonly description: string }[];
   readonly settings?: readonly ModuleSetting[];
-  /** Pages of the daemon the card links to; `{value}` in the path is asked for with `prompt`. */
-  readonly links?: readonly { readonly label: string; readonly path: string; readonly prompt?: string }[];
+  /**
+   * Things connected one at a time with their own consent (mailboxes): what is connected,
+   * where the browser goes to add one (`{label}` in the path is the name asked for), and
+   * the DELETE path that forgets one.
+   */
+  readonly accounts?: {
+    readonly list: () => readonly { readonly label: string; readonly detail: string }[];
+    readonly connectPath: string;
+    readonly removePath: string;
+    readonly hint: string;
+  };
   /** A restart is what applies most settings; modules that can start and stop live say so. */
   readonly start?: () => void;
   readonly stop?: () => void;

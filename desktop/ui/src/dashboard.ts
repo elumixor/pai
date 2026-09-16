@@ -1,6 +1,6 @@
 import {
   automations as listAutomations, baseUrl, contextItems, createAutomation, createContextProject, deleteAutomation, forgetMemory, modules as listModules, patchModule, pollModule,
-  projects as listProjects, recentEvents, rememberMemory, status, sync, updateAutomation, usage,
+  projects as listProjects, recentEvents, rememberMemory, send, status, sync, updateAutomation, usage,
 } from "./api.ts";
 import { ago, clear, dialog, el, until } from "./dom.ts";
 import { editor } from "./editor.ts";
@@ -121,61 +121,160 @@ export function dashboard(root: HTMLElement, handlers: DashboardHandlers) {
   async function modules() {
     const list = await listModules();
     const kinds: Record<ModuleInfo["kind"], string> = { channel: "talks to you", tools: "tools for sessions", source: "watches something", service: "infrastructure" };
+    const icons: Record<string, IconName> = { telegram: "send", "tg-user": "user", browser: "globe", memory: "brain", tasks: "list", linkedin: "link", gmail: "mail", editor: "code", public: "monitor", sync: "refresh" };
+    const chip = (text: string, title?: string, cls = "") => el("span.chip", { class: `chip ${cls}`, title: title ?? "" }, text);
+
     const moduleCard = (m: ModuleInfo) => {
-      const status = el("div.kvs", {}, ...Object.entries(m.status).map(([k, v]) => kv(k, typeof v === "object" ? JSON.stringify(v) : String(v))));
-      const form = el("div.mod-settings");
+      // A module is on, off by its own switch, or waiting for something to be filled in.
+      const configured = m.status.configured !== false;
+      const toggle = m.settings?.find((s) => s.type === "toggle");
+      const state = m.enabled ? "on" : configured ? "off" : "not configured";
       const message = el("span.note");
-      for (const setting of m.settings ?? []) {
-        let control: HTMLElement;
-        if (setting.type === "toggle") {
-          const input = el("input", { type: "checkbox" }) as HTMLInputElement;
-          input.checked = setting.value === "1";
-          input.addEventListener("change", () => void save({ [setting.key]: input.checked ? "1" : "" }));
-          control = el("label.switch", {}, input, el("span"));
-        } else {
-          const input = el("input", { type: setting.secret ? "password" : setting.type === "number" ? "number" : "text", placeholder: setting.secret && setting.value === "set" ? "•••••• (set)" : "", value: setting.secret ? "" : setting.value }) as HTMLInputElement;
-          input.addEventListener("change", () => input.value && void save({ [setting.key]: input.value }));
-          control = input;
-        }
-        form.append(el("div.mod-setting", {}, el("div.setting-text", {}, el("span.setting-title", {}, setting.label), setting.hint ? el("span.dim", {}, setting.hint) : undefined), control));
-      }
       const save = async (changes: Record<string, string>) => {
         const result = await patchModule(m.name, changes);
-        message.textContent = result.error ?? (result.queued ? "queued" : "saved — restart the daemon to apply");
+        message.textContent = result.error ?? (result.queued ? "queued" : "saved — restarts the daemon to apply");
+        if (!result.error && !result.queued) setTimeout(() => void show("modules"), 1500);
       };
-      return el(
-        "section.card.module",
-        { class: `card module${m.enabled ? "" : " off"}` },
-        el("header.mod-head", {}, el("span", { class: `dot ${m.enabled ? "idle" : "dead"}` }), el("h3", {}, m.title), el("span.tag", {}, kinds[m.kind]), el("span.grow"), message),
-        el("p.dim", {}, m.description),
-        m.tools ? kv("tools", `${m.tools.server}: ${m.tools.names.join(", ")} → ${m.tools.kinds.join(", ")}`) : undefined,
-        m.events?.length ? kv("events", m.events.map((e) => `${e.kind} — ${e.description}`).join("; ")) : undefined,
-        m.prompt ? kv("prompt", m.prompt.text) : undefined,
-        Object.keys(m.status).length ? status : undefined,
-        form.childElementCount ? form : undefined,
-        m.live && m.enabled ? el("div.row-inline", {}, el("button.btn", { onclick: async () => (message.textContent = JSON.stringify((await pollModule(m.name)).data ?? {})) }, "Poll now")) : undefined,
-        m.links?.length && m.enabled
-          ? el(
-              "div.row-inline",
-              {},
-              ...m.links.map((link) =>
+
+      // Settings: the switch is a chip in the head; the rest a form, hidden until asked for
+      // unless something is missing.
+      const form = el("div.mod-settings");
+      for (const setting of m.settings ?? []) {
+        if (setting === toggle) continue;
+        const missing = !setting.secret ? !setting.value : setting.value !== "set";
+        const input = el("input", {
+          type: setting.secret ? "password" : setting.type === "number" ? "number" : "text",
+          placeholder: setting.secret ? (setting.value === "set" ? "•••••• (set)" : "paste it here") : (setting.hint ?? ""),
+          value: setting.secret ? "" : setting.value,
+        }) as HTMLInputElement;
+        input.addEventListener("change", () => input.value && void save({ [setting.key]: input.value }));
+        form.append(
+          el(
+            "div.mod-setting",
+            { class: `mod-setting${missing && !configured ? " missing" : ""}` },
+            el("div.setting-text", {}, el("span.setting-title", {}, setting.label, missing && !configured ? icon("alert", 11) : undefined), setting.hint ? el("span.dim", {}, setting.hint) : undefined),
+            input,
+          ),
+        );
+      }
+      const hasForm = form.childElementCount > 0;
+      form.hidden = configured;
+
+      // The switch: "Turned off" settings are inverted, so on means the value is empty.
+      const switchChip = () => {
+        if (!toggle) return undefined;
+        const inverted = /^PAI_NO_/.test(toggle.key);
+        const on = inverted ? toggle.value !== "1" : toggle.value === "1";
+        const input = el("input", { type: "checkbox" }) as HTMLInputElement;
+        input.checked = on;
+        input.addEventListener("change", () => void save({ [toggle.key]: input.checked !== inverted ? "1" : "" }));
+        return el("label.switch", { title: `${toggle.label}${toggle.hint ? ` — ${toggle.hint}` : ""}` }, input, el("span"));
+      };
+
+      // Accounts: what is connected, each with a way to forget it, and a way to add one.
+      const accounts = () => {
+        const a = m.accounts;
+        if (!a) return undefined;
+        const label = el("input", { type: "text", placeholder: a.hint, "aria-label": "label" }) as HTMLInputElement;
+        const connect = () => {
+          const value = label.value.trim().toLowerCase();
+          if (!/^[a-z0-9-]{1,40}$/.test(value)) {
+            message.textContent = "a label is letters, digits and dashes";
+            return;
+          }
+          window.open(`${baseUrl()}${a.connectPath.replace("{label}", encodeURIComponent(value))}`, "_blank", "noopener");
+          message.textContent = "finish the consent in the tab that opened, then this card refreshes";
+          const poll = setInterval(async () => {
+            const fresh = (await listModules()).find((x) => x.name === m.name);
+            if (fresh?.accounts?.items.some((item) => item.label === value)) {
+              clearInterval(poll);
+              void show("modules");
+            }
+          }, 3000);
+          setTimeout(() => clearInterval(poll), 5 * 60 * 1000);
+        };
+        label.addEventListener("keydown", (event) => event.key === "Enter" && connect());
+        return el(
+          "div.mod-accounts",
+          {},
+          el(
+            "div.chips",
+            {},
+            ...a.items.map((item) =>
+              el(
+                "span.chip.account",
+                { title: item.detail },
+                icon("check", 11),
+                el("strong", {}, item.label),
+                el("span.dim", {}, item.detail),
                 el(
-                  "button.btn",
+                  "button.iconbtn.slim",
                   {
-                    onclick: () => {
-                      const value = link.prompt ? prompt(link.prompt)?.trim() : "";
-                      if (link.prompt && !value) return;
-                      window.open(`${baseUrl()}${link.path.replace("{value}", encodeURIComponent(value ?? ""))}`, "_blank", "noopener");
+                    title: `forget ${item.label}`,
+                    onclick: async () => {
+                      if (!confirm(`Forget ${item.label} (${item.detail})?`)) return;
+                      await send(a.removePath.replace("{label}", encodeURIComponent(item.label)), {}, "DELETE");
+                      void show("modules");
                     },
                   },
-                  link.label,
+                  icon("trash", 11),
                 ),
               ),
-            )
-          : undefined,
+            ),
+            a.items.length ? undefined : el("span.dim", {}, "nothing connected yet"),
+          ),
+          el("div.row-inline", {}, label, el("button.btn.primary", { onclick: connect }, icon("plus", 12), "Connect")),
+        );
+      };
+
+      // What to do about a module that is not on: fill in what it needs, or flip its switch.
+      const action = () => {
+        if (m.enabled) return undefined;
+        if (!configured && hasForm)
+          return el("button.btn.primary", { onclick: () => ((form.hidden = !form.hidden), form.querySelector("input")?.focus()) }, icon("settings", 12), "Configure");
+        if (!configured) return el("span.dim", {}, "needs the daemon's environment");
+        if (toggle) {
+          const inverted = /^PAI_NO_/.test(toggle.key);
+          return el("button.btn.primary", { onclick: () => void save({ [toggle.key]: inverted ? "" : "1" }) }, icon("power", 12), "Turn on");
+        }
+        return undefined;
+      };
+
+      const statusRow = Object.entries(m.status)
+        .filter(([k]) => k !== "configured")
+        .map(([k, v]) => {
+          const text = typeof v === "object" ? JSON.stringify(v) : String(v);
+          const isUrl = /^https?:\/\//.test(text);
+          return isUrl ? kv(k, link(text)) : kv(k, text);
+        });
+
+      return el(
+        "section.card.module",
+        { class: `card module ${state.replace(" ", "-")}` },
+        el(
+          "header.mod-head",
+          {},
+          el("span.mod-icon", { title: kinds[m.kind] }, icon(icons[m.name] ?? "zap", 15)),
+          el("h3", {}, m.title),
+          chip(kinds[m.kind], "what kind of module this is"),
+          chip(state, m.enabled ? "running" : configured ? "turned off by its switch" : "missing something it needs", `state ${state.replace(" ", "-")}`),
+          el("span.grow"),
+          message,
+          switchChip(),
+          hasForm && configured ? el("button.iconbtn.slim", { title: "settings", onclick: () => (form.hidden = !form.hidden) }, icon("settings", 13)) : undefined,
+        ),
+        el("p.dim", {}, m.description),
+        m.tools ? el("div.chips.tools", {}, ...m.tools.names.map((name) => chip(name, `${m.tools!.server} tool, for ${m.tools!.kinds.join(", ")} sessions`, "tool"))) : undefined,
+        m.events?.length ? kv("events", m.events.map((e) => `${e.kind} — ${e.description}`).join("; ")) : undefined,
+        m.prompt ? el("p.mod-prompt", { title: `what sessions are told (${m.prompt.kinds.join(", ")})` }, m.prompt.text) : undefined,
+        statusRow.length ? el("div.kvs", {}, ...statusRow) : undefined,
+        accounts(),
+        action() ? el("div.row-inline.mod-action", {}, action()) : undefined,
+        hasForm ? form : undefined,
+        m.live && m.enabled ? el("div.row-inline", {}, el("button.btn", { onclick: async () => (message.textContent = JSON.stringify((await pollModule(m.name)).data ?? {})) }, "Poll now")) : undefined,
       );
     };
-    clear(body, el("h2.dash-title", {}, "Modules", el("span.dim", {}, "what pai is made of; most switches take effect on the next restart")), el("div.cards.wide", {}, ...list.map(moduleCard)));
+    clear(body, el("h2.dash-title", {}, "Modules", el("span.dim", {}, "what pai is made of; a switch or a setting takes effect after the restart it triggers")), el("div.cards.wide", {}, ...list.map(moduleCard)));
   }
 
   // ---- automations ----------------------------------------------------------------------

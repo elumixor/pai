@@ -56,6 +56,8 @@ export interface Usage {
   readonly windows: readonly UsageWindow[];
   readonly costUsd: number;
   readonly fetchedAt?: string;
+  /** The machine whose login answered, when it was not this one. */
+  readonly via?: string;
   readonly error?: string;
 }
 
@@ -79,7 +81,12 @@ export interface ModuleInfo {
   readonly prompt?: { readonly text: string; readonly kinds: readonly string[] };
   readonly events?: readonly { readonly kind: string; readonly description: string }[];
   readonly settings?: readonly ModuleSetting[];
-  readonly links?: readonly { readonly label: string; readonly path: string; readonly prompt?: string }[];
+  readonly accounts?: {
+    readonly items: readonly { readonly label: string; readonly detail: string }[];
+    readonly connectPath: string;
+    readonly removePath: string;
+    readonly hint: string;
+  };
   readonly live: boolean;
 }
 

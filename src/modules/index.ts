@@ -112,7 +112,7 @@ export function describeModules() {
     tools: m.tools,
     prompt: m.prompt,
     events: m.events,
-    links: m.links,
+    accounts: m.accounts ? { items: m.accounts.list(), connectPath: m.accounts.connectPath, removePath: m.accounts.removePath, hint: m.accounts.hint } : undefined,
     settings: m.settings?.map((s) => ({ ...s, value: s.secret ? (settings.effective()[s.key as settings.Editable] ? "set" : "") : (settings.effective()[s.key as settings.Editable] ?? "") })),
     live: Boolean(m.start),
   }));

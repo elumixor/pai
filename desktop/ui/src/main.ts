@@ -1,6 +1,6 @@
 import { baseUrl, fileIndex, flush, follow, inDesktop, isOnline, lastError, onConnection, outbox, projects, resolveBase, send, status, usage } from "./api.ts";
 import { dashboard } from "./dashboard.ts";
-import { clear, el, sheet, until } from "./dom.ts";
+import { ago, clear, el, sheet, until } from "./dom.ts";
 import "./theme.ts";
 import { editor, emptyEditor } from "./editor.ts";
 import { tree, type Tree } from "./files.ts";
@@ -181,7 +181,7 @@ const terminals = dock(dockPane, () => ({ slug: state.project, path: currentProj
 
 // ---- the status bar: connection, cost, the quota rings, and the way to the other views ---
 
-const ring = (window: { name: string; percent: number; resetsAt?: string; length: number }) => {
+const ring = (window: { name: string; percent: number; resetsAt?: string; length: number }, source?: string) => {
   const { percent } = window;
   const r = 5.5;
   const c = 2 * Math.PI * r;
@@ -198,6 +198,7 @@ const ring = (window: { name: string; percent: number; resetsAt?: string; length
       el("strong", {}, window.name),
       el("span", {}, `${percent}% of the limit used`),
       window.resetsAt ? el("span", {}, `resets in ${until(window.resetsAt)} · ${elapsed}% of the ${window.length >= 86400 ? "week" : "window"} elapsed`) : undefined,
+      source ? el("span.dim", {}, source) : undefined,
       el("span.dim", {}, "which rings show: settings → usage rings"),
     ]);
   });
@@ -228,10 +229,12 @@ async function refreshUsage() {
     const data = await usage();
     stats.push(el("span.stat", { title: "what the sessions have cost, as the SDK reports it" }, `$${data.costUsd.toFixed(2)}`));
     const hidden = new Set(prefs().hiddenRings);
-    for (const window of data.windows) if (!hidden.has(window.name)) stats.push(ring(window));
+    const source = data.via ? `read on ${data.via} ${data.fetchedAt ? ago(data.fetchedAt) : ""}` : undefined;
+    for (const window of data.windows) if (!hidden.has(window.name)) stats.push(ring(window, source));
     const session = data.windows.find((w) => w.name === "Session");
     if (session && !hidden.has("Session")) stats.push(el("span.stat.dim", { title: "time left in the five-hour window" }, until(session.resetsAt)));
     if (!data.windows.length) stats.push(el("span.stat.dim", { title: data.error ?? "" }, "no quota"));
+    else if (data.error) stats.push(el("span.stat.dim", { title: data.error }, "stale"));
   } catch {
     stats.push(el("span.stat.dim", {}, "offline"));
   }

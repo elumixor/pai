@@ -267,7 +267,12 @@ export const gmailModule: Module = {
   enabled: configured,
   status: () => ({ configured: configured(), accounts: listAccounts().map(({ label, email }) => ({ label, email })) }),
   tools: { server: "gmail", names: ["gmail_list_accounts", "gmail_search", "gmail_read"], kinds: ["main", "task"] },
-  links: [{ label: "Connect a mailbox", path: "/gmail/connect?label={value}", prompt: "A short label for the account (personal, work, atma)" }],
+  accounts: {
+    list: () => listAccounts().map(({ label, email }) => ({ label, detail: email })),
+    connectPath: "/gmail/connect?label={label}",
+    removePath: "/gmail/accounts?label={label}",
+    hint: "a short name for the mailbox: personal, work, atma",
+  },
   prompt: {
     text: "Gmail: gmail_list_accounts shows which mailboxes are connected (by label — e.g. personal, work), gmail_search finds messages in one of them with Gmail's search syntax, gmail_read gets a message's full text. Ask which account when it's ambiguous rather than guessing.",
     kinds: ["main", "task"],

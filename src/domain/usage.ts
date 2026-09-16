@@ -1,6 +1,7 @@
 import { $ } from "bun";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { hostname, homedir } from "node:os";
+import { dirname, join } from "node:path";
+import { mkdirSync } from "node:fs";
 import { logger } from "../core/log.ts";
 import { list, recent } from "./sessions.ts";
 
@@ -25,7 +26,43 @@ export interface Usage {
   /** What the sessions the daemon knows about have cost, as the SDK reports it. */
   readonly costUsd: number;
   readonly fetchedAt?: string;
+  /** The machine whose login answered, when it was not this one. */
+  readonly via?: string;
   readonly error?: string;
+}
+
+/**
+ * A daemon whose login can read the limits leaves the answer in the transcripts folder,
+ * which sync carries to the other machines; a daemon whose token cannot (the box logs in
+ * with a setup token, which has no `user:profile`) shows that copy instead. The account is
+ * the same, so the limits are.
+ */
+const SNAPSHOT = join(homedir(), ".claude", "projects", ".pai", "usage.json");
+const SNAPSHOT_MAX_AGE = 36 * 3600 * 1000;
+
+interface Snapshot {
+  windows: Window[];
+  fetchedAt: string;
+  host: string;
+}
+
+async function writeSnapshot(windows: Window[], fetchedAt: string) {
+  try {
+    mkdirSync(dirname(SNAPSHOT), { recursive: true });
+    await Bun.write(SNAPSHOT, JSON.stringify({ windows, fetchedAt, host: hostname() } satisfies Snapshot));
+  } catch (err) {
+    log.debug(`snapshot not written: ${(err as Error).message}`);
+  }
+}
+
+async function readSnapshot(): Promise<Snapshot | undefined> {
+  try {
+    const snapshot = (await Bun.file(SNAPSHOT).json()) as Snapshot;
+    if (snapshot.host === hostname() || Date.now() - Date.parse(snapshot.fetchedAt) > SNAPSHOT_MAX_AGE) return undefined;
+    return snapshot;
+  } catch {
+    return undefined;
+  }
 }
 
 const SESSION_WINDOW = 5 * 3600;
@@ -89,17 +126,28 @@ function windows(usage: OauthUsage): Window[] {
   return out;
 }
 
-let cached: { at: number; windows: readonly Window[]; fetchedAt?: string; error?: string } | undefined;
+let cached: { at: number; windows: readonly Window[]; fetchedAt?: string; via?: string; error?: string } | undefined;
 
 async function fetchWindows(): Promise<Omit<NonNullable<typeof cached>, "at">> {
   const token = await accessToken();
-  if (!token) return { windows: [], error: "no Claude Code login on this machine (keychain, ~/.claude/.credentials.json or CLAUDE_CODE_OAUTH_TOKEN)" };
+  if (!token) return fromSnapshot("no Claude Code login on this machine");
   const response = await fetch("https://api.anthropic.com/api/oauth/usage", {
     headers: { authorization: `Bearer ${token}`, accept: "application/json", "anthropic-beta": "oauth-2025-04-20" },
     signal: AbortSignal.timeout(10_000),
   });
+  // 403: the token is a setup token, which cannot read the limits; the answer comes from another machine.
+  if (response.status === 403) return fromSnapshot("this machine's token cannot read the limits");
   if (!response.ok) throw new Error(`usage api: ${response.status}`);
-  return { windows: windows((await response.json()) as OauthUsage), fetchedAt: new Date().toISOString() };
+  const fetchedAt = new Date().toISOString();
+  const found = windows((await response.json()) as OauthUsage);
+  await writeSnapshot(found, fetchedAt);
+  return { windows: found, fetchedAt };
+}
+
+async function fromSnapshot(reason: string): Promise<Omit<NonNullable<typeof cached>, "at">> {
+  const snapshot = await readSnapshot();
+  if (!snapshot) return { windows: [], error: `${reason}, and no other machine has shared its reading yet` };
+  return { windows: snapshot.windows, fetchedAt: snapshot.fetchedAt, via: snapshot.host };
 }
 
 const sessionCost = () => {
@@ -116,9 +164,9 @@ export async function usage(): Promise<Usage> {
     } catch (err) {
       log.warn(`usage: ${(err as Error).message}`);
       // The last good answer stays up, marked with the error, rather than an empty status line.
-      cached = { at: Date.now(), windows: cached?.windows ?? [], fetchedAt: cached?.fetchedAt, error: (err as Error).message };
+      cached = { at: Date.now(), windows: cached?.windows ?? [], fetchedAt: cached?.fetchedAt, via: cached?.via, error: (err as Error).message };
     }
   }
-  const { windows: known, fetchedAt, error } = cached!;
-  return { windows: known, fetchedAt, error, costUsd: sessionCost() };
+  const { windows: known, fetchedAt, via, error } = cached!;
+  return { windows: known, fetchedAt, via, error, costUsd: sessionCost() };
 }

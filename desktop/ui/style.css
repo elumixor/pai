@@ -293,7 +293,23 @@ time { color: var(--dim); font-size: 10.5px; }
 .dash-title .btn { display: inline-flex; align-items: center; gap: 6px; }
 .dash-body .cards { padding: 0; }
 .cards.wide { grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); }
-.card.module.off { opacity: 0.7; }
+.card.module.off, .card.module.not-configured { border-style: dashed; }
+.card.module.off .mod-icon, .card.module.not-configured .mod-icon { color: var(--dim); }
+.mod-icon { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 8px; background: var(--code-bg); color: var(--accent); flex: 0 0 auto; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line-2); font-size: 10.5px; color: var(--dim); white-space: nowrap; }
+.chip.tool { font-family: var(--mono); }
+.chip.state-on { color: var(--idle); border-color: color-mix(in srgb, var(--idle) 50%, transparent); }
+.chip.state-off { color: var(--dim); }
+.chip.state-not-configured { color: var(--busy); border-color: color-mix(in srgb, var(--busy) 50%, transparent); }
+.chip.account { padding: 3px 4px 3px 8px; color: var(--text); }
+.chip.account .dim { font-size: 10px; }
+.chips.tools { margin: 6px 0; }
+.mod-prompt { margin: 6px 0 0; font-size: 11.5px; color: var(--dim); border-left: 2px solid var(--line-2); padding-left: 8px; }
+.mod-accounts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.mod-accounts input { flex: 1; min-width: 120px; padding: 5px 8px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--code-bg); color: var(--text); font-size: 12px; }
+.mod-action { margin-top: 10px; }
+.mod-setting.missing .setting-title { color: var(--busy); }
+.setting-title { display: inline-flex; align-items: center; gap: 4px; }
 .mod-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .mod-head h3 { margin: 0; text-transform: none; letter-spacing: 0; font-size: 13.5px; color: var(--text); }
 .card .kvs { margin-top: 6px; }
