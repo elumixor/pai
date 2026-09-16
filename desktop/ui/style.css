@@ -75,6 +75,10 @@ main.b-empty #thread-b { display: none; }
 .panel-head h2 { margin: 0; font-size: 12px; font-weight: 600; color: var(--text); }
 .panel-head.dirty h2::after { content: " •"; color: var(--busy); }
 .panel-head .dim { font-size: 11px; }
+.tag.model { text-transform: none; }
+.session-id { width: auto; padding: 0 6px; gap: 4px; font-size: 10px; color: var(--dim); }
+.session-id .mono { font-family: var(--mono, ui-monospace, monospace); }
+.session-id.copied { color: var(--busy); }
 .tag { font-size: 10px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--dim); text-transform: lowercase; }
 .iconbtn {
   display: inline-flex; align-items: center; justify-content: center;

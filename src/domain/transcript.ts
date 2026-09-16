@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
+import { config } from "../core/config.ts";
 
 /**
  * A session's conversation, read from the transcript Claude Code keeps on disk — the same
@@ -31,6 +32,24 @@ export interface TranscriptMessage {
 
 /** Claude Code names a project directory after its cwd, with the separators flattened. */
 const slug = (cwd: string) => cwd.replace(/[/.]/g, "-");
+
+/**
+ * The transcript directories for a project: the one named after this machine's path, and the
+ * ones another machine wrote for the same project under its own `devRoot` (they arrive over
+ * sync as `-Users-x-dev-thing` next to this box's `-home-pai-dev-thing`). Same directory
+ * name under devRoot, so the same project.
+ */
+export function transcriptDirs(cwd: string): string[] {
+  if (!existsSync(projectsDir)) return [];
+  const own = slug(cwd);
+  const root = config.devRoot.replace(/\/$/, "");
+  const inside = cwd === root || cwd.startsWith(`${root}/`) ? cwd.slice(root.length) : undefined;
+  const suffix = inside ? `-${basename(root)}${slug(inside)}` : undefined;
+  return readdirSync(projectsDir)
+    .filter((name) => name === own || (suffix !== undefined && name !== own && name.endsWith(suffix)))
+    .map((name) => join(projectsDir, name))
+    .filter((dir) => statSync(dir).isDirectory());
+}
 
 export function transcriptPath(sessionId: string, cwd?: string) {
   const fromCwd = cwd ? join(projectsDir, slug(cwd), `${sessionId}.jsonl`) : undefined;
@@ -165,11 +184,12 @@ function titleIn(head: string, sessionId: string, cwd: string): DiskSession | un
  * the daemon for a thread to be here.
  */
 export async function sessionsIn(cwd: string, limit = 30): Promise<DiskSession[]> {
-  const dir = join(projectsDir, slug(cwd));
-  if (!existsSync(dir)) return [];
-  const files = readdirSync(dir)
-    .filter((name) => name.endsWith(".jsonl"))
-    .map((name) => ({ name, path: join(dir, name), mtime: statSync(join(dir, name)).mtimeMs }))
+  const files = transcriptDirs(cwd)
+    .flatMap((dir) =>
+      readdirSync(dir)
+        .filter((name) => name.endsWith(".jsonl"))
+        .map((name) => ({ name, path: join(dir, name), mtime: statSync(join(dir, name)).mtimeMs })),
+    )
     .sort((a, b) => b.mtime - a.mtime)
     .slice(0, limit);
   const out: DiskSession[] = [];

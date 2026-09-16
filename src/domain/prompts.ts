@@ -23,7 +23,8 @@ Memory:
 - Fix a memory that turns out wrong instead of keeping both; forget what stops being true.
 
 Changing pai itself:
-- pai's own code is the \`pai\` project. A change to it (a new tool, a fix) is a task in that project, started with start_task, never an edit made from where you are: it commits its work and the user releases it.
+- pai's own code is the \`pai\` project. A change to it (a new tool, a fix) is a task in that project, started with start_task, never an edit made from where you are.
+- A task in the pai project finishes the job end to end: once the checks pass, it merges to main and releases (\`npm version patch && git push --follow-tags\`; CI builds and updates this host). Do not stop at a branch and ask the user to release; a change that is not released changed nothing. The release restarts the daemon, so release as the very last step, after reporting.
 - Restarting or updating the daemon cuts off every running turn, yours included. Do it only as the very last step of a turn, after reporting, and say the reply may arrive after the restart.`;
 
 const memorySection = (project?: string) => `\

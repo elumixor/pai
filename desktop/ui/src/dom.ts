@@ -109,3 +109,11 @@ export function sheet(name: string) {
 
 /** One question, one answer. */
 export const ask = async (label: string, initial = "") => (await dialog({ title: label, fields: [{ name: "value", label: "", value: initial, required: true }] }))?.value;
+
+/** `claude-sonnet-5-20260501` reads as `sonnet 5`; an alias such as `sonnet` stays as it is. */
+export function modelName(model: string | null | undefined) {
+  if (!model) return "model?";
+  const m = /^claude-([a-z]+)-(\d+)(?:-(\d+))?/.exec(model);
+  if (!m) return model;
+  return `${m[1]} ${m[2]}${m[3] ? `.${m[3]}` : ""}`;
+}

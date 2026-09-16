@@ -8,7 +8,7 @@ process.env.PAI_CONFIG = join(mkdtempSync(join(tmpdir(), "pai-gmail-cfg-")), "co
 process.env.PAI_GOOGLE_CLIENT_ID = "test-client-id";
 process.env.PAI_GOOGLE_CLIENT_SECRET = "test-client-secret";
 
-const { decodeBody, findPart, gmailModule, handleGmailRoutes, headerValue, listAccounts, stripHtml } = await import("./gmail.ts");
+const { decodeBody, findPart, gmailModule, handleConnect, headerValue, listAccounts, removeAccount, stripHtml } = await import("./gmail.ts");
 const { db } = await import("../core/db.ts");
 
 const request = (path: string, init?: RequestInit) => {
@@ -56,34 +56,37 @@ describe("gmail: accounts", () => {
 });
 
 describe("gmail: oauth routes", () => {
-  it("ignores paths it does not own", async () => {
-    const { req, url } = request("/gmail/other");
-    expect(await handleGmailRoutes(req, url)).toBeUndefined();
-  });
-
-  it("requires a label to start a connection", async () => {
+  it("requires a label to start a connection", () => {
     const { req, url } = request("/gmail/connect");
-    const response = await handleGmailRoutes(req, url);
-    expect(response?.status).toBe(400);
+    expect(handleConnect(req, url).status).toBe(400);
   });
 
-  it("redirects to google with the readonly scope and a signed state cookie", async () => {
+  it("redirects to google with the readonly scope, through the sign-in callback, with a signed state cookie", () => {
     const { req, url } = request("/gmail/connect?label=personal");
-    const response = await handleGmailRoutes(req, url);
-    expect(response?.status).toBe(302);
-    const location = new URL(response!.headers.get("location")!);
+    const response = handleConnect(req, url);
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get("location")!);
     expect(location.origin).toBe("https://accounts.google.com");
     expect(location.searchParams.get("scope")).toBe("https://www.googleapis.com/auth/gmail.readonly");
     expect(location.searchParams.get("access_type")).toBe("offline");
     expect(location.searchParams.get("prompt")).toBe("consent");
-    expect(response!.headers.get("set-cookie")).toContain("pai_gmail_oauth=");
+    expect(location.searchParams.get("redirect_uri")).toBe("http://pai.example/auth/google/callback");
+    expect(response.headers.get("set-cookie")).toContain("pai_oauth=");
+    expect(response.headers.get("set-cookie")).toContain("Path=/auth");
   });
 
-  it("rejects a callback whose state does not match the cookie", async () => {
-    const { req, url } = request("/gmail/callback?state=bogus&code=x");
-    const response = await handleGmailRoutes(req, url);
-    expect(response?.status).toBe(200);
-    expect(await response!.text()).toContain("expired");
+  it("hands the sign-in callback a state that names the mailbox", async () => {
+    const { verify } = await import("../api/auth.ts");
+    const { req, url } = request("/gmail/connect?label=work");
+    const state = new URL(handleConnect(req, url).headers.get("location")!).searchParams.get("state")!;
+    expect(verify<{ gmail: string }>(state)?.gmail).toBe("work");
+  });
+
+  it("forgets an account", () => {
+    db.prepare("INSERT INTO gmail_accounts (label, email, refresh_token, created_at) VALUES (?, ?, ?, ?)").run("old", "old@gmail.com", "x", Date.now());
+    expect(removeAccount("old")).toBe(true);
+    expect(removeAccount("old")).toBe(false);
+    expect(listAccounts().some((a) => a.label === "old")).toBe(false);
   });
 });
 

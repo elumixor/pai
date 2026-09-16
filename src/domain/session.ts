@@ -147,6 +147,8 @@ export class Session {
   cardId: number | null = null;
   state: SessionState = "starting";
   costUsd = 0;
+  /** The model that answered last, as the API names it; the configured alias until the first reply. */
+  model: string | null = null;
   turns = 0;
   lastTool = "";
   /** The tool calls of the turn in progress, newest last, so a client can show what led here. */
@@ -184,12 +186,13 @@ export class Session {
     this.threadId = opts.threadId ?? null;
     this.parent = opts.parent ?? null;
     if (opts.resume) {
-      const row = db.query("SELECT card_id, cost_usd, turns FROM sessions WHERE session_id = ?").get(this.id) as
-        | { card_id: number | null; cost_usd: number; turns: number }
+      const row = db.query("SELECT card_id, cost_usd, turns, model FROM sessions WHERE session_id = ?").get(this.id) as
+        | { card_id: number | null; cost_usd: number; turns: number; model: string | null }
         | undefined;
       this.cardId = row?.card_id ?? null;
       this.costUsd = row?.cost_usd ?? 0;
       this.turns = row?.turns ?? 0;
+      this.model = row?.model ?? null;
     }
     this.start(opts.resume !== undefined);
   }
@@ -281,7 +284,13 @@ export class Session {
           this.state = this.activeTurn || this.inbox.length > 0 ? "busy" : "idle";
           this.persist();
         }
-        if (m.subtype === "init") void this.loadCommands(new Set(m.terminal_slash_commands ?? []));
+        if (m.subtype === "init") {
+          if (m.model && m.model !== this.model) {
+            this.model = m.model;
+            this.persist();
+          }
+          void this.loadCommands(new Set(m.terminal_slash_commands ?? []));
+        }
         if (m.subtype === "commands_changed") void this.loadCommands();
         if (m.subtype === "status" && m.status === "compacting") bus.emitEvent("session.status", { status: "compacting" }, this.id);
         // What a local slash command printed, and the loop's own notices (hook feedback, warnings).
@@ -308,6 +317,12 @@ export class Session {
       case "assistant": {
         // A subagent's messages carry the id of the Agent call that runs it; clients nest them under it.
         const parent = m.parent_tool_use_id ?? undefined;
+        const model = (m.message as { model?: string }).model;
+        if (model && !parent && model !== this.model) {
+          this.model = model;
+          this.persist();
+          bus.emitEvent("session.model", { model }, this.id);
+        }
         for (const block of m.message.content as Record<string, any>[]) {
           if (block.type === "text" && block.text) {
             if (parent) continue;
@@ -486,10 +501,10 @@ export class Session {
 
   persist() {
     db.prepare(
-      `INSERT INTO sessions (session_id, short_id, kind, title, cwd, project, thread_id, card_id, state, started_at, last_activity, cost_usd, turns, parent_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO sessions (session_id, short_id, kind, title, cwd, project, thread_id, card_id, state, started_at, last_activity, cost_usd, turns, parent_id, model)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(session_id) DO UPDATE SET state=excluded.state, title=excluded.title, thread_id=excluded.thread_id,
-         card_id=excluded.card_id, last_activity=excluded.last_activity, cost_usd=excluded.cost_usd, turns=excluded.turns`,
+         card_id=excluded.card_id, last_activity=excluded.last_activity, cost_usd=excluded.cost_usd, turns=excluded.turns, model=excluded.model`,
     ).run(
       this.id,
       this.shortId,
@@ -505,6 +520,7 @@ export class Session {
       this.costUsd,
       this.turns,
       this.parent,
+      this.model,
     );
   }
 
@@ -521,6 +537,7 @@ export class Session {
       state: this.state,
       costUsd: this.costUsd,
       turns: this.turns,
+      model: this.model,
       lastTool: this.lastTool,
       recentTools: this.recentTools,
       queued: this.inbox.length,

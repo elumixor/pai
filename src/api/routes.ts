@@ -4,7 +4,7 @@ import * as automations from "../domain/automations.ts";
 import { context } from "../domain/context.ts";
 import { byName as moduleByName, describeModules } from "../modules/index.ts";
 import { poll as linkedinPoll } from "../modules/linkedin.ts";
-import { handleGmailRoutes } from "../modules/gmail.ts";
+import { handleConnect as gmailConnect, listAccounts as gmailAccounts, removeAccount as gmailRemove } from "../modules/gmail.ts";
 import { usage } from "../domain/usage.ts";
 import { diagnostics } from "../domain/diagnostics.ts";
 import { recentEvents, waitFor } from "../core/bus.ts";
@@ -44,9 +44,12 @@ export async function handle(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const path = url.pathname;
   try {
-    if (path === "/gmail/connect" || path === "/gmail/callback") {
-      const response = await handleGmailRoutes(req, url);
-      if (response) return response;
+    // One consent per mailbox; the code comes back through /auth/google/callback.
+    if (path === "/gmail/connect") return gmailConnect(req, url);
+    if (path === "/gmail/accounts" && req.method === "GET") return json(gmailAccounts().map(({ label, email }) => ({ label, email })));
+    if (path === "/gmail/accounts" && req.method === "DELETE") {
+      const label = url.searchParams.get("label") ?? "";
+      return gmailRemove(label) ? json({ removed: label }) : json({ error: `no account labeled ${label}` }, 404);
     }
 
     if (path === "/health") return json(await status());

@@ -3,7 +3,7 @@ import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "../core/config.ts";
 import { db } from "../core/db.ts";
 import { logger } from "../core/log.ts";
-import { sign, verify } from "../api/auth.ts";
+import { origin, sign } from "../api/auth.ts";
 import type { Module } from "./types.ts";
 
 const log = logger("gmail");
@@ -12,15 +12,16 @@ const log = logger("gmail");
  * Read-only Gmail, for as many accounts as the user connects. claude.ai's own Gmail
  * connector holds one Google account at a time, which isn't enough for three mailboxes, so
  * this does its own OAuth: `/gmail/connect?label=<name>` sends the browser to Google with
- * `gmail.readonly`, the callback stores the refresh token under that label. Tools then read
- * one named account at a time; a session picks the label from `gmail_list_accounts`.
+ * `gmail.readonly`, and the sign-in callback (`/auth/google/callback`, the one redirect URI
+ * the OAuth client knows) hands the code to `finishConnect`, which stores the refresh token
+ * under that label. Tools then read one named account at a time; a session picks the label
+ * from `gmail_list_accounts`.
  */
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
 const SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
-const STATE_COOKIE = "pai_gmail_oauth";
 
 interface Account {
   readonly label: string;
@@ -64,48 +65,45 @@ function saveAccount(label: string, email: string, refreshToken: string) {
 
 // --- OAuth: one consent per account, landing a refresh token under its label -------------
 
-function callbackUrl(req: Request, url: URL) {
-  const proto = req.headers.get("x-forwarded-proto") ?? url.protocol.replace(":", "");
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? url.host;
-  return `${proto}://${host}/gmail/callback`;
-}
+const callbackUrl = (req: Request, url: URL) => `${origin(req, url)}/auth/google/callback`;
 
 const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-const page = (body: string) => new Response(`<!doctype html><body style="font-family:sans-serif;padding:2rem;max-width:32rem">${body}</body>`, { headers: { "content-type": "text/html" } });
+const page = (body: string, status = 200) =>
+  new Response(`<!doctype html><body style="font-family:sans-serif;padding:2rem;max-width:32rem">${body}</body>`, { status, headers: { "content-type": "text/html" } });
 const respondJson = (data: unknown, status = 200) => new Response(JSON.stringify(data, null, 2), { status, headers: { "content-type": "application/json" } });
-const redirect = (to: string, headers: Record<string, string> = {}) => new Response(null, { status: 302, headers: { location: to, ...headers } });
 const secure = (req: Request) => (req.headers.get("x-forwarded-proto") === "https" ? "; Secure" : "");
 
-/** `/gmail/connect?label=x` and `/gmail/callback`; `undefined` for any other path. */
-export async function handleGmailRoutes(req: Request, url: URL): Promise<Response | undefined> {
-  const path = url.pathname;
-  if (path !== "/gmail/connect" && path !== "/gmail/callback") return undefined;
+/** The state cookie name and path are the sign-in flow's: the callback that reads them is shared. */
+export const STATE_COOKIE = "pai_oauth";
+
+/** `/gmail/connect?label=x`: sends the browser to Google's consent screen for one more mailbox. */
+export function handleConnect(req: Request, url: URL): Response {
   if (!configured()) return respondJson({ error: "google sign-in is not configured (PAI_GOOGLE_CLIENT_ID, PAI_GOOGLE_CLIENT_SECRET)" }, 501);
+  const label = (url.searchParams.get("label") ?? "").trim().toLowerCase();
+  if (!/^[a-z0-9-]{1,40}$/.test(label)) return respondJson({ error: "pass a short label, e.g. /gmail/connect?label=personal" }, 400);
+  const state = sign({ gmail: label, next: "/ui/", nonce: crypto.randomUUID(), exp: Date.now() + 10 * 60 * 1000 });
+  const params = new URLSearchParams({
+    client_id: config.google.clientId,
+    redirect_uri: callbackUrl(req, url),
+    response_type: "code",
+    scope: SCOPE,
+    state,
+    access_type: "offline",
+    // Forces the consent screen every time, which is the only way Google hands back a
+    // refresh token on an account that already granted access to this OAuth client.
+    prompt: "consent",
+    include_granted_scopes: "true",
+  });
+  return new Response(null, {
+    status: 302,
+    headers: { location: `${AUTH_URL}?${params}`, "set-cookie": `${STATE_COOKIE}=${state}; Path=/auth; Max-Age=600; HttpOnly; SameSite=Lax${secure(req)}` },
+  });
+}
 
-  if (path === "/gmail/connect") {
-    const label = (url.searchParams.get("label") ?? "").trim().toLowerCase();
-    if (!/^[a-z0-9-]{1,40}$/.test(label)) return respondJson({ error: "pass a short label, e.g. /gmail/connect?label=personal" }, 400);
-    const state = sign({ label, nonce: crypto.randomUUID(), exp: Date.now() + 10 * 60 * 1000 });
-    const params = new URLSearchParams({
-      client_id: config.google.clientId,
-      redirect_uri: callbackUrl(req, url),
-      response_type: "code",
-      scope: SCOPE,
-      state,
-      access_type: "offline",
-      // Forces the consent screen every time, which is the only way Google hands back a
-      // refresh token on an account that already granted access to this OAuth client.
-      prompt: "consent",
-    });
-    return redirect(`${AUTH_URL}?${params}`, { "set-cookie": `${STATE_COOKIE}=${state}; Path=/gmail; Max-Age=600; HttpOnly; SameSite=Lax${secure(req)}` });
-  }
-
-  const stateParam = url.searchParams.get("state") ?? "";
-  const stored = /(?:^|;\s*)pai_gmail_oauth=([^;]+)/.exec(req.headers.get("cookie") ?? "")?.[1];
-  const claims = verify<{ label: string; exp: number }>(stateParam);
-  if (!claims || stored !== stateParam || claims.exp < Date.now()) return page("The connection attempt expired. Go back and open the connect link again.");
+/** The sign-in callback's second half: a code that came back for a mailbox rather than a login. */
+export async function finishConnect(req: Request, url: URL, label: string): Promise<Response> {
   const code = url.searchParams.get("code");
-  if (!code) return page(`Google did not grant access: ${escapeHtml(url.searchParams.get("error") ?? "unknown error")}.`);
+  if (!code) return page(`Google did not grant access: ${escapeHtml(url.searchParams.get("error") ?? "unknown error")}.`, 400);
 
   const tokenResponse = await fetch(TOKEN_URL, {
     method: "POST",
@@ -114,20 +112,26 @@ export async function handleGmailRoutes(req: Request, url: URL): Promise<Respons
   });
   if (!tokenResponse.ok) {
     log.warn(`token exchange failed: ${tokenResponse.status} ${(await tokenResponse.text()).slice(0, 200)}`);
-    return page("Google's token exchange failed. Go back and try connecting again.");
+    return page("Google's token exchange failed. Go back and try connecting again.", 502);
   }
   const tokens = (await tokenResponse.json()) as { refresh_token?: string; access_token?: string };
   if (!tokens.refresh_token || !tokens.access_token)
-    return page("Google did not return a refresh token. Revoke pai's access at https://myaccount.google.com/permissions and connect again.");
+    return page("Google did not return a refresh token. Revoke pai's access at https://myaccount.google.com/permissions and connect again.", 502);
 
   const profile = await fetch(`${API}/profile`, { headers: { authorization: `Bearer ${tokens.access_token}` } });
-  if (!profile.ok) return page("Signed in, but reading the Gmail profile failed.");
+  if (!profile.ok) return page("Signed in, but reading the Gmail profile failed. Is the Gmail API enabled for this OAuth client's project?", 502);
   const { emailAddress } = (await profile.json()) as { emailAddress?: string };
-  if (!emailAddress) return page("Google did not return an email address.");
+  if (!emailAddress) return page("Google did not return an email address.", 502);
 
-  saveAccount(claims.label, emailAddress, tokens.refresh_token);
-  log.info(`connected ${claims.label} (${emailAddress})`);
-  return page(`Connected <b>${escapeHtml(claims.label)}</b> as ${escapeHtml(emailAddress)}. You can close this tab.`);
+  saveAccount(label, emailAddress, tokens.refresh_token);
+  accessTokens.delete(label);
+  log.info(`connected ${label} (${emailAddress})`);
+  return page(`Connected <b>${escapeHtml(label)}</b> as ${escapeHtml(emailAddress)}. You can close this tab.`);
+}
+
+export function removeAccount(label: string) {
+  accessTokens.delete(label);
+  return db.prepare("DELETE FROM gmail_accounts WHERE label = ?").run(label).changes > 0;
 }
 
 // --- Gmail API, one account at a time -----------------------------------------------------
@@ -263,6 +267,7 @@ export const gmailModule: Module = {
   enabled: configured,
   status: () => ({ configured: configured(), accounts: listAccounts().map(({ label, email }) => ({ label, email })) }),
   tools: { server: "gmail", names: ["gmail_list_accounts", "gmail_search", "gmail_read"], kinds: ["main", "task"] },
+  links: [{ label: "Connect a mailbox", path: "/gmail/connect?label={value}", prompt: "A short label for the account (personal, work, atma)" }],
   prompt: {
     text: "Gmail: gmail_list_accounts shows which mailboxes are connected (by label — e.g. personal, work), gmail_search finds messages in one of them with Gmail's search syntax, gmail_read gets a message's full text. Ask which account when it's ambiguous rather than guessing.",
     kinds: ["main", "task"],

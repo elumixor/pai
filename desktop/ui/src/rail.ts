@@ -1,5 +1,5 @@
 import { addProject, projects, tasks, threadsIn } from "./api.ts";
-import { clear, dialog, el } from "./dom.ts";
+import { clear, dialog, el, modelName } from "./dom.ts";
 import { icon } from "./icons.ts";
 import { save, state } from "./state.ts";
 import type { DiskSession, ProjectSummary, SessionSummary } from "./types.ts";
@@ -99,7 +99,7 @@ export async function rail(root: HTMLElement, handlers: RailHandlers) {
       {
         class: `thread${isOpen(session) ? " open" : ""}${session.kind === "main" ? " main" : ""}`,
         "data-session": session.sessionId,
-        title: `${session.title || session.shortId}\nclick: open · shift+click: open in the lower pane`,
+        title: `${session.title || session.shortId}\n${session.shortId}${session.model ? ` · ${modelName(session.model)}` : ""}\nclick: open · shift+click: open in the lower pane`,
         onclick: (event: Event) => handlers.openThread(session, (event as MouseEvent).shiftKey ? "b" : "a"),
       },
       el("span", { class: `dot ${stateClass(session)}` }),

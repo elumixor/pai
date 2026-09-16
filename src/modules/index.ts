@@ -112,6 +112,7 @@ export function describeModules() {
     tools: m.tools,
     prompt: m.prompt,
     events: m.events,
+    links: m.links,
     settings: m.settings?.map((s) => ({ ...s, value: s.secret ? (settings.effective()[s.key as settings.Editable] ? "set" : "") : (settings.effective()[s.key as settings.Editable] ?? "") })),
     live: Boolean(m.start),
   }));

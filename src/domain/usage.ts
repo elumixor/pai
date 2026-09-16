@@ -59,7 +59,8 @@ async function accessToken(): Promise<string | undefined> {
     raw = res.exitCode === 0 ? res.stdout.toString() : undefined;
   }
   if (!raw) raw = await Bun.file(join(homedir(), ".claude", ".credentials.json")).text().catch(() => undefined);
-  if (!raw) return undefined;
+  // A headless host logs in with a long-lived token in the environment instead of a keychain.
+  if (!raw) return process.env.CLAUDE_CODE_OAUTH_TOKEN || undefined;
   try {
     return (JSON.parse(raw) as { claudeAiOauth?: { accessToken?: string } }).claudeAiOauth?.accessToken;
   } catch {
@@ -92,7 +93,7 @@ let cached: { at: number; windows: readonly Window[]; fetchedAt?: string; error?
 
 async function fetchWindows(): Promise<Omit<NonNullable<typeof cached>, "at">> {
   const token = await accessToken();
-  if (!token) return { windows: [], error: "no Claude Code login on this machine" };
+  if (!token) return { windows: [], error: "no Claude Code login on this machine (keychain, ~/.claude/.credentials.json or CLAUDE_CODE_OAUTH_TOKEN)" };
   const response = await fetch("https://api.anthropic.com/api/oauth/usage", {
     headers: { authorization: `Bearer ${token}`, accept: "application/json", "anthropic-beta": "oauth-2025-04-20" },
     signal: AbortSignal.timeout(10_000),

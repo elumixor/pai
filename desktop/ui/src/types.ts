@@ -15,6 +15,8 @@ export interface SessionSummary {
   readonly parent?: string | null;
   readonly turns?: number;
   readonly costUsd?: number;
+  /** The model that answered last, as the API names it. */
+  readonly model?: string | null;
   readonly lastActivity?: number | string;
 }
 
@@ -77,6 +79,7 @@ export interface ModuleInfo {
   readonly prompt?: { readonly text: string; readonly kinds: readonly string[] };
   readonly events?: readonly { readonly kind: string; readonly description: string }[];
   readonly settings?: readonly ModuleSetting[];
+  readonly links?: readonly { readonly label: string; readonly path: string; readonly prompt?: string }[];
   readonly live: boolean;
 }
 

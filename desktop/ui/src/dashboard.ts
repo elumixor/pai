@@ -154,6 +154,25 @@ export function dashboard(root: HTMLElement, handlers: DashboardHandlers) {
         Object.keys(m.status).length ? status : undefined,
         form.childElementCount ? form : undefined,
         m.live && m.enabled ? el("div.row-inline", {}, el("button.btn", { onclick: async () => (message.textContent = JSON.stringify((await pollModule(m.name)).data ?? {})) }, "Poll now")) : undefined,
+        m.links?.length && m.enabled
+          ? el(
+              "div.row-inline",
+              {},
+              ...m.links.map((link) =>
+                el(
+                  "button.btn",
+                  {
+                    onclick: () => {
+                      const value = link.prompt ? prompt(link.prompt)?.trim() : "";
+                      if (link.prompt && !value) return;
+                      window.open(`${baseUrl()}${link.path.replace("{value}", encodeURIComponent(value ?? ""))}`, "_blank", "noopener");
+                    },
+                  },
+                  link.label,
+                ),
+              ),
+            )
+          : undefined,
       );
     };
     clear(body, el("h2.dash-title", {}, "Modules", el("span.dim", {}, "what pai is made of; most switches take effect on the next restart")), el("div.cards.wide", {}, ...list.map(moduleCard)));

@@ -1,5 +1,5 @@
 import { commands as listCommands, fileIndex, follow, isOnline, send, transcript, type Transcript, type TranscriptTool } from "./api.ts";
-import { clear, el } from "./dom.ts";
+import { clear, el, modelName } from "./dom.ts";
 import { icon } from "./icons.ts";
 import { markdown } from "./markdown.ts";
 import type { PaiEvent, Question, SessionSummary, SlashCommand } from "./types.ts";
@@ -121,6 +121,20 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
     closeMenu();
   });
   const stateTag = el("span.tag", {}, session.state);
+  const modelTag = el("span.tag.model", { title: "the model answering this thread" }, modelName(session.model));
+  const idButton = el(
+    "button.iconbtn.slim.session-id",
+    {
+      title: `session ${session.sessionId}\nclick: copy the id`,
+      onclick: () => {
+        void navigator.clipboard?.writeText(session.sessionId);
+        idButton.classList.add("copied");
+        setTimeout(() => idButton.classList.remove("copied"), 1200);
+      },
+    },
+    el("span.mono", {}, session.shortId),
+    icon("copy", 11),
+  );
   let adopted = session.kind !== "claude";
   const heading = el("h2.ellipsis", { title: session.title }, session.title || session.shortId);
 
@@ -188,6 +202,8 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
       el("span.dim.ellipsis", { title: session.cwd ?? "" }, session.kind === "main" ? "main" : (session.project ?? session.cwd?.replace(/^.*\//, "") ?? "")),
       session.parent ? el("span.dim", { title: `started by session ${session.parent}` }, `↳ from ${session.parent.slice(0, 6)}`) : undefined,
       stateTag,
+      modelTag,
+      idButton,
       el("span.grow"),
       el("button.iconbtn", { title: "interrupt", onclick: () => void send("/stop", { id }) }, icon("stop", 14)),
       handlers.swap ? el("button.iconbtn", { title: "move to the other pane", onclick: handlers.swap }, icon("split", 14)) : undefined,
@@ -222,9 +238,12 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
   };
 
   const stop = follow(id, (event) => {
-    const payload = event.payload as { text?: string; summary?: string; name?: string; id?: string; parent?: string; result?: string; questions?: Question[]; status?: string; level?: string };
+    const payload = event.payload as { text?: string; summary?: string; name?: string; id?: string; parent?: string; result?: string; questions?: Question[]; status?: string; level?: string; model?: string };
     switch (event.kind) {
       case "session.input":
+        break;
+      case "session.model":
+        modelTag.textContent = modelName(payload.model);
         break;
       case "session.delta":
         if (!liveText) {

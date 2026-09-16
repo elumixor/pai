@@ -165,6 +165,7 @@ export interface SessionRow {
   lastResult: string;
   costUsd: number;
   turns: number;
+  model: string | null;
 }
 
 /** Recent sessions, live or not, newest activity first. */
@@ -189,6 +190,7 @@ export function recent(limit = 20, kind?: SessionKind): SessionRow[] {
     lastResult: r.last_result ?? "",
     costUsd: r.cost_usd,
     turns: r.turns,
+    model: r.model ?? null,
   }));
 }
 
