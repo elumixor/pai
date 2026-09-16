@@ -128,16 +128,23 @@ function windows(usage: OauthUsage): Window[] {
 
 let cached: { at: number; windows: readonly Window[]; fetchedAt?: string; via?: string; error?: string } | undefined;
 
+/** A token the endpoint refused (a setup token: 403, then 429 for asking again) is left alone for a while. */
+let tokenRefusedUntil = 0;
+const REFUSED_FOR = 60 * 60 * 1000;
+
 async function fetchWindows(): Promise<Omit<NonNullable<typeof cached>, "at">> {
   const token = await accessToken();
   if (!token) return fromSnapshot("no Claude Code login on this machine");
+  if (Date.now() < tokenRefusedUntil) return fromSnapshot("this machine's token cannot read the limits");
   const response = await fetch("https://api.anthropic.com/api/oauth/usage", {
     headers: { authorization: `Bearer ${token}`, accept: "application/json", "anthropic-beta": "oauth-2025-04-20" },
     signal: AbortSignal.timeout(10_000),
   });
-  // 403: the token is a setup token, which cannot read the limits; the answer comes from another machine.
-  if (response.status === 403) return fromSnapshot("this machine's token cannot read the limits");
-  if (!response.ok) throw new Error(`usage api: ${response.status}`);
+  if (response.status === 403 || response.status === 429) {
+    tokenRefusedUntil = Date.now() + REFUSED_FOR;
+    return fromSnapshot(`this machine's token cannot read the limits (${response.status})`);
+  }
+  if (!response.ok) return fromSnapshot(`usage api: ${response.status}`);
   const fetchedAt = new Date().toISOString();
   const found = windows((await response.json()) as OauthUsage);
   await writeSnapshot(found, fetchedAt);
