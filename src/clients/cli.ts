@@ -95,14 +95,27 @@ const usage = `pai — the assistant on the box, from here
   claude [claude args…]   the main conversation in this terminal
   ssh [command…]          a shell on the box, or one command there (connect is the same)
   status                  the box: version, address, what is on
+  sync                    watch the files sync until everything is in step (pai files watch)
   files [command]         the same files here and on the box (fs is the same); see pai files help
   update                  update pai here and on the box
   cost                    the Claude limits (session, weekly) and what the box costs
   menubar [install|uninstall]  the menu bar app on this Mac: quota rings, what runs, links
   modules [update|restart]     the modules pai is made of (pai.config.ts): state, health; update pulls them all
-  <module> [args…]        a module's own command line, on the box (pai builder, …)
 
   --json on any command for raw output`;
+
+/** The modules on the box and what `pai <module> …` accepts, appended to the help when the box answers. */
+async function modulesHelp() {
+  const data = await api("/modules").catch(() => undefined);
+  const ext = Array.isArray(data) ? data.filter((m: any) => m.external) : [];
+  if (!ext.length) return "";
+  const lines = ["", "-- modules --"];
+  for (const m of ext) {
+    lines.push(`pai ${m.name.padEnd(12)} ${m.description ?? ""}`);
+    for (const c of m.commands ?? []) lines.push(`  pai ${m.name} ${c.name.padEnd(22)} ${c.description}`);
+  }
+  return lines.join("\n");
+}
 
 const devUsage = `pai dev — the daemon's own controls, for working on pai
 
@@ -122,10 +135,6 @@ const devUsage = `pai dev — the daemon's own controls, for working on pai
   install [--uninstall]        the systemd service on the box + \`pai\` on PATH
   update [--check] [--force]   this daemon only: pull, reinstall, rebuild, restart`;
 
-const remoteNote = (access: { changed: boolean; ip?: string }) => {
-  if (access.changed) console.error(`firewall: port 22 now open for ${access.ip}`);
-};
-
 async function userCommand() {
   switch (cmd) {
     // `pai ssh` is a shell on the box; `pai ssh <command>` runs that there and comes back.
@@ -133,7 +142,6 @@ async function userCommand() {
     case "connect": {
       if (!box) throw new Error("no box configured: set PAI_REMOTE=user@host in .env");
       if (!remoteBox) throw new Error(`${box.target} is this machine`);
-      remoteNote(await r.ensureAccess());
       process.exit(await r.ssh(remoteBox, positional.length ? positional.join(" ") : undefined));
     }
     // The main conversation, interactively. From a laptop that is the same command on the
@@ -141,10 +149,7 @@ async function userCommand() {
     // process for that conversation stopped so the two never write one transcript at once.
     case "claude": {
       const rest = args.filter((a) => a !== "--force");
-      if (remoteBox) {
-        remoteNote(await r.ensureAccess());
-        process.exit(await r.ssh(remoteBox, ["pai", "claude", ...args].map(r.quote).join(" ")));
-      }
+      if (remoteBox) process.exit(await r.ssh(remoteBox, ["pai", "claude", ...args].map(r.quote).join(" ")));
       const attach = await post("/attach", { force: args.includes("--force") });
       if (attach.error) throw new Error(attach.error);
       const bin = Bun.which("claude") ?? `${process.env.HOME}/.local/bin/claude`;
@@ -174,7 +179,7 @@ async function userCommand() {
     case "files": {
       const f = await import("../host/files.ts");
       if (!remoteBox) throw new Error("file sync runs on the laptop, against the box");
-      const sub = cmd === "sync" ? "sync" : (positional[0] ?? "status");
+      const sub = cmd === "sync" ? "watch" : (positional[0] ?? "status");
       const made = await f.ensureSessions();
       if (made.length) console.error(`started syncing ${made.join(", ")}`);
       const winner = args.includes("--local") ? "local" : args.includes("--remote") ? "remote" : undefined;
@@ -189,12 +194,27 @@ async function userCommand() {
         case "watch": {
           if (positional[1] === "on") return void out(await f.resume(), () => "watching");
           if (positional[1] === "off") return void out(await f.pause(), () => "paused; `pai files watch on` to resume");
-          // A live view: redrawn every second until interrupted.
+          // A live view, redrawn in place, that leaves once everything is in sync (--forever stays).
+          const forever = args.includes("--forever");
+          const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+          let tick = 0;
+          let drawn = 0;
           for (;;) {
-            await refresh();
-            process.stdout.write(`\x1b[2J\x1b[H${filesLines(current!)}\n\n${new Date().toLocaleTimeString()} · ctrl-c to leave\n`);
-            await Bun.sleep(1000);
+            const detailed = await f.detailedStatus();
+            const settled = detailed.every((x) => x.state === "watching" && !x.paused && !x.conflicts.length);
+            const lines = detailed.flatMap((x) => {
+              const icon = x.paused ? "⏸" : x.state === "watching" ? (x.conflicts.length ? "!" : "✓") : frames[tick % frames.length];
+              return [`${icon} ${filesLines([x])}`, ...(x.detail ? [`    ${x.detail}`] : [])];
+            });
+            lines.push("", settled ? "in sync" : `${new Date().toLocaleTimeString()} · syncing… ctrl-c to leave`);
+            if (drawn) process.stdout.write(`\x1b[${drawn}A\x1b[J`);
+            process.stdout.write(`${lines.join("\n")}\n`);
+            drawn = lines.length;
+            if (settled && !forever) break;
+            tick++;
+            await Bun.sleep(700);
           }
+          break;
         }
         case "on":
           out(await f.resume(), () => "watching");
@@ -296,16 +316,13 @@ async function userCommand() {
     case "help":
     case "--help":
     case "-h":
-      console.log(usage);
+      console.log(usage + (await modulesHelp()));
       break;
     default: {
       // A module's own command line: on the box it runs here; from a laptop it runs there,
       // except the subcommands a module wants on the laptop (a browser, its files).
       const external = await import("../modules/external.ts");
-      if (remoteBox && !(await external.runsHere(cmd!, positional[0]))) {
-        remoteNote(await r.ensureAccess());
-        process.exit(await r.ssh(remoteBox, ["pai", cmd, ...args].map(r.quote).join(" ")));
-      }
+      if (remoteBox && !(await external.runsHere(cmd!, positional[0]))) process.exit(await r.ssh(remoteBox, ["pai", cmd, ...args].map(r.quote).join(" ")));
       const code = await external.runCli(cmd!, args, api, post, out, jsonOut);
       if (code === undefined) {
         console.log(usage);

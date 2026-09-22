@@ -122,6 +122,7 @@ function contextFor(name: string, dir: string): ModuleContext {
     env: process.env,
     sessions: undefined as unknown as ModuleContext["sessions"],
     catalog: undefined as unknown as ModuleContext["catalog"],
+    threads: undefined as unknown as ModuleContext["threads"],
     settings: {
       get: (key) => kv.get(prefix + key),
       set: (key, value) => (value === undefined ? kv.del(prefix + key) : kv.set(prefix + key, value)),
@@ -137,13 +138,13 @@ function contextFor(name: string, dir: string): ModuleContext {
 /** Imports every configured module, installing what is missing. Called once, by the daemon. */
 export async function load() {
   const { modules } = await readConfig();
-  const [sessions, catalog] = await Promise.all([import("../domain/sessions.ts"), import("../domain/catalog.ts")]);
+  const [sessions, catalog, transcript] = await Promise.all([import("../domain/sessions.ts"), import("../domain/catalog.ts"), import("../domain/transcript.ts")]);
   for (const [name, source] of Object.entries(modules)) {
     const dir = dirOf(name);
     try {
       if (!isInstalled(name)) await install(name, source);
       const module = await importModule(dir);
-      const ctx = { ...contextFor(name, dir), sessions, catalog } as ModuleContext;
+      const ctx = { ...contextFor(name, dir), sessions, catalog, threads: transcript.allThreads } as ModuleContext;
       loaded.set(name, { name, source, dir, module, ctx });
       linkSkills(module, dir);
     } catch (err) {
@@ -253,6 +254,7 @@ export async function describe() {
       tools: l.module?.tools ? { server: l.name, names: l.module.tools.names, kinds: l.module.tools.kinds } : undefined,
       prompt: l.module ? promptsOf(l.module)[0] : undefined,
       cli: Boolean(l.module?.cli),
+      commands: l.module?.commands ?? [],
       routes: Boolean(l.module?.routes),
       ui: l.module?.ui ? `/m/${l.name}/ui/` : undefined,
       settings: l.module?.settings,

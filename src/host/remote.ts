@@ -45,23 +45,37 @@ export async function ensureAccess() {
 /** The shell a non-interactive ssh gets has no `~/.local/bin` or bun on PATH; a login shell would. */
 const PATH = `export PATH="$HOME/.local/bin:$HOME/.bun/bin:$PATH"`;
 
+/** One connection is kept open for ten minutes and shared, so a second command does not pay the handshake. */
+const MULTIPLEX = ["-o", "ControlMaster=auto", "-o", `ControlPath=${join(homedir(), ".ssh", "pai-%C")}`, "-o", "ControlPersist=10m"];
+
 export function sshArgs(r: Remote, command?: string) {
-  const args = ["ssh", "-t", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=30", r.target];
+  const args = ["ssh", "-t", "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=30", ...MULTIPLEX, r.target];
   if (command) args.push(`${PATH}; ${command}`);
   return args;
 }
 
-/** Runs `command` on the box with this terminal attached, or an interactive shell without one. */
+/** ssh's exit code when it could not connect at all. */
+const NO_CONNECTION = 255;
+
+/**
+ * Runs `command` on the box with this terminal attached, or an interactive shell without one.
+ * The firewall is touched only when the box does not answer — the usual case is that it does.
+ */
 export async function ssh(r: Remote, command?: string) {
-  const proc = Bun.spawn(sshArgs(r, command), { stdio: ["inherit", "inherit", "inherit"] });
-  return proc.exited;
+  const attempt = () => Bun.spawn(sshArgs(r, command), { stdio: ["inherit", "inherit", "inherit"] }).exited;
+  const code = await attempt();
+  if (code !== NO_CONNECTION) return code;
+  const access = await ensureAccess();
+  if (!access.changed) return code;
+  console.error(`firewall: port 22 now open for ${access.ip}; retrying`);
+  return attempt();
 }
 
 /** A command-line argument quoted for the box's shell. */
 export const quote = (arg: string) => `'${arg.replace(/'/g, `'\\''`)}'`;
 
 /** Runs `command` on the box and returns what it printed, for output that is parsed rather than shown. */
-export async function sshCapture(r: Remote, command: string) {
+export async function sshCapture(r: Remote, command: string, retried = false): Promise<string> {
   const args = sshArgs(r, command).filter((a) => a !== "-t");
   const proc = Bun.spawn(args, { stdio: ["ignore", "pipe", "pipe"] });
   const [out, err, code] = await Promise.all([
@@ -69,6 +83,7 @@ export async function sshCapture(r: Remote, command: string) {
     new Response(proc.stderr as ReadableStream).text(),
     proc.exited,
   ]);
+  if (code === NO_CONNECTION && !retried && (await ensureAccess()).changed) return sshCapture(r, command, true);
   if (code !== 0) throw new Error(`${r.target}: ${err.trim().split("\n").pop() || `exit ${code}`}`);
   return out;
 }

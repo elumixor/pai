@@ -17,7 +17,7 @@ import { messagePage } from "./message.ts";
 import { status } from "./status.ts";
 import * as files from "../domain/files.ts";
 import * as settings from "../domain/settings.ts";
-import { sessionsIn, transcript, transcriptPath } from "../domain/transcript.ts";
+import { allThreads, ensureTranscriptAt, sessionsIn, transcript, transcriptPath } from "../domain/transcript.ts";
 import { cost as hostingCost } from "../domain/hetzner.ts";
 
 const log = logger("api");
@@ -56,11 +56,11 @@ export async function handle(req: Request): Promise<Response> {
     // `claude --resume` owns the transcript alone; the next message here revives it, with
     // whatever was said in the terminal in its history.
     if (path === "/attach" && req.method === "POST") {
-      const { id, force } = await body<{ id?: string; force?: boolean }>(req);
-      const s = !id || id === "main" ? sessions.main() : resolveLive(id);
+      const { id, cwd, force } = await body<{ id?: string; cwd?: string; force?: boolean }>(req);
+      const s = !id || id === "main" ? sessions.main() : (resolveLive(id) ?? (cwd ? sessions.adopt(id, cwd, "") : undefined));
       if (!s) return json({ error: "no such session" }, 404);
       if (s.state === "busy" && !force) return json({ error: `${s.shortId} is mid-turn; wait, or pass --force` }, 409);
-      const fresh = !transcriptPath(s.id, s.cwd);
+      const fresh = !ensureTranscriptAt(s.id, s.cwd);
       s.kill();
       return json({ id: s.id, cwd: s.cwd, fresh, title: s.title });
     }
@@ -99,6 +99,9 @@ export async function handle(req: Request): Promise<Response> {
       const limit = Number(url.searchParams.get("limit") ?? 200);
       return json(await transcript(id, session?.cwd ?? url.searchParams.get("cwd") ?? undefined, limit));
     }
+
+    // Every conversation in every project, the daemon's and terminal ones, synced ones included.
+    if (path === "/threads/all") return json(await allThreads(Number(url.searchParams.get("per") ?? 15)));
 
     // Conversations held in a directory, terminal ones included; `/send` with a cwd adopts one.
     if (path === "/threads") {

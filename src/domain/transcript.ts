@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { config } from "../core/config.ts";
@@ -140,6 +140,40 @@ export interface DiskSession {
   readonly cwd: string;
   readonly title: string;
   readonly lastActivity: string;
+}
+
+export interface Thread extends DiskSession {
+  readonly project: string | null;
+  readonly shortId: string;
+}
+
+/**
+ * Every conversation held in any project — the box's own and the ones synced from another
+ * machine — newest first, `perProject` from each. This is what a person chooses from.
+ */
+export async function allThreads(perProject = 15): Promise<Thread[]> {
+  const { all } = await import("./catalog.ts");
+  const out: Thread[] = [];
+  for (const project of all()) {
+    const found = await sessionsIn(project.path, perProject).catch(() => []);
+    for (const s of found) out.push({ ...s, project: project.slug, shortId: s.sessionId.slice(0, 6) });
+  }
+  return out.sort((a, b) => Date.parse(b.lastActivity) - Date.parse(a.lastActivity));
+}
+
+/**
+ * `claude --resume` looks only under the directory named after its cwd; a transcript that
+ * another machine wrote for the same project sits under that machine's name. Copied over
+ * once, so the terminal finds it; the copy is the one both then continue.
+ */
+export function ensureTranscriptAt(sessionId: string, cwd: string) {
+  const wanted = join(projectsDir, slug(cwd), `${sessionId}.jsonl`);
+  if (existsSync(wanted)) return wanted;
+  const found = transcriptPath(sessionId, cwd);
+  if (!found) return undefined;
+  mkdirSync(join(projectsDir, slug(cwd)), { recursive: true });
+  copyFileSync(found, wanted);
+  return wanted;
 }
 
 /** A first prompt with an image pasted into it is one very long line, so the head grows until a whole prompt fits. */

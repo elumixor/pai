@@ -67,6 +67,8 @@ export interface ModuleContext {
   /** The daemon's sessions: the main conversation, tasks, lookups. */
   readonly sessions: typeof import("../domain/sessions.ts");
   readonly catalog: typeof import("../domain/catalog.ts");
+  /** Every conversation on disk, per project, the daemon's and terminal ones alike. */
+  readonly threads: typeof import("../domain/transcript.ts").allThreads;
   /** Module settings, kept in the database under the module's name. */
   readonly settings: {
     get(key: string): string | undefined;
@@ -118,6 +120,8 @@ export interface PaiModule {
   readonly skills?: string;
   /** `pai <name> …`; runs on the box, next to the daemon, with a terminal. */
   readonly cli?: (cli: CliContext) => Promise<number | void>;
+  /** What `pai <name> …` accepts, for `pai --help`. */
+  readonly commands?: readonly { readonly name: string; readonly description: string }[];
   /** Subcommands that run on the laptop instead (they need its browser, its files); the daemon's API is still the box's. */
   readonly cliHere?: readonly string[];
   /** http under `/m/<name>/`; `path` is what follows that prefix. `undefined` is a 404. */

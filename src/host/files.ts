@@ -19,7 +19,7 @@ import { ensureAccess, remote, type Remote } from "./remote.ts";
 const localBin = join(homedir(), ".local", "bin");
 
 /** What never travels: build output, Syncthing's leftovers, and of `~/.claude` the login and this machine's scratch. */
-const BUILD_OUTPUT = ["node_modules", "target", "dist", "build", ".build", "DerivedData", ".next", ".venv", "__pycache__", ".DS_Store", "*.log", ".stfolder", ".stignore", "/pai/data", "/pai/menubar/pai-menubar", "/.pai-clone-*"];
+const BUILD_OUTPUT = ["node_modules", "target", "dist", "build", ".build", "DerivedData", ".next", ".venv", "__pycache__", ".DS_Store", "*.log", ".stfolder", ".stignore", "/pai/data", "/pai/menubar/pai-menubar", "/pai/modules", "/pai/pai.config.local.ts", "/.pai-clone-*"];
 const CLAUDE_LOCAL = [
   ".credentials.json", "/cache", "/backups", "/debug", "/downloads", "/file-history", "/ide", "/jobs", "/paste-cache", "/session-env",
   "/sessions", "/shell-snapshots", "/statsig", "/telemetry", "/tmp", "/todos", "/daemon*", "*.bak*", "*.orig", "/projects/.pai", ".DS_Store", "*.log", ".stfolder", ".stignore",
@@ -43,7 +43,7 @@ export interface RemoteEntry {
 export const REMOTES_FILE = ".pai-remotes.json";
 
 export const FOLDERS: readonly Folder[] = [
-  { name: "pai-dev", local: config.devRoot, remote: "dev", ignores: BUILD_OUTPUT, version: 3 },
+  { name: "pai-dev", local: config.devRoot, remote: "dev", ignores: BUILD_OUTPUT, version: 4 },
   { name: "pai-claude", local: join(homedir(), ".claude"), remote: ".claude", ignores: CLAUDE_LOCAL, version: 2 },
 ];
 
@@ -174,6 +174,27 @@ export async function status(): Promise<FolderStatus[]> {
       cycles: s.successfulCycles,
     };
   });
+}
+
+/** The status with what Mutagen is doing right now in words (staging 12/300, reconciling…), from its long listing. */
+export async function detailedStatus(): Promise<(FolderStatus & { detail?: string })[]> {
+  const base = await status();
+  const out = [];
+  for (const folder of base) {
+    if (folder.state === "watching" || folder.state === "missing") {
+      out.push(folder);
+      continue;
+    }
+    const text = await mutagen("sync", "list", "--long", folder.name).catch(() => "");
+    const lines = text.split("\n").map((l) => l.trim());
+    const detail = lines
+      .filter((l) => /^(Status|Staging progress|Scan progress|Reconciliation|Transition)/i.test(l) || /progress:/i.test(l))
+      .map((l) => l.replace(/^Status:\s*/, ""))
+      .slice(0, 2)
+      .join(" · ");
+    out.push({ ...folder, detail: detail || undefined });
+  }
+  return out;
 }
 
 /** One synchronization cycle now, waited for. */
