@@ -375,7 +375,9 @@ export class Session {
         this.streamText = "";
         this.turnStream = "";
         this.recentTools = [];
-        if (!this.activeTurn && !text) {
+        // A result with no model turn behind it (context injected with shouldQuery false) is
+        // not the end of a turn a message is waiting for.
+        if ((!this.activeTurn || m.num_turns === 0) && !text) {
           this.state = "idle";
           this.persist();
           break;
@@ -511,8 +513,11 @@ export class Session {
     this.die(0);
   }
 
+  lastActivity = now();
+
   private touch() {
-    db.prepare("UPDATE sessions SET last_activity = ? WHERE session_id = ?").run(now(), this.id);
+    this.lastActivity = now();
+    db.prepare("UPDATE sessions SET last_activity = ? WHERE session_id = ?").run(this.lastActivity, this.id);
   }
 
   persist() {
@@ -554,6 +559,7 @@ export class Session {
       threadId: this.threadId,
       parent: this.parent,
       state: this.state,
+      lastActivity: this.lastActivity,
       costUsd: this.costUsd,
       turns: this.turns,
       model: this.model,
