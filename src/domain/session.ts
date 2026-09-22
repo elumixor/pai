@@ -21,10 +21,13 @@ interface Warm {
 }
 const warm = new Map<SessionKind, Warm>();
 
-function build(kind: SessionKind, cwd: string, ref: SessionRef, project?: string): Options {
+export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
+
+function build(kind: SessionKind, cwd: string, ref: SessionRef, project?: string, prefs?: { model?: string | null; effort?: Effort | null }): Options {
   return {
     cwd,
-    model: kind === "main" ? config.models.main : config.models.task,
+    model: prefs?.model ?? (kind === "main" ? config.models.main : config.models.task),
+    ...(prefs?.effort ? { effort: prefs.effort } : {}),
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
     includePartialMessages: true,
@@ -128,6 +131,9 @@ export interface SessionOptions {
   parent?: string | null;
   /** Resume an existing on-disk session instead of starting a fresh one. */
   resume?: string;
+  /** A model alias (sonnet, opus, fable, …) and reasoning effort for this session; the defaults otherwise. */
+  model?: string | null;
+  effort?: Effort | null;
 }
 
 /**
@@ -151,6 +157,9 @@ export class Session {
   costUsd = 0;
   /** The model that answered last, as the API names it; the configured alias until the first reply. */
   model: string | null = null;
+  /** What this session was told to run with; null means the daemon's default. */
+  modelPref: string | null = null;
+  effort: Effort | null = null;
   turns = 0;
   lastTool = "";
   /** The tool calls of the turn in progress, newest last, so a client can show what led here. */
@@ -178,7 +187,10 @@ export class Session {
 
   constructor(opts: SessionOptions) {
     // A fresh session of a warmable kind adopts the pre-spawned process and its id.
-    this.warm = !opts.resume && opts.cwd === config.workspace ? takeWarm(opts.kind) : undefined;
+    this.modelPref = opts.model ?? null;
+    this.effort = opts.effort ?? null;
+    // A warm process was built with the defaults; a session that wants otherwise starts its own.
+    this.warm = !opts.resume && opts.cwd === config.workspace && !this.modelPref && !this.effort ? takeWarm(opts.kind) : undefined;
     this.id = opts.resume ?? this.warm?.id ?? randomUUID();
     this.shortId = this.id.slice(0, 6);
     this.kind = opts.kind;
@@ -188,13 +200,15 @@ export class Session {
     this.threadId = opts.threadId ?? null;
     this.parent = opts.parent ?? null;
     if (opts.resume) {
-      const row = db.query("SELECT card_id, cost_usd, turns, model FROM sessions WHERE session_id = ?").get(this.id) as
-        | { card_id: number | null; cost_usd: number; turns: number; model: string | null }
+      const row = db.query("SELECT card_id, cost_usd, turns, model, model_pref, effort FROM sessions WHERE session_id = ?").get(this.id) as
+        | { card_id: number | null; cost_usd: number; turns: number; model: string | null; model_pref: string | null; effort: Effort | null }
         | undefined;
       this.cardId = row?.card_id ?? null;
       this.costUsd = row?.cost_usd ?? 0;
       this.turns = row?.turns ?? 0;
       this.model = row?.model ?? null;
+      this.modelPref = opts.model ?? row?.model_pref ?? null;
+      this.effort = opts.effort ?? row?.effort ?? null;
     }
     this.start(opts.resume !== undefined);
   }
@@ -204,7 +218,7 @@ export class Session {
   private start(resume: boolean) {
     this.resuming = resume;
     const ref: SessionRef = { session: this };
-    const options = build(this.kind, this.cwd, ref, this.project);
+    const options = build(this.kind, this.cwd, ref, this.project, { model: this.modelPref, effort: this.effort });
     options.title = this.title;
     if (resume) options.resume = this.id;
     else options.sessionId = this.id;
@@ -503,10 +517,11 @@ export class Session {
 
   persist() {
     db.prepare(
-      `INSERT INTO sessions (session_id, short_id, kind, title, cwd, project, thread_id, card_id, state, started_at, last_activity, cost_usd, turns, parent_id, model)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO sessions (session_id, short_id, kind, title, cwd, project, thread_id, card_id, state, started_at, last_activity, cost_usd, turns, parent_id, model, model_pref, effort)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(session_id) DO UPDATE SET state=excluded.state, title=excluded.title, thread_id=excluded.thread_id,
-         card_id=excluded.card_id, last_activity=excluded.last_activity, cost_usd=excluded.cost_usd, turns=excluded.turns, model=excluded.model`,
+         card_id=excluded.card_id, last_activity=excluded.last_activity, cost_usd=excluded.cost_usd, turns=excluded.turns, model=excluded.model,
+         model_pref=excluded.model_pref, effort=excluded.effort`,
     ).run(
       this.id,
       this.shortId,
@@ -523,6 +538,8 @@ export class Session {
       this.turns,
       this.parent,
       this.model,
+      this.modelPref,
+      this.effort,
     );
   }
 
@@ -540,6 +557,8 @@ export class Session {
       costUsd: this.costUsd,
       turns: this.turns,
       model: this.model,
+      modelPref: this.modelPref,
+      effort: this.effort,
       lastTool: this.lastTool,
       recentTools: this.recentTools,
       queued: this.inbox.length,

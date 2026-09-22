@@ -57,12 +57,23 @@ export async function handle(req: Request): Promise<Response> {
     // `claude --resume` owns the transcript alone; the next message here revives it, with
     // whatever was said in the terminal in its history.
     if (path === "/attach" && req.method === "POST") {
-      const { force } = await body<{ force?: boolean }>(req);
-      const main = sessions.main();
-      if (main.state === "busy" && !force) return json({ error: "the main conversation is mid-turn; wait, or pass --force" }, 409);
-      const fresh = !transcriptPath(main.id, main.cwd);
-      main.kill();
-      return json({ id: main.id, cwd: main.cwd, fresh });
+      const { id, force } = await body<{ id?: string; force?: boolean }>(req);
+      const s = !id || id === "main" ? sessions.main() : resolveLive(id);
+      if (!s) return json({ error: "no such session" }, 404);
+      if (s.state === "busy" && !force) return json({ error: `${s.shortId} is mid-turn; wait, or pass --force` }, 409);
+      const fresh = !transcriptPath(s.id, s.cwd);
+      s.kill();
+      return json({ id: s.id, cwd: s.cwd, fresh, title: s.title });
+    }
+
+    // A session's model and effort from now on; its process restarts on the next message.
+    if (path === "/reconfigure" && req.method === "POST") {
+      const { id, model, effort } = await body<{ id: string; model?: string | null; effort?: "low" | "medium" | "high" | "xhigh" | "max" | null }>(req);
+      try {
+        return json(sessions.reconfigure(id, { model, effort }));
+      } catch (err) {
+        return json({ error: (err as Error).message }, 409);
+      }
     }
 
     if (path === "/files") return json(files.list(url.searchParams.get("path") ?? config.devRoot));
@@ -164,8 +175,8 @@ export async function handle(req: Request): Promise<Response> {
     }
 
     if (path === "/task" && req.method === "POST") {
-      const { title, text, project } = await body<{ title: string; text: string; project?: string }>(req);
-      const s = sessions.spawnTask({ title, project });
+      const { title, text, project, model, effort } = await body<{ title: string; text: string; project?: string; model?: string | null; effort?: "low" | "medium" | "high" | "xhigh" | "max" | null }>(req);
+      const s = sessions.spawnTask({ title, project, model, effort });
       if (text) s.send(text);
       return json(s.summary());
     }

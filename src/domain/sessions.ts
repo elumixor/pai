@@ -1,4 +1,4 @@
-import { Session, UNTITLED, closeWarm, prewarm, rewarm, type SessionKind } from "./session.ts";
+import { Session, UNTITLED, closeWarm, prewarm, rewarm, type Effort, type SessionKind } from "./session.ts";
 import { db, kv, now } from "../core/db.ts";
 import { existsSync, watch } from "node:fs";
 import { join } from "node:path";
@@ -40,6 +40,8 @@ export interface SpawnTask {
   threadId?: number | null;
   /** The session that asked for it; the task's reports go there as well as to the main conversation. */
   parent?: string | null;
+  model?: string | null;
+  effort?: Effort | null;
 }
 
 /** A task session: its own topic, its own context. With a project it runs in that repo. */
@@ -54,7 +56,7 @@ export function spawnTask(opts: SpawnTask): Session {
     cwd = proj.path;
     project = proj.slug;
   }
-  const session = new Session({ kind, title: opts.title.trim() || UNTITLED, cwd, project, threadId: opts.threadId, parent: opts.parent });
+  const session = new Session({ kind, title: opts.title.trim() || UNTITLED, cwd, project, threadId: opts.threadId, parent: opts.parent, model: opts.model, effort: opts.effort });
   live.set(session.id, session);
   log.info(`spawned ${kind} ${session.shortId} "${opts.title}"`);
   prewarm("task");
@@ -130,6 +132,23 @@ export function adopt(sessionId: string, cwd: string, title: string): Session {
   return session;
 }
 
+/**
+ * Changes what a session runs with. The process is stopped so the next message starts one
+ * with the new options; a turn in flight is cut off, which is why a busy session is refused.
+ */
+export function reconfigure(id: string, prefs: { model?: string | null; effort?: Effort | null }) {
+  const full = resolveId(id);
+  if (!full) throw new Error(`no such session: ${id}`);
+  const s = find(full);
+  if (s && s.state === "busy") throw new Error(`${s.shortId} is mid-turn`);
+  const current = db.query("SELECT model_pref, effort FROM sessions WHERE session_id = ?").get(full) as { model_pref: string | null; effort: Effort | null };
+  const model = prefs.model === undefined ? current.model_pref : prefs.model;
+  const effort = prefs.effort === undefined ? current.effort : prefs.effort;
+  db.prepare("UPDATE sessions SET model_pref = ?, effort = ? WHERE session_id = ?").run(model, effort, full);
+  if (s && s.state !== "dead") s.kill();
+  return { sessionId: full, model, effort };
+}
+
 /** Live session for `id`, respawning from disk if its process is gone. */
 export function ensureLive(id: string): Session | undefined {
   const session = find(id);
@@ -167,6 +186,8 @@ export interface SessionRow {
   costUsd: number;
   turns: number;
   model: string | null;
+  modelPref: string | null;
+  effort: Effort | null;
 }
 
 /** Recent sessions, live or not, newest activity first. */
@@ -192,6 +213,8 @@ export function recent(limit = 20, kind?: SessionKind): SessionRow[] {
     costUsd: r.cost_usd,
     turns: r.turns,
     model: r.model ?? null,
+    modelPref: r.model_pref ?? null,
+    effort: r.effort ?? null,
   }));
 }
 

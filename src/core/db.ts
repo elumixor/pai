@@ -89,6 +89,9 @@ if (!(db.query("PRAGMA table_info(projects)").all() as { name: string }[]).some(
 const sessionColumns = (db.query("PRAGMA table_info(sessions)").all() as { name: string }[]).map((c) => c.name);
 if (!sessionColumns.includes("parent_id")) db.exec("ALTER TABLE sessions ADD COLUMN parent_id TEXT");
 if (!sessionColumns.includes("model")) db.exec("ALTER TABLE sessions ADD COLUMN model TEXT");
+// What a session was told to run with, as opposed to `model`, which is what answered.
+if (!sessionColumns.includes("model_pref")) db.exec("ALTER TABLE sessions ADD COLUMN model_pref TEXT");
+if (!sessionColumns.includes("effort")) db.exec("ALTER TABLE sessions ADD COLUMN effort TEXT");
 
 export function now() {
   return Date.now();
