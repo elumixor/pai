@@ -17,3 +17,7 @@ editor/vscode/*.vsix
 desktop/ui/dist
 desktop/src-tauri/target
 desktop/src-tauri/gen
+
+# external modules, installed from pai.config.ts
+modules/
+pai.config.local.ts

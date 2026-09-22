@@ -13,12 +13,15 @@ import { disconnectUser } from "./clients/tg-user.ts";
 import { startAutoUpdate } from "./host/update.ts";
 import { startAutomations } from "./domain/automations.ts";
 import { startModules } from "./modules/index.ts";
+import * as external from "./modules/external.ts";
 import { logger } from "./core/log.ts";
 
 const log = logger("daemon");
 
 mkdirSync(config.workspace, { recursive: true });
 refresh();
+// Before anything spawns a session: their tools and prompt come from the modules too.
+await external.load();
 relayTasksToMain();
 const stopMemoryWatch = watchMemory();
 const server = startServer();
@@ -33,6 +36,7 @@ warmUp();
 const stopAutoUpdate = startAutoUpdate();
 const stopAutomations = startAutomations();
 const stopModules = startModules();
+await external.startAll();
 
 const catalogTimer = setInterval(refresh, 15 * 60 * 1000);
 const reaper = setInterval(reapIdle, 60 * 1000);
@@ -47,6 +51,7 @@ function shutdown(signal: string) {
   stopAutomations();
   stopMemoryWatch();
   stopModules();
+  void external.stopAll();
   noteInterrupted();
   killAll();
   closeTerminals();

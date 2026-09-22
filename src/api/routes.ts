@@ -3,6 +3,7 @@ import { all as allProjects, clone, CloneError, createContext, refresh } from ".
 import * as automations from "../domain/automations.ts";
 import { context } from "../domain/context.ts";
 import { byName as moduleByName, describeModules } from "../modules/index.ts";
+import * as external from "../modules/external.ts";
 import { poll as linkedinPoll } from "../modules/linkedin.ts";
 import { handleConnect as gmailConnect, listAccounts as gmailAccounts, removeAccount as gmailRemove } from "../modules/gmail.ts";
 import { installCredentials, needsLogin, usage } from "../domain/usage.ts";
@@ -211,9 +212,32 @@ export async function handle(req: Request): Promise<Response> {
     // What each kind of session is given, for the dashboard.
     if (path === "/context") return json(context());
 
-    if (path === "/modules") return json(describeModules());
+    // A module's own http, under its name.
+    if (path.startsWith("/m/")) return (await external.route(req, url)) ?? json({ error: "not found" }, 404);
 
-    const modulePath = /^\/modules\/([a-z-]+)(?:\/(poll))?$/.exec(path);
+    // One list for the dashboard: the built-in pieces and the modules from their own repositories.
+    if (path === "/modules")
+      return json([
+        ...describeModules(),
+        ...(await external.describe()).map((m) => ({
+          ...m,
+          title: m.title ?? m.name,
+          description: m.description ?? "",
+          status: { health: m.health, source: m.source, linked: m.linked, started: m.started, cli: m.cli, ui: m.ui },
+          live: true,
+          external: true,
+        })),
+      ]);
+
+    const modulePath = /^\/modules\/([a-z0-9-]+)(?:\/(poll|install|update|remove))?$/.exec(path);
+    if (modulePath?.[1] && external.get(modulePath[1])) {
+      const name = modulePath[1];
+      const l = external.get(name)!;
+      if (modulePath[2] === "install" && req.method === "POST") return json({ dir: await external.install(name, l.source), restartRequired: true });
+      if (modulePath[2] === "update" && req.method === "POST") return json({ ...(await external.update(name)), restartRequired: true });
+      if (modulePath[2] === "remove" && req.method === "POST") return json({ removed: external.remove(name), restartRequired: true });
+      return json((await external.describe()).find((m) => m.name === name));
+    }
     if (modulePath?.[1]) {
       const module = moduleByName(modulePath[1]);
       if (!module) return json({ error: "no such module" }, 404);

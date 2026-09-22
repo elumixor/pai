@@ -1,6 +1,7 @@
 import type { SessionKind } from "./session.ts";
 import { config } from "../core/config.ts";
 import { modules } from "../modules/index.ts";
+import { prompts as externalPrompts } from "../modules/external.ts";
 
 const COMMON = `
 You are pai, a personal assistant that the user talks to from Telegram on their phone.
@@ -28,7 +29,7 @@ Changing pai itself:
 - Restarting or updating the daemon cuts off every running turn, yours included. Do it only as the very last step of a turn, after reporting, and say the reply may arrive after the restart.`;
 
 const moduleSection = (kind: SessionKind) => {
-  const lines = modules.filter((m) => m.enabled() && m.prompt?.kinds.includes(kind)).map((m) => `- ${m.prompt!.text}`);
+  const lines = [...modules.filter((m) => m.enabled() && m.prompt?.kinds.includes(kind)).map((m) => m.prompt!.text), ...externalPrompts(kind)].map((t) => `- ${t}`);
   return lines.length ? `\nAlso available:\n${lines.join("\n")}` : "";
 };
 

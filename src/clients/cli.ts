@@ -102,6 +102,8 @@ const usage = `pai — the assistant on the box, from here
   update                  update pai here and on the box
   cost                    the Claude limits (session, weekly) and what the box costs
   menubar [install|uninstall]  the menu bar app on this Mac: quota rings, what runs, links
+  modules [update|restart]     the modules pai is made of (pai.config.ts): state, health; update pulls them all
+  <module> [args…]        a module's own command line, on the box (pai builder, …)
 
   --json on any command for raw output`;
 
@@ -265,11 +267,54 @@ async function userCommand() {
       else out(m.status(), () => (m.status().installed ? "installed" : "not installed (`pai menubar install`)"));
       break;
     }
+    case "modules": {
+      const sub = positional[0] ?? "list";
+      if (sub === "update") {
+        const data = await api("/modules");
+        const results: Record<string, unknown> = {};
+        for (const m of data.filter((x: any) => x.external)) results[m.name] = await post(`/modules/${m.name}/update`, {});
+        await post("/restart", {});
+        out(results, () => [...Object.entries(results).map(([name, r]: [string, any]) => `${name.padEnd(12)} ${r.updated ? `${r.from} → ${r.to}` : (r.reason ?? "up to date")}`), "daemon restarting"].join("\n"));
+        break;
+      }
+      if (sub === "restart") {
+        out(await post("/restart", {}), () => "daemon restarting; modules reload with it");
+        break;
+      }
+      const data = await api("/modules");
+      const ext = data.filter((x: any) => x.external);
+      out(data, () =>
+        [
+          ...ext.map((m: any) => `${m.name.padEnd(12)} ${(m.status.health.ok ? (m.status.started ? "running" : m.enabled ? "loaded" : "off") : "broken").padEnd(8)} ${m.status.source}${m.status.linked ? " (linked)" : ""}${m.status.health.detail ? ` — ${m.status.health.detail}` : ""}${m.status.cli ? "  · pai " + m.name : ""}`),
+          ...(ext.length ? [""] : []),
+          ...data.filter((x: any) => !x.external).map((m: any) => `${m.name.padEnd(12)} ${(m.enabled ? "on" : "off").padEnd(8)} built in`),
+        ].join("\n"),
+      );
+      break;
+    }
     case "dev":
       console.log(devUsage);
       break;
-    default:
+    case undefined:
+    case "help":
+    case "--help":
+    case "-h":
       console.log(usage);
+      break;
+    default: {
+      // A module's own command line: on the box it runs here; from a laptop it runs there.
+      if (remoteBox) {
+        remoteNote(await r.ensureAccess());
+        process.exit(await r.ssh(remoteBox, ["pai", cmd, ...args].map(r.quote).join(" ")));
+      }
+      const external = await import("../modules/external.ts");
+      const code = await external.runCli(cmd!, args, api, post, out, jsonOut);
+      if (code === undefined) {
+        console.log(usage);
+        process.exit(1);
+      }
+      process.exit(code);
+    }
   }
 }
 
