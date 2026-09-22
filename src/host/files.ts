@@ -3,9 +3,14 @@
  * Mutagen, which runs as a small daemon here and an agent it installs on the box. Safe mode:
  * a file changed on both sides since they last agreed is a conflict Mutagen leaves alone and
  * `pai files` shows; `sync --local` or `--remote` settles them one way.
+ *
+ * `.git` never travels: two machines running git on one shared `.git` corrupt it (loose refs
+ * from one side overwrite the other's). Each side owns its clone; the working trees are what
+ * is shared. `~/dev/.pai-remotes.json`, written here, tells the box where each repository's
+ * origin is, so it can give a synced tree a `.git` of its own.
  */
 import { $ } from "bun";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { config } from "../core/config.ts";
@@ -26,11 +31,20 @@ export interface Folder {
   /** On the box, under its home. */
   readonly remote: string;
   readonly ignores: readonly string[];
+  /** Bumped when a folder's definition changes, so an old session is replaced. */
+  readonly version: number;
 }
 
+/** What the box needs to give a synced tree its own `.git`. */
+export interface RemoteEntry {
+  readonly url: string;
+  readonly branch: string;
+}
+export const REMOTES_FILE = ".pai-remotes.json";
+
 export const FOLDERS: readonly Folder[] = [
-  { name: "pai-dev", local: config.devRoot, remote: "dev", ignores: BUILD_OUTPUT },
-  { name: "pai-claude", local: join(homedir(), ".claude"), remote: ".claude", ignores: CLAUDE_LOCAL },
+  { name: "pai-dev", local: config.devRoot, remote: "dev", ignores: BUILD_OUTPUT, version: 2 },
+  { name: "pai-claude", local: join(homedir(), ".claude"), remote: ".claude", ignores: CLAUDE_LOCAL, version: 2 },
 ];
 
 export interface Conflict {
@@ -81,6 +95,7 @@ async function mutagen(...args: string[]) {
 
 interface RawSession {
   name: string;
+  labels?: Record<string, string>;
   status: string;
   paused: boolean;
   lastError?: string;
@@ -105,19 +120,38 @@ const box = (): Remote => {
   return r;
 };
 
-/** The two sessions, created if missing. Idempotent. */
+/** The two sessions, created if missing or defined differently than the running one. Idempotent. */
 export async function ensureSessions() {
   const r = box();
-  const have = new Set((await sessions()).map((s) => s.name));
+  const have = new Map((await sessions()).map((s) => [s.name, s]));
   const created: string[] = [];
+  await writeRemotes();
   for (const folder of FOLDERS) {
-    if (have.has(folder.name)) continue;
+    const running = have.get(folder.name);
+    if (running && running.labels?.version === String(folder.version)) continue;
     await ensureAccess();
+    if (running) await mutagen("sync", "terminate", folder.name);
     const ignores = folder.ignores.flatMap((i) => ["--ignore", i]);
-    await mutagen("sync", "create", "--name", folder.name, "--mode", "two-way-safe", ...ignores, folder.local, `${r.target}:~/${folder.remote}`);
+    await mutagen("sync", "create", "--name", folder.name, "--label", `version=${folder.version}`, "--mode", "two-way-safe", "--ignore-vcs", ...ignores, folder.local, `${r.target}:~/${folder.remote}`);
     created.push(folder.name);
   }
   return created;
+}
+
+/** Every repository under `devRoot` with its origin and branch, for the box. */
+export async function writeRemotes() {
+  const entries: Record<string, RemoteEntry> = {};
+  for (const name of readdirSync(config.devRoot)) {
+    const dir = join(config.devRoot, name);
+    const cfg = join(dir, ".git", "config");
+    if (!existsSync(cfg)) continue;
+    const url = /\[remote "origin"\][^[]*?url\s*=\s*(\S+)/.exec(readFileSync(cfg, "utf8"))?.[1];
+    if (!url) continue;
+    const head = readFileSync(join(dir, ".git", "HEAD"), "utf8").trim();
+    entries[name] = { url, branch: head.startsWith("ref: refs/heads/") ? head.slice("ref: refs/heads/".length) : "main" };
+  }
+  await Bun.write(join(config.devRoot, REMOTES_FILE), JSON.stringify(entries, null, 2));
+  return entries;
 }
 
 const side = (changes: { old: unknown; new: unknown }[]) => (changes.some((c) => c.new === null || c.new === undefined) ? "deleted" : "changed");

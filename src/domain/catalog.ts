@@ -100,6 +100,31 @@ export function clone(url: string, name?: string): Project {
 
 const IGNORED = new Set(["node_modules", ".git", "temp", "gen", "dist", "build"]);
 
+/**
+ * A tree synced from another machine arrives without `.git` (it never travels); the sender
+ * left `.pai-remotes.json` saying where its origin is. The clone's `.git` is put beside the
+ * synced files and the index set to HEAD, so `git status` shows what the tree changed.
+ */
+function adoptClones(root: string) {
+  const file = join(root, ".pai-remotes.json");
+  const remotes = read(file);
+  if (!remotes) return;
+  let entries: Record<string, { url: string; branch: string }>;
+  try {
+    entries = JSON.parse(remotes) as Record<string, { url: string; branch: string }>;
+  } catch {
+    return;
+  }
+  for (const [name, entry] of Object.entries(entries)) {
+    const dir = join(root, name);
+    if (!existsSync(dir) || existsSync(join(dir, ".git"))) continue;
+    const tmp = join(root, `.pai-clone-${name}`);
+    const res = Bun.spawnSync(["sh", "-c", `rm -rf "${tmp}" && git clone --quiet --no-checkout --branch "${entry.branch}" "${entry.url}" "${tmp}" && mv "${tmp}/.git" "${dir}/.git" && rm -rf "${tmp}" && git -C "${dir}" reset -q`]);
+    if (res.exitCode === 0) log.info(`${name}: cloned its history from ${entry.url}`);
+    else log.warn(`${name}: could not clone ${entry.url}: ${res.stderr.toString().trim().split("\n").pop()}`);
+  }
+}
+
 function findRepos(root: string, depth: number, out: string[] = []): string[] {
   let entries: string[];
   try {
@@ -229,6 +254,7 @@ function overrides(): Record<string, Override> {
 }
 
 export function scan(): Project[] {
+  adoptClones(config.devRoot);
   const repos = findRepos(config.devRoot, config.scanDepth);
   // The daemon's own checkout is a project too, wherever it lives: changes to pai are coding work like any other.
   if (existsSync(join(config.repo, ".git")) && !repos.includes(config.repo)) repos.push(config.repo);
