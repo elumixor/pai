@@ -48,7 +48,6 @@ const fromDisk = (found: DiskSession): SessionSummary => ({
 });
 
 const activity = (session: SessionSummary) => {
-  if (session.kind === "main") return Number.MAX_SAFE_INTEGER;
   if (session.state === "busy" || session.state === "starting" || session.waiting) return Number.MAX_SAFE_INTEGER - 1;
   return session.lastActivity ? new Date(session.lastActivity).getTime() : 0;
 };
@@ -97,13 +96,13 @@ export async function rail(root: HTMLElement, handlers: RailHandlers) {
     el(
       "button.thread",
       {
-        class: `thread${isOpen(session) ? " open" : ""}${session.kind === "main" ? " main" : ""}`,
+        class: `thread${isOpen(session) ? " open" : ""}`,
         "data-session": session.sessionId,
         title: `${session.title || session.shortId}\n${session.shortId}${session.model ? ` · ${modelName(session.model)}` : ""}\nclick: open · shift+click: open in the lower pane`,
         onclick: (event: Event) => handlers.openThread(session, (event as MouseEvent).shiftKey ? "b" : "a"),
       },
       el("span", { class: `dot ${stateClass(session)}` }),
-      el("span.label", {}, session.kind === "main" ? "assistant" : session.title || session.shortId),
+      el("span.label", {}, session.title || session.shortId),
       session.kind === "claude" ? icon("terminal", 11) : undefined,
     );
 

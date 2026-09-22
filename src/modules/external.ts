@@ -294,7 +294,7 @@ export async function describe() {
 }
 
 /** The MCP servers external modules add to a session of `kind`. */
-export function mcpServers(kind: "main" | "task" | "code", ref: import("../domain/tools.ts").SessionRef) {
+export function mcpServers(kind: "chat" | "code", ref: import("../domain/tools.ts").SessionRef) {
   const out: Record<string, ReturnType<NonNullable<PaiModule["tools"]>["create"]>> = {};
   for (const l of active()) if (l.module.tools?.kinds.includes(kind)) out[l.name] = l.module.tools.create(ref, l.ctx);
   return out;
@@ -302,7 +302,7 @@ export function mcpServers(kind: "main" | "task" | "code", ref: import("../domai
 
 const promptsOf = (m: PaiModule) => (m.prompt ? (Array.isArray(m.prompt) ? m.prompt : [m.prompt]) : []) as readonly import("./sdk.ts").ModulePrompt[];
 
-export const prompts = (kind: "main" | "task" | "code") =>
+export const prompts = (kind: "chat" | "code") =>
   active().flatMap((l) => promptsOf(l.module).filter((p) => p.kinds.includes(kind)).map((p) => p.text));
 
 /** `/m/<name>/…` */

@@ -5,7 +5,7 @@ your files and your Claude subscription, and it can do things: search the web, r
 send email, look at your calendar, drive a browser, work in your repositories, open a
 terminal and install what it needs.
 
-The chat is the interface. Short answers land in the main conversation; anything bigger
+The chat is the interface. Short answers land in the topic you wrote in; anything bigger
 becomes a task with its own topic, its own context, and a live status card at the top.
 Several tasks run at once. Reply in a topic to steer that task; reply in the root to talk
 to the assistant.
@@ -96,7 +96,7 @@ The dashboard (⌘2 in the client) is where pai is put together. **Modules** are
 of — the Telegram bot, your own Telegram account, the browser, memory, tasks, LinkedIn, the
 editor, the public address, sync — each with the tools it gives sessions, the paragraph it adds
 to the prompt, the events it emits and its switches. **Automations** are `on <event> →
-<action>` rules: notify you on Telegram, hand the main conversation a turn, or start a task in a
+<action>` rules: notify you on Telegram, open a conversation with the text, or start a task in a
 project — the LinkedIn module's `linkedin.message` into a notification is the two-click case.
 **Projects** are repositories, or *contexts*: a directory with a `CLAUDE.md` for its voice and
 rules of its own, for work that has no code — a job search, hiring. **Context**
@@ -121,19 +121,19 @@ Build output (`node_modules`, `target`, `dist`, …), the Claude login and `.git
 each machine keeps its own clone of a repository (the box makes one from the Mac's origin),
 only the working trees are shared.
 
-## The main conversation in a terminal
+## A conversation in a terminal
 
 ```sh
-pai claude                     # the main conversation, on the box, in this terminal
+pai claude                     # a new conversation with the assistant, on the box; --resume picks an old one
 pai ssh                        # a shell on the box; `pai ssh <command>` runs one thing there
 pai status | sync | update     # this machine and the box
 bun run infra                  # the box itself, from nothing: Hetzner server + bootstrap
 ```
 
 `pai claude` from a laptop goes to the box (`PAI_REMOTE`, `user@host`; by default the Hetzner
-host as `pai`) and runs `claude --resume` on the main conversation in the workspace, after the
-daemon has stopped its own process for it, so the transcript has one writer. Whatever is said
-there is in the history when the next Telegram message revives it. The box's firewall keeps
+host as `pai`) and starts `claude` in the assistant's workspace: its persona and memory, a fresh
+conversation. There is no main conversation; a Telegram topic, a terminal and a thread in the
+app are all equal. The box's firewall keeps
 port 22 closed; each call opens it for this machine's current public address only, through the
 Hetzner API (`HCLOUD_TOKEN`).
 

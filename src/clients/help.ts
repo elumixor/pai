@@ -42,13 +42,12 @@ export const FILES: readonly Command[] = [
 ];
 
 export const DEV: readonly Command[] = [
-  { name: "chat", args: "<text>", description: "a turn in the main conversation" },
+  { name: "chat", args: "<text> [--id <thread>]", description: "a turn in a new conversation, or in one" },
   { name: "task", args: "<title> <text> [--project <slug>]", description: "start a task" },
   { name: "send", args: "<id> <text> [--wait]", description: "a turn in a task" },
   { name: "answer", args: "<id> <text>", description: "answer a pending question" },
   { name: "tasks", description: "running and recent tasks" },
-  { name: "stop", args: "<id|main> [--kill]", description: "interrupt or kill a session" },
-  { name: "reset", description: "forget the main conversation" },
+  { name: "stop", args: "<id> [--kill]", description: "interrupt or kill a session" },
   { name: "tail", args: "[id] [--raw]", description: "follow the event stream" },
   { name: "events", args: "[id]", description: "recent events" },
   { name: "projects", args: "[--refresh]", description: "projects as the assistant sees them" },

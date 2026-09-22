@@ -95,7 +95,7 @@ function render(template: string, event: PaiEvent) {
 async function run(rule: Automation, event: PaiEvent) {
   const text = render(rule.template, event);
   if (rule.action === "notify") bus.emitEvent("user.notify", { text });
-  else if (rule.action === "turn") sessions.main().send(text);
+  else if (rule.action === "turn") sessions.spawnTask({ title: rule.name.slice(0, 60) }).send(text);
   else if (rule.action === "task") {
     const recent = taskStarts.filter((t) => now() - t < 3600_000);
     taskStarts.length = 0;

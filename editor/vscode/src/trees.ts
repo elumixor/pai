@@ -34,7 +34,7 @@ export class ThreadsTree extends Tree<SessionSummary> {
 
   getTreeItem(session: SessionSummary) {
     const item = new vscode.TreeItem(session.title || session.shortId);
-    item.description = [session.kind === "main" ? "main" : session.project, session.state, session.lastTool]
+    item.description = [session.project, session.state, session.lastTool]
       .filter(Boolean)
       .join(" · ");
     item.tooltip = `${session.shortId}${session.turns ? ` · ${session.turns} turns` : ""}`;

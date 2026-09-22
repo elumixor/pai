@@ -1,6 +1,6 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-import type { Session } from "./session.ts";
+import type { Session, SessionKind } from "./session.ts";
 import { all as allProjects, get as getProject, refresh } from "./catalog.ts";
 import { bus, recentEvents } from "../core/bus.ts";
 import * as sessions from "./sessions.ts";
@@ -17,7 +17,7 @@ export interface SessionRef {
  * In-process MCP server. One instance per session, so the tools know who is calling; the
  * session arrives through a ref because pre-warmed processes are built before it exists.
  */
-export function paiTools(kind: "main" | "task" | "code", ref: SessionRef) {
+export function paiTools(kind: SessionKind, ref: SessionRef) {
   const self = () => {
     if (!ref.session) throw new Error("tool called before its session was bound");
     return ref.session;
@@ -71,7 +71,7 @@ export function paiTools(kind: "main" | "task" | "code", ref: SessionRef) {
       async ({ title, prompt, project }) => {
         try {
           const me = self();
-          const s = sessions.spawnTask({ title, project, parent: me.kind === "main" ? undefined : me.id });
+          const s = sessions.spawnTask({ title, project, parent: me.id });
           s.send(prompt);
           return ok({ started: true, task: s.shortId, title: s.title, kind: s.kind, project: s.project });
         } catch (err) {

@@ -84,9 +84,9 @@ async function chat() {
   if (!text) return;
   await run(async () => {
     const { live } = await tasks();
-    const main = live.find((s) => s.kind === "main");
-    await post("/send", { id: "main", text });
-    if (main) openThread(main);
+    const opened = (await post("/chat", { text })) as { session?: string };
+    const started = live.find((s) => s.shortId === opened.session);
+    if (started) openThread(started);
   });
 }
 

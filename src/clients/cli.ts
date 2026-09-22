@@ -428,7 +428,7 @@ async function devCommand() {
       await import("../host/install-daemon-linux.ts");
       break;
     case "chat": {
-      const data = await post("/chat", { text: positional.join(" ") });
+      const data = await post("/chat", { text: positional.join(" "), id: flag("id") });
       out(data, () => data.text || (data.error ?? "(no reply)"));
       break;
     }
@@ -462,9 +462,6 @@ async function devCommand() {
     }
     case "stop":
       out(await post("/stop", { id: positional[0], kill: args.includes("--kill") }));
-      break;
-    case "reset":
-      out(await post("/reset", {}));
       break;
     case "tail":
       await follow(positional[0], args.includes("--raw"));

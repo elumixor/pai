@@ -273,7 +273,7 @@ export const gmailModule: Module = {
   kind: "tools",
   enabled: configured,
   status: () => ({ configured: configured(), accounts: listAccounts().map(({ label, email }) => ({ label, email })) }),
-  tools: { server: "gmail", names: ["gmail_list_accounts", "gmail_search", "gmail_read"], kinds: ["main", "task"] },
+  tools: { server: "gmail", names: ["gmail_list_accounts", "gmail_search", "gmail_read"], kinds: ["chat"] },
   accounts: {
     list: () => listAccounts().map(({ label, email }) => ({ label, detail: email })),
     connectPath: "/gmail/connect?label={label}",
@@ -282,6 +282,6 @@ export const gmailModule: Module = {
   },
   prompt: {
     text: "Gmail: gmail_list_accounts shows which mailboxes are connected (by label — e.g. personal, work), gmail_search finds messages in one of them with Gmail's search syntax, gmail_read gets a message's full text. Ask which account when it's ambiguous rather than guessing.",
-    kinds: ["main", "task"],
+    kinds: ["chat"],
   },
 };

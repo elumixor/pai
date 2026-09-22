@@ -32,7 +32,6 @@ async function body<T>(req: Request): Promise<T> {
 }
 
 function resolveLive(id: string) {
-  if (id === "main") return sessions.main();
   const full = sessions.find(id)?.id ?? sessions.resolveId(id);
   return full ? sessions.ensureLive(full) : undefined;
 }
@@ -57,7 +56,7 @@ export async function handle(req: Request): Promise<Response> {
     // whatever was said in the terminal in its history.
     if (path === "/attach" && req.method === "POST") {
       const { id, cwd, force } = await body<{ id?: string; cwd?: string; force?: boolean }>(req);
-      const s = !id || id === "main" ? sessions.main() : (resolveLive(id) ?? (cwd ? sessions.adopt(id, cwd, "") : undefined));
+      const s = id ? (resolveLive(id) ?? (cwd ? sessions.adopt(id, cwd, "") : undefined)) : undefined;
       if (!s) return json({ error: "no such session" }, 404);
       if (s.state === "busy" && !force) return json({ error: `${s.shortId} is mid-turn; wait, or pass --force` }, 409);
       const fresh = !ensureTranscriptAt(s.id, s.cwd);
@@ -93,8 +92,8 @@ export async function handle(req: Request): Promise<Response> {
 
     // A thread's conversation as it is on disk, which is what `claude --resume` shows.
     if (path === "/transcript") {
-      const raw = url.searchParams.get("session") ?? "main";
-      const session = raw === "main" ? sessions.main() : sessions.find(raw);
+      const raw = url.searchParams.get("session") ?? "";
+      const session = sessions.find(raw);
       const id = session?.id ?? sessions.resolveId(raw) ?? raw;
       const limit = Number(url.searchParams.get("limit") ?? 200);
       return json(await transcript(id, session?.cwd ?? url.searchParams.get("cwd") ?? undefined, limit));
@@ -166,10 +165,11 @@ export async function handle(req: Request): Promise<Response> {
       }
     }
 
-    // A turn in the main conversation, identical to a Telegram message in the root chat.
+    // A turn in a conversation: a new one, or `id` for an existing one. The same path as a Telegram message.
     if (path === "/chat" && req.method === "POST") {
-      const { text } = await body<{ text: string }>(req);
-      const m = sessions.main();
+      const { text, id, title } = await body<{ text: string; id?: string; title?: string }>(req);
+      const m = id ? resolveLive(id) : sessions.spawnTask({ title: title ?? "" });
+      if (!m) return json({ error: "no such session" }, 404);
       const done = waitFor("session.turn_end", m.id, TURN_TIMEOUT);
       m.send(text);
       const e = await done;
@@ -203,23 +203,19 @@ export async function handle(req: Request): Promise<Response> {
 
     if (path === "/stop" && req.method === "POST") {
       const { id, kill } = await body<{ id: string; kill?: boolean }>(req);
-      const s = id === "main" ? sessions.main() : sessions.find(id);
+      const s = sessions.find(id);
       if (!s) return json({ error: "no such session" }, 404);
       if (kill) s.kill();
       else await s.interrupt();
       return json({ ok: true });
     }
 
-    if (path === "/reset" && req.method === "POST") {
-      sessions.resetMain();
-      return json({ ok: true });
-    }
-
-    // The slash commands a session's process accepts; a session that is not live falls back to the main one's.
+    // The slash commands a session's process accepts; a session that is not live falls back to any live one's.
     if (path === "/commands") {
-      const raw = url.searchParams.get("session") ?? "main";
-      const s = (raw === "main" ? sessions.main() : sessions.find(raw)) ?? sessions.main();
-      return json(s.commands.length ? s.commands : sessions.main().commands);
+      const raw = url.searchParams.get("session") ?? "";
+      const s = sessions.find(raw);
+      const any = [...sessions.list()].map((x) => sessions.find(x.sessionId)).find((x) => x && x.commands.length);
+      return json(s?.commands.length ? s.commands : (any?.commands ?? []));
     }
 
     // What each kind of session is given, for the dashboard.

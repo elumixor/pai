@@ -24,7 +24,7 @@ export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 function build(kind: SessionKind, cwd: string, ref: SessionRef, project?: string, prefs?: { model?: string | null; effort?: Effort | null }): Options {
   return {
     cwd,
-    model: prefs?.model ?? (kind === "main" ? config.models.main : config.models.task),
+    model: prefs?.model ?? (kind === "chat" ? config.models.main : config.models.task),
     ...(prefs?.effort ? { effort: prefs.effort } : {}),
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
@@ -55,7 +55,7 @@ function build(kind: SessionKind, cwd: string, ref: SessionRef, project?: string
 }
 
 /** Starts a subprocess for `kind` now so the next session of that kind opens without the spawn cost. */
-export function prewarm(kind: "main" | "task") {
+export function prewarm(kind: "chat") {
   if (warm.has(kind)) return;
   const ref: SessionRef = {};
   const id = randomUUID();
@@ -79,7 +79,7 @@ function takeWarm(kind: SessionKind): Warm | undefined {
 }
 
 /** Drops the warm process so the next one is built with the current system prompt (memory index). */
-export function rewarm(kind: "main" | "task") {
+export function rewarm(kind: "chat") {
   const entry = takeWarm(kind);
   if (!entry) return;
   void entry.ready.then((q) => q.close()).catch(() => {});
@@ -93,7 +93,15 @@ export function closeWarm() {
 
 const log = logger("session");
 
-export type SessionKind = "main" | "task" | "code";
+/**
+ * chat: a conversation with the assistant, in its workspace — every Telegram topic, every
+ * `pai claude`, every thread the dashboard opens; none of them is special. code: a builder
+ * thread in one of the user's repositories.
+ */
+export type SessionKind = "chat" | "code";
+
+/** Rows from before the rename. */
+export const asKind = (raw: string): SessionKind => (raw === "code" ? "code" : "chat");
 
 /** Commands that only make sense at a terminal, or that pai handles itself. */
 const HIDDEN_COMMANDS = new Set(["exit", "quit", "login", "logout", "statusline", "terminal-setup", "vim", "theme", "config", "ide", "resume", "clear", "doctor", "bug", "install-github-app", "mcp", "add-dir", "hooks", "permissions", "agents", "keybindings", "heapdump", "color", "auto-mode-setup", "workflow-launch-exec", "fast"]);

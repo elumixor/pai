@@ -1,4 +1,4 @@
-import { Session, UNTITLED, closeWarm, prewarm, rewarm, type Effort, type SessionKind } from "./session.ts";
+import { Session, UNTITLED, asKind, closeWarm, prewarm, rewarm, type Effort, type SessionKind } from "./session.ts";
 import { db, kv, now } from "../core/db.ts";
 import { existsSync, watch } from "node:fs";
 import { join } from "node:path";
@@ -10,29 +10,6 @@ import { logger } from "../core/log.ts";
 const log = logger("sessions");
 
 const live = new Map<string, Session>();
-
-const MAIN_KEY = "main_session";
-
-/** The one conversation that lives in the root of the chat. Resumed across restarts. */
-export function main(): Session {
-  const id = kv.get(MAIN_KEY);
-  if (id) {
-    const existing = ensureLive(id);
-    if (existing) return existing;
-  }
-  const session = new Session({ kind: "main", title: "pai", cwd: config.workspace });
-  live.set(session.id, session);
-  kv.set(MAIN_KEY, session.id);
-  log.info(`main session ${session.shortId}`);
-  return session;
-}
-
-/** Forget the main conversation; the next message starts a fresh one. */
-export function resetMain() {
-  const id = kv.get(MAIN_KEY);
-  if (id) find(id)?.kill();
-  kv.del(MAIN_KEY);
-}
 
 export interface SpawnTask {
   title: string;
@@ -46,20 +23,20 @@ export interface SpawnTask {
 
 /** A task session: its own topic, its own context. With a project it runs in that repo. */
 export function spawnTask(opts: SpawnTask): Session {
-  let kind: SessionKind = "task";
+  let kind: SessionKind = "chat";
   let cwd = config.workspace;
   let project: string | undefined;
   if (opts.project) {
     const proj = getProject(opts.project);
     if (!proj) throw new Error(`unknown project: ${opts.project}`);
-    kind = proj.kind === "repo" ? "code" : "task";
+    kind = proj.kind === "repo" ? "code" : "chat";
     cwd = proj.path;
     project = proj.slug;
   }
   const session = new Session({ kind, title: opts.title.trim() || UNTITLED, cwd, project, threadId: opts.threadId, parent: opts.parent, model: opts.model, effort: opts.effort });
   live.set(session.id, session);
   log.info(`spawned ${kind} ${session.shortId} "${opts.title}"`);
-  prewarm("task");
+  prewarm("chat");
   bus.emitEvent("task.created", session.summary(), session.id);
   return session;
 }
@@ -98,7 +75,7 @@ export function revive(sessionId: string): Session | undefined {
     | undefined;
   if (!row) return undefined;
   const session = new Session({
-    kind: row.kind,
+    kind: asKind(row.kind),
     title: row.title,
     cwd: workingDirectory(row.cwd, row.project),
     project: row.project ?? undefined,
@@ -120,7 +97,7 @@ export function adopt(sessionId: string, cwd: string, title: string): Session {
   if (known) return known;
   const project = getProject(cwd) ?? allProjects().find((p) => cwd === p.path || cwd.startsWith(`${p.path}/`));
   const session = new Session({
-    kind: project ? "code" : "task",
+    kind: project ? "code" : "chat",
     title: title.slice(0, 80) || sessionId.slice(0, 8),
     cwd: workingDirectory(cwd, project?.slug ?? null),
     project: project?.slug,
@@ -200,7 +177,7 @@ export function recent(limit = 20, kind?: SessionKind): SessionRow[] {
   return rows.map((r) => ({
     sessionId: r.session_id,
     shortId: r.short_id,
-    kind: r.kind,
+    kind: asKind(r.kind),
     title: r.title,
     project: r.project,
     cwd: r.cwd,
@@ -251,10 +228,9 @@ export function killAll() {
   live.clear();
 }
 
-/** Opens the main conversation and readies a process for the next task, so first replies are quick. */
+/** Readies a process for the next conversation, so first replies are quick. */
 export function warmUp() {
-  main();
-  prewarm("task");
+  prewarm("chat");
 }
 
 /** Frees the subprocess of long-idle task sessions. The session itself stays resumable. */
@@ -265,7 +241,7 @@ export function reapIdle() {
       live.delete(s.id);
       continue;
     }
-    if (s.kind === "main" || s.state !== "idle" || s.pending) continue;
+    if (s.state !== "idle" || s.pending) continue;
     const row = db.query("SELECT last_activity FROM sessions WHERE session_id = ?").get(s.id) as
       | { last_activity: number }
       | undefined;
@@ -289,29 +265,27 @@ export function watchMemory() {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const watcher = watch(file, () => {
     clearTimeout(timer);
-    timer = setTimeout(() => rewarm("task"), 2000);
+    timer = setTimeout(() => rewarm("chat"), 2000);
   });
   return () => watcher.close();
 }
 
-export function relayTasksToMain() {
+/** What a thread reports goes to the thread that started it, as a note in its context. */
+export function relayToParent() {
   bus.on("event", (e: PaiEvent) => {
     if (!e.sessionId) return;
     const s = find(e.sessionId);
-    if (!s || s.kind === "main") return;
-    const tag = `[task ${s.shortId} · ${s.title}]`;
-    const mainId = kv.get(MAIN_KEY);
-    const targets = new Set([mainId, s.parent].filter((id): id is string => Boolean(id)).map((id) => find(id)));
-    for (const m of targets) {
-      if (!m || m.state === "dead" || m === s) continue;
-      if (e.kind === "session.turn_end") {
-        const text = String(e.payload.text ?? "").trim();
-        if (text) m.inject(`${tag} reported:\n${text.slice(0, 1500)}`);
-      } else if (e.kind === "session.question") {
-        m.inject(`${tag} is waiting for the user to answer a question.`);
-      } else if (e.kind === "session.error") {
-        m.inject(`${tag} failed: ${e.payload.message}`);
-      }
+    if (!s?.parent) return;
+    const m = find(s.parent);
+    if (!m || m.state === "dead" || m === s) return;
+    const tag = `[thread ${s.shortId} · ${s.title}]`;
+    if (e.kind === "session.turn_end") {
+      const text = String(e.payload.text ?? "").trim();
+      if (text) m.inject(`${tag} reported:\n${text.slice(0, 1500)}`);
+    } else if (e.kind === "session.question") {
+      m.inject(`${tag} is waiting for the user to answer a question.`);
+    } else if (e.kind === "session.error") {
+      m.inject(`${tag} failed: ${e.payload.message}`);
     }
   });
 }

@@ -13,7 +13,7 @@ import { sections } from "./prompts.ts";
  * which gets the project's files and the user's global config but none of pai's tools.
  */
 
-export const SURFACES = ["main", "task", "code", "terminal"] as const;
+export const SURFACES = ["chat", "code", "terminal"] as const;
 export type Surface = (typeof SURFACES)[number];
 
 export interface ContextItem {
@@ -34,7 +34,7 @@ const readIf = (path: string) => (existsSync(path) ? readFileSync(path, "utf8") 
 function instructions(): ContextItem[] {
   const out: ContextItem[] = [];
   const persona = join(config.workspace, "CLAUDE.md");
-  out.push({ kind: "instruction", name: "persona (workspace/CLAUDE.md)", description: "read by every pai session, as the cwd's CLAUDE.md", source: persona, editable: true, surfaces: ["main", "task"], body: readIf(persona) });
+  out.push({ kind: "instruction", name: "persona (workspace/CLAUDE.md)", description: "read by every pai session, as the cwd's CLAUDE.md", source: persona, editable: true, surfaces: ["chat"], body: readIf(persona) });
   for (const [name, text, kinds] of sections())
     out.push({ kind: "instruction", name, description: "appended to the system prompt by src/domain/prompts.ts", source: "src/domain/prompts.ts", editable: false, surfaces: kinds, body: text });
   for (const m of modules)
@@ -43,7 +43,7 @@ function instructions(): ContextItem[] {
   for (const project of allProjects()) {
     const file = join(project.path, "CLAUDE.md");
     if (existsSync(file))
-      out.push({ kind: "instruction", name: `${project.slug}/CLAUDE.md`, description: project.kind === "context" ? "the project's voice and rules" : "the repo's own instructions", source: file, editable: true, surfaces: [project.kind === "context" ? "task" : "code", "terminal"], project: project.slug, body: readIf(file) });
+      out.push({ kind: "instruction", name: `${project.slug}/CLAUDE.md`, description: project.kind === "context" ? "the project's voice and rules" : "the repo's own instructions", source: file, editable: true, surfaces: [project.kind === "context" ? "chat" : "code", "terminal"], project: project.slug, body: readIf(file) });
   }
   const global = join(homedir(), ".claude", "CLAUDE.md");
   if (existsSync(global)) out.push({ kind: "instruction", name: "~/.claude/CLAUDE.md", description: "the user's global instructions — terminal sessions only, pai loads project settings alone", source: global, editable: true, surfaces: ["terminal"], body: readIf(global) });
@@ -52,7 +52,7 @@ function instructions(): ContextItem[] {
 
 function memories(): ContextItem[] {
   const file = join(config.workspace, "MEMORY.md");
-  return [{ kind: "memory", name: "MEMORY.md", description: "what the assistant remembers, a markdown file it edits itself", source: file, editable: true, surfaces: ["main", "task", "code"], body: readIf(file) ?? "" }];
+  return [{ kind: "memory", name: "MEMORY.md", description: "what the assistant remembers, a markdown file it edits itself", source: file, editable: true, surfaces: ["chat", "code"], body: readIf(file) ?? "" }];
 }
 
 function skillsIn(dir: string, surfaces: readonly Surface[], project?: string): ContextItem[] {
@@ -68,8 +68,8 @@ function skillsIn(dir: string, surfaces: readonly Surface[], project?: string): 
 }
 
 function skills(): ContextItem[] {
-  const out = skillsIn(join(config.workspace, ".claude", "skills"), ["main", "task"]);
-  for (const project of allProjects()) out.push(...skillsIn(join(project.path, ".claude", "skills"), project.kind === "context" ? ["task", "terminal"] : ["code", "terminal"], project.slug));
+  const out = skillsIn(join(config.workspace, ".claude", "skills"), ["chat"]);
+  for (const project of allProjects()) out.push(...skillsIn(join(project.path, ".claude", "skills"), project.kind === "context" ? ["chat", "terminal"] : ["code", "terminal"], project.slug));
   out.push(...skillsIn(join(homedir(), ".claude", "skills"), ["terminal"]));
   return out;
 }
@@ -88,8 +88,8 @@ function tools(): ContextItem[] {
       surfaces: on ? m.tools.kinds : [],
     });
   }
-  out.push({ kind: "tool", name: "claude.ai connectors (Gmail, Calendar, Drive, Notion, …)", description: "whatever is connected in the Claude account on the box", source: "claude.ai", editable: false, surfaces: ["main", "task", "code", "terminal"] });
-  out.push({ kind: "tool", name: "Claude Code built-ins (Bash, Read, Edit, WebSearch, …)", description: "the standard tool set", source: "claude code", editable: false, surfaces: ["main", "task", "code", "terminal"] });
+  out.push({ kind: "tool", name: "claude.ai connectors (Gmail, Calendar, Drive, Notion, …)", description: "whatever is connected in the Claude account on the box", source: "claude.ai", editable: false, surfaces: ["chat", "code", "terminal"] });
+  out.push({ kind: "tool", name: "Claude Code built-ins (Bash, Read, Edit, WebSearch, …)", description: "the standard tool set", source: "claude code", editable: false, surfaces: ["chat", "code", "terminal"] });
   return out;
 }
 

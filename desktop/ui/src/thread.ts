@@ -197,9 +197,9 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
     el(
       "header.panel-head",
       {},
-      icon(session.kind === "main" ? "bot" : session.kind === "claude" ? "terminal" : "message", 14),
+      icon(session.kind === "claude" ? "terminal" : session.kind === "code" ? "code" : "message", 14),
       heading,
-      el("span.dim.ellipsis", { title: session.cwd ?? "" }, session.kind === "main" ? "main" : (session.project ?? session.cwd?.replace(/^.*\//, "") ?? "")),
+      el("span.dim.ellipsis", { title: session.cwd ?? "" }, (session.project ?? session.cwd?.replace(/^.*\//, "") ?? "")),
       session.parent ? el("span.dim", { title: `started by session ${session.parent}` }, `↳ from ${session.parent.slice(0, 6)}`) : undefined,
       stateTag,
       modelTag,

@@ -18,7 +18,7 @@ export const modules: readonly Module[] = [
     kind: "tools",
     enabled: () => true,
     status: () => ({ port: config.browserPort }),
-    tools: { server: "playwright", names: ["browser_navigate", "browser_click", "browser_snapshot", "…"], kinds: ["main", "task", "code"] },
+    tools: { server: "playwright", names: ["browser_navigate", "browser_click", "browser_snapshot", "…"], kinds: ["chat", "code"] },
   },
   {
     name: "tasks",
@@ -27,7 +27,7 @@ export const modules: readonly Module[] = [
     kind: "tools",
     enabled: () => true,
     status: () => ({}),
-    tools: { server: "pai", names: ["start_task", "send_to_task", "list_tasks", "task_output", "stop_task", "progress", "list_projects", "describe_project"], kinds: ["main"] },
+    tools: { server: "pai", names: ["start_task", "send_to_task", "list_tasks", "task_output", "stop_task", "progress", "list_projects", "describe_project"], kinds: ["chat"] },
   },
   gmailModule,
   {

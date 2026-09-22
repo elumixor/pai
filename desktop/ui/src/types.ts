@@ -1,7 +1,7 @@
 export interface SessionSummary {
   readonly sessionId: string;
   readonly shortId: string;
-  /** `main`, `task`, `code` — or `claude`, a conversation on disk the daemon has not run yet. */
+  /** `chat`, `code` — or `claude`, a conversation on disk the daemon has not run yet. */
   readonly kind: string;
   readonly title: string;
   readonly state: string;

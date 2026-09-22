@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { config } from "./core/config.ts";
 import { refresh } from "./domain/catalog.ts";
 import { restoreDaemonJob, startServer } from "./api/server.ts";
-import { killAll, noteInterrupted, reapIdle, relayTasksToMain, resumeInterrupted, warmUp, watchMemory } from "./domain/sessions.ts";
+import { killAll, noteInterrupted, reapIdle, relayToParent, resumeInterrupted, warmUp, watchMemory } from "./domain/sessions.ts";
 import { closeAll as closeTerminals } from "./domain/terminals.ts";
 import { startBrowser } from "./domain/browser.ts";
 import { startEditor } from "./domain/editor.ts";
@@ -20,7 +20,7 @@ mkdirSync(config.workspace, { recursive: true });
 refresh();
 // Before anything spawns a session: their tools and prompt come from the modules too.
 await external.load();
-relayTasksToMain();
+relayToParent();
 const stopMemoryWatch = watchMemory();
 const server = startServer();
 const stopBrowser = startBrowser();

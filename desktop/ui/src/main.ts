@@ -312,7 +312,7 @@ async function commands(): Promise<Command[]> {
   const projectCommands = catalog.map<Command>((project) => ({ id: `project:${project.slug}`, title: project.slug, group: "project", hint: project.summary, run: () => selectProject(project) }));
   const threadCommands = sessions.map<Command>((session) => ({
     id: `thread:${session.sessionId}`,
-    title: session.kind === "main" ? "assistant" : session.title || session.shortId,
+    title: session.title || session.shortId,
     group: "thread",
     icon: session.kind === "claude" ? "terminal" : "message",
     hint: projectOf(session, catalog),

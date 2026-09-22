@@ -6,8 +6,9 @@ session each, over the Agent SDK), the HTTP API, the client, files, hosting. Eve
 a module from its own repository (`pai.config.ts`): `pai-browser` (a signed-in headless browser on the
 box, one session per site, logins captured from the Mac's Arc), `pai-builder` (coding threads),
 `pai-telegram` (the chat and the user's account), `pai-linkedin` (requires browser). A module's
-`requires` orders loading; `ctx.use(name)` hands it another module's `api`. A message in Telegram's main topic is a turn
-in the main session; another topic is a thread of its own.
+`requires` orders loading; `ctx.use(name)` hands it another module's `api`. There is no main thread: every Telegram topic, every
+`pai claude`, every thread in the app is one conversation (`chat`) with the same assistant; a builder
+thread in a repo is `code`.
 
 ## Feedback loop
 
@@ -43,7 +44,7 @@ daemon's own controls and stays out of `pai --help`.
 `SDKUserMessage`s is fed to the process, messages come back as SDK events and are turned
 into bus events (`session.delta`, `session.text`, `session.tool`, `session.turn_end`,
 `session.question`, …). `inject()` appends context with `shouldQuery: false`, which is how
-task results reach the main conversation without a model call.
+a thread's results reach its parent without a model call.
 
 `prewarm()` keeps one initialised `task` process ready via `startup()`; a new task adopts it and its session id, so first replies take ~1s instead of ~30s. A dead process is revived with `resume` (`sessions.ensureLive()`); the transcript lives in
 `~/.claude/projects`. `settingSources: ["project"]` keeps the user's global hooks and
@@ -61,7 +62,7 @@ project's `CLAUDE.md`.
 
 - `src/core/` — `config.ts`, `log.ts`, `bus.ts`, `db.ts`. Configuration is read once, at import.
 - `src/domain/session.ts` — one SDK session, the event mapping, questions.
-- `src/domain/sessions.ts` — registry, main session (`kv.main_session`), tasks, revival, reaper, task→main relay.
+- `src/domain/sessions.ts` — registry, spawning (`spawnTask`: chat in the workspace, code in a repo), revival, reaper, parent relay (a thread's reports land in the thread that started it).
 - `src/domain/memory.ts` — long-term memory files, index, search.
 - `src/domain/terminal.ts`, `terminals.ts`, `pty-host.mjs` — PTYs on the host. node-pty only loads under Node, so each terminal is a small Node process the daemon talks to in JSON lines.
 - `src/domain/tools.ts` — the in-process `pai` MCP server, one instance per session (bound through a ref, since warm processes exist before their session).

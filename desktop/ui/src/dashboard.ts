@@ -289,7 +289,7 @@ export function dashboard(root: HTMLElement, handlers: DashboardHandlers) {
       "daemon.started",
       "daemon.updated",
     ];
-    const actions = { notify: "notify me on Telegram", turn: "tell the main conversation", task: "start a task in a project" };
+    const actions = { notify: "notify me on Telegram", turn: "open a conversation with it", task: "start a task in a project" };
     const form = async (initial?: Automation) => {
       const answer = await dialog({
         title: initial ? "Edit automation" : "New automation",
@@ -378,7 +378,7 @@ export function dashboard(root: HTMLElement, handlers: DashboardHandlers) {
   async function context() {
     const data = await contextItems();
     const groups: Record<ContextItem["kind"], string> = { instruction: "Instructions", memory: "Memory", skill: "Skills", tool: "Tools" };
-    const surfaceLabel: Record<string, string> = { main: "main", task: "task", code: "code", terminal: "terminal" };
+    const surfaceLabel: Record<string, string> = { chat: "chat", code: "code", terminal: "terminal" };
     const pane = el("div.ctx-editor.panel");
     let disposeEditor: () => void = () => {};
     const open = async (item: ContextItem) => {
@@ -417,7 +417,7 @@ export function dashboard(root: HTMLElement, handlers: DashboardHandlers) {
 
 const surfaceDescription = (surface: string) =>
   ({
-    main: "the main conversation (Telegram root chat, the assistant thread)",
+    chat: "a conversation with the assistant (a Telegram topic, pai claude, a thread in the app)",
     task: "a task session: its own topic, the workspace or a context project as cwd",
     code: "a coding session in a repository",
     terminal: "claude started in a terminal on this machine — not through pai",
