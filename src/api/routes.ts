@@ -212,8 +212,11 @@ export async function handle(req: Request): Promise<Response> {
     // What each kind of session is given, for the dashboard.
     if (path === "/context") return json(context());
 
-    // A module's own http, under its name.
-    if (path.startsWith("/m/")) return (await external.route(req, url)) ?? json({ error: "not found" }, 404);
+    // A module's own http, under its name; anything else under /m/ is a message page (below).
+    if (path.startsWith("/m/")) {
+      const answered = await external.route(req, url);
+      if (answered) return answered;
+    }
 
     // One list for the dashboard: the built-in pieces and the modules from their own repositories.
     if (path === "/modules")
