@@ -28,6 +28,7 @@ export const CORE: readonly Command[] = [
   { name: "menubar", args: "[install|uninstall]", description: "the menu bar app on this Mac" },
   { name: "modules", args: "[update|restart]", description: "the modules: state, health" },
   { name: "completion", args: "[install]", description: "shell completion for zsh" },
+  { name: "version", description: "pai here and on the box" },
 ];
 
 export const FILES: readonly Command[] = [
