@@ -4,12 +4,25 @@
  * itself.
  */
 import { $ } from "bun";
-import { existsSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { config } from "../core/config.ts";
 
 const git = (...args: string[]) => $`git ${args}`.cwd(config.repo).nothrow().quiet();
+
+/** The zsh completion, sourced from `.zshrc`; regenerated on every client update. */
+export async function installCompletion(script: string) {
+  const dir = join(homedir(), ".config", "pai");
+  const file = join(dir, "completion.zsh");
+  mkdirSync(dir, { recursive: true });
+  await Bun.write(file, script);
+  const rc = join(homedir(), ".zshrc");
+  const line = `source ${file.replace(homedir(), "~")}`;
+  const current = existsSync(rc) ? readFileSync(rc, "utf8") : "";
+  if (!current.includes(line)) appendFileSync(rc, `\n# pai completion\n${line}\n`);
+  return { file, rc };
+}
 
 export async function update() {
   const before = (await git("rev-parse", "--short", "HEAD")).stdout.toString().trim();

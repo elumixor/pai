@@ -3,8 +3,10 @@
 Personal assistant that runs on a box (Hetzner) and is used from a Mac (`pai …`, the menu bar
 app, the desktop app) and from Telegram. The core here is the daemon: sessions (one Claude Code
 session each, over the Agent SDK), the HTTP API, the client, files, hosting. Everything else is
-a module from its own repository (`pai.config.ts`): `pai-builder` (coding threads), `pai-telegram`
-(the chat and the user's account), `pai-linkedin`. A message in Telegram's main topic is a turn
+a module from its own repository (`pai.config.ts`): `pai-browser` (a signed-in headless browser on the
+box, one session per site, logins captured from the Mac's Arc), `pai-builder` (coding threads),
+`pai-telegram` (the chat and the user's account), `pai-linkedin` (requires browser). A module's
+`requires` orders loading; `ctx.use(name)` hands it another module's `api`. A message in Telegram's main topic is a turn
 in the main session; another topic is a thread of its own.
 
 ## Feedback loop
@@ -16,6 +18,7 @@ pai claude [args]          # the main conversation in this terminal, on the box
 pai ssh [command]          # a shell (or one command) on the box; `connect` is the same
 pai status | update | cost | files [status|watch|sync|push|pull|diff|on|off|reset]
 pai menubar [install|uninstall]     # the Mac menu bar app: quota rings, what runs, files, links
+pai completion install              # zsh completion (src/clients/help.ts is the one table: help + completion)
 bun run infra [--destroy]  # the Hetzner host from nothing (provision + bootstrap), idempotent
 
 pai dev daemon [-f]        # detached; -f/--foreground = attached, verbose, telegram off

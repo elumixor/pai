@@ -77,6 +77,8 @@ export interface ModuleContext {
   /** The event bus: what happens in sessions and modules. */
   readonly on: (listener: (event: PaiEvent) => void) => () => void;
   readonly emit: (kind: string, payload: Record<string, unknown>, sessionId?: string) => void;
+  /** What another module exports as its `api` (one this module `requires`), typed by the caller. */
+  readonly use: <T>(module: string) => T;
 }
 
 /** What `pai <name> …` is handed: the API of the daemon it runs next to, and the terminal. */
@@ -89,6 +91,10 @@ export interface CliContext {
   readonly api: (path: string, init?: RequestInit) => Promise<any>;
   readonly post: (path: string, data: unknown) => Promise<any>;
   readonly out: (data: unknown, pretty?: () => string) => void;
+  /** A spinner on stderr with a label; `update` changes it, `stop` ends it, with a note or not. */
+  readonly spin: (label: string) => { update(label: string): void; stop(note?: string): void };
+  /** Another module's command line, run right here (a module's `login` that is really the browser's). */
+  readonly run: (module: string, args: readonly string[]) => Promise<number>;
 }
 
 export interface ModulePrompt {
@@ -105,6 +111,10 @@ export interface PaiModule {
   readonly name: string;
   readonly title: string;
   readonly description: string;
+  /** Modules this one builds on; they load and start first, and `ctx.use(name)` gives their `api`. */
+  readonly requires?: readonly string[];
+  /** What other modules get from `ctx.use(this.name)`. */
+  readonly api?: object;
   readonly kind?: "channel" | "tools" | "source" | "service";
   /** Off means nothing of it reaches sessions; default on. */
   readonly enabled?: (ctx: ModuleContext) => boolean;

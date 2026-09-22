@@ -132,25 +132,54 @@ function contextFor(name: string, dir: string): ModuleContext {
       return () => bus.off("event", listener);
     },
     emit: (kind, payload, sessionId) => void bus.emitEvent(kind, payload, sessionId),
+    use: <T>(other: string): T => {
+      const l = loaded.get(other);
+      if (!l?.module?.api) throw new Error(`${name}: module ${other} is not loaded or has no api`);
+      return l.module.api as T;
+    },
   };
+}
+
+/** Configured modules ordered so that what a module requires comes before it. */
+function ordered(modules: Readonly<Record<string, string>>, requiresOf: (name: string) => readonly string[]) {
+  const out: string[] = [];
+  const visit = (name: string, trail: string[]) => {
+    if (out.includes(name)) return;
+    if (trail.includes(name)) throw new Error(`modules require each other in a loop: ${[...trail, name].join(" → ")}`);
+    for (const dep of requiresOf(name)) if (modules[dep]) visit(dep, [...trail, name]);
+    out.push(name);
+  };
+  for (const name of Object.keys(modules)) visit(name, []);
+  return out;
 }
 
 /** Imports every configured module, installing what is missing. Called once, by the daemon. */
 export async function load() {
   const { modules } = await readConfig();
   const [sessions, catalog, transcript] = await Promise.all([import("../domain/sessions.ts"), import("../domain/catalog.ts"), import("../domain/transcript.ts")]);
+  // Import everything first (to know what requires what), then register in dependency order.
+  const imported = new Map<string, PaiModule>();
   for (const [name, source] of Object.entries(modules)) {
-    const dir = dirOf(name);
     try {
       if (!isInstalled(name)) await install(name, source);
-      const module = await importModule(dir);
-      const ctx = { ...contextFor(name, dir), sessions, catalog, threads: transcript.allThreads } as ModuleContext;
-      loaded.set(name, { name, source, dir, module, ctx });
-      linkSkills(module, dir);
+      imported.set(name, await importModule(dirOf(name)));
     } catch (err) {
       log.warn(`${name}: ${(err as Error).message}`);
-      loaded.set(name, { name, source, dir, error: (err as Error).message });
+      loaded.set(name, { name, source, dir: dirOf(name), error: (err as Error).message });
     }
+  }
+  for (const name of ordered(modules, (n) => imported.get(n)?.requires ?? [])) {
+    const module = imported.get(name);
+    if (!module) continue;
+    const missing = (module.requires ?? []).filter((dep) => !imported.has(dep));
+    if (missing.length) {
+      loaded.set(name, { name, source: modules[name]!, dir: dirOf(name), error: `requires ${missing.join(", ")}` });
+      continue;
+    }
+    const dir = dirOf(name);
+    const ctx = { ...contextFor(name, dir), sessions, catalog, threads: transcript.allThreads } as ModuleContext;
+    loaded.set(name, { name, source: modules[name]!, dir, module, ctx });
+    linkSkills(module, dir);
   }
   return [...loaded.values()];
 }
@@ -255,6 +284,7 @@ export async function describe() {
       prompt: l.module ? promptsOf(l.module)[0] : undefined,
       cli: Boolean(l.module?.cli),
       commands: l.module?.commands ?? [],
+      requires: l.module?.requires ?? [],
       routes: Boolean(l.module?.routes),
       ui: l.module?.ui ? `/m/${l.name}/ui/` : undefined,
       settings: l.module?.settings,
@@ -300,7 +330,7 @@ export async function runsHere(name: string, sub: string | undefined) {
 }
 
 /** `pai <name> …`: the module's own command line, against the daemon's API. */
-export async function runCli(name: string, args: readonly string[], api: CliContext["api"], post: CliContext["post"], out: CliContext["out"], json: boolean) {
+export async function runCli(name: string, args: readonly string[], api: CliContext["api"], post: CliContext["post"], out: CliContext["out"], json: boolean): Promise<number | undefined> {
   const { modules } = await readConfig();
   const source = modules[name];
   if (!source) return undefined;
@@ -310,7 +340,9 @@ export async function runCli(name: string, args: readonly string[], api: CliCont
   if (!module.cli) throw new Error(`${name} has no command line`);
   const dataDir = join(config.repo, "data", "modules", name);
   mkdirSync(dataDir, { recursive: true });
-  return (await module.cli({ name, dir, dataDir, args, json, api, post, out })) ?? 0;
+  const { spin } = await import("../clients/spinner.ts");
+  const run = async (other: string, otherArgs: readonly string[]) => (await runCli(other, otherArgs, api, post, out, json)) ?? 1;
+  return (await module.cli({ name, dir, dataDir, args, json, api, post, out, spin, run })) ?? 0;
 }
 
 export type { PaiEvent };

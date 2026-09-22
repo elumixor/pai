@@ -90,50 +90,15 @@ function summarize(e: any): string {
   return JSON.stringify(p).slice(0, 160);
 }
 
-const usage = `pai — the assistant on the box, from here
+const help = await import("./help.ts");
+type ModuleHelp = import("./help.ts").ModuleHelp;
 
-  claude [claude args…]   the main conversation in this terminal
-  ssh [command…]          a shell on the box, or one command there (connect is the same)
-  status                  the box: version, address, what is on
-  sync                    watch the files sync until everything is in step (pai files watch)
-  files [command]         the same files here and on the box (fs is the same); see pai files help
-  update                  update pai here and on the box
-  cost                    the Claude limits (session, weekly) and what the box costs
-  menubar [install|uninstall]  the menu bar app on this Mac: quota rings, what runs, links
-  modules [update|restart]     the modules pai is made of (pai.config.ts): state, health; update pulls them all
-
-  --json on any command for raw output`;
-
-/** The modules on the box and what `pai <module> …` accepts, appended to the help when the box answers. */
-async function modulesHelp() {
+/** The modules on the box and what `pai <module> …` accepts, for the help and the completion. */
+async function moduleHelp(): Promise<ModuleHelp[]> {
   const data = await api("/modules").catch(() => undefined);
   const ext = Array.isArray(data) ? data.filter((m: any) => m.external) : [];
-  if (!ext.length) return "";
-  const lines = ["", "-- modules --"];
-  for (const m of ext) {
-    lines.push(`pai ${m.name.padEnd(12)} ${m.description ?? ""}`);
-    for (const c of m.commands ?? []) lines.push(`  pai ${m.name} ${c.name.padEnd(22)} ${c.description}`);
-  }
-  return lines.join("\n");
+  return ext.map((m: any) => ({ name: m.name, description: m.description ?? "", commands: (m.commands ?? []).map((x: any) => ({ name: x.name.split(" ")[0] === x.name ? x.name : x.name.split(" ")[0], args: x.name.includes(" ") ? x.name.slice(x.name.indexOf(" ") + 1) : x.args, description: x.description })) }));
 }
-
-const devUsage = `pai dev — the daemon's own controls, for working on pai
-
-  chat <text>                  a turn in the main conversation — the same path as Telegram
-  task <title> <text>          start a task (own context, own topic) — --project <slug> for coding work
-  send <id> <text>             send a turn to a task; --wait for its reply
-  answer <id> <text>           answer a task's pending question
-  tasks                        running and recent tasks
-  stop <id|main> [--kill]      interrupt (or kill) a session
-  reset                        forget the main conversation
-  tail [id] [--raw]            follow the event stream
-  events [id]                  recent events
-  projects [--refresh]         coding projects as the assistant sees them
-  settings [KEY=value …]       read or change the daemon's settings; a change needs a restart
-  restart                      restart the daemon
-  daemon [--foreground]        start the daemon; --foreground stays attached, verbose
-  install [--uninstall]        the systemd service on the box + \`pai\` on PATH
-  update [--check] [--force]   this daemon only: pull, reinstall, rebuild, restart`;
 
 async function userCommand() {
   switch (cmd) {
@@ -254,7 +219,7 @@ async function userCommand() {
           out({ reset: true }, () => "history forgotten; the next cycle re-reads both sides");
           break;
         default:
-          console.log(filesUsage);
+          console.log(help.section("files", help.FILES));
       }
       break;
     }
@@ -309,14 +274,24 @@ async function userCommand() {
       );
       break;
     }
+    case "completion": {
+      const script = help.zshCompletion(await moduleHelp());
+      if (positional[0] !== "install") {
+        console.log(script);
+        break;
+      }
+      const { installCompletion } = await import("../host/client.ts");
+      out(await installCompletion(script), (): string => "completion installed — open a new shell (or `source ~/.zshrc`)");
+      break;
+    }
     case "dev":
-      console.log(devUsage);
+      console.log(help.section("dev", help.DEV));
       break;
     case undefined:
     case "help":
     case "--help":
     case "-h":
-      console.log(usage + (await modulesHelp()));
+      console.log(help.usage(await moduleHelp()));
       break;
     default: {
       // A module's own command line: on the box it runs here; from a laptop it runs there,
@@ -325,7 +300,7 @@ async function userCommand() {
       if (remoteBox && !(await external.runsHere(cmd!, positional[0]))) process.exit(await r.ssh(remoteBox, ["pai", cmd, ...args].map(r.quote).join(" ")));
       const code = await external.runCli(cmd!, args, api, post, out, jsonOut);
       if (code === undefined) {
-        console.log(usage);
+        console.log(help.usage(await moduleHelp()));
         process.exit(1);
       }
       process.exit(code);
@@ -381,15 +356,6 @@ function statusLines(data: any, label: string) {
     `projects  ${data.counts.projects}`,
   ];
 }
-
-const filesUsage = `pai files — the same files here and on the box
-
-  status                  what is in sync, what is not (default)
-  watch                   the same, live; watch on | off turns syncing on and off
-  sync [--local|--remote] one cycle now; conflicts are listed and nothing changes unless a side is chosen
-  push | pull             sync --local | sync --remote
-  diff                    the conflicts, side by side
-  reset                   forget what was agreed; the next cycle compares both sides afresh`;
 
 const STATE: Record<string, string> = {
   watching: "in sync",
@@ -540,7 +506,7 @@ async function devCommand() {
       break;
     }
     default:
-      console.log(devUsage);
+      console.log(help.section("dev", help.DEV));
   }
 }
 
