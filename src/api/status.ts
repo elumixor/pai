@@ -1,6 +1,5 @@
 import { $ } from "bun";
 import { config } from "../core/config.ts";
-import * as memory from "../domain/memory.ts";
 import { all as allProjects } from "../domain/catalog.ts";
 import { editorStatus } from "../domain/editor.ts";
 import { publicStatus, publicUrl } from "../domain/publish.ts";
@@ -36,7 +35,7 @@ export async function status() {
       published: config.public,
       idleShutdownMinutes: Math.round(config.idleShutdownMs / 60000),
     },
-    counts: { projects: allProjects().length, memories: memory.all().length },
+    counts: { projects: allProjects().length },
   };
 }
 

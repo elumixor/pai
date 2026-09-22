@@ -10,7 +10,6 @@ import { diagnostics } from "../domain/diagnostics.ts";
 import { recentEvents, waitFor } from "../core/bus.ts";
 import * as sessions from "../domain/sessions.ts";
 import * as terminals from "../domain/terminals.ts";
-import * as memory from "../domain/memory.ts";
 import { status as updateStatus, update } from "../host/update.ts";
 import { logger } from "../core/log.ts";
 import { events } from "./events.ts";
@@ -196,26 +195,12 @@ export async function handle(req: Request): Promise<Response> {
       return json({ ok: true });
     }
 
-    if (path === "/memory" && req.method === "POST") {
-      const input = await body<memory.Remember>(req);
-      try {
-        return json(memory.remember(input), 201);
-      } catch (err) {
-        return json({ error: (err as Error).message }, 400);
-      }
-    }
-
-    const memoryPath = /^\/memory\/([a-z0-9-]+)$/.exec(path);
-    if (memoryPath?.[1] && req.method === "DELETE") return json({ forgotten: memory.forget(memoryPath[1]) });
-
     // The slash commands a session's process accepts; a session that is not live falls back to the main one's.
     if (path === "/commands") {
       const raw = url.searchParams.get("session") ?? "main";
       const s = (raw === "main" ? sessions.main() : sessions.find(raw)) ?? sessions.main();
       return json(s.commands.length ? s.commands : sessions.main().commands);
     }
-
-    if (path === "/memory") return json(memory.recall(url.searchParams.get("q") ?? "", url.searchParams.get("project") ?? undefined));
 
     // What each kind of session is given, for the dashboard.
     if (path === "/context") return json(context());

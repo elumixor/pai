@@ -1,6 +1,7 @@
 import { Session, UNTITLED, closeWarm, prewarm, rewarm, type SessionKind } from "./session.ts";
 import { db, kv, now } from "../core/db.ts";
-import { existsSync } from "node:fs";
+import { existsSync, watch } from "node:fs";
+import { join } from "node:path";
 import { config } from "../core/config.ts";
 import { bus, type PaiEvent } from "../core/bus.ts";
 import { all as allProjects, get as getProject } from "./catalog.ts";
@@ -258,9 +259,20 @@ export function reapIdle() {
  * needs no tool call and works regardless of which frontend was attached. A task started
  * by another session reports to that session too.
  */
+/** A changed MEMORY.md is a changed prompt: the warm task process is rebuilt so the next task reads it. */
+export function watchMemory() {
+  const file = join(config.workspace, "MEMORY.md");
+  if (!existsSync(file)) return () => {};
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const watcher = watch(file, () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => rewarm("task"), 2000);
+  });
+  return () => watcher.close();
+}
+
 export function relayTasksToMain() {
   bus.on("event", (e: PaiEvent) => {
-    if (e.kind.startsWith("memory.")) rewarm("task");
     if (!e.sessionId) return;
     const s = find(e.sessionId);
     if (!s || s.kind === "main") return;
@@ -269,11 +281,7 @@ export function relayTasksToMain() {
     const targets = new Set([mainId, s.parent].filter((id): id is string => Boolean(id)).map((id) => find(id)));
     for (const m of targets) {
       if (!m || m.state === "dead" || m === s) continue;
-      if (e.kind === "memory.saved") {
-        m.inject(`${tag} ${e.payload.updated ? "updated" : "saved"} memory ${e.payload.name} (${e.payload.type}): ${e.payload.description}`);
-      } else if (e.kind === "memory.forgotten") {
-        m.inject(`${tag} forgot memory ${e.payload.name}`);
-      } else if (e.kind === "session.turn_end") {
+      if (e.kind === "session.turn_end") {
         const text = String(e.payload.text ?? "").trim();
         if (text) m.inject(`${tag} reported:\n${text.slice(0, 1500)}`);
       } else if (e.kind === "session.question") {

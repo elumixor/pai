@@ -42,10 +42,10 @@ task results reach the main conversation without a model call.
 `~/.claude/projects`. `settingSources: ["project"]` keeps the user's global hooks and
 plugins out of assistant sessions; claude.ai connectors still load.
 
-Long-term memory (`src/memory.ts`) is one markdown file per fact under `workspace/memory/`,
-frontmatter for name/type/description. Every session gets `remember` / `recall` / `forget`;
-the index goes into the system prompt, so a memory change re-warms the task process. Saves
-from tasks are injected into the main conversation.
+Long-term memory is `workspace/MEMORY.md`, imported by `workspace/CLAUDE.md` and edited by
+the sessions themselves with the Edit tool; no memory tools. A change re-warms the task process
+(`src/domain/sessions.ts` watches the file). What belongs to one project goes into that
+project's `CLAUDE.md`.
 
 `AskUserQuestion` reaches `canUseTool` even under `bypassPermissions`. It becomes a
 `session.question` event; Telegram renders buttons, the CLI has `answer`.
@@ -79,7 +79,7 @@ from tasks are injected into the main conversation.
 - `src/domain/automations.ts` — `on <event> → notify | turn | task`, rows in the `automations` table, run from the bus; tasks capped at 6/h. `GET/POST/PATCH/DELETE /automations`.
 - `src/domain/diagnostics.ts` — `GET /diagnostics?path=` runs tsc on the project around a file (cached a minute per project); the client's editor shows them inline.
 - `src/domain/context.ts` — what each session kind is given (instructions, memories, skills, tools) with the surfaces that see it, for the dashboard's context view (`GET /context`).
-- Projects are repos under `devRoot` or **contexts**: `workspace/projects/<slug>/` with a `CLAUDE.md` (voice, rules) and project-scoped memories (`project:` in the frontmatter, `remember` with `scope: "project"`). `POST /projects {name, about}` creates one; a task in it runs with that directory as cwd.
+- Projects are repos under `devRoot` or **contexts**: `workspace/projects/<slug>/` with a `CLAUDE.md` (voice, rules, what to remember about it). `POST /projects {name, about}` creates one; a task in it runs with that directory as cwd.
 - `infra/` — `provision.ts` (Hetzner), `cloud-init.yaml`, `bootstrap.ts`, borg backup, `gateway.ts` (Caddy for a domain of your own, needs root), `firewall.ts` (open ports on the Hetzner firewall).
 - `menubar/main.swift` — menu bar status app: pai tasks plus the Claude quota rings (session and model-scoped weekly, token read from the Claude Code keychain item); compiled and loaded by `install` on macOS.
 - `workspace/` — the assistant's cwd; `CLAUDE.md` there is the persona, `inbox/` gets attachments.

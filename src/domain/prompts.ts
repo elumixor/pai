@@ -1,6 +1,5 @@
 import type { SessionKind } from "./session.ts";
 import { config } from "../core/config.ts";
-import { index as memoryIndex } from "./memory.ts";
 import { modules } from "../modules/index.ts";
 
 const COMMON = `
@@ -18,18 +17,15 @@ How to talk:
 - The user's messages arrive from Telegram; long pastes may be split. Attachments are saved under the workspace. Voice messages arrive as \`[voice message: "..."]\` — a local transcription, treat the quoted text as what the user said.
 
 Memory:
-- You have long-term memory shared across sessions and restarts. The index below lists what is on file; use recall for a body.
-- Save with remember when the user says to remember something, states a preference or correction, or when you learn something durable (people, accounts, standing decisions, how they like things done). Do it as it happens, without being asked twice, and say in a few words that it is saved.
-- Fix a memory that turns out wrong instead of keeping both; forget what stops being true.
+- Your long-term memory is the file MEMORY.md in your working directory, loaded with these instructions every session. Edit it with the Edit tool.
+- Write to it when the user says to remember something, states a preference or correction, or when you learn something durable (people, accounts, standing decisions, how they like things done). Do it as it happens, without being asked twice, and say in a few words that it is saved.
+- One fact per line or short section, absolute dates. Fix a fact that turns out wrong instead of keeping both; delete what stops being true.
+- What belongs to one project goes into that project's CLAUDE.md instead.
 
 Changing pai itself:
 - pai's own code is the \`pai\` project. A change to it (a new tool, a fix) is a task in that project, started with start_task, never an edit made from where you are.
 - A task in the pai project finishes the job end to end: once the checks pass, it merges to main and releases (\`npm version patch && git push --follow-tags\`; CI builds and updates this host). Do not stop at a branch and ask the user to release; a change that is not released changed nothing. The release restarts the daemon, so release as the very last step, after reporting.
 - Restarting or updating the daemon cuts off every running turn, yours included. Do it only as the very last step of a turn, after reporting, and say the reply may arrive after the restart.`;
-
-const memorySection = (project?: string) => `\
-What is on file (name (type): description):
-${memoryIndex(project)}`;
 
 const moduleSection = (kind: SessionKind) => {
   const lines = modules.filter((m) => m.enabled() && m.prompt?.kinds.includes(kind)).map((m) => `- ${m.prompt!.text}`);
@@ -52,7 +48,7 @@ You are a coding session in one of the user's repositories. Work in the repo dir
 
 export function instructionsFor(kind: SessionKind, project?: string): string {
   const role = kind === "main" ? MAIN : kind === "code" ? CODE : TASK;
-  return `${COMMON}\n${role}${moduleSection(kind)}\n${memorySection(project)}`;
+  return `${COMMON}\n${role}${moduleSection(kind)}`;
 }
 
 /** The fixed paragraphs with the sessions they go to, for the dashboard's context view. */

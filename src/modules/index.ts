@@ -44,15 +44,6 @@ export const modules: readonly Module[] = [
     tools: { server: "playwright", names: ["browser_navigate", "browser_click", "browser_snapshot", "…"], kinds: ["main", "task", "code"] },
   },
   {
-    name: "memory",
-    title: "Memory",
-    description: "Long-term facts as markdown files; the index is in every session's prompt, a project's own facts only in its sessions.",
-    kind: "tools",
-    enabled: () => true,
-    status: () => ({}),
-    tools: { server: "pai", names: ["remember", "recall", "forget"], kinds: ["main", "task", "code"] },
-  },
-  {
     name: "tasks",
     title: "Tasks",
     description: "The orchestrator's way of doing work: start_task opens another session in a project, with its own topic.",

@@ -269,8 +269,6 @@ export const updateAutomation = (id: number, changes: Partial<Automation>) => se
 export const deleteAutomation = (id: number) => send(`/automations/${id}`, {}, "DELETE");
 export const contextItems = () => get<{ surfaces: string[]; items: ContextItem[] }>("/context");
 export const createContextProject = (name: string, about: string) => send("/projects", { name, about });
-export const rememberMemory = (input: { name: string; type: string; description: string; body: string; project?: string }) => send("/memory", input);
-export const forgetMemory = (name: string) => send(`/memory/${name}`, {}, "DELETE");
 export const recentEvents = (limit = 60) => get<PaiEvent[]>(`/events?limit=${limit}`);
 export const addProject = (url: string, name?: string) => send("/projects", { url, name });
 export const openTerminal = async (project?: string, cwd?: string) => {

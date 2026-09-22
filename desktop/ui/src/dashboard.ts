@@ -1,6 +1,6 @@
 import {
-  automations as listAutomations, baseUrl, contextItems, createAutomation, createContextProject, deleteAutomation, forgetMemory, modules as listModules, patchModule, pollModule,
-  projects as listProjects, recentEvents, rememberMemory, send, status, sync, updateAutomation, usage,
+  automations as listAutomations, baseUrl, contextItems, createAutomation, createContextProject, deleteAutomation, modules as listModules, patchModule, pollModule,
+  projects as listProjects, recentEvents, send, status, sync, updateAutomation, usage,
 } from "./api.ts";
 import { ago, clear, dialog, el, until } from "./dom.ts";
 import { editor } from "./editor.ts";
@@ -97,7 +97,6 @@ export function dashboard(root: HTMLElement, handlers: DashboardHandlers) {
           "Setup",
           kv("workspace", health.settings.workspace),
           kv("projects", `${health.counts.projects} under ${health.settings.devRoot}`),
-          kv("memories", String(health.counts.memories)),
           kv("telegram", health.settings.telegram ? "on" : "off"),
           kv("updates", `${health.settings.updateChannel}${health.settings.autoUpdate ? " · automatic" : ""}`),
           syncState ? kv("sync", syncState.enabled ? (syncState.running ? "running" : "starting") : "off") : undefined,
@@ -124,7 +123,7 @@ export function dashboard(root: HTMLElement, handlers: DashboardHandlers) {
   async function modules() {
     const list = await listModules();
     const kinds: Record<ModuleInfo["kind"], string> = { channel: "talks to you", tools: "tools for sessions", source: "watches something", service: "infrastructure" };
-    const icons: Record<string, IconName> = { telegram: "send", "tg-user": "user", browser: "globe", memory: "brain", tasks: "list", linkedin: "link", gmail: "mail", editor: "code", public: "monitor", sync: "refresh" };
+    const icons: Record<string, IconName> = { telegram: "send", "tg-user": "user", browser: "globe", tasks: "list", linkedin: "link", gmail: "mail", editor: "code", public: "monitor", sync: "refresh" };
     const chip = (text: string, title?: string, cls = "") => el("span.chip", { class: `chip ${cls}`, title: title ?? "" }, text);
 
     const moduleCard = (m: ModuleInfo) => {
@@ -289,7 +288,6 @@ export function dashboard(root: HTMLElement, handlers: DashboardHandlers) {
       "session.turn_end",
       "session.question",
       "task.created",
-      "memory.saved",
       "daemon.started",
       "daemon.updated",
     ];
@@ -381,7 +379,7 @@ export function dashboard(root: HTMLElement, handlers: DashboardHandlers) {
 
   async function context() {
     const data = await contextItems();
-    const groups: Record<ContextItem["kind"], string> = { instruction: "Instructions", memory: "Memories", skill: "Skills", tool: "Tools" };
+    const groups: Record<ContextItem["kind"], string> = { instruction: "Instructions", memory: "Memory", skill: "Skills", tool: "Tools" };
     const surfaceLabel: Record<string, string> = { main: "main", task: "task", code: "code", terminal: "terminal" };
     const pane = el("div.ctx-editor.panel");
     let disposeEditor: () => void = () => {};
@@ -389,8 +387,6 @@ export function dashboard(root: HTMLElement, handlers: DashboardHandlers) {
       disposeEditor();
       if (item.editable) disposeEditor = (await editor(pane, item.source)) ?? (() => {});
       else clear(pane, el("header.panel-head", {}, icon("book", 13), el("h2", {}, item.name), el("span.dim.ellipsis", {}, item.source)), el("pre.ctx-body", {}, item.body ?? ""));
-      if (item.kind === "memory")
-        pane.querySelector(".panel-head")?.append(el("button.iconbtn", { title: "forget", onclick: async () => (await forgetMemory(item.name), void show("context")) }, icon("x", 13)));
     };
     const row = (item: ContextItem) =>
       el(
@@ -402,28 +398,10 @@ export function dashboard(root: HTMLElement, handlers: DashboardHandlers) {
         item.editable ? icon("file", 12) : el("span.spacer"),
       );
     const header = el("div.ctx-row.head", {}, el("span", {}, "what"), el("span.dim", {}, "from"), ...data.surfaces.map((s) => el("span.ctx-cell.label", { title: surfaceDescription(s) }, surfaceLabel[s] ?? s)), el("span"));
-    const newMemory = async () => {
-      const answer = await dialog({
-        title: "New memory",
-        description: "One fact per memory. Shared memories go into every session's prompt; a project's own stay in its sessions.",
-        fields: [
-          { name: "name", label: "Name (kebab-case)", placeholder: "dentist-contact", required: true },
-          { name: "type", label: "Type: user · person · preference · project · reference · fact", value: "fact", required: true },
-          { name: "description", label: "One line, shown in the index", required: true },
-          { name: "body", label: "The fact", required: true },
-          { name: "project", label: "Project (empty = shared)" },
-        ],
-        submit: "Save",
-      });
-      if (!answer) return;
-      const result = await rememberMemory({ name: answer.name ?? "", type: answer.type ?? "fact", description: answer.description ?? "", body: answer.body ?? "", project: answer.project || undefined });
-      if (result.error) alert(result.error);
-      void show("context");
-    };
     const list = el("div.ctx-list");
     for (const kind of Object.keys(groups) as ContextItem["kind"][]) {
       const items = data.items.filter((i) => i.kind === kind);
-      list.append(el("h3.section-title", {}, groups[kind], kind === "memory" ? el("button.iconbtn", { title: "new memory", onclick: () => void newMemory() }, icon("plus", 13)) : undefined), header.cloneNode(true), ...items.map(row));
+      list.append(el("h3.section-title", {}, groups[kind]), header.cloneNode(true), ...items.map(row));
       if (!items.length) list.append(note("none"));
     }
     clear(

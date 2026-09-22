@@ -104,7 +104,6 @@ const devUsage = `pai dev — the daemon's own controls, for working on pai
   projects [--refresh]         coding projects as the assistant sees them
   settings [KEY=value …]       read or change the daemon's settings; a change needs a restart
   restart                      restart the daemon
-  memory [query]               what the assistant remembers; a query searches
   daemon [--foreground]        start the daemon; --foreground stays attached, verbose, no telegram
   install [--uninstall]        the service (launchd / systemd) + \`pai\` on PATH
   update [--check] [--force]   this daemon only: pull, reinstall, rebuild, restart`;
@@ -228,7 +227,7 @@ function statusLines(data: any, label: string) {
     `editor    ${data.editor?.enabled ? `${data.editor.running ? "running" : "starting"} at ${data.editor.url}` : "off"}`,
     `sync      ${data.sync?.enabled ? (data.sync.running ? "running" : "starting") : "off"}`,
     `telegram  ${data.settings.telegram ? "on" : "off"}`,
-    `sessions  ${data.counts.projects} projects, ${data.counts.memories} memories`,
+    `projects  ${data.counts.projects}`,
   ];
 }
 
@@ -334,15 +333,6 @@ async function devCommand() {
     case "events": {
       const data = await api(`/events${positional[0] ? `?session=${positional[0]}` : ""}`);
       out(data, () => data.map((e: any) => `${clock(e.ts)} ${(e.sessionId ?? "").slice(0, 6).padEnd(6)} ${e.kind.padEnd(18)} ${summarize(e)}`).join("\n"));
-      break;
-    }
-    case "memory": {
-      const data = await api(`/memory?q=${encodeURIComponent(positional.join(" "))}`);
-      out(data, () =>
-        data.length
-          ? data.map((m: any) => `${m.name.padEnd(28)} ${m.type.padEnd(10)} ${m.description.slice(0, 80)}`).join("\n")
-          : "(nothing saved)",
-      );
       break;
     }
     case "projects": {

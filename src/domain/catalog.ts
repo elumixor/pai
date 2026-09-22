@@ -30,7 +30,7 @@ How to write here: tone, length, language, what to avoid.
 
 ## Preferences
 
-Standing decisions and constraints. Facts that change go to memory (remember with scope "project").
+Standing decisions and constraints, and what is worth remembering about this project.
 `;
 
 /** A project that is not a repository: a directory with a CLAUDE.md, so a session in it has a voice and rules. */

@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { config } from "../core/config.ts";
 import { modules } from "../modules/index.ts";
 import { all as allProjects } from "./catalog.ts";
-import * as memory from "./memory.ts";
 import { sections } from "./prompts.ts";
 
 /**
@@ -52,16 +51,8 @@ function instructions(): ContextItem[] {
 }
 
 function memories(): ContextItem[] {
-  return memory.all().map((m) => ({
-    kind: "memory",
-    name: m.name,
-    description: `${m.type}: ${m.description}`,
-    source: memory.pathOf(m.name),
-    editable: true,
-    surfaces: ["main", "task", "code"],
-    project: m.project,
-    body: m.body,
-  }));
+  const file = join(config.workspace, "MEMORY.md");
+  return [{ kind: "memory", name: "MEMORY.md", description: "what the assistant remembers, a markdown file it edits itself", source: file, editable: true, surfaces: ["main", "task", "code"], body: readIf(file) ?? "" }];
 }
 
 function skillsIn(dir: string, surfaces: readonly Surface[], project?: string): ContextItem[] {

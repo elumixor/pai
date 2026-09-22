@@ -143,13 +143,6 @@ export interface Entry {
   readonly modified: string;
 }
 
-export interface Memory {
-  readonly name: string;
-  readonly type: string;
-  readonly description: string;
-  readonly body: string;
-}
-
 export interface Status {
   readonly pid: number;
   readonly uptime: number;
@@ -165,7 +158,7 @@ export interface Status {
     readonly telegram: boolean;
     readonly idleShutdownMinutes: number;
   };
-  readonly counts: { readonly projects: number; readonly memories: number };
+  readonly counts: { readonly projects: number };
 }
 
 export interface PaiEvent {
