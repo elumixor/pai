@@ -1,4 +1,4 @@
-// pai menu bar: shows what the assistant is doing, polled from the local daemon, and the
+// pai menu bar: shows what the assistant is doing, polled from the box, and the
 // Claude subscription quota as two rings: the five-hour session window and the model-scoped
 // weekly limit. Each ring is one element for one window: a thin outer arc for the time still
 // left, a coloured inner arc for the share used, the percentage in the middle.
@@ -86,6 +86,9 @@ struct UsageLimit: Decodable {
     let scope: Scope?
 }
 struct Usage: Decodable { let fiveHour: UsagePeriod?; let limits: [UsageLimit]? }
+/// The box's own reading of the limits (`/usage`), for a Mac without a Claude login.
+struct BoxWindow: Decodable { let name: String; let percent: Int; let resetsAt: String?; let length: Double }
+struct BoxUsage: Decodable { let windows: [BoxWindow] }
 
 let isoFractional: ISO8601DateFormatter = {
     let f = ISO8601DateFormatter()
@@ -212,7 +215,15 @@ final class App: NSObject, NSApplicationDelegate {
 
     func pollUsage() {
         if claudeToken == nil { claudeToken = claudeAccessToken() }
-        guard let claudeToken else { return }
+        guard let claudeToken else {
+            get("/usage", BoxUsage.self) { u in
+                guard let u, !u.windows.isEmpty else { return }
+                self.windows = u.windows.map { QuotaWindow(name: $0.name, percent: $0.percent, resetsAt: isoDate($0.resetsAt), length: $0.length) }
+                self.usageFetchedAt = Date()
+                self.render()
+            }
+            return
+        }
         var req = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/usage")!)
         req.timeoutInterval = 10
         req.setValue("Bearer " + claudeToken, forHTTPHeaderField: "Authorization")
@@ -303,7 +314,7 @@ final class App: NSObject, NSApplicationDelegate {
 
         menu.removeAllItems()
         if windows.isEmpty {
-            menu.addItem(withTitle: claudeToken == nil ? "no Claude Code login" : "no Claude usage yet", action: nil, keyEquivalent: "")
+            menu.addItem(withTitle: claudeToken == nil ? "no Claude login here or on the box" : "no Claude usage yet", action: nil, keyEquivalent: "")
         }
         for w in windows {
             let reset = w.resetText.map { " · resets in \($0)" } ?? ""
@@ -314,7 +325,7 @@ final class App: NSObject, NSApplicationDelegate {
         }
         menu.addItem(.separator())
         if !up {
-            menu.addItem(withTitle: "no daemon at \(base)", action: nil, keyEquivalent: "")
+            menu.addItem(withTitle: "box not reachable (\(base))", action: nil, keyEquivalent: "")
         } else {
             if !version.isEmpty { menu.addItem(withTitle: version, action: nil, keyEquivalent: "") }
             if let m = main {
@@ -332,12 +343,12 @@ final class App: NSObject, NSApplicationDelegate {
             }
         }
         menu.addItem(.separator())
+        let c = NSMenuItem(title: "Claude in Terminal", action: #selector(openClaude), keyEquivalent: "c"); c.target = self
+        menu.addItem(c)
         let d = NSMenuItem(title: "Open dashboard", action: #selector(openDashboard), keyEquivalent: "d"); d.target = self
         menu.addItem(d)
-        let r = NSMenuItem(title: "Restart daemon", action: #selector(restart), keyEquivalent: "r"); r.target = self
-        menu.addItem(r)
-        let l = NSMenuItem(title: "Open API", action: #selector(openApi), keyEquivalent: "a"); l.target = self
-        menu.addItem(l)
+        let e = NSMenuItem(title: "Open editor", action: #selector(openEditor), keyEquivalent: "e"); e.target = self
+        menu.addItem(e)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
     }
@@ -347,15 +358,15 @@ final class App: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.open(URL(string: "\(dashboard)?s=\(id)")!)
     }
     @objc func openDashboard() { if !dashboard.isEmpty { NSWorkspace.shared.open(URL(string: dashboard)!) } }
-    /// Works wherever the daemon runs: it exits, and launchd or systemd brings it back.
-    @objc func restart() {
-        var req = URLRequest(url: URL(string: base + "/restart")!)
-        if !token.isEmpty { req.setValue("Bearer " + token, forHTTPHeaderField: "Authorization") }
-        req.httpMethod = "POST"
-        req.timeoutInterval = 3
-        URLSession.shared.dataTask(with: req).resume()
+    @objc func openEditor() { NSWorkspace.shared.open(URL(string: (dashboard.isEmpty ? base : String(dashboard.dropLast(4))) + "/editor/")!) }
+    /// `pai claude` in a new Terminal window: the main conversation, on the box.
+    @objc func openClaude() {
+        let script = "tell application \"Terminal\"\nactivate\ndo script \"pai claude\"\nend tell"
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", script]
+        try? process.run()
     }
-    @objc func openApi() { NSWorkspace.shared.open(URL(string: base + "/health")!) }
     @objc func openUsage() { NSWorkspace.shared.open(URL(string: "https://claude.ai/settings/usage")!) }
 }
 

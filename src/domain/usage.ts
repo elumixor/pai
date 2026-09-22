@@ -1,7 +1,7 @@
 import { $ } from "bun";
 import { hostname, homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync } from "node:fs";
 import { logger } from "../core/log.ts";
 import { list, recent } from "./sessions.ts";
 
@@ -130,6 +130,25 @@ let cached: { at: number; windows: readonly Window[]; fetchedAt?: string; via?: 
 
 /** A token the endpoint refused (a setup token: 403, then 429 for asking again) is left alone for a while. */
 let tokenRefusedUntil = 0;
+
+/**
+ * A laptop's Claude Code login, handed over so this machine reads the limits itself (and
+ * `claude` here is signed in). Written where Claude Code keeps it on Linux.
+ */
+export async function installCredentials(raw: string) {
+  const parsed = JSON.parse(raw) as { claudeAiOauth?: { accessToken?: string } };
+  if (!parsed.claudeAiOauth?.accessToken) throw new Error("not a Claude Code credentials file");
+  const file = join(homedir(), ".claude", ".credentials.json");
+  mkdirSync(dirname(file), { recursive: true });
+  await Bun.write(file, JSON.stringify(parsed));
+  chmodSync(file, 0o600);
+  tokenRefusedUntil = 0;
+  cached = undefined;
+  log.info("claude login installed from another machine");
+}
+
+/** Whether the limits could be read with a login of this machine's own, as a client decides whether to hand one over. */
+export const needsLogin = () => Boolean(cached?.error) || Date.now() < tokenRefusedUntil;
 const REFUSED_FOR = 60 * 60 * 1000;
 
 async function fetchWindows(): Promise<Omit<NonNullable<typeof cached>, "at">> {

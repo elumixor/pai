@@ -5,7 +5,7 @@ import { context } from "../domain/context.ts";
 import { byName as moduleByName, describeModules } from "../modules/index.ts";
 import { poll as linkedinPoll } from "../modules/linkedin.ts";
 import { handleConnect as gmailConnect, listAccounts as gmailAccounts, removeAccount as gmailRemove } from "../modules/gmail.ts";
-import { usage } from "../domain/usage.ts";
+import { installCredentials, needsLogin, usage } from "../domain/usage.ts";
 import { diagnostics } from "../domain/diagnostics.ts";
 import { recentEvents, waitFor } from "../core/bus.ts";
 import * as sessions from "../domain/sessions.ts";
@@ -144,7 +144,17 @@ export async function handle(req: Request): Promise<Response> {
     }
 
     // The subscription's limits and what the sessions have cost, for the clients' status line.
-    if (path === "/usage") return json(await usage());
+    if (path === "/usage") return json({ ...(await usage()), needsLogin: needsLogin() });
+
+    // A laptop's Claude Code login for this machine: the limits and `claude` here use it from now on.
+    if (path === "/usage/credentials" && req.method === "POST") {
+      try {
+        await installCredentials(await req.text());
+        return json(await usage());
+      } catch (err) {
+        return json({ error: (err as Error).message }, 400);
+      }
+    }
 
     // A turn in the main conversation, identical to a Telegram message in the root chat.
     if (path === "/chat" && req.method === "POST") {

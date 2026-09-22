@@ -13,22 +13,36 @@ if (dev && cmd === "daemon" && foreground) {
   process.env.PAI_VERBOSE ??= "1";
 }
 const { config } = await import("../core/config.ts");
-const base = `http://${config.host}:${config.port}`;
 const jsonOut = args.includes("--json");
 const positional = args.filter((a) => !a.startsWith("--"));
-const box = (await import("../host/remote.ts")).remote();
-const remoteBox = box && !(await import("../host/remote.ts")).isHere(box) ? box : undefined;
+const r = await import("../host/remote.ts");
+const box = r.remote();
+const remoteBox = box && !r.isHere(box) ? box : undefined;
+
+// On the box the API is the daemon next door; from a laptop it is the box's https address,
+// and there is no daemon here to talk to.
+let base = `http://${config.host}:${config.port}`;
+let auth: Record<string, string> = config.token ? { authorization: `Bearer ${config.token}` } : {};
+async function aim(relearn = false) {
+  if (!remoteBox) return;
+  const api = await r.boxApi(remoteBox, relearn);
+  base = api.url;
+  auth = { authorization: `Bearer ${api.token}` };
+}
+await aim();
 
 function flag(name: string): string | undefined {
   const i = args.indexOf(`--${name}`);
   return i >= 0 ? args[i + 1] : undefined;
 }
 
-// The daemon may be bound to an address other than loopback, where its own token applies.
-const auth: Record<string, string> = config.token ? { authorization: `Bearer ${config.token}` } : {};
-
-async function api(path: string, init?: RequestInit) {
+async function api(path: string, init?: RequestInit, retried = false): Promise<any> {
   const res = await fetch(base + path, { ...init, headers: { ...auth, ...(init?.headers as Record<string, string>) } });
+  // A stale token or address for the box: learn them again over ssh, once.
+  if (res.status === 401 && remoteBox && !retried) {
+    await aim(true);
+    return api(path, init, true);
+  }
   const text = await res.text();
   try {
     return JSON.parse(text) as any;
@@ -86,7 +100,8 @@ const usage = `pai — the assistant on the box, from here
   status                  this machine and the box: version, address, sync
   sync                    file sync with the box; pairs the two machines if they are not yet
   update                  update pai here and on the box
-  cost                    what the box costs per month, priced from Hetzner
+  cost                    the Claude limits (session, weekly) and what the box costs
+  menubar [install|uninstall]  the menu bar app on this Mac: quota rings, what runs, links
 
   --json on any command for raw output`;
 
@@ -105,7 +120,7 @@ const devUsage = `pai dev — the daemon's own controls, for working on pai
   settings [KEY=value …]       read or change the daemon's settings; a change needs a restart
   restart                      restart the daemon
   daemon [--foreground]        start the daemon; --foreground stays attached, verbose, no telegram
-  install [--uninstall]        the service (launchd / systemd) + \`pai\` on PATH
+  install [--uninstall]        the systemd service on the box + \`pai\` on PATH
   update [--check] [--force]   this daemon only: pull, reinstall, rebuild, restart`;
 
 const remoteNote = (access: { changed: boolean; ip?: string }) => {
@@ -117,7 +132,6 @@ async function userCommand() {
     // `pai ssh` is a shell on the box; `pai ssh <command>` runs that there and comes back.
     case "ssh":
     case "connect": {
-      const r = await import("../host/remote.ts");
       if (!box) throw new Error("no box configured: set PAI_REMOTE=user@host in .env");
       if (!remoteBox) throw new Error(`${box.target} is this machine`);
       remoteNote(await r.ensureAccess());
@@ -127,7 +141,6 @@ async function userCommand() {
     // box over ssh; on the box it is `claude --resume` in the workspace, with the daemon's
     // process for that conversation stopped so the two never write one transcript at once.
     case "claude": {
-      const r = await import("../host/remote.ts");
       const rest = args.filter((a) => a !== "--force");
       if (remoteBox) {
         remoteNote(await r.ensureAccess());
@@ -153,53 +166,39 @@ async function userCommand() {
       process.exit(code);
     }
     case "status": {
-      const here = await api("/health");
-      const there = remoteBox ? await boxCall("status").catch((err: Error) => ({ error: err.message })) : undefined;
-      out({ here, box: there }, () => [...statusLines(here, "here"), ...(there ? ["", ...statusLines(there, "box")] : [])].join("\n"));
+      const data = await api("/health");
+      out(data, () => statusLines(data, remoteBox ? "box" : "here").join("\n"));
       break;
     }
-    // Sync is between this machine and the box. Both daemons run Syncthing; pairing is each
-    // one being told the other's device id, which this does by itself over ssh.
     case "sync": {
-      const here = await api("/sync");
-      const there = remoteBox ? await boxCall("sync") : undefined;
-      let paired = false;
-      if (there && here.deviceId && there.deviceId && (here.peer !== there.deviceId || there.peer !== here.deviceId)) {
-        const r = await import("../host/remote.ts");
-        await patch("/settings", { PAI_SYNC: "1", PAI_SYNC_PEER: there.deviceId });
-        await r.sshCapture(remoteBox!, `pai dev settings PAI_SYNC=1 PAI_SYNC_PEER=${here.deviceId} && pai dev restart`);
-        await post("/restart", {});
-        paired = true;
-      }
-      out({ here, box: there, paired }, () =>
-        [
-          ...(paired ? ["paired this machine with the box; both daemons are restarting", ""] : []),
-          ...syncLines(here, "here"),
-          ...(there ? ["", ...syncLines(there, "box")] : ["", `box       ${box ? "(this machine)" : "(none configured)"}`]),
-        ].join("\n"),
-      );
+      const data = await api("/sync");
+      out(data, () => syncLines(data, remoteBox ? "box" : "here").join("\n"));
       break;
     }
-    // Here first, then the box: each daemon pulls what its channel says is new and restarts.
+    // The box pulls what its channel says is new and restarts; this checkout, when it is a
+    // laptop's, is pulled too and its menu bar app rebuilt.
     case "update": {
-      const here = await post("/update", {}).catch(async (err: Error) => {
-        if (!err.message.includes("Unable to connect")) throw err;
+      const there = await post("/update", {}).catch(async (err: Error) => {
+        if (!err.message.includes("Unable to connect") || remoteBox) throw err;
         return (await import("../host/update.ts")).update();
       });
-      const there = remoteBox ? await boxCall("update").catch((err: Error) => ({ error: err.message })) : undefined;
-      out({ here, box: there }, () => [`here  ${updateLine(here)}`, ...(there ? [`box   ${updateLine(there)}`] : [])].join("\n"));
+      const here = remoteBox ? await (await import("../host/client.ts")).update() : undefined;
+      out({ box: there, client: here }, () => [`${remoteBox ? "box   " : "here  "}${updateLine(there)}`, ...(here ? [`client ${here.head}${here.updated ? " — updated" : " — up to date"}`] : [])].join("\n"));
       break;
     }
+    // What runs the assistant costs: the Claude subscription's windows and the box.
     case "cost": {
-      const data = await api("/cost");
-      out(data, () =>
-        data.error
-          ? data.error
-          : [
-              ...data.lines.map((l: any) => `${l.name.padEnd(28)} ${l.monthly.toFixed(2)} ${data.currency}/mo`),
-              `${"total".padEnd(28)} ${data.monthlyTotal.toFixed(2)} ${data.currency}/mo`,
-            ].join("\n"),
-      );
+      const claude = await usageWithLogin();
+      const box = await api("/cost");
+      out({ claude, box }, () => [...usageLines(claude), "", ...costLines(box)].join("\n"));
+      break;
+    }
+    case "menubar": {
+      const m = await import("../host/menubar.ts");
+      const sub = positional[0] ?? "status";
+      if (sub === "install") out(await m.install(remoteBox ? await r.boxApi(remoteBox) : undefined), () => "menu bar app installed");
+      else if (sub === "uninstall") out(await m.uninstall(), () => "menu bar app removed");
+      else out(m.status(), () => (m.status().installed ? "installed" : "not installed (`pai menubar install`)"));
       break;
     }
     case "dev":
@@ -210,13 +209,43 @@ async function userCommand() {
   }
 }
 
-/** The same `pai` command on the box, its JSON. The box answers for itself, not for this machine. */
-async function boxCall(command: string) {
-  const r = await import("../host/remote.ts");
-  remoteNote(await r.ensureAccess());
-  const data = await r.boxJson(remoteBox!, command === "sync" || command === "status" ? command : `dev ${command}`);
-  // `pai status` and `pai sync` answer for the machine they run on under `here`.
-  return "here" in data ? data.here : data;
+/**
+ * The limits, read by the box. A box that cannot read them (its own token is a setup token)
+ * is given this laptop's Claude Code login from the keychain; a laptop without one is told
+ * to sign in.
+ */
+async function usageWithLogin() {
+  let data = await api("/usage");
+  if (!data.needsLogin || !remoteBox) return data;
+  const creds = await r.localClaudeLogin();
+  if (!creds) return { ...data, error: `${data.error ?? "the box cannot read the limits"} — run \`claude\` here and /login, then \`pai cost\` again` };
+  data = await api("/usage/credentials", { method: "POST", body: creds });
+  if (!data.error) console.error("the box now has this machine's Claude login");
+  return data;
+}
+
+const resetIn = (iso?: string) => {
+  if (!iso) return "";
+  const s = (Date.parse(iso) - Date.now()) / 1000;
+  if (s <= 0) return "";
+  if (s >= 86_400) return ` · resets in ${Math.round(s / 86_400)}d`;
+  if (s >= 3600) return ` · resets in ${Math.floor(s / 3600)}h ${Math.round((s % 3600) / 60)}m`;
+  return ` · resets in ${Math.max(1, Math.round(s / 60))}m`;
+};
+
+function usageLines(data: any) {
+  const lines = ["claude"];
+  for (const w of data.windows ?? []) lines.push(`  ${String(w.name).padEnd(12)} ${String(w.percent).padStart(3)}%${resetIn(w.resetsAt)}`);
+  if (!data.windows?.length) lines.push(`  ${data.error ?? "no reading yet"}`);
+  else if (data.error) lines.push(`  (${data.error})`);
+  if (data.via) lines.push(`  read by ${data.via}`);
+  if (typeof data.costUsd === "number") lines.push(`  ${"sessions".padEnd(12)} $${data.costUsd.toFixed(2)} across the daemon's sessions`);
+  return lines;
+}
+
+function costLines(data: any) {
+  if (data.error) return ["box", `  ${data.error}`];
+  return ["box", ...data.lines.map((l: any) => `  ${l.name.padEnd(26)} ${l.monthly.toFixed(2)} ${data.currency}/mo`), `  ${"total".padEnd(26)} ${data.monthlyTotal.toFixed(2)} ${data.currency}/mo`];
 }
 
 function statusLines(data: any, label: string) {
@@ -286,7 +315,7 @@ async function devCommand() {
       break;
     }
     case "install":
-      await import(process.platform === "darwin" ? "../host/install-daemon.ts" : "../host/install-daemon-linux.ts");
+      await import("../host/install-daemon-linux.ts");
       break;
     case "chat": {
       const data = await post("/chat", { text: positional.join(" ") });

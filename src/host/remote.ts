@@ -7,7 +7,9 @@
  * The box's firewall has no port 22 open; `ensureAccess` opens it for this machine's current
  * public address (and only that one) through the Hetzner API before dialling.
  */
-import { networkInterfaces } from "node:os";
+import { mkdir } from "node:fs/promises";
+import { homedir, networkInterfaces } from "node:os";
+import { dirname, join } from "node:path";
 import { config } from "../core/config.ts";
 import { allowSsh, myPublicIp } from "../domain/hetzner.ts";
 
@@ -77,4 +79,46 @@ export async function boxJson(r: Remote, command: string) {
   const start = out.indexOf("{") >= 0 ? Math.min(...[out.indexOf("{"), out.indexOf("[")].filter((i) => i >= 0)) : -1;
   if (start < 0) throw new Error(`${r.target}: pai ${command} printed no JSON: ${out.trim().slice(0, 200)}`);
   return JSON.parse(out.slice(start)) as any;
+}
+
+/**
+ * The box's HTTP API from a laptop: its public address and token, learned once over ssh
+ * (the token is in the box's `data/config.json`) and kept in `~/.config/pai/box.json`.
+ * Every command then talks https, which is fast; ssh is for shells and for relearning.
+ */
+export interface BoxApi {
+  readonly url: string;
+  readonly token: string;
+}
+
+const boxFile = join(homedir(), ".config", "pai", "box.json");
+
+export async function boxApi(r: Remote, relearn = false): Promise<BoxApi> {
+  if (!relearn) {
+    const cached = await Bun.file(boxFile).json().catch(() => undefined);
+    if (cached?.url && cached?.token) return cached as BoxApi;
+  }
+  await ensureAccess();
+  const out = await sshCapture(r, `pai status --json; echo '---TOKEN---'; jq -r '.PAI_TOKEN // empty' ~/pai/data/config.json`);
+  const [statusText, tokenText] = out.split("---TOKEN---");
+  const start = statusText?.indexOf("{") ?? -1;
+  const status = start >= 0 ? (JSON.parse(statusText!.slice(start)) as any) : {};
+  const here = status.here ?? status;
+  const url: string = here.public?.url ?? here.host?.baseUrl ?? "";
+  const token = (tokenText ?? "").trim();
+  if (!url) throw new Error(`${r.target}: the box has no public address (PAI_PUBLIC / PAI_DOMAIN)`);
+  if (!token) throw new Error(`${r.target}: the box has no PAI_TOKEN, so nothing can talk to it over https`);
+  await mkdir(dirname(boxFile), { recursive: true });
+  await Bun.write(boxFile, JSON.stringify({ url: url.replace(/\/$/, ""), token }, null, 2));
+  return { url, token };
+}
+
+/** This machine's Claude Code login, as Claude Code stores it: the keychain on macOS, a file elsewhere. */
+export async function localClaudeLogin(): Promise<string | undefined> {
+  if (process.platform === "darwin") {
+    const proc = Bun.spawn(["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"], { stdout: "pipe", stderr: "ignore" });
+    const out = await new Response(proc.stdout as ReadableStream).text();
+    if ((await proc.exited) === 0 && out.trim()) return out.trim();
+  }
+  return Bun.file(join(homedir(), ".claude", ".credentials.json")).text().catch(() => undefined);
 }
