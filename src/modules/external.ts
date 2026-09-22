@@ -323,10 +323,11 @@ export async function route(req: Request, url: URL): Promise<Response | undefine
 export async function runsHere(name: string, sub: string | undefined) {
   const { modules } = await readConfig();
   const source = modules[name];
-  if (!source || !sub) return false;
+  if (!source) return false;
   if (!isInstalled(name)) await install(name, source);
   const module = await importModule(dirOf(name)).catch(() => undefined);
-  return Boolean(module?.cliHere?.includes(sub));
+  // `""` in `cliHere` is the bare `pai <name>`.
+  return Boolean(module?.cliHere?.includes(sub ?? ""));
 }
 
 /** `pai <name> …`: the module's own command line, against the daemon's API. */

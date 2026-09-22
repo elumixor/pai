@@ -1,0 +1,703 @@
+- generic [active] [ref=e1]:
+  - region [ref=e2]:
+    - generic [ref=e3]:
+      - link "Cookiebot by Usercentrics - opens in a new window" [ref=e6] [cursor=pointer]:
+        - /url: https://www.cookiebot.com/en/what-is-behind-powered-by-cookiebot/?utm_source=banner_cb&utm_medium=referral&utm_content=v2
+      - tabpanel "Consent" [ref=e34]:
+        - generic [ref=e36]:
+          - heading "This website uses cookies" [level=2] [ref=e37]
+          - generic [ref=e38]: We use cookies to personalise content and ads, to provide social media features and to analyse our traffic. We also share information about your use of our site with our social media, advertising and analytics partners who may combine it with other information that you’ve provided to them or that they’ve collected from your use of their services.
+        - link "Show details" [ref=e41] [cursor=pointer]:
+          - /url: "#"
+      - generic [ref=e45]:
+        - button "Customize" [ref=e46] [cursor=pointer]
+        - button "Allow all" [ref=e48] [cursor=pointer]
+  - banner [ref=e50]:
+    - link "IPRoyal" [ref=e51] [cursor=pointer]:
+      - /url: /
+    - navigation [ref=e58]:
+      - list [ref=e59]:
+        - listitem [ref=e60]:
+          - link "Products" [ref=e61] [cursor=pointer]:
+            - /url: /proxies/
+        - listitem [ref=e64]:
+          - link "Pricing" [ref=e65] [cursor=pointer]:
+            - /url: /pricing/
+        - listitem [ref=e68]:
+          - link "Use cases" [ref=e69] [cursor=pointer]:
+            - /url: /use-cases/
+        - listitem [ref=e72]:
+          - link "Locations" [ref=e73] [cursor=pointer]:
+            - /url: /proxies-by-location/
+        - listitem [ref=e76]:
+          - link "Resources" [ref=e77] [cursor=pointer]:
+            - /url: /resources/
+    - generic [ref=e81]:
+      - link "Book a Demo" [ref=e82] [cursor=pointer]:
+        - /url: /request-a-demo/
+      - link "Create Account" [ref=e83] [cursor=pointer]:
+        - /url: https://dashboard.iproyal.com/register/
+      - link "Login" [ref=e84] [cursor=pointer]:
+        - /url: https://dashboard.iproyal.com/login/
+  - main [ref=e85]:
+    - generic [ref=e87]:
+      - generic [ref=e88]:
+        - generic [ref=e89]:
+          - navigation "Breadcrumb" [ref=e90]:
+            - list [ref=e91]:
+              - listitem [ref=e92]:
+                - link "IPRoyal" [ref=e93] [cursor=pointer]:
+                  - /url: /
+              - listitem [ref=e94]:
+                - link "ISP Proxies" [ref=e95] [cursor=pointer]:
+                  - /url: /isp-proxies/
+          - link "IPRoyal G2 reviews" [ref=e97] [cursor=pointer]:
+            - /url: https://www.g2.com/products/iproyal/reviews
+          - 'heading "ISP Proxies: Speed & Reliability Combined" [level=1] [ref=e109]'
+          - list [ref=e111]:
+            - listitem [ref=e112]:
+              - generic [ref=e113]: 500K+ unique IPs in 31+ countries
+            - listitem [ref=e114]:
+              - generic [ref=e115]: Country, state, and city-level targeting
+            - listitem [ref=e116]:
+              - generic [ref=e117]: Dedicated IPs
+            - listitem [ref=e118]:
+              - generic [ref=e119]: Unlimited sessions
+            - listitem [ref=e120]:
+              - generic [ref=e121]: SOCKS5 support
+            - listitem [ref=e122]:
+              - generic [ref=e123]: UDP and TCP connections
+          - generic [ref=e124]:
+            - link "Buy Now" [ref=e125] [cursor=pointer]:
+              - /url: https://dashboard.iproyal.com/products/static-residential-proxies/
+            - link "Pricing" [ref=e127] [cursor=pointer]:
+              - /url: https://iproyal.com/pricing/isp-proxies/
+        - 'img "ISP Proxies: Speed & Reliability Combined" [ref=e130]'
+      - generic [ref=e131]:
+        - paragraph [ref=e132]: As seen on
+        - generic [ref=e134]:
+          - img "Tech Advisor logo" [ref=e135]
+          - img "TechRadar logo" [ref=e136]
+          - img "CNBC logo" [ref=e137]
+          - img "GreekFlare logo" [ref=e138]
+          - img "PCMAG logo" [ref=e139]
+          - img "Tech Advisor logo" [ref=e140]
+          - img "TechRadar logo" [ref=e141]
+          - img "CNBC logo" [ref=e142]
+          - img "GreekFlare logo" [ref=e143]
+          - img "PCMAG logo" [ref=e144]
+    - generic [ref=e157]:
+      - generic [ref=e158]:
+        - generic [ref=e159]:
+          - generic [ref=e160]: Watch & learn
+          - generic [ref=e161]: 6:33
+          - generic [ref=e162]: 5 chapters
+        - generic [ref=e163]:
+          - heading "What are ISP Proxies and what sets them apart?" [level=2] [ref=e164]
+          - paragraph [ref=e166]: See how ISP Proxies combine the speed of datacenter infrastructure with the legitimacy of residential IPs, and how to configure them in minutes.
+          - 'button "Play video: What are ISP Proxies and what sets them apart?" [ref=e168] [cursor=pointer]':
+            - generic [ref=e169]: Watch Video
+      - 'button "Play video: What are ISP Proxies and what sets them apart?" [ref=e174] [cursor=pointer]'
+    - generic [ref=e178]:
+      - heading "Top ISP Proxy Server Locations" [level=2] [ref=e180]
+      - list [ref=e181]:
+        - listitem [ref=e182]:
+          - link "United States United States 135,681 IPs" [ref=e184] [cursor=pointer]:
+            - /url: /proxies-by-location/north-america/united-states/
+            - img "United States" [ref=e185]
+            - generic [ref=e186]:
+              - generic [ref=e187]: United States
+              - generic [ref=e188]: 135,681 IPs
+        - listitem [ref=e189]:
+          - link "United Kingdom United Kingdom 77,724 IPs" [ref=e191] [cursor=pointer]:
+            - /url: /proxies-by-location/europe/united-kingdom/
+            - img "United Kingdom" [ref=e192]
+            - generic [ref=e193]:
+              - generic [ref=e194]: United Kingdom
+              - generic [ref=e195]: 77,724 IPs
+        - listitem [ref=e196]:
+          - link "France France 45,921 IPs" [ref=e198] [cursor=pointer]:
+            - /url: /proxies-by-location/europe/france/
+            - img "France" [ref=e199]
+            - generic [ref=e200]:
+              - generic [ref=e201]: France
+              - generic [ref=e202]: 45,921 IPs
+        - listitem [ref=e203]:
+          - link "Germany Germany 45,488 IPs" [ref=e205] [cursor=pointer]:
+            - /url: /proxies-by-location/europe/germany/
+            - img "Germany" [ref=e206]
+            - generic [ref=e207]:
+              - generic [ref=e208]: Germany
+              - generic [ref=e209]: 45,488 IPs
+        - listitem [ref=e210]:
+          - link "Australia Australia 17,097 IPs" [ref=e212] [cursor=pointer]:
+            - /url: /proxies-by-location/oceania/australia/
+            - img "Australia" [ref=e213]
+            - generic [ref=e214]:
+              - generic [ref=e215]: Australia
+              - generic [ref=e216]: 17,097 IPs
+        - listitem [ref=e217]:
+          - link "Spain Spain 15,923 IPs" [ref=e219] [cursor=pointer]:
+            - /url: /proxies-by-location/europe/spain/
+            - img "Spain" [ref=e220]
+            - generic [ref=e221]:
+              - generic [ref=e222]: Spain
+              - generic [ref=e223]: 15,923 IPs
+      - button "All Available Locations" [ref=e224] [cursor=pointer]
+    - generic [ref=e228]:
+      - generic [ref=e229]:
+        - generic [ref=e230]: Pricing
+        - heading "Buy ISP Proxies" [level=2] [ref=e231]
+        - paragraph [ref=e233]: Tailored pricing solutions for businesses of all sizes
+      - generic [ref=e234]:
+        - link "24 Hours Starting from $1.80 /proxy Buy Now Test high-speed ISP proxies with no long-term commitment" [ref=e235] [cursor=pointer]:
+          - /url: https://dashboard.iproyal.com/products/static-residential-proxies/
+          - generic [ref=e237]:
+            - paragraph [ref=e239]: 24 Hours
+            - generic [ref=e240]:
+              - paragraph [ref=e241]: Starting from
+              - generic [ref=e242]:
+                - generic [ref=e243]: $1.80
+                - generic [ref=e245]: /proxy
+            - generic [ref=e246]: Buy Now
+            - paragraph [ref=e249]: Test high-speed ISP proxies with no long-term commitment
+        - link "30 Days Starting from $2.70 /proxy Buy Now Ideal for daily workflows and account management" [ref=e250] [cursor=pointer]:
+          - /url: https://dashboard.iproyal.com/products/static-residential-proxies/
+          - generic [ref=e252]:
+            - paragraph [ref=e254]: 30 Days
+            - generic [ref=e255]:
+              - paragraph [ref=e256]: Starting from
+              - generic [ref=e257]:
+                - generic [ref=e258]: $2.70
+                - generic [ref=e260]: /proxy
+            - generic [ref=e261]: Buy Now
+            - paragraph [ref=e264]: Ideal for daily workflows and account management
+        - link "Most popular 60 Days Starting from $2.55 /proxy Buy Now Reliable, uninterrupted sessions for ongoing projects" [ref=e265] [cursor=pointer]:
+          - /url: https://dashboard.iproyal.com/products/static-residential-proxies/
+          - generic [ref=e266]:
+            - paragraph [ref=e268]: Most popular
+            - generic [ref=e269]:
+              - paragraph [ref=e271]: 60 Days
+              - generic [ref=e272]:
+                - paragraph [ref=e273]: Starting from
+                - generic [ref=e274]:
+                  - generic [ref=e275]: $2.55
+                  - generic [ref=e277]: /proxy
+              - generic [ref=e278]: Buy Now
+              - paragraph [ref=e281]: Reliable, uninterrupted sessions for ongoing projects
+        - link "90 Days Starting from $2.40 /proxy Buy Now Long-term stability for teams and high-volume operations" [ref=e282] [cursor=pointer]:
+          - /url: https://dashboard.iproyal.com/products/static-residential-proxies/
+          - generic [ref=e284]:
+            - paragraph [ref=e286]: 90 Days
+            - generic [ref=e287]:
+              - paragraph [ref=e288]: Starting from
+              - generic [ref=e289]:
+                - generic [ref=e290]: $2.40
+                - generic [ref=e292]: /proxy
+            - generic [ref=e293]: Buy Now
+            - paragraph [ref=e296]: Long-term stability for teams and high-volume operations
+      - generic [ref=e297]:
+        - img "Background" [ref=e298]
+        - paragraph [ref=e303]:
+          - text: Need Enterprise-Scale Proxies?
+          - generic [ref=e304]: Contact Us for Custom Plans.
+        - link "Talk to Sales" [ref=e305] [cursor=pointer]:
+          - /url: /request-a-demo/
+      - paragraph [ref=e307]: Best Software 2026
+      - list [ref=e314]:
+        - listitem [ref=e315]:
+          - heading "Bulk discounts" [level=3] [ref=e316]
+          - paragraph [ref=e318]: Order ISP proxies in bulk to reduce costs while maintaining top-notch performance
+        - listitem [ref=e319]:
+          - heading "Unlimited sessions" [level=3] [ref=e320]
+          - paragraph [ref=e322]: Run large-scale data collection and automation operations with unrestricted session capacity
+        - listitem [ref=e323]:
+          - heading "High success rates" [level=3] [ref=e324]
+          - paragraph [ref=e326]: High-quality ISPs bring the legitimacy of residential proxies with a success rate of up to 99.99%
+    - generic [ref=e328]:
+      - generic [ref=e329]:
+        - generic [ref=e330]: Features
+        - heading "Why Choose ISP Proxies?" [level=2] [ref=e331]
+      - generic [ref=e332]:
+        - generic [ref=e335]:
+          - heading "Premium ISP Proxies" [level=3] [ref=e336]
+          - paragraph [ref=e338]: Get all the speed and stability of a datacenter proxy while maintaining the legitimacy and anonymity of residential proxies. Our proxy network is sourced from the most premium Internet Service Providers, making them a great option for those who value quality. Our ISP proxies will make any use case effective, whether it’s web scraping or ad verification
+          - list [ref=e339]:
+            - listitem [ref=e340]:
+              - generic [ref=e341]:
+                - heading "Predictable pricing" [level=4] [ref=e342]
+                - paragraph [ref=e343]: Scale freely with included traffic and fair usage protection for high-volume use cases
+            - listitem [ref=e344]:
+              - generic [ref=e345]:
+                - heading "SOCKS5 support" [level=4] [ref=e346]
+                - paragraph [ref=e347]: Connect to your ISP proxy through your preferred protocol – HTTP(S) or SOCKS5
+          - link "Register" [ref=e349] [cursor=pointer]:
+            - /url: https://dashboard.iproyal.com/
+        - generic [ref=e353]:
+          - heading "Intuitive Self-Service" [level=3] [ref=e354]
+          - generic [ref=e355]:
+            - paragraph [ref=e356]: Our self-service dashboard is intuitive and easy to use while giving you complete control over your ISP proxies. Add more static residential proxies to your pool, get in-depth usage statistics, and transparent pricing—all available in just a single click
+            - list [ref=e357]:
+              - listitem [ref=e358]:
+                - generic [ref=e359]: Detailed data usage insights
+              - listitem [ref=e360]:
+                - generic [ref=e361]: Many payment methods
+              - listitem [ref=e362]:
+                - generic [ref=e363]: 31+ locations
+              - listitem [ref=e364]:
+                - generic [ref=e365]: And much more
+          - link "Register" [ref=e367] [cursor=pointer]:
+            - /url: https://dashboard.iproyal.com/
+        - generic [ref=e371]:
+          - heading "In-Depth Documentation" [level=3] [ref=e372]
+          - paragraph [ref=e374]: As an ISP proxy provider, we want to make using our products and services as easy as possible. Our ISP proxies are easy to integrate for complete beginners and advanced users alike. Read through our quick-start guides to set up your proxies or create advanced features through our API access
+          - generic [ref=e375]:
+            - link "Quick-Start Guides" [ref=e376] [cursor=pointer]:
+              - /url: https://iproyal.com/quick-start-guides/static-residential-proxies/
+            - link "Documentation" [ref=e378] [cursor=pointer]:
+              - /url: https://docs.iproyal.com/proxies/isp/
+    - generic [ref=e382]:
+      - heading "IPRoyal ISP Proxy Features" [level=2] [ref=e384]
+      - tablist [ref=e385]:
+        - tab "Performance" [selected] [ref=e386] [cursor=pointer]
+        - tab "Exclusivity" [ref=e388] [cursor=pointer]
+        - tab "Flexibility" [ref=e390] [cursor=pointer]
+      - generic [ref=e392]:
+        - tabpanel [ref=e393]:
+          - list [ref=e394]:
+            - listitem [ref=e395]:
+              - generic [ref=e396]:
+                - heading "Precise geo-targeting" [level=3] [ref=e397]
+                - paragraph [ref=e400]: Target countries, states, or cities for pinpoint accuracy. Focus your research efforts, unlock local insights, and sharpen your strategies for optimal results
+            - listitem [ref=e401]:
+              - generic [ref=e402]:
+                - heading "Premium ISPs" [level=3] [ref=e403]
+                - paragraph [ref=e406]: We want to create the best dedicated ISP proxies, so our entire pool is sourced from reputable and high-quality Internet Service Providers
+            - listitem [ref=e407]:
+              - generic [ref=e408]:
+                - heading "Static residential IP addresses" [level=3] [ref=e409]
+                - paragraph [ref=e412]: Dedicated ISP proxies give you datacenter-like fixed IP addresses that are as legitimate as residential proxies
+        - tabpanel [ref=e413]:
+          - list [ref=e414]:
+            - listitem [ref=e415]:
+              - generic [ref=e416]:
+                - heading "Dedicated ISP proxies" [level=3] [ref=e417]
+                - paragraph [ref=e420]: Every ISP proxy belongs only to you—no one else can use the same IP addresses as you
+            - listitem [ref=e421]:
+              - generic [ref=e422]:
+                - heading "Responsibly sourced" [level=3] [ref=e423]
+                - paragraph [ref=e426]: ISP proxies come from legitimate ISPs with whom we have business and compliance contracts
+            - listitem [ref=e427]:
+              - generic [ref=e428]:
+                - heading "24/7 support" [level=3] [ref=e429]
+                - paragraph [ref=e432]: Get help on any questions you may have, whenever you need—our experts are always ready to help
+        - tabpanel [ref=e433]:
+          - list [ref=e434]:
+            - listitem [ref=e435]:
+              - generic [ref=e436]:
+                - heading "Accessibility" [level=3] [ref=e437]
+                - paragraph [ref=e440]: As long as your use case is legal, we place no restrictions on how you use our ISP proxy server pool
+            - listitem [ref=e441]:
+              - generic [ref=e442]:
+                - heading "No contracts required" [level=3] [ref=e443]
+                - paragraph [ref=e446]: Other ISP proxy providers will make you jump through hoops, but we don’t ask you to sign complicated legal contracts
+            - listitem [ref=e447]:
+              - generic [ref=e448]:
+                - heading "31+ locations" [level=3] [ref=e449]
+                - paragraph [ref=e452]: Our static residential proxy pool has IP addresses in many of the most sought-after countries, allowing you to access most geo-restricted websites
+    - generic [ref=e456]:
+      - generic [ref=e459]:
+        - heading "Data Security" [level=2] [ref=e460]
+        - paragraph [ref=e462]: ISP proxies are sourced responsibly, with major requirements placed on our suppliers. Proxies are also implemented with great care to prevent any leaks or security risks while also staying compliant with GDPR/CCPA requirements
+      - generic [ref=e465]:
+        - heading "Monitored Performance" [level=2] [ref=e466]
+        - paragraph [ref=e468]: Our engineers work around the clock to ensure maximum performance of our entire pool, ISP proxies included. We’re constantly updating our processes and practices to ensure reliability fit for even the most stringent requirements
+      - generic [ref=e471]:
+        - heading "Protected Usage" [level=2] [ref=e472]
+        - paragraph [ref=e474]: A single malicious user can ruin the entire venture for many, so we put great effort towards limiting abuse and getting to know our customers before we provide full access to our ISP proxies
+        - generic [ref=e475]:
+          - link "Read Acceptable Use" [ref=e476] [cursor=pointer]:
+            - /url: https://iproyal.com/acceptable-use-policy/
+          - link "Read KYC" [ref=e478] [cursor=pointer]:
+            - /url: https://iproyal.com/kyc-policy/
+    - generic [ref=e482]:
+      - generic [ref=e483]:
+        - generic [ref=e484]:
+          - paragraph [ref=e485]: REVIEWS
+          - heading "Trustworthy ISP Proxies" [level=2] [ref=e486]
+          - paragraph [ref=e488]: Our goal has always been to create reliable ISP proxies that can match even the highest of needs. So, we strive to create the best static residential proxies for businesses of all sizes, use cases (i.e., scraping, ad verification, etc.), and needs
+        - generic [ref=e490]:
+          - generic [ref=e491]:
+            - generic [ref=e492]:
+              - img "Quotes picture" [ref=e494]
+              - paragraph [ref=e496]: IPRoyal has a far more extensive collection of features than your standard web proxy, including over 195 countries of coverage, more than thirty two million IP addresses to select from at the highest-tier plan, and additional options like timed auto-rotation of your IP and instant IP changes.
+            - generic [ref=e497]:
+              - img "Quotes picture" [ref=e499]
+              - paragraph [ref=e501]: IPRoyal is dedicated to transparency and to providing best-in-class service to their customers through a variety of affordable solutions and plans that come with round-the-clock support.
+            - generic [ref=e502]:
+              - img "Quotes picture" [ref=e504]
+              - paragraph [ref=e506]: With a selection of different subscription options, some of the most affordable prices we’ve seen, and a responsive support team, IPRoyal rises to the top as a leading proxy service provider.
+          - generic [ref=e507]:
+            - generic [ref=e508]: 1 of 3
+            - generic [ref=e509]:
+              - button "Previous" [ref=e510] [cursor=pointer]
+              - button "Next" [ref=e511] [cursor=pointer]
+      - generic [ref=e512]:
+        - heading "10,000+ Clients Trust Us" [level=2] [ref=e514]
+        - list [ref=e515]:
+          - listitem [ref=e516]:
+            - link [ref=e517] [cursor=pointer]:
+              - /url: https://www.g2.com/products/iproyal/reviews/iproyal-review-11197361
+              - generic [ref=e518]:
+                - generic [ref=e531]:
+                  - img "Quote picture" [ref=e532]
+                  - generic [ref=e533]:
+                    - paragraph [ref=e534]: IPRoyal’s static ISP residential proxies have been a game-changer for my workflow. The IPs are stable, fast, and perfect for tasks that require long sessions and consistent identity.
+                    - paragraph [ref=e535]: "What really sets IPRoyal apart is the price point: you're getting enterprise grade quality at a budget friendly rate. The proxies are clean, reliable, and rarely flagged, which is critical for serious users. If you're looking for static residential IPs that perform well without draining your budget , IPRoyal has definitely been worth it for our operations."
+                - generic [ref=e538]:
+                  - paragraph [ref=e539]: Isaac D.
+                  - paragraph [ref=e540]: Digital Marketer
+          - listitem [ref=e541]:
+            - link [ref=e542] [cursor=pointer]:
+              - /url: https://www.g2.com/products/iproyal/reviews/iproyal-review-9960726
+              - generic [ref=e543]:
+                - generic [ref=e556]:
+                  - img "Quote picture" [ref=e557]
+                  - paragraph [ref=e559]: IPRoyal’s static ISP service has brought unprecedented convenience to my workflow. It provides stable and efficient support for my app and account management, helping me easily bypass IP restrictions and account bans. With its reliable proxy network, I can smoothly handle account operations across different regions, avoiding security issues caused by frequent IP changes.
+                - generic [ref=e562]:
+                  - paragraph [ref=e563]: Isabella G.
+                  - paragraph [ref=e564]: Technical Director
+          - listitem [ref=e565]:
+            - link [ref=e566] [cursor=pointer]:
+              - /url: https://www.g2.com/products/iproyal/reviews/iproyal-review-10058968
+              - generic [ref=e567]:
+                - generic [ref=e580]:
+                  - img "Quote picture" [ref=e581]
+                  - paragraph [ref=e583]: What I like best about IPRoyal is how their static residential IPs make setting up cold email accounts easy and effective, ensuring maximum deliverability from the start. Their IPs are trusted and reduce the risk of emails being flagged as spam, helping campaigns succeed right out of the gate.
+                - generic [ref=e586]:
+                  - paragraph [ref=e587]: David G.
+                  - paragraph [ref=e588]: Agency Owner
+    - generic [ref=e590]:
+      - generic [ref=e591]:
+        - generic [ref=e592]: Awards
+        - heading "Trusted & Secured Proxy Network" [level=2] [ref=e593]
+      - tabpanel [ref=e595]
+      - link "All Awards" [ref=e597] [cursor=pointer]:
+        - /url: https://iproyal.com/awards-recognition/
+    - generic [ref=e599]:
+      - generic [ref=e600]:
+        - heading "How Are Companies Using Our ISP Proxies?" [level=2] [ref=e602]
+        - generic [ref=e603]:
+          - button "Previous" [ref=e604] [cursor=pointer]
+          - button "Next" [ref=e605] [cursor=pointer]
+      - generic [ref=e606]:
+        - link [ref=e607] [cursor=pointer]:
+          - /url: https://iproyal.com/use-cases/brand-protection/
+          - heading "Brand protection" [level=3] [ref=e608]
+          - paragraph [ref=e610]: Find copyright infringement or damaging remarks about a customer's brand through web scraping with our ISP proxies
+          - generic [ref=e611]: Read More
+        - link [ref=e612] [cursor=pointer]:
+          - /url: https://iproyal.com/use-cases/seo-proxies/
+          - heading "SERP scraping" [level=3] [ref=e613]
+          - paragraph [ref=e615]: Extract data from search engines in large volumes through premium ISP proxies that help you reduce IP blocks and CAPTCHAs
+          - generic [ref=e616]: Read More
+        - link [ref=e617] [cursor=pointer]:
+          - /url: https://iproyal.com/use-cases/collecting-stock-market-data/
+          - heading "Stock market data collection" [level=3] [ref=e618]
+          - paragraph [ref=e620]: Monitor the entire market and the movement of various financial instruments in real-time and without blocks
+          - generic [ref=e621]: Read More
+      - link "All Use Cases" [ref=e623] [cursor=pointer]:
+        - /url: https://iproyal.com/use-cases/
+    - generic [ref=e630]:
+      - heading "ISP Proxy Integration" [level=2] [ref=e631]
+      - paragraph [ref=e633]: Integrate our ISP proxies with numerous solutions and third-party software by going through our quick-start guides
+      - link "See All Integrations" [ref=e635] [cursor=pointer]:
+        - /url: https://iproyal.com/integrations/
+    - generic [ref=e639]:
+      - heading "Our Proxies Compared" [level=2] [ref=e641]
+      - list [ref=e644]:
+        - listitem [ref=e645]:
+          - generic [ref=e646]:
+            - img "ISP image" [ref=e648]
+            - heading "ISP" [level=3] [ref=e649]
+          - list [ref=e650]:
+            - listitem [ref=e651]:
+              - paragraph [ref=e654]: High connection speed
+            - listitem [ref=e655]:
+              - paragraph [ref=e658]: High reliability
+            - listitem [ref=e659]:
+              - paragraph [ref=e662]: Per IP pricing
+            - listitem [ref=e663]:
+              - paragraph [ref=e666]: Low detectability
+            - listitem [ref=e667]:
+              - paragraph [ref=e670]: Location customization
+        - listitem [ref=e671]:
+          - generic [ref=e672]:
+            - img "Residential image" [ref=e674]
+            - heading "Residential" [level=3] [ref=e675]
+          - list [ref=e676]:
+            - listitem [ref=e677]:
+              - paragraph [ref=e680]: Average cost
+            - listitem [ref=e681]:
+              - paragraph [ref=e684]: Low detectability
+            - listitem [ref=e685]:
+              - paragraph [ref=e688]: Traffic-based pricing
+            - listitem [ref=e689]:
+              - paragraph [ref=e692]: Largest IP pool
+            - listitem [ref=e693]:
+              - paragraph [ref=e696]: Location customization
+        - listitem [ref=e697]:
+          - generic [ref=e698]:
+            - img "Datacenter image" [ref=e700]
+            - heading "Datacenter" [level=3] [ref=e701]
+          - list [ref=e702]:
+            - listitem [ref=e703]:
+              - paragraph [ref=e706]: Low cost
+            - listitem [ref=e707]:
+              - paragraph [ref=e710]: High reliability
+            - listitem [ref=e711]:
+              - paragraph [ref=e714]: Per IP pricing
+            - listitem [ref=e715]:
+              - paragraph [ref=e718]: Low latency
+            - listitem [ref=e719]:
+              - paragraph [ref=e722]: High connection speed
+    - generic [ref=e725]:
+      - heading "Frequently Asked Questions" [level=2] [ref=e727]
+      - generic [ref=e728]:
+        - group [ref=e729]:
+          - heading "What are ISP proxies?" [level=3] [ref=e731] [cursor=pointer]
+          - paragraph [ref=e734]: An ISP proxy (also known as a static residential proxy or residential ISP proxy) is a residential IP acquired directly from an Internet Service Provider. While they are hosted in data centers with all the speed and reliability benefits, their IPs are provided by ISPs, so they seem like regular internet users.
+        - group [ref=e735]:
+          - heading "How do ISP proxies work?" [level=3] [ref=e737] [cursor=pointer]
+        - group [ref=e738]:
+          - heading "What is the difference between datacenter and ISP proxies?" [level=3] [ref=e740] [cursor=pointer]
+        - group [ref=e741]:
+          - heading "What is the difference between residential and ISP proxies?" [level=3] [ref=e743] [cursor=pointer]
+  - contentinfo [ref=e744]:
+    - generic [ref=e747]:
+      - heading "Have a Large Project?" [level=2] [ref=e749]
+      - generic [ref=e750]:
+        - paragraph [ref=e752]: Our proxy experts are always available to help you find the right solution for any need.
+        - generic [ref=e753]:
+          - img "Team member" [ref=e754]
+          - img "Team member" [ref=e755]
+          - img "Team member" [ref=e756]
+          - img "Team member" [ref=e757]
+          - img "Team member" [ref=e758]
+          - img "Team member" [ref=e759]
+      - generic [ref=e760]:
+        - link "Register" [ref=e761] [cursor=pointer]:
+          - /url: https://dashboard.iproyal.com/
+        - link "Book a Demo" [ref=e763] [cursor=pointer]:
+          - /url: /request-a-demo/
+    - generic [ref=e764]:
+      - generic [ref=e765]:
+        - generic [ref=e766]:
+          - generic [ref=e767]:
+            - paragraph [ref=e768]: Products
+            - list [ref=e769]:
+              - listitem [ref=e770]:
+                - link "Residential Proxies" [ref=e771] [cursor=pointer]:
+                  - /url: /residential-proxies/
+                - generic [ref=e772]: Popular
+              - listitem [ref=e773]:
+                - link "ISP Proxies" [ref=e774] [cursor=pointer]:
+                  - /url: /isp-proxies/
+              - listitem [ref=e775]:
+                - link "Datacenter Proxies" [ref=e776] [cursor=pointer]:
+                  - /url: /datacenter-proxies/
+              - listitem [ref=e777]:
+                - link "Mobile Proxies" [ref=e778] [cursor=pointer]:
+                  - /url: /mobile-proxies/
+              - listitem [ref=e779]:
+                - link "Web Unblocker" [ref=e780] [cursor=pointer]:
+                  - /url: /web-unblocker/
+              - listitem [ref=e781]:
+                - link "Enterprise Proxies" [ref=e782] [cursor=pointer]:
+                  - /url: /proxies-for-enterprises/
+              - listitem [ref=e783]:
+                - link "Subnets" [ref=e784] [cursor=pointer]:
+                  - /url: /subnets/
+          - generic [ref=e785]:
+            - paragraph [ref=e786]: Tools
+            - list [ref=e787]:
+              - listitem [ref=e788]:
+                - link "Google Chrome Extension" [ref=e789] [cursor=pointer]:
+                  - /url: /google-chrome-proxy-manager/
+              - listitem [ref=e790]:
+                - link "Firefox Proxy Add-on" [ref=e791] [cursor=pointer]:
+                  - /url: /firefox-proxy-manager/
+              - listitem [ref=e792]:
+                - link "Proxy Tester" [ref=e793] [cursor=pointer]:
+                  - /url: /proxy-tester/
+              - listitem [ref=e794]:
+                - link "Proxy Checker" [ref=e795] [cursor=pointer]:
+                  - /url: /online-proxy-checker/
+              - listitem [ref=e796]:
+                - link "IP Lookup" [ref=e797] [cursor=pointer]:
+                  - /url: /ip-lookup/
+              - listitem [ref=e798]:
+                - link "TCP/IP Fingerprint Test" [ref=e799] [cursor=pointer]:
+                  - /url: /tcp-ip-fingerprint-checker/
+              - listitem [ref=e800]:
+                - link "WebRTC Leak Test" [ref=e801] [cursor=pointer]:
+                  - /url: /webrtc-leak-test/
+          - generic [ref=e802]:
+            - paragraph [ref=e803]: Resources
+            - list [ref=e804]:
+              - listitem [ref=e805]:
+                - link "Blog" [ref=e806] [cursor=pointer]:
+                  - /url: /blog/
+              - listitem [ref=e807]:
+                - link "Documentation" [ref=e808] [cursor=pointer]:
+                  - /url: https://docs.iproyal.com/
+              - listitem [ref=e809]:
+                - link "Quick-Start Guides" [ref=e810] [cursor=pointer]:
+                  - /url: /quick-start-guides/
+              - listitem [ref=e811]:
+                - link "Integrations" [ref=e812] [cursor=pointer]:
+                  - /url: /integrations/
+              - listitem [ref=e813]:
+                - link "Whats New" [ref=e814] [cursor=pointer]:
+                  - /url: /whats-new/
+              - listitem [ref=e815]:
+                - link "Network Status" [ref=e816] [cursor=pointer]:
+                  - /url: https://status.iproyal.com/
+              - listitem [ref=e817]:
+                - link "Help Center" [ref=e818] [cursor=pointer]:
+                  - /url: https://help.iproyal.com/en/
+              - listitem [ref=e819]:
+                - button [ref=e820] [cursor=pointer]:
+                  - paragraph [ref=e821]: Customer Support
+          - generic [ref=e822]:
+            - paragraph [ref=e823]: Locations
+            - list [ref=e824]:
+              - listitem [ref=e825]:
+                - link "United States" [ref=e826] [cursor=pointer]:
+                  - /url: /proxies-by-location/north-america/united-states/
+              - listitem [ref=e827]:
+                - link "United Kingdom" [ref=e828] [cursor=pointer]:
+                  - /url: /proxies-by-location/europe/united-kingdom/
+              - listitem [ref=e829]:
+                - link "Germany" [ref=e830] [cursor=pointer]:
+                  - /url: /proxies-by-location/europe/germany/
+              - listitem [ref=e831]:
+                - link "India" [ref=e832] [cursor=pointer]:
+                  - /url: /proxies-by-location/asia/india/
+              - listitem [ref=e833]:
+                - link "China" [ref=e834] [cursor=pointer]:
+                  - /url: /proxies-by-location/asia/china/
+              - listitem [ref=e835]:
+                - link "All Locations" [ref=e836] [cursor=pointer]:
+                  - /url: /proxies-by-location/
+          - generic [ref=e837]:
+            - paragraph [ref=e838]: Company
+            - list [ref=e839]:
+              - listitem [ref=e840]:
+                - link "About Us" [ref=e841] [cursor=pointer]:
+                  - /url: /about-us/
+              - listitem [ref=e842]:
+                - link "Newsroom" [ref=e843] [cursor=pointer]:
+                  - /url: /newsroom/
+              - listitem [ref=e844]:
+                - link "Careers" [ref=e845] [cursor=pointer]:
+                  - /url: /careers/
+              - listitem [ref=e846]:
+                - link "Affiliate Program" [ref=e847] [cursor=pointer]:
+                  - /url: /affiliate-program/
+              - listitem [ref=e848]:
+                - link "Referral Program" [ref=e849] [cursor=pointer]:
+                  - /url: /referral-program/
+              - listitem [ref=e850]:
+                - link "Reviews" [ref=e851] [cursor=pointer]:
+                  - /url: /customer-reviews/
+              - listitem [ref=e852]:
+                - link "Case Studies" [ref=e853] [cursor=pointer]:
+                  - /url: case-studies/
+              - listitem [ref=e854]:
+                - link "Proxy Credits Program" [ref=e855] [cursor=pointer]:
+                  - /url: /proxy-credits-program/
+              - listitem [ref=e856]:
+                - link "LLM info" [ref=e857] [cursor=pointer]:
+                  - /url: /llm-info/
+          - generic [ref=e858]:
+            - paragraph [ref=e859]: Legal
+            - list [ref=e860]:
+              - listitem [ref=e861]:
+                - link "KYC Policy" [ref=e862] [cursor=pointer]:
+                  - /url: /kyc-policy/
+              - listitem [ref=e863]:
+                - link "Proxy Sourcing" [ref=e864] [cursor=pointer]:
+                  - /url: /residential-proxy-sourcing/
+              - listitem [ref=e865]:
+                - link "Data Processing Agreement" [ref=e866] [cursor=pointer]:
+                  - /url: /data-processing-agreement/
+              - listitem [ref=e867]:
+                - link "Terms of Service" [ref=e868] [cursor=pointer]:
+                  - /url: /terms-of-service/
+              - listitem [ref=e869]:
+                - link "Privacy Policy" [ref=e870] [cursor=pointer]:
+                  - /url: /privacy/
+              - listitem [ref=e871]:
+                - link "Vulnerability Disclosure Policy" [ref=e872] [cursor=pointer]:
+                  - /url: /vulnerability-disclosure-policy/
+              - listitem [ref=e873]:
+                - link "Acceptable Use Policy" [ref=e874] [cursor=pointer]:
+                  - /url: /acceptable-use-policy/
+              - listitem [ref=e875]:
+                - link "Cookie Policy" [ref=e876] [cursor=pointer]:
+                  - /url: /cookie-policy/
+              - listitem [ref=e877]:
+                - link "Trust Center" [ref=e878] [cursor=pointer]:
+                  - /url: https://trust.iproyal.com
+        - generic [ref=e879]:
+          - link "IPRoyal" [ref=e880] [cursor=pointer]:
+            - /url: /
+          - generic [ref=e887]: English
+      - generic [ref=e889]:
+        - generic [ref=e890]:
+          - list [ref=e892]:
+            - listitem [ref=e893]:
+              - link "Discord" [ref=e894] [cursor=pointer]:
+                - /url: https://discord.com/invite/SUA5yjpnZQ
+            - listitem [ref=e895]:
+              - link "Twitter / X" [ref=e896] [cursor=pointer]:
+                - /url: https://x.com/IPRoyal_proxies
+            - listitem [ref=e897]:
+              - link "Facebook" [ref=e898] [cursor=pointer]:
+                - /url: https://www.facebook.com/IProyal
+            - listitem [ref=e899]:
+              - link "Linkedin" [ref=e900] [cursor=pointer]:
+                - /url: https://www.linkedin.com/company/iproyal
+            - listitem [ref=e901]:
+              - link "YouTube" [ref=e902] [cursor=pointer]:
+                - /url: https://www.youtube.com/@IPRoyalOfficial
+          - generic [ref=e903]:
+            - generic [ref=e904]:
+              - img "Mail icon" [ref=e905]
+              - link "support@iproyal.com" [ref=e906] [cursor=pointer]:
+                - /url: mailto:support@iproyal.com
+            - generic [ref=e907]:
+              - img "Mail icon" [ref=e908]
+              - link "info@iproyal.com" [ref=e909] [cursor=pointer]:
+                - /url: mailto:info@iproyal.com
+            - generic [ref=e910]:
+              - img "Mail icon" [ref=e911]
+              - link "media@iproyal.com" [ref=e912] [cursor=pointer]:
+                - /url: mailto:media@iproyal.com
+        - link [ref=e913] [cursor=pointer]:
+          - /url: /payment-options/
+          - list [ref=e914]:
+            - listitem [ref=e915]
+            - listitem [ref=e916]
+            - listitem [ref=e917]
+            - listitem [ref=e918]
+            - listitem [ref=e919]
+            - listitem [ref=e920]
+            - listitem [ref=e921]
+      - generic [ref=e923]:
+        - paragraph [ref=e924]: IPRoyal (Headquarters), BLB-BC5-641 (5th floor), AMC - BOULEVARD-B Building, 143 AL HASSAN AL BASRI STREET, JURF 2, Ajman, United Arab Emirates
+        - paragraph [ref=e925]: © Copyright 2026 IPRoyal.com | All rights reserved
+  - button "Expand" [ref=e926] [cursor=pointer]
+  - button "Open chat" [ref=e927] [cursor=pointer]
+  - iframe [aria-hidden] [ref=e930]
