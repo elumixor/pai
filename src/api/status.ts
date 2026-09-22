@@ -27,7 +27,6 @@ export async function status() {
       models: config.models,
       updateChannel: config.updateChannel,
       autoUpdate: config.autoUpdate,
-      telegram: config.telegram.enabled,
       tokenSet: Boolean(config.token),
       google: googleConfigured() ? config.google.allowed : false,
       published: config.public,

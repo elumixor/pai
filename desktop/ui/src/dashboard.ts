@@ -97,7 +97,6 @@ export function dashboard(root: HTMLElement, handlers: DashboardHandlers) {
           "Setup",
           kv("workspace", health.settings.workspace),
           kv("projects", `${health.counts.projects} under ${health.settings.devRoot}`),
-          kv("telegram", health.settings.telegram ? "on" : "off"),
           kv("updates", `${health.settings.updateChannel}${health.settings.autoUpdate ? " · automatic" : ""}`),
         ),
         card(

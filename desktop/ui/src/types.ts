@@ -155,7 +155,6 @@ export interface Status {
     readonly models: { readonly main: string; readonly task: string };
     readonly updateChannel: string;
     readonly autoUpdate: boolean;
-    readonly telegram: boolean;
     readonly idleShutdownMinutes: number;
   };
   readonly counts: { readonly projects: number };

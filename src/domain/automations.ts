@@ -1,7 +1,6 @@
 import { bus, type PaiEvent } from "../core/bus.ts";
 import { db, now } from "../core/db.ts";
 import { logger } from "../core/log.ts";
-import { notify } from "../clients/telegram.ts";
 import * as sessions from "./sessions.ts";
 
 const log = logger("automations");
@@ -95,7 +94,7 @@ function render(template: string, event: PaiEvent) {
 
 async function run(rule: Automation, event: PaiEvent) {
   const text = render(rule.template, event);
-  if (rule.action === "notify") await notify(text);
+  if (rule.action === "notify") bus.emitEvent("user.notify", { text });
   else if (rule.action === "turn") sessions.main().send(text);
   else if (rule.action === "task") {
     const recent = taskStarts.filter((t) => now() - t < 3600_000);

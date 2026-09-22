@@ -83,20 +83,6 @@ export const config = {
    */
   remote: setting("PAI_REMOTE") ?? (env.PAI_HOST_IP ? `pai@${env.PAI_HOST_IP}` : ""),
 
-  telegram: {
-    enabled: !bool(setting("PAI_NO_TELEGRAM")),
-    token: env.TELEGRAM_BOT_TOKEN ?? "",
-    /** Only this chat may drive the daemon. */
-    chatId: Number(env.TELEGRAM_CHAT_ID ?? 0),
-  },
-
-  /** The user's own Telegram account (MTProto), so the assistant can read and write chats as them. */
-  telegramUser: {
-    apiId: Number(env.TELEGRAM_API_ID ?? 0),
-    apiHash: env.TELEGRAM_API_HASH ?? "",
-    session: env.TELEGRAM_USER_SESSION ?? "",
-  },
-
   /**
    * A shared secret every client must present once the daemon is reachable from anywhere but
    * loopback. Without it `public` refuses to expose anything.

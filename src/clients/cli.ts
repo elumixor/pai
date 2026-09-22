@@ -8,10 +8,7 @@ const [cmd, ...args] = dev ? argv.slice(1) : argv;
 // The foreground daemon is the dev loop: verbose, and no bot fighting the installed one for the token.
 // These have to be set before config.ts is evaluated, so config is imported after.
 const foreground = args.includes("--foreground") || args.includes("-f");
-if (dev && cmd === "daemon" && foreground) {
-  process.env.PAI_NO_TELEGRAM ??= "1";
-  process.env.PAI_VERBOSE ??= "1";
-}
+if (dev && cmd === "daemon" && foreground) process.env.PAI_VERBOSE ??= "1";
 const { config } = await import("../core/config.ts");
 const jsonOut = args.includes("--json");
 const positional = args.filter((a) => !a.startsWith("--"));
@@ -121,7 +118,7 @@ const devUsage = `pai dev — the daemon's own controls, for working on pai
   projects [--refresh]         coding projects as the assistant sees them
   settings [KEY=value …]       read or change the daemon's settings; a change needs a restart
   restart                      restart the daemon
-  daemon [--foreground]        start the daemon; --foreground stays attached, verbose, no telegram
+  daemon [--foreground]        start the daemon; --foreground stays attached, verbose
   install [--uninstall]        the systemd service on the box + \`pai\` on PATH
   update [--check] [--force]   this daemon only: pull, reinstall, rebuild, restart`;
 
@@ -363,7 +360,6 @@ function statusLines(data: any, label: string) {
     `${label.padEnd(9)} ${data.version} · ${data.host.hostname} (${data.host.platform}) · api ${data.host.api}`,
     `public    ${data.public?.url ?? "(off)"}${data.public?.state && data.public.state !== "up" ? ` — ${data.public.state}${data.public.reason ? `: ${data.public.reason}` : ""}` : ""}`,
     `editor    ${data.editor?.enabled ? `${data.editor.running ? "running" : "starting"} at ${data.editor.url}` : "off"}`,
-    `telegram  ${data.settings.telegram ? "on" : "off"}`,
     `projects  ${data.counts.projects}`,
   ];
 }

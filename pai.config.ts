@@ -7,5 +7,6 @@ import type { PaiConfig } from "./src/modules/sdk.ts";
 export default {
   modules: {
     builder: "github:elumixor/pai-builder",
+    telegram: "github:elumixor/pai-telegram",
   },
 } satisfies PaiConfig;

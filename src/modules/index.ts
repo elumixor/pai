@@ -1,5 +1,4 @@
 import { config } from "../core/config.ts";
-import { enabled as tgUserEnabled } from "../clients/tg-user.ts";
 import { editorStatus } from "../domain/editor.ts";
 import { publicStatus } from "../domain/publish.ts";
 import * as settings from "../domain/settings.ts";
@@ -13,26 +12,6 @@ import type { Module } from "./types.ts";
  * they are, what they add to a session, and which switch turns them off.
  */
 export const modules: readonly Module[] = [
-  {
-    name: "telegram",
-    title: "Telegram bot",
-    description: "The chat the user talks to pai from: the root chat is the main conversation, every topic a task.",
-    kind: "channel",
-    enabled: () => config.telegram.enabled && Boolean(config.telegram.token),
-    status: () => ({ configured: Boolean(config.telegram.token && config.telegram.chatId) }),
-    events: [{ kind: "session.input", description: "a message the user sent" }],
-    settings: [{ key: "PAI_NO_TELEGRAM", label: "Turned off", type: "toggle", hint: "a laptop daemon next to the box's leaves the bot to the box" }],
-  },
-  {
-    name: "tg-user",
-    title: "Telegram account",
-    description: "The user's own Telegram: sessions can read chats, search them, and write as the user.",
-    kind: "tools",
-    enabled: tgUserEnabled,
-    status: () => ({ configured: tgUserEnabled() }),
-    tools: { server: "tg", names: ["list_chats", "read_chat", "search", "send_message", "…"], kinds: ["main", "task", "code"] },
-    prompt: { text: "The user's own Telegram account is available as the tg tools.", kinds: ["main", "task", "code"] },
-  },
   {
     name: "browser",
     title: "Browser",
