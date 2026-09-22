@@ -2,7 +2,6 @@ import { config } from "../core/config.ts";
 import { enabled as tgUserEnabled } from "../clients/tg-user.ts";
 import { editorStatus } from "../domain/editor.ts";
 import { publicStatus } from "../domain/publish.ts";
-import { syncStatus } from "../domain/sync.ts";
 import * as settings from "../domain/settings.ts";
 import { linkedinModule } from "./linkedin.ts";
 import { gmailModule } from "./gmail.ts";
@@ -73,18 +72,6 @@ export const modules: readonly Module[] = [
     settings: [
       { key: "PAI_PUBLIC", label: "Enabled", type: "toggle" },
       { key: "PAI_DOMAIN", label: "Domain", hint: "empty means <ip>.sslip.io" },
-    ],
-  },
-  {
-    name: "sync",
-    title: "File sync",
-    description: "Syncthing between the machines that run pai: the projects and the Claude Code transcripts.",
-    kind: "service",
-    enabled: () => config.sync.enabled,
-    status: () => syncStatus() as Record<string, unknown>,
-    settings: [
-      { key: "PAI_SYNC", label: "Enabled", type: "toggle" },
-      { key: "PAI_SYNC_PEER", label: "Peer device id" },
     ],
   },
 ];

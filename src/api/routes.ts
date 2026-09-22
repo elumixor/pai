@@ -18,7 +18,6 @@ import { status } from "./status.ts";
 import * as files from "../domain/files.ts";
 import * as settings from "../domain/settings.ts";
 import { sessionsIn, transcript, transcriptPath } from "../domain/transcript.ts";
-import { syncProgress, syncStatus } from "../domain/sync.ts";
 import { cost as hostingCost } from "../domain/hetzner.ts";
 
 const log = logger("api");
@@ -96,9 +95,6 @@ export async function handle(req: Request): Promise<Response> {
       if (!cwd) return json({ error: "cwd required" }, 400);
       return json(await sessionsIn(cwd, Number(url.searchParams.get("limit") ?? 30)));
     }
-
-    // What the machines are agreeing on: the device id to pair with, and what is still in flight.
-    if (path === "/sync") return json({ ...syncStatus(), folders: await syncProgress() });
 
     if (path === "/settings" && req.method === "PATCH") {
       const changes = await body<Record<string, unknown>>(req);

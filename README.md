@@ -106,23 +106,18 @@ in place.
 
 ## The same files on two machines
 
-`PAI_SYNC=1` gives the daemon a Syncthing of its own and shares three folders with the other
-machines that run pai: the projects under `devRoot`, the Claude Code transcripts, and the rest
-of `~/.claude` — settings, skills, agents, commands, plugins — so `claude` is the same `claude`
-on every machine. Pairing is one command on each side —
+A Mac keeps `~/dev` and `~/.claude` in step with the box, two-way over ssh with Mutagen:
+`claude` in a project on the box sees the same files, skills and settings as at home.
 
 ```sh
-pai sync                       # pairs this machine with the box, and shows what is in flight
+pai files                      # what is in sync and what is not
+pai files watch                # the same, live; `watch off` / `watch on` pauses and resumes
+pai files sync                 # one cycle now; a file changed on both sides is listed and left alone
+pai files sync --local         # …or settled in favour of this machine (--remote: the box)
+pai files diff                 # the conflicts, side by side
 ```
 
-— and after that a laptop has the box's files locally. Work offline; Syncthing resolves the
-two directories when the laptop is back, and messages written meanwhile leave the client's
-outbox. Build output (`node_modules`, `target`, `dist`, …) never travels.
-
-A laptop that also runs a daemon of its own (`bun run install` with `PAI_NO_TELEGRAM=1` in
-`data/config.json`, so only the box answers the bot) gets the rest for free: the client tries
-the box first and falls back to the daemon on this machine, so threads, files and terminals
-keep working on a plane.
+Build output (`node_modules`, `target`, `dist`, …) and the Claude login never travel.
 
 ## The main conversation in a terminal
 

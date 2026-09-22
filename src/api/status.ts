@@ -4,7 +4,6 @@ import { all as allProjects } from "../domain/catalog.ts";
 import { editorStatus } from "../domain/editor.ts";
 import { publicStatus, publicUrl } from "../domain/publish.ts";
 import { googleConfigured } from "./google.ts";
-import { syncStatus } from "../domain/sync.ts";
 
 /** What the dashboard shows about the daemon itself: where it runs and how it is set up. */
 export async function status() {
@@ -22,7 +21,6 @@ export async function status() {
     },
     editor: editorStatus(),
     public: publicStatus(),
-    sync: syncStatus(),
     settings: {
       workspace: config.workspace,
       devRoot: config.devRoot,

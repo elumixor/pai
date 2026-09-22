@@ -249,14 +249,6 @@ export const projects = () => get<ProjectSummary[]>("/projects");
 export const status = () => get<Status>("/health");
 export const settings = () => get<Settings>("/settings");
 export const terminals = () => get<TerminalSummary[]>("/terminals");
-export const sync = () =>
-  get<{
-    enabled: boolean;
-    running: boolean;
-    deviceId: string;
-    peer: string;
-    folders: { id: string; state?: string; needBytes?: number; path?: string }[];
-  }>("/sync");
 export const usage = () => get<Usage>("/usage");
 export const commands = (session: string) => get<SlashCommand[]>(`/commands?session=${session}`);
 export const diagnostics = (path: string, fresh = false) => get<{ project?: string; items: Diagnostic[] }>(`/diagnostics?path=${encodeURIComponent(path)}${fresh ? "&fresh=1" : ""}`);

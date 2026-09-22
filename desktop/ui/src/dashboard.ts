@@ -1,6 +1,6 @@
 import {
   automations as listAutomations, baseUrl, contextItems, createAutomation, createContextProject, deleteAutomation, modules as listModules, patchModule, pollModule,
-  projects as listProjects, recentEvents, send, status, sync, updateAutomation, usage,
+  projects as listProjects, recentEvents, send, status, updateAutomation, usage,
 } from "./api.ts";
 import { ago, clear, dialog, el, until } from "./dom.ts";
 import { editor } from "./editor.ts";
@@ -71,7 +71,7 @@ export function dashboard(root: HTMLElement, handlers: DashboardHandlers) {
   // ---- overview -------------------------------------------------------------------------
 
   async function overview() {
-    const [health, quota, syncState, events] = await Promise.all([status(), usage().catch(() => undefined), sync().catch(() => undefined), recentEvents(40).catch(() => [])]);
+    const [health, quota, events] = await Promise.all([status(), usage().catch(() => undefined), recentEvents(40).catch(() => [])]);
     clear(
       body,
       el("h2.dash-title", {}, "Overview", el("span.dim", {}, health.host.hostname)),
@@ -99,7 +99,6 @@ export function dashboard(root: HTMLElement, handlers: DashboardHandlers) {
           kv("projects", `${health.counts.projects} under ${health.settings.devRoot}`),
           kv("telegram", health.settings.telegram ? "on" : "off"),
           kv("updates", `${health.settings.updateChannel}${health.settings.autoUpdate ? " · automatic" : ""}`),
-          syncState ? kv("sync", syncState.enabled ? (syncState.running ? "running" : "starting") : "off") : undefined,
         ),
         card(
           "Recent events",
@@ -123,7 +122,7 @@ export function dashboard(root: HTMLElement, handlers: DashboardHandlers) {
   async function modules() {
     const list = await listModules();
     const kinds: Record<ModuleInfo["kind"], string> = { channel: "talks to you", tools: "tools for sessions", source: "watches something", service: "infrastructure" };
-    const icons: Record<string, IconName> = { telegram: "send", "tg-user": "user", browser: "globe", tasks: "list", linkedin: "link", gmail: "mail", editor: "code", public: "monitor", sync: "refresh" };
+    const icons: Record<string, IconName> = { telegram: "send", "tg-user": "user", browser: "globe", tasks: "list", linkedin: "link", gmail: "mail", editor: "code", public: "monitor" };
     const chip = (text: string, title?: string, cls = "") => el("span.chip", { class: `chip ${cls}`, title: title ?? "" }, text);
 
     const moduleCard = (m: ModuleInfo) => {

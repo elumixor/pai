@@ -123,20 +123,6 @@ export const config = {
   domain: setting("PAI_DOMAIN") ?? "",
 
   /**
-   * Two-way file sync with the other machines that run pai, over Syncthing: the projects
-   * under `devRoot` and the Claude Code transcripts, so a laptop works with the box's files
-   * offline and catches up when it is back.
-   */
-  sync: {
-    enabled: bool(setting("PAI_SYNC")),
-    /** The other machine's Syncthing device id; pairing is mutual, so both sides set it. */
-    peer: setting("PAI_SYNC_PEER") ?? "",
-    guiPort: Number(setting("PAI_SYNC_PORT") ?? 8384),
-    /** Syncthing's own configuration and keys; a second daemon on one machine needs its own. */
-    home: resolve(setting("PAI_SYNC_HOME") ?? join(homedir(), ".config", "pai-syncthing")),
-  },
-
-  /**
    * Where clients link back to this daemon. Explicit `PAI_BASE_URL` wins; otherwise a public
    * daemon with a domain links to its https address, and anything else has no links.
    */

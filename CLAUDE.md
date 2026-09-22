@@ -11,7 +11,8 @@ Never test through Telegram. The CLI drives the identical code path.
 ```sh
 pai claude [args]          # the main conversation in this terminal, on the box
 pai ssh [command]          # a shell (or one command) on the box; `connect` is the same
-pai status | sync | update | cost   # this machine and the box; `sync` pairs them by itself
+pai status | update | cost | files [status|watch|sync|push|pull|diff|on|off|reset]
+pai menubar [install|uninstall]     # the Mac menu bar app: quota rings, what runs, files, links
 bun run infra [--destroy]  # the Hetzner host from nothing (provision + bootstrap), idempotent
 
 pai dev daemon [-f]        # detached; -f/--foreground = attached, verbose, telegram off
@@ -63,7 +64,7 @@ project's `CLAUDE.md`.
 - `src/domain/catalog.ts` — coding projects under `~/dev`; `projects.json` overrides.
 - `src/api/` — `server.ts` (transport, the terminal websocket, the client), `routes.ts`, `events.ts` (SSE), `port.ts`, `app.ts` (serves the client at `/ui`), `auth.ts` (`PAI_TOKEN` for programs, a signed session cookie for browsers; loopback and the bundles are exempt), `google.ts` (Sign in with Google: `PAI_GOOGLE_CLIENT_ID/SECRET` in `.env`, `PAI_GOOGLE_ALLOWED` emails; `/auth/check` is Caddy's forward_auth for the editor).
 - `src/domain/publish.ts` — `PAI_PUBLIC=1` runs Caddy as a child: https on 80/443 for `PAI_DOMAIN` or `<ip>.sslip.io`, `/` the client, `/editor` code-server; opens the Hetzner firewall itself. Only with a token or Google sign-in configured.
-- `src/domain/sync.ts` — Syncthing as a child of the daemon: `devRoot`, `~/.claude/projects` and the rest of `~/.claude` (settings, skills, agents, commands, plugins; not the login or caches) shared with `PAI_SYNC_PEER`. `pai sync [device id]`.
+- `src/host/files.ts` — the same files on the Mac and the box: `~/dev` ↔ `~/dev`, `~/.claude` ↔ `~/.claude` (not the login, caches, transcripts' `.pai`), two-way over ssh with Mutagen (installed to `~/.local/bin` on first use; a daemon on the Mac, an agent it puts on the box). Safe mode: both sides changed = a conflict, shown by `pai files`, settled with `pai files sync --local|--remote` (rsync of the conflicting paths, then a cycle). Nothing runs on the box for this.
 - `src/clients/telegram.ts` — grammY frontend: routing by topic / reply, draft streaming, live cards, question keyboards, attachments.
 - `src/clients/tg-user.ts` — the user's own Telegram account (gramjs, `TELEGRAM_USER_SESSION`) as the `tg` MCP server.
 - `src/clients/cli.ts` — the CLI over the HTTP API.

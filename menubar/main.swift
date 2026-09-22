@@ -86,6 +86,41 @@ struct UsageLimit: Decodable {
     let scope: Scope?
 }
 struct Usage: Decodable { let fiveHour: UsagePeriod?; let limits: [UsageLimit]? }
+/// One Mutagen session as `mutagen sync list --template '{{json .}}'` prints it.
+struct SyncEndpoint: Decodable { let connected: Bool }
+struct SyncConflict: Decodable { let root: String }
+struct SyncSession: Decodable { let name: String; let status: String; let paused: Bool; let conflicts: [SyncConflict]?; let alpha: SyncEndpoint; let beta: SyncEndpoint }
+
+/// File sync state, read from the Mutagen daemon on this Mac. Empty when Mutagen is not installed.
+func syncSessions() -> [SyncSession]? {
+    let home = FileManager.default.homeDirectoryForCurrentUser.path
+    let candidates = [home + "/.local/bin/mutagen", "/opt/homebrew/bin/mutagen", "/usr/local/bin/mutagen"]
+    guard let bin = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else { return nil }
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: bin)
+    process.arguments = ["sync", "list", "--template", "{{json .}}"]
+    let pipe = Pipe()
+    process.standardOutput = pipe
+    process.standardError = FileHandle.nullDevice
+    guard (try? process.run()) != nil else { return nil }
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    process.waitUntilExit()
+    guard let start = data.firstIndex(of: UInt8(ascii: "[")) else { return [] }
+    return (try? JSONDecoder().decode([SyncSession].self, from: data[start...])) ?? []
+}
+
+/// One line for the menu: "files in sync", "files syncing", "files: 3 conflicts", "files paused".
+func syncSummary(_ sessions: [SyncSession]?) -> String {
+    guard let sessions else { return "files: mutagen not installed (pai files)" }
+    if sessions.isEmpty { return "files: not set up (pai files)" }
+    let conflicts = sessions.reduce(0) { $0 + ($1.conflicts?.count ?? 0) }
+    if conflicts > 0 { return "files: \(conflicts) conflict\(conflicts == 1 ? "" : "s") (pai files diff)" }
+    if sessions.allSatisfy({ $0.paused }) { return "files paused (pai files on)" }
+    if sessions.contains(where: { !$0.alpha.connected || !$0.beta.connected }) { return "files: connecting to the box" }
+    if sessions.allSatisfy({ $0.status == "watching" }) { return "files in sync" }
+    return "files syncing"
+}
+
 /// The box's own reading of the limits (`/usage`), for a Mac without a Claude login.
 struct BoxWindow: Decodable { let name: String; let percent: Int; let resetsAt: String?; let length: Double }
 struct BoxUsage: Decodable { let windows: [BoxWindow] }
@@ -202,6 +237,7 @@ final class App: NSObject, NSApplicationDelegate {
     var usageFetchedAt: Date?
     var usageStale: Bool { usageFetchedAt.map { Date().timeIntervalSince($0) > 10 * 60 } ?? true }
     var claudeToken: String?
+    var files = "files: …"
 
     func applicationDidFinishLaunching(_ n: Notification) {
         item.menu = menu
@@ -209,8 +245,19 @@ final class App: NSObject, NSApplicationDelegate {
         Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in self.poll() }
         // The rings move with the clock as well as with the quota, so redraw between fetches.
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in self.pollUsage(); self.render() }
+        Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in self.pollFiles() }
         poll()
         pollUsage()
+        pollFiles()
+    }
+
+    func pollFiles() {
+        DispatchQueue.global(qos: .utility).async {
+            let summary = syncSummary(syncSessions())
+            DispatchQueue.main.async {
+                if summary != self.files { self.files = summary; self.render() }
+            }
+        }
     }
 
     func pollUsage() {
@@ -343,6 +390,9 @@ final class App: NSObject, NSApplicationDelegate {
             }
         }
         menu.addItem(.separator())
+        let f = NSMenuItem(title: files, action: #selector(openFiles), keyEquivalent: "f"); f.target = self
+        menu.addItem(f)
+        menu.addItem(.separator())
         let c = NSMenuItem(title: "Claude in Terminal", action: #selector(openClaude), keyEquivalent: "c"); c.target = self
         menu.addItem(c)
         let d = NSMenuItem(title: "Open dashboard", action: #selector(openDashboard), keyEquivalent: "d"); d.target = self
@@ -360,8 +410,10 @@ final class App: NSObject, NSApplicationDelegate {
     @objc func openDashboard() { if !dashboard.isEmpty { NSWorkspace.shared.open(URL(string: dashboard)!) } }
     @objc func openEditor() { NSWorkspace.shared.open(URL(string: (dashboard.isEmpty ? base : String(dashboard.dropLast(4))) + "/editor/")!) }
     /// `pai claude` in a new Terminal window: the main conversation, on the box.
-    @objc func openClaude() {
-        let script = "tell application \"Terminal\"\nactivate\ndo script \"pai claude\"\nend tell"
+    @objc func openClaude() { terminal("pai claude") }
+    @objc func openFiles() { terminal("pai files watch") }
+    func terminal(_ command: String) {
+        let script = "tell application \"Terminal\"\nactivate\ndo script \"\(command)\"\nend tell"
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         process.arguments = ["-e", script]

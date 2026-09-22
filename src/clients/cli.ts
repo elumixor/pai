@@ -97,8 +97,8 @@ const usage = `pai — the assistant on the box, from here
 
   claude [claude args…]   the main conversation in this terminal
   ssh [command…]          a shell on the box, or one command there (connect is the same)
-  status                  this machine and the box: version, address, sync
-  sync                    file sync with the box; pairs the two machines if they are not yet
+  status                  the box: version, address, what is on
+  files [command]         the same files here and on the box (fs is the same); see pai files help
   update                  update pai here and on the box
   cost                    the Claude limits (session, weekly) and what the box costs
   menubar [install|uninstall]  the menu bar app on this Mac: quota rings, what runs, links
@@ -170,9 +170,73 @@ async function userCommand() {
       out(data, () => statusLines(data, remoteBox ? "box" : "here").join("\n"));
       break;
     }
-    case "sync": {
-      const data = await api("/sync");
-      out(data, () => syncLines(data, remoteBox ? "box" : "here").join("\n"));
+    case "sync":
+    case "fs":
+    case "files": {
+      const f = await import("../host/files.ts");
+      if (!remoteBox) throw new Error("file sync runs on the laptop, against the box");
+      const sub = cmd === "sync" ? "sync" : (positional[0] ?? "status");
+      const made = await f.ensureSessions();
+      if (made.length) console.error(`started syncing ${made.join(", ")}`);
+      const winner = args.includes("--local") ? "local" : args.includes("--remote") ? "remote" : undefined;
+      const show = async () => out(await f.status(), () => filesLines(current!));
+      let current: Awaited<ReturnType<typeof f.status>> | undefined;
+      const refresh = async () => (current = await f.status());
+      switch (sub) {
+        case "status":
+          await refresh();
+          await show();
+          break;
+        case "watch": {
+          if (positional[1] === "on") return void out(await f.resume(), () => "watching");
+          if (positional[1] === "off") return void out(await f.pause(), () => "paused; `pai files watch on` to resume");
+          // A live view: redrawn every second until interrupted.
+          for (;;) {
+            await refresh();
+            process.stdout.write(`\x1b[2J\x1b[H${filesLines(current!)}\n\n${new Date().toLocaleTimeString()} · ctrl-c to leave\n`);
+            await Bun.sleep(1000);
+          }
+        }
+        case "on":
+          out(await f.resume(), () => "watching");
+          break;
+        case "off":
+          out(await f.pause(), () => "paused; `pai files on` to resume");
+          break;
+        case "sync":
+        case "push":
+        case "pull": {
+          const take = sub === "push" ? "local" : sub === "pull" ? "remote" : winner;
+          await refresh();
+          const conflicts = current!.flatMap((x) => x.conflicts.map((c) => `${x.name}: ${c.path} (here ${c.local}, box ${c.remote})`));
+          if (conflicts.length && !take) {
+            console.error(`${conflicts.length} conflict${conflicts.length > 1 ? "s" : ""} — nothing changed. --local keeps this machine's version, --remote the box's:\n  ${conflicts.join("\n  ")}`);
+            process.exit(1);
+          }
+          const settled = take ? await f.resolve(take) : [];
+          await f.flush();
+          await refresh();
+          out({ settled, folders: current }, () => [...(settled.length ? [`settled ${settled.length} in favour of ${take === "local" ? "this machine" : "the box"}:`, ...settled.map((x) => `  ${x}`), ""] : []), filesLines(current!)].join("\n"));
+          break;
+        }
+        case "diff": {
+          await refresh();
+          const lines: string[] = [];
+          for (const x of current!) {
+            lines.push(`${x.name}  ${x.local} ↔ box:${x.remote}`);
+            if (!x.conflicts.length) lines.push("  no conflicts");
+            for (const c of x.conflicts) lines.push(`  ${c.path}  here ${c.local} · box ${c.remote}`);
+          }
+          out(current, () => lines.join("\n"));
+          break;
+        }
+        case "reset":
+          await f.reset();
+          out({ reset: true }, () => "history forgotten; the next cycle re-reads both sides");
+          break;
+        default:
+          console.log(filesUsage);
+      }
       break;
     }
     // The box pulls what its channel says is new and restarts; this checkout, when it is a
@@ -254,17 +318,44 @@ function statusLines(data: any, label: string) {
     `${label.padEnd(9)} ${data.version} · ${data.host.hostname} (${data.host.platform}) · api ${data.host.api}`,
     `public    ${data.public?.url ?? "(off)"}${data.public?.state && data.public.state !== "up" ? ` — ${data.public.state}${data.public.reason ? `: ${data.public.reason}` : ""}` : ""}`,
     `editor    ${data.editor?.enabled ? `${data.editor.running ? "running" : "starting"} at ${data.editor.url}` : "off"}`,
-    `sync      ${data.sync?.enabled ? (data.sync.running ? "running" : "starting") : "off"}`,
     `telegram  ${data.settings.telegram ? "on" : "off"}`,
     `projects  ${data.counts.projects}`,
   ];
 }
 
-function syncLines(data: any, label: string) {
-  return [
-    `${label.padEnd(9)} ${data.enabled ? (data.running ? "running" : "starting") : "off"}${data.deviceId ? ` · ${data.deviceId.slice(0, 7)}…` : ""}`,
-    ...data.folders.map((f: any) => `  ${String(f.id).padEnd(18)} ${f.state ?? ""} ${f.needBytes ? `${f.needBytes} B behind` : ""}`),
-  ];
+const filesUsage = `pai files — the same files here and on the box
+
+  status                  what is in sync, what is not (default)
+  watch                   the same, live; watch on | off turns syncing on and off
+  sync [--local|--remote] one cycle now; conflicts are listed and nothing changes unless a side is chosen
+  push | pull             sync --local | sync --remote
+  diff                    the conflicts, side by side
+  reset                   forget what was agreed; the next cycle compares both sides afresh`;
+
+const STATE: Record<string, string> = {
+  watching: "in sync",
+  scanning: "scanning",
+  "staging-alpha": "sending",
+  "staging-beta": "receiving",
+  transitioning: "applying",
+  connecting: "connecting",
+  "connecting-alpha": "connecting",
+  "connecting-beta": "connecting to the box",
+  "waiting-for-rescan": "waiting",
+  "halted-on-root-emptied": "halted: a root was emptied (pai files reset)",
+  "halted-on-root-deletion": "halted: a root was deleted",
+  "halted-on-root-type-change": "halted: a root changed type",
+  missing: "not set up",
+};
+
+function filesLines(folders: any[]) {
+  return folders
+    .map((x) => {
+      const state = x.paused ? "paused" : (STATE[x.state] ?? x.state);
+      const head = `${x.local.replace(process.env.HOME ?? "", "~").padEnd(20)} ${state}${x.conflicts.length ? ` · ${x.conflicts.length} conflict${x.conflicts.length > 1 ? "s" : ""}` : ""}${x.files ? ` · ${x.files} files` : ""}${x.error ? ` · ${x.error}` : ""}`;
+      return [head, ...x.conflicts.slice(0, 8).map((c: any) => `  ${c.path}  here ${c.local} · box ${c.remote}`), ...(x.conflicts.length > 8 ? [`  … ${x.conflicts.length - 8} more (pai files diff)`] : [])].join("\n");
+    })
+    .join("\n");
 }
 
 const updateLine = (data: any) =>

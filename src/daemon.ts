@@ -8,7 +8,6 @@ import { closeAll as closeTerminals } from "./domain/terminals.ts";
 import { startBrowser } from "./domain/browser.ts";
 import { startEditor } from "./domain/editor.ts";
 import { startPublic } from "./domain/publish.ts";
-import { startSync } from "./domain/sync.ts";
 import { bus } from "./core/bus.ts";
 import { disconnectUser } from "./clients/tg-user.ts";
 import { startAutoUpdate } from "./host/update.ts";
@@ -26,7 +25,6 @@ const server = startServer();
 const stopBrowser = startBrowser();
 const stopEditor = startEditor();
 const stopPublic = startPublic();
-const stopSync = startSync();
 const bot = startTelegram();
 // Before warmUp: it revives the main session, whose freshly persisted state would
 // otherwise look like a turn that a restart cut off.
@@ -55,7 +53,6 @@ function shutdown(signal: string) {
   stopBrowser();
   stopEditor();
   stopPublic();
-  stopSync();
   void disconnectUser();
   void bot?.stop();
   void server.stop(true);
