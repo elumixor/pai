@@ -168,7 +168,9 @@ const api = async (path: string, init?: RequestInit) => {
 async function ready() {
   for (let attempt = 0; attempt < 40; attempt++) {
     try {
-      await api("/system/ping");
+      // The configuration file lists the shared folders' devices before this machine's own
+      // entry, so the id read from it may be the peer's; the running instance knows for sure.
+      deviceId = ((await api("/system/status")) as { myID: string }).myID || deviceId;
       return;
     } catch {
       await Bun.sleep(250);
