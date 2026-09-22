@@ -215,7 +215,9 @@ async function userCommand() {
 async function boxCall(command: string) {
   const r = await import("../host/remote.ts");
   remoteNote(await r.ensureAccess());
-  return r.boxJson(remoteBox!, command === "sync" || command === "status" ? command : `dev ${command}`);
+  const data = await r.boxJson(remoteBox!, command === "sync" || command === "status" ? command : `dev ${command}`);
+  // `pai status` and `pai sync` answer for the machine they run on under `here`.
+  return "here" in data ? data.here : data;
 }
 
 function statusLines(data: any, label: string) {
