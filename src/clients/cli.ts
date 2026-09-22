@@ -274,6 +274,12 @@ async function userCommand() {
       );
       break;
     }
+    case "version": {
+      const here = (await Bun.file(`${config.repo}/package.json`).json()).version as string;
+      const there = remoteBox ? await api("/health").then((h) => h.version as string).catch(() => "unreachable") : undefined;
+      out({ here: `v${here}`, box: there }, () => [`here  v${here}`, ...(there ? [`box   ${there}`] : [])].join("\n"));
+      break;
+    }
     case "completion": {
       const script = help.zshCompletion(await moduleHelp());
       if (positional[0] !== "install") {

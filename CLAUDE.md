@@ -93,7 +93,9 @@ project's `CLAUDE.md`.
 
 ## Releasing
 
-A `v*` tag (`npm version <bump> && git push --follow-tags`) runs CI: checks, then on macOS the
+`bun run release [patch|minor|major]` (`scripts/release.ts`): refuses a dirty tree or a branch other
+than main, runs the checks, bumps the version as a commit and a `v*` tag, pushes, then waits for the
+box to report it. The tag runs CI: checks, then on macOS the
 universal desktop app and a daemon archive, a GitHub release with both (`pai-macos.dmg` is the
 stable name the client links to), then `POST /update` on the host (`PAI_URL`, `PAI_TOKEN`
 repository secrets) and a wait until `/health` reports the tag.
