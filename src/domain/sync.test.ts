@@ -17,8 +17,8 @@ describe("sync, switched off", () => {
     stop();
   });
 
-  it("names the two folders it shares", async () => {
+  it("names the three folders it shares", async () => {
     const { syncStatus } = await import("./sync.ts");
-    expect(syncStatus().folders.map((folder) => folder.id)).toEqual(["pai-projects", "pai-transcripts"]);
+    expect(syncStatus().folders.map((folder) => folder.id)).toEqual(["pai-projects", "pai-transcripts", "pai-claude-home"]);
   });
 });

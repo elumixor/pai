@@ -77,6 +77,12 @@ export const config = {
   /** Project-scoped Hetzner Cloud API token, read-only use: pricing the host actually costs. */
   hcloudToken: env.HCLOUD_TOKEN ?? "",
 
+  /**
+   * The box, as `user@host`, for `pai ssh` and `pai claude` from a laptop. Defaults to the
+   * Hetzner host's address as the `pai` user; `PAI_REMOTE=0` means there is no box.
+   */
+  remote: setting("PAI_REMOTE") ?? (env.PAI_HOST_IP ? `pai@${env.PAI_HOST_IP}` : ""),
+
   telegram: {
     enabled: !bool(setting("PAI_NO_TELEGRAM")),
     token: env.TELEGRAM_BOT_TOKEN ?? "",

@@ -27,6 +27,8 @@ bun run src/clients/cli.ts sync [device id]        # file sync between machines;
 bun run src/clients/cli.ts status                  # version, address, public URL, editor, sync
 bun run src/clients/cli.ts settings [KEY=value …]  # read or change data/config.json; a change needs restart
 bun run src/clients/cli.ts restart
+bun run src/clients/cli.ts claude [args]           # the main conversation in this terminal, on the box
+bun run src/clients/cli.ts ssh [command]           # a shell (or one command) on the box; `connect` is the same
 bun run dev                                        # the client in a browser, rebuilt on save (port 5180)
 bun run install [--no-app]                         # bundles, the service, `pai` on PATH, the Mac app in /Applications
 ```
@@ -67,14 +69,14 @@ from tasks are injected into the main conversation.
 - `src/domain/catalog.ts` — coding projects under `~/dev`; `projects.json` overrides.
 - `src/api/` — `server.ts` (transport, the terminal websocket, the client), `routes.ts`, `events.ts` (SSE), `port.ts`, `app.ts` (serves the client at `/ui`), `auth.ts` (`PAI_TOKEN` for programs, a signed session cookie for browsers; loopback and the bundles are exempt), `google.ts` (Sign in with Google: `PAI_GOOGLE_CLIENT_ID/SECRET` in `.env`, `PAI_GOOGLE_ALLOWED` emails; `/auth/check` is Caddy's forward_auth for the editor).
 - `src/domain/publish.ts` — `PAI_PUBLIC=1` runs Caddy as a child: https on 80/443 for `PAI_DOMAIN` or `<ip>.sslip.io`, `/` the client, `/editor` code-server; opens the Hetzner firewall itself. Only with a token or Google sign-in configured.
-- `src/domain/sync.ts` — Syncthing as a child of the daemon: `devRoot` and `~/.claude/projects` shared with `PAI_SYNC_PEER`. `pai sync [device id]`.
+- `src/domain/sync.ts` — Syncthing as a child of the daemon: `devRoot`, `~/.claude/projects` and the rest of `~/.claude` (settings, skills, agents, commands, plugins; not the login or caches) shared with `PAI_SYNC_PEER`. `pai sync [device id]`.
 - `src/clients/telegram.ts` — grammY frontend: routing by topic / reply, draft streaming, live cards, question keyboards, attachments.
 - `src/clients/tg-user.ts` — the user's own Telegram account (gramjs, `TELEGRAM_USER_SESSION`) as the `tg` MCP server.
 - `src/clients/cli.ts` — the CLI over the HTTP API.
 - `src/domain/transcript.ts` — a thread's conversation read from `~/.claude/projects` (`GET /transcript`).
 - `src/domain/settings.ts` — the editable settings in `data/config.json`, merged over the environment at import (`GET`/`PATCH /settings`; a change needs a restart).
 - `src/protocol/rich.ts` — metadata trailer: plain text for stock clients, structured for ours.
-- `src/host/` — `update.ts` and the launchd/systemd installers.
+- `src/host/` — `update.ts`, the launchd/systemd installers, and `remote.ts`: the box as `PAI_REMOTE` (`user@host`, default `pai@$PAI_HOST_IP`), ssh to it with port 22 opened for this machine's public address on the Hetzner firewall. `pai claude` there is `pai claude` here over ssh; on the box it is `POST /attach` (stops the main session's process) then `claude --resume` in the workspace.
 - `src/domain/editor.ts` — code-server on 8788, a supervised child of the daemon: builds `editor/vscode`, copies it into the extensions directory and registers it. `PAI_NO_EDITOR`, `PAI_EDITOR_PORT`, `PAI_EDITOR_BIND`, `PAI_EDITOR_PASSWORD`.
 - `editor/vscode/` — the VS Code extension: threads, projects and terminals over the API. `bun run editor` serves it without the daemon.
 - `desktop/` — the Tauri desktop app: `ui/` is the whole client — files, a viewer, a terminal dock, two thread panes, projects with their threads, dashboard and settings — with an offline cache and an outbox; `src-tauri/` is an empty Rust shell. `bun run dev` for the loop, `bun run desktop` for the window, `bun run desktop:build` for the bundle.

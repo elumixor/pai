@@ -13,21 +13,52 @@ const log = logger("sync");
  * that is always on, a laptop is intermittent; Syncthing is built for exactly that, needs no
  * VPN and no open port, and resolves a reconnect by itself.
  *
- * Two folders are shared: the projects under `devRoot`, so a laptop can work offline on the
- * same files the box's sessions use, and the Claude Code transcripts, so a thread's history
- * is readable with the box unreachable. Messages written offline are the client's outbox,
- * not this.
+ * Three folders are shared: the projects under `devRoot`, so a laptop can work offline on the
+ * same files the box's sessions use; the Claude Code transcripts, so a thread's history is
+ * readable with the box unreachable; and the rest of `~/.claude` — settings, skills, agents,
+ * commands, plugins, memory — so `claude` on the box is the same `claude` as on the laptop.
+ * Messages written offline are the client's outbox, not this.
  */
 
 const localBin = join(homedir(), ".local", "bin");
 
-const FOLDERS = [
-  { id: "pai-projects", label: "projects", path: () => config.devRoot },
-  { id: "pai-transcripts", label: "claude transcripts", path: () => join(homedir(), ".claude", "projects") },
+/** What never travels between machines. */
+const BUILD_OUTPUT = ["node_modules", "target", "dist", ".next", ".venv", "__pycache__", ".DS_Store", "*.log"];
+
+/**
+ * Of `~/.claude`, what is this machine's alone: its login, its caches and scratch, its
+ * shell snapshots, and the transcripts, which are a folder of their own.
+ */
+const CLAUDE_HOME_LOCAL = [
+  "/projects",
+  "/.credentials.json",
+  "/cache",
+  "/backups",
+  "/debug",
+  "/downloads",
+  "/file-history",
+  "/ide",
+  "/jobs",
+  "/paste-cache",
+  "/session-env",
+  "/sessions",
+  "/shell-snapshots",
+  "/statsig",
+  "/telemetry",
+  "/tmp",
+  "/todos",
+  "/daemon*",
+  "/*.bak*",
+  "/*.orig",
+  ".DS_Store",
+  "*.log",
 ];
 
-/** What never travels between machines. */
-const IGNORES = ["node_modules", "target", "dist", ".next", ".venv", "__pycache__", ".DS_Store", "*.log"].join("\n");
+const FOLDERS = [
+  { id: "pai-projects", label: "projects", path: () => config.devRoot, ignores: BUILD_OUTPUT },
+  { id: "pai-transcripts", label: "claude transcripts", path: () => join(homedir(), ".claude", "projects"), ignores: BUILD_OUTPUT },
+  { id: "pai-claude-home", label: "claude home", path: () => join(homedir(), ".claude"), ignores: CLAUDE_HOME_LOCAL },
+];
 
 let proc: Subprocess | undefined;
 let stopping = false;
@@ -160,7 +191,7 @@ async function ensureFolders() {
     // The marker Syncthing wants in a shared directory; missing, the folder sits in an error state.
     await mkdir(join(folder.path(), ".stfolder"), { recursive: true });
     // Build output is reproducible and enormous; syncing it would cost far more than it saves.
-    await Bun.write(join(folder.path(), ".stignore"), IGNORES);
+    await Bun.write(join(folder.path(), ".stignore"), folder.ignores.join("\n"));
     await api("/config/folders", {
       method: "PUT",
       body: JSON.stringify([

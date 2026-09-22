@@ -176,3 +176,44 @@ export async function openInbound(ports: readonly number[]) {
   await api(`/firewalls/${firewall.id}/actions/set_rules`, { method: "POST", body: JSON.stringify({ rules }) });
   return true;
 }
+
+/** This machine's address as the internet sees it — the source a firewall rule has to name. */
+export async function myPublicIp() {
+  const res = await fetch("https://api.ipify.org");
+  if (!res.ok) throw new Error(`could not find this machine's public address (${res.status})`);
+  const ip = (await res.text()).trim();
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) throw new Error(`unexpected public address: ${ip}`);
+  return ip;
+}
+
+const SSH_RULE = "pai ssh";
+
+/**
+ * Lets `ip` in on port 22, replacing whatever address the last `pai ssh` allowed: the rule
+ * follows the laptop around rather than opening the port to everyone. Returns whether the
+ * firewall changed.
+ */
+export async function allowSsh(ip: string) {
+  requireToken();
+  const { firewalls } = await api<{ firewalls: { id: number; rules: Rule[] }[] }>("/firewalls");
+  const firewall = firewalls[0];
+  if (!firewall) throw new Error("this project has no firewall");
+  const source = `${ip}/32`;
+  const current = firewall.rules.find((rule) => rule.description === SSH_RULE);
+  if (current?.source_ips?.length === 1 && current.source_ips[0] === source) return false;
+  const rules: Rule[] = [
+    ...firewall.rules
+      .filter((rule) => rule.description !== SSH_RULE)
+      .map(({ direction, protocol, port, source_ips, destination_ips, description }) => ({
+        direction,
+        protocol,
+        port,
+        source_ips,
+        destination_ips,
+        description,
+      })),
+    { direction: "in", protocol: "tcp", port: "22", source_ips: [source], description: SSH_RULE },
+  ];
+  await api(`/firewalls/${firewall.id}/actions/set_rules`, { method: "POST", body: JSON.stringify({ rules }) });
+  return true;
+}

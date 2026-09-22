@@ -92,6 +92,8 @@ const usage = `pai
   cost                         what the host costs per month, priced from Hetzner
   memory [query]               what the assistant remembers; a query searches
   sync [device id]             file sync between machines; with an id, pair with that machine
+  claude [claude args…]        the main conversation in this terminal, on the box (--force mid-turn)
+  ssh | connect [command…]     a shell on the box; opens its firewall for this machine first
   daemon [--foreground]        start the daemon; --foreground stays attached, verbose, no telegram
   install [--uninstall]        launchd user agent + \`pai\` on PATH
   update [--check] [--force]   pull, reinstall, rebuild, restart the daemon
@@ -141,6 +143,48 @@ try {
     case "install":
       await import(process.platform === "darwin" ? "../host/install-daemon.ts" : "../host/install-daemon-linux.ts");
       break;
+    // `pai ssh` is a shell on the box; `pai ssh <command>` runs that there and comes back.
+    case "ssh":
+    case "connect": {
+      const r = await import("../host/remote.ts");
+      const box = r.remote();
+      if (!box) throw new Error("no box configured: set PAI_REMOTE=user@host (`pai settings PAI_REMOTE=pai@1.2.3.4`)");
+      if (r.isHere(box)) throw new Error(`${box.target} is this machine`);
+      const access = await r.ensureAccess();
+      if (access.changed) console.error(`firewall: port 22 now open for ${access.ip}`);
+      process.exit(await r.ssh(box, positional.length ? positional.join(" ") : undefined));
+    }
+    // The main conversation, interactively. From a laptop that is the same command on the
+    // box over ssh; on the box it is `claude --resume` in the workspace, with the daemon's
+    // process for that conversation stopped so the two never write one transcript at once.
+    case "claude": {
+      const r = await import("../host/remote.ts");
+      const box = r.remote();
+      const rest = args.filter((a) => a !== "--force");
+      if (box && !r.isHere(box)) {
+        const access = await r.ensureAccess();
+        if (access.changed) console.error(`firewall: port 22 now open for ${access.ip}`);
+        process.exit(await r.ssh(box, ["pai", "claude", ...args].map(r.quote).join(" ")));
+      }
+      const attach = await post("/attach", { force: args.includes("--force") });
+      if (attach.error) throw new Error(attach.error);
+      const bin = Bun.which("claude") ?? `${process.env.HOME}/.local/bin/claude`;
+      if (!(await Bun.file(bin).exists())) {
+        console.error("installing claude…");
+        const install = Bun.spawn(["sh", "-c", "curl -fsSL https://claude.ai/install.sh | bash"], { stdio: ["ignore", "inherit", "inherit"] });
+        if ((await install.exited) !== 0) throw new Error("claude did not install; see https://docs.claude.com/en/docs/claude-code/setup");
+      }
+      const mode = attach.fresh ? ["--session-id", attach.id] : ["--resume", attach.id];
+      const proc = Bun.spawn([bin, ...mode, ...rest], { cwd: attach.cwd, stdio: ["inherit", "inherit", "inherit"] });
+      const code = await proc.exited;
+      // Nothing was said in a conversation that did not exist yet: forget it, or the daemon
+      // would try to resume a transcript that is not there.
+      if (attach.fresh) {
+        const said = await api(`/transcript?session=${attach.id}&limit=1`).catch(() => []);
+        if (!Array.isArray(said) || !said.length) await post("/reset", {});
+      }
+      process.exit(code);
+    }
     case "chat": {
       const data = await post("/chat", { text: positional.join(" ") });
       out(data, () => data.text || (data.error ?? "(no reply)"));

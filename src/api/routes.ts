@@ -18,7 +18,7 @@ import { messagePage } from "./message.ts";
 import { status } from "./status.ts";
 import * as files from "../domain/files.ts";
 import * as settings from "../domain/settings.ts";
-import { sessionsIn, transcript } from "../domain/transcript.ts";
+import { sessionsIn, transcript, transcriptPath } from "../domain/transcript.ts";
 import { syncProgress, syncStatus } from "../domain/sync.ts";
 import { cost as hostingCost } from "../domain/hetzner.ts";
 
@@ -53,6 +53,18 @@ export async function handle(req: Request): Promise<Response> {
     }
 
     if (path === "/health") return json(await status());
+
+    // Hands the main conversation to a terminal: its process goes down so an interactive
+    // `claude --resume` owns the transcript alone; the next message here revives it, with
+    // whatever was said in the terminal in its history.
+    if (path === "/attach" && req.method === "POST") {
+      const { force } = await body<{ force?: boolean }>(req);
+      const main = sessions.main();
+      if (main.state === "busy" && !force) return json({ error: "the main conversation is mid-turn; wait, or pass --force" }, 409);
+      const fresh = !transcriptPath(main.id, main.cwd);
+      main.kill();
+      return json({ id: main.id, cwd: main.cwd, fresh });
+    }
 
     if (path === "/files") return json(files.list(url.searchParams.get("path") ?? config.devRoot));
 

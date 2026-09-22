@@ -106,9 +106,10 @@ in place.
 
 ## The same files on two machines
 
-`PAI_SYNC=1` gives the daemon a Syncthing of its own and shares two folders with the other
-machines that run pai: the projects under `devRoot`, and the Claude Code transcripts. Pairing
-is one command on each side —
+`PAI_SYNC=1` gives the daemon a Syncthing of its own and shares three folders with the other
+machines that run pai: the projects under `devRoot`, the Claude Code transcripts, and the rest
+of `~/.claude` — settings, skills, agents, commands, plugins — so `claude` is the same `claude`
+on every machine. Pairing is one command on each side —
 
 ```sh
 pai sync                       # prints this machine's device id
@@ -123,6 +124,20 @@ A laptop that also runs a daemon of its own (`pai install` with `PAI_NO_TELEGRAM
 `data/config.json`, so only the box answers the bot) gets the rest for free: the client tries
 the box first and falls back to the daemon on this machine, so threads, files and terminals
 keep working on a plane.
+
+## The main conversation in a terminal
+
+```sh
+pai claude                     # the main conversation, on the box, in this terminal
+pai ssh                        # a shell on the box; `pai ssh <command>` runs one thing there
+```
+
+`pai claude` from a laptop goes to the box (`PAI_REMOTE`, `user@host`; by default the Hetzner
+host as `pai`) and runs `claude --resume` on the main conversation in the workspace, after the
+daemon has stopped its own process for it, so the transcript has one writer. Whatever is said
+there is in the history when the next Telegram message revives it. The box's firewall keeps
+port 22 closed; each call opens it for this machine's current public address only, through the
+Hetzner API (`HCLOUD_TOKEN`).
 
 ## Reaching it from anywhere
 

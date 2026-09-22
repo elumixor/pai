@@ -7,12 +7,14 @@
  * `--state` is a directory holding the previous host's `data/pai.db` and
  * `workspace/memory`; how it got there is the old host's business (scp, gcloud, a backup).
  *
- * Everything runs over SSH, so the host has to be on the tailnet already. Secrets travel
- * over that connection and never through git.
+ * Everything runs over SSH. `--host` is an ssh target or alias; without it the box from
+ * `PAI_REMOTE` / `PAI_HOST_IP` is used and its firewall opened for this machine first, the
+ * way `pai ssh` does. Secrets travel over that connection and never through git.
  */
 import { $ } from "bun";
 import { join } from "node:path";
 import { config } from "../src/core/config.ts";
+import { ensureAccess, remote } from "../src/host/remote.ts";
 
 const args = process.argv.slice(2);
 const flag = (name: string) => {
@@ -20,7 +22,10 @@ const flag = (name: string) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 
-const host = flag("host") ?? "pai";
+const box = remote();
+const host = flag("host") ?? box?.target;
+if (!host) throw new Error("no host: pass --host, or set PAI_REMOTE / PAI_HOST_IP");
+if (!flag("host")) await ensureAccess();
 const state = flag("state") ?? config.repo;
 const envFile = flag("env") ?? join(config.repo, ".env");
 const REPO = "elumixor/pai";
