@@ -18,7 +18,7 @@ export interface ModuleHelp {
 }
 
 export const CORE: readonly Command[] = [
-  { name: "claude", args: "[args…]", description: "the main conversation, here in the terminal" },
+  { name: "claude", args: "[--resume] [args…]", description: "a new conversation with the assistant; --resume picks an earlier one" },
   { name: "ssh", args: "[command…]", description: "a shell on the box, or one command there" },
   { name: "status", description: "version, address, what is on" },
   { name: "sync", description: "watch the files sync until in step" },

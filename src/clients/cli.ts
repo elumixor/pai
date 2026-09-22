@@ -109,30 +109,18 @@ async function userCommand() {
       if (!remoteBox) throw new Error(`${box.target} is this machine`);
       process.exit(await r.ssh(remoteBox, positional.length ? positional.join(" ") : undefined));
     }
-    // The main conversation, interactively. From a laptop that is the same command on the
-    // box over ssh; on the box it is `claude --resume` in the workspace, with the daemon's
-    // process for that conversation stopped so the two never write one transcript at once.
+    // A conversation with the assistant, in this terminal: a new one each time, in the
+    // workspace (its persona, its memory); `--resume` is claude's own picker of earlier ones.
+    // From a laptop that is the same command on the box over ssh.
     case "claude": {
-      const rest = args.filter((a) => a !== "--force");
       if (remoteBox) process.exit(await r.ssh(remoteBox, ["pai", "claude", ...args].map(r.quote).join(" ")));
-      const attach = await post("/attach", { force: args.includes("--force") });
-      if (attach.error) throw new Error(attach.error);
       const bin = Bun.which("claude") ?? `${process.env.HOME}/.local/bin/claude`;
       if (!(await Bun.file(bin).exists())) {
         console.error("installing claude…");
         const install = Bun.spawn(["sh", "-c", "curl -fsSL https://claude.ai/install.sh | bash"], { stdio: ["ignore", "inherit", "inherit"] });
         if ((await install.exited) !== 0) throw new Error("claude did not install; see https://docs.claude.com/en/docs/claude-code/setup");
       }
-      const mode = attach.fresh ? ["--session-id", attach.id] : ["--resume", attach.id];
-      const proc = Bun.spawn([bin, ...mode, ...rest], { cwd: attach.cwd, stdio: ["inherit", "inherit", "inherit"] });
-      const code = await proc.exited;
-      // Nothing was said in a conversation that did not exist yet: forget it, or the daemon
-      // would try to resume a transcript that is not there.
-      if (attach.fresh) {
-        const said = await api(`/transcript?session=${attach.id}&limit=1`).catch(() => []);
-        if (!Array.isArray(said) || !said.length) await post("/reset", {});
-      }
-      process.exit(code);
+      process.exit(await Bun.spawn([bin, ...args], { cwd: config.workspace, stdio: ["inherit", "inherit", "inherit"] }).exited);
     }
     case "status": {
       const data = await api("/health");
