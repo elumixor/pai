@@ -117,7 +117,9 @@ pai files sync --local         # …or settled in favour of this machine (--remo
 pai files diff                 # the conflicts, side by side
 ```
 
-Build output (`node_modules`, `target`, `dist`, …) and the Claude login never travel.
+Build output (`node_modules`, `target`, `dist`, …), the Claude login and `.git` never travel:
+each machine keeps its own clone of a repository (the box makes one from the Mac's origin),
+only the working trees are shared.
 
 ## The main conversation in a terminal
 

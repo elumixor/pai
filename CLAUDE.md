@@ -1,8 +1,11 @@
 # pai
 
-Personal assistant over Telegram. A message in the root chat is a turn in the main Claude
-Code session; a message in a topic is a turn in that topic's task session. Tasks are started
-by the main session (`start_task` tool), by `/new <title>`, or by the user creating a topic.
+Personal assistant that runs on a box (Hetzner) and is used from a Mac (`pai …`, the menu bar
+app, the desktop app) and from Telegram. The core here is the daemon: sessions (one Claude Code
+session each, over the Agent SDK), the HTTP API, the client, files, hosting. Everything else is
+a module from its own repository (`pai.config.ts`): `pai-builder` (coding threads), `pai-telegram`
+(the chat and the user's account), `pai-linkedin`. A message in Telegram's main topic is a turn
+in the main session; another topic is a thread of its own.
 
 ## Feedback loop
 
@@ -64,7 +67,7 @@ project's `CLAUDE.md`.
 - `src/domain/catalog.ts` — coding projects under `~/dev`; `projects.json` overrides.
 - `src/api/` — `server.ts` (transport, the terminal websocket, the client), `routes.ts`, `events.ts` (SSE), `port.ts`, `app.ts` (serves the client at `/ui`), `auth.ts` (`PAI_TOKEN` for programs, a signed session cookie for browsers; loopback and the bundles are exempt), `google.ts` (Sign in with Google: `PAI_GOOGLE_CLIENT_ID/SECRET` in `.env`, `PAI_GOOGLE_ALLOWED` emails; `/auth/check` is Caddy's forward_auth for the editor).
 - `src/domain/publish.ts` — `PAI_PUBLIC=1` runs Caddy as a child: https on 80/443 for `PAI_DOMAIN` or `<ip>.sslip.io`, `/` the client, `/editor` code-server; opens the Hetzner firewall itself. Only with a token or Google sign-in configured.
-- `src/host/files.ts` — the same files on the Mac and the box: `~/dev` ↔ `~/dev`, `~/.claude` ↔ `~/.claude` (not the login, caches, transcripts' `.pai`), two-way over ssh with Mutagen (installed to `~/.local/bin` on first use; a daemon on the Mac, an agent it puts on the box). Safe mode: both sides changed = a conflict, shown by `pai files`, settled with `pai files sync --local|--remote` (rsync of the conflicting paths, then a cycle). Nothing runs on the box for this.
+- `src/host/files.ts` — the same files on the Mac and the box: `~/dev` ↔ `~/dev`, `~/.claude` ↔ `~/.claude` (not the login, caches, transcripts' `.pai`), two-way over ssh with Mutagen (installed to `~/.local/bin` on first use; a daemon on the Mac, an agent it puts on the box). Safe mode: both sides changed = a conflict, shown by `pai files`, settled with `pai files sync --local|--remote` (rsync of the conflicting paths, then a cycle). `.git` never travels — two machines running git on one `.git` corrupt it; `~/dev/.pai-remotes.json` (written by `pai files`) tells the box each repo's origin and `catalog.adoptClones` gives a synced tree a clone's `.git` of its own. A folder definition change bumps its `version`, which recreates the session. Nothing runs on the box for this.
 - `src/clients/telegram.ts` — grammY frontend: routing by topic / reply, draft streaming, live cards, question keyboards, attachments.
 - `src/clients/tg-user.ts` — the user's own Telegram account (gramjs, `TELEGRAM_USER_SESSION`) as the `tg` MCP server.
 - `src/clients/cli.ts` — the CLI over the HTTP API.
