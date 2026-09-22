@@ -8,7 +8,6 @@ import { resultPreview } from "./transcript.ts";
 import { paiTools, type SessionRef } from "./tools.ts";
 import { browserMcp } from "./browser.ts";
 import { instructionsFor } from "./prompts.ts";
-import { linkedinModule, linkedinTools } from "../modules/linkedin.ts";
 import { gmailModule, gmailTools } from "../modules/gmail.ts";
 import { mcpServers as externalMcpServers } from "../modules/external.ts";
 
@@ -42,7 +41,6 @@ function build(kind: SessionKind, cwd: string, ref: SessionRef, project?: string
     mcpServers: {
       pai: paiTools(kind, ref),
       playwright: browserMcp(),
-      ...(linkedinModule.enabled() && linkedinModule.tools?.kinds.includes(kind) ? { linkedin: linkedinTools() } : {}),
       ...(gmailModule.enabled() && gmailModule.tools?.kinds.includes(kind) ? { gmail: gmailTools() } : {}),
       ...externalMcpServers(kind, ref),
     },

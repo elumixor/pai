@@ -287,7 +287,17 @@ export async function route(req: Request, url: URL): Promise<Response | undefine
   return (await l.module.routes?.(req, rest, url, l.ctx)) ?? new Response("not found", { status: 404 });
 }
 
-/** `pai <name> …` on the box: the module's own command line, against the daemon's API. */
+/** Whether `pai <name> <sub>` is one the module wants run on the laptop. */
+export async function runsHere(name: string, sub: string | undefined) {
+  const { modules } = await readConfig();
+  const source = modules[name];
+  if (!source || !sub) return false;
+  if (!isInstalled(name)) await install(name, source);
+  const module = await importModule(dirOf(name)).catch(() => undefined);
+  return Boolean(module?.cliHere?.includes(sub));
+}
+
+/** `pai <name> …`: the module's own command line, against the daemon's API. */
 export async function runCli(name: string, args: readonly string[], api: CliContext["api"], post: CliContext["post"], out: CliContext["out"], json: boolean) {
   const { modules } = await readConfig();
   const source = modules[name];

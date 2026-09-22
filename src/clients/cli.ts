@@ -299,12 +299,13 @@ async function userCommand() {
       console.log(usage);
       break;
     default: {
-      // A module's own command line: on the box it runs here; from a laptop it runs there.
-      if (remoteBox) {
+      // A module's own command line: on the box it runs here; from a laptop it runs there,
+      // except the subcommands a module wants on the laptop (a browser, its files).
+      const external = await import("../modules/external.ts");
+      if (remoteBox && !(await external.runsHere(cmd!, positional[0]))) {
         remoteNote(await r.ensureAccess());
         process.exit(await r.ssh(remoteBox, ["pai", cmd, ...args].map(r.quote).join(" ")));
       }
-      const external = await import("../modules/external.ts");
       const code = await external.runCli(cmd!, args, api, post, out, jsonOut);
       if (code === undefined) {
         console.log(usage);

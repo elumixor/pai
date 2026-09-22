@@ -118,6 +118,8 @@ export interface PaiModule {
   readonly skills?: string;
   /** `pai <name> …`; runs on the box, next to the daemon, with a terminal. */
   readonly cli?: (cli: CliContext) => Promise<number | void>;
+  /** Subcommands that run on the laptop instead (they need its browser, its files); the daemon's API is still the box's. */
+  readonly cliHere?: readonly string[];
   /** http under `/m/<name>/`; `path` is what follows that prefix. `undefined` is a 404. */
   readonly routes?: (req: Request, path: string, url: URL, ctx: ModuleContext) => Promise<Response | undefined> | Response | undefined;
   /** A directory served as static files under `/m/<name>/ui/`. */

@@ -117,14 +117,6 @@ export const config = {
     (bool(setting("PAI_PUBLIC")) && setting("PAI_DOMAIN") ? `https://${setting("PAI_DOMAIN")}` : "")
   ).replace(/\/$/, ""),
 
-  /** The LinkedIn inbox, through the site's own API with cookies from a signed-in browser. */
-  linkedin: {
-    enabled: bool(setting("PAI_LINKEDIN")),
-    liAt: setting("PAI_LINKEDIN_LI_AT") ?? "",
-    jsessionid: (setting("PAI_LINKEDIN_JSESSIONID") ?? "").replace(/^"|"$/g, ""),
-    intervalMinutes: Number(setting("PAI_LINKEDIN_INTERVAL") ?? 5),
-  },
-
   models: {
     main: setting("PAI_MAIN_MODEL") ?? "sonnet",
     task: setting("PAI_TASK_MODEL") ?? "sonnet",

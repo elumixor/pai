@@ -8,5 +8,6 @@ export default {
   modules: {
     builder: "github:elumixor/pai-builder",
     telegram: "github:elumixor/pai-telegram",
+    linkedin: "github:elumixor/pai-linkedin",
   },
 } satisfies PaiConfig;

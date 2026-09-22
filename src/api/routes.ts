@@ -4,7 +4,6 @@ import * as automations from "../domain/automations.ts";
 import { context } from "../domain/context.ts";
 import { byName as moduleByName, describeModules } from "../modules/index.ts";
 import * as external from "../modules/external.ts";
-import { poll as linkedinPoll } from "../modules/linkedin.ts";
 import { handleConnect as gmailConnect, listAccounts as gmailAccounts, removeAccount as gmailRemove } from "../modules/gmail.ts";
 import { installCredentials, needsLogin, usage } from "../domain/usage.ts";
 import { diagnostics } from "../domain/diagnostics.ts";
@@ -255,7 +254,6 @@ export async function handle(req: Request): Promise<Response> {
     if (modulePath?.[1]) {
       const module = moduleByName(modulePath[1]);
       if (!module) return json({ error: "no such module" }, 404);
-      if (modulePath[2] === "poll" && req.method === "POST") return json(module.name === "linkedin" ? await linkedinPoll() : { error: "nothing to poll" });
       if (req.method === "PATCH") {
         const changes = await body<Record<string, unknown>>(req);
         const allowed = new Set(module.settings?.map((s) => s.key) ?? []);

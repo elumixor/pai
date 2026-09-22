@@ -2,7 +2,6 @@ import { config } from "../core/config.ts";
 import { editorStatus } from "../domain/editor.ts";
 import { publicStatus } from "../domain/publish.ts";
 import * as settings from "../domain/settings.ts";
-import { linkedinModule } from "./linkedin.ts";
 import { gmailModule } from "./gmail.ts";
 import type { Module } from "./types.ts";
 
@@ -30,7 +29,6 @@ export const modules: readonly Module[] = [
     status: () => ({}),
     tools: { server: "pai", names: ["start_task", "send_to_task", "list_tasks", "task_output", "stop_task", "progress", "list_projects", "describe_project"], kinds: ["main"] },
   },
-  linkedinModule,
   gmailModule,
   {
     name: "editor",
