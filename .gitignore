@@ -19,5 +19,5 @@ desktop/src-tauri/target
 desktop/src-tauri/gen
 
 # external modules, installed from pai.config.ts
-modules/
+/modules/
 pai.config.local.ts
