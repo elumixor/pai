@@ -8,6 +8,7 @@
     "dev": "bun run scripts/dev.ts",
     "install": "bun run scripts/install.ts",
     "cli": "bun run src/clients/cli.ts",
+    "infra": "bun run infra/apply.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p desktop/ui",
     "test": "bun run scripts/test.ts",
     "editor": "bun run scripts/editor.ts",

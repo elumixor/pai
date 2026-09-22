@@ -25,13 +25,13 @@ const run = (label: string, cmd: string[]) => {
 };
 
 if (args.includes("--uninstall")) {
-  await run("remove the service", [bun, "run", "src/clients/cli.ts", "install", "--uninstall"]);
+  await run("remove the service", [bun, "run", "src/clients/cli.ts", "dev", "install", "--uninstall"]);
   process.exit(0);
 }
 
 await run("dependencies", [bun, "install"]);
 await run("client", [bun, "run", "build:ui"]);
-await run("daemon service", [bun, "run", "src/clients/cli.ts", "install", ...args.filter((a) => a === "--no-menubar")]);
+await run("daemon service", [bun, "run", "src/clients/cli.ts", "dev", "install", ...args.filter((a) => a === "--no-menubar")]);
 if (process.platform === "darwin" && !args.includes("--no-app"))
   await run("desktop app", [bun, "run", join("scripts", "desktop.ts"), "--install"]);
 console.log("\ninstalled — `pai status` says where the daemon is");

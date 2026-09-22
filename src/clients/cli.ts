@@ -1,11 +1,14 @@
 #!/usr/bin/env bun
 export {}; // dynamic imports only, but top-level await needs this file to be a module
-const [cmd, ...args] = process.argv.slice(2);
+const argv = process.argv.slice(2);
+// `pai dev <command>` are the daemon's own controls; everything else is what a person uses.
+const dev = argv[0] === "dev";
+const [cmd, ...args] = dev ? argv.slice(1) : argv;
 
 // The foreground daemon is the dev loop: verbose, and no bot fighting the installed one for the token.
 // These have to be set before config.ts is evaluated, so config is imported after.
 const foreground = args.includes("--foreground") || args.includes("-f");
-if (cmd === "daemon" && foreground) {
+if (dev && cmd === "daemon" && foreground) {
   process.env.PAI_NO_TELEGRAM ??= "1";
   process.env.PAI_VERBOSE ??= "1";
 }
@@ -13,6 +16,8 @@ const { config } = await import("../core/config.ts");
 const base = `http://${config.host}:${config.port}`;
 const jsonOut = args.includes("--json");
 const positional = args.filter((a) => !a.startsWith("--"));
+const box = (await import("../host/remote.ts")).remote();
+const remoteBox = box && !(await import("../host/remote.ts")).isHere(box) ? box : undefined;
 
 function flag(name: string): string | undefined {
   const i = args.indexOf(`--${name}`);
@@ -74,7 +79,18 @@ function summarize(e: any): string {
   return JSON.stringify(p).slice(0, 160);
 }
 
-const usage = `pai
+const usage = `pai — the assistant on the box, from here
+
+  claude [claude args…]   the main conversation in this terminal
+  ssh [command…]          a shell on the box, or one command there (connect is the same)
+  status                  this machine and the box: version, address, sync
+  sync                    file sync with the box; pairs the two machines if they are not yet
+  update                  update pai here and on the box
+  cost                    what the box costs per month, priced from Hetzner
+
+  --json on any command for raw output`;
+
+const devUsage = `pai dev — the daemon's own controls, for working on pai
 
   chat <text>                  a turn in the main conversation — the same path as Telegram
   task <title> <text>          start a task (own context, own topic) — --project <slug> for coding work
@@ -86,21 +102,149 @@ const usage = `pai
   tail [id] [--raw]            follow the event stream
   events [id]                  recent events
   projects [--refresh]         coding projects as the assistant sees them
-  status                       version, address, public URL, editor, sync
   settings [KEY=value …]       read or change the daemon's settings; a change needs a restart
   restart                      restart the daemon
-  cost                         what the host costs per month, priced from Hetzner
   memory [query]               what the assistant remembers; a query searches
-  sync [device id]             file sync between machines; with an id, pair with that machine
-  claude [claude args…]        the main conversation in this terminal, on the box (--force mid-turn)
-  ssh | connect [command…]     a shell on the box; opens its firewall for this machine first
   daemon [--foreground]        start the daemon; --foreground stays attached, verbose, no telegram
-  install [--uninstall]        launchd user agent + \`pai\` on PATH
-  update [--check] [--force]   pull, reinstall, rebuild, restart the daemon
+  install [--uninstall]        the service (launchd / systemd) + \`pai\` on PATH
+  update [--check] [--force]   this daemon only: pull, reinstall, rebuild, restart`;
 
-  --json on any command for raw output`;
+const remoteNote = (access: { changed: boolean; ip?: string }) => {
+  if (access.changed) console.error(`firewall: port 22 now open for ${access.ip}`);
+};
 
-try {
+async function userCommand() {
+  switch (cmd) {
+    // `pai ssh` is a shell on the box; `pai ssh <command>` runs that there and comes back.
+    case "ssh":
+    case "connect": {
+      const r = await import("../host/remote.ts");
+      if (!box) throw new Error("no box configured: set PAI_REMOTE=user@host in .env");
+      if (!remoteBox) throw new Error(`${box.target} is this machine`);
+      remoteNote(await r.ensureAccess());
+      process.exit(await r.ssh(remoteBox, positional.length ? positional.join(" ") : undefined));
+    }
+    // The main conversation, interactively. From a laptop that is the same command on the
+    // box over ssh; on the box it is `claude --resume` in the workspace, with the daemon's
+    // process for that conversation stopped so the two never write one transcript at once.
+    case "claude": {
+      const r = await import("../host/remote.ts");
+      const rest = args.filter((a) => a !== "--force");
+      if (remoteBox) {
+        remoteNote(await r.ensureAccess());
+        process.exit(await r.ssh(remoteBox, ["pai", "claude", ...args].map(r.quote).join(" ")));
+      }
+      const attach = await post("/attach", { force: args.includes("--force") });
+      if (attach.error) throw new Error(attach.error);
+      const bin = Bun.which("claude") ?? `${process.env.HOME}/.local/bin/claude`;
+      if (!(await Bun.file(bin).exists())) {
+        console.error("installing claude…");
+        const install = Bun.spawn(["sh", "-c", "curl -fsSL https://claude.ai/install.sh | bash"], { stdio: ["ignore", "inherit", "inherit"] });
+        if ((await install.exited) !== 0) throw new Error("claude did not install; see https://docs.claude.com/en/docs/claude-code/setup");
+      }
+      const mode = attach.fresh ? ["--session-id", attach.id] : ["--resume", attach.id];
+      const proc = Bun.spawn([bin, ...mode, ...rest], { cwd: attach.cwd, stdio: ["inherit", "inherit", "inherit"] });
+      const code = await proc.exited;
+      // Nothing was said in a conversation that did not exist yet: forget it, or the daemon
+      // would try to resume a transcript that is not there.
+      if (attach.fresh) {
+        const said = await api(`/transcript?session=${attach.id}&limit=1`).catch(() => []);
+        if (!Array.isArray(said) || !said.length) await post("/reset", {});
+      }
+      process.exit(code);
+    }
+    case "status": {
+      const here = await api("/health");
+      const there = remoteBox ? await boxCall("status").catch((err: Error) => ({ error: err.message })) : undefined;
+      out({ here, box: there }, () => [...statusLines(here, "here"), ...(there ? ["", ...statusLines(there, "box")] : [])].join("\n"));
+      break;
+    }
+    // Sync is between this machine and the box. Both daemons run Syncthing; pairing is each
+    // one being told the other's device id, which this does by itself over ssh.
+    case "sync": {
+      const here = await api("/sync");
+      const there = remoteBox ? await boxCall("sync") : undefined;
+      let paired = false;
+      if (there && here.deviceId && there.deviceId && (here.peer !== there.deviceId || there.peer !== here.deviceId)) {
+        const r = await import("../host/remote.ts");
+        await patch("/settings", { PAI_SYNC: "1", PAI_SYNC_PEER: there.deviceId });
+        await r.sshCapture(remoteBox!, `pai dev settings PAI_SYNC=1 PAI_SYNC_PEER=${here.deviceId} && pai dev restart`);
+        await post("/restart", {});
+        paired = true;
+      }
+      out({ here, box: there, paired }, () =>
+        [
+          ...(paired ? ["paired this machine with the box; both daemons are restarting", ""] : []),
+          ...syncLines(here, "here"),
+          ...(there ? ["", ...syncLines(there, "box")] : ["", `box       ${box ? "(this machine)" : "(none configured)"}`]),
+        ].join("\n"),
+      );
+      break;
+    }
+    // Here first, then the box: each daemon pulls what its channel says is new and restarts.
+    case "update": {
+      const here = await post("/update", {}).catch(async (err: Error) => {
+        if (!err.message.includes("Unable to connect")) throw err;
+        return (await import("../host/update.ts")).update();
+      });
+      const there = remoteBox ? await boxCall("update").catch((err: Error) => ({ error: err.message })) : undefined;
+      out({ here, box: there }, () => [`here  ${updateLine(here)}`, ...(there ? [`box   ${updateLine(there)}`] : [])].join("\n"));
+      break;
+    }
+    case "cost": {
+      const data = await api("/cost");
+      out(data, () =>
+        data.error
+          ? data.error
+          : [
+              ...data.lines.map((l: any) => `${l.name.padEnd(28)} ${l.monthly.toFixed(2)} ${data.currency}/mo`),
+              `${"total".padEnd(28)} ${data.monthlyTotal.toFixed(2)} ${data.currency}/mo`,
+            ].join("\n"),
+      );
+      break;
+    }
+    case "dev":
+      console.log(devUsage);
+      break;
+    default:
+      console.log(usage);
+  }
+}
+
+/** The same `pai` command on the box, its JSON. The box answers for itself, not for this machine. */
+async function boxCall(command: string) {
+  const r = await import("../host/remote.ts");
+  remoteNote(await r.ensureAccess());
+  return r.boxJson(remoteBox!, command === "sync" || command === "status" ? command : `dev ${command}`);
+}
+
+function statusLines(data: any, label: string) {
+  if (data.error) return [`${label.padEnd(9)} ${data.error}`];
+  return [
+    `${label.padEnd(9)} ${data.version} · ${data.host.hostname} (${data.host.platform}) · api ${data.host.api}`,
+    `public    ${data.public?.url ?? "(off)"}${data.public?.state && data.public.state !== "up" ? ` — ${data.public.state}${data.public.reason ? `: ${data.public.reason}` : ""}` : ""}`,
+    `editor    ${data.editor?.enabled ? `${data.editor.running ? "running" : "starting"} at ${data.editor.url}` : "off"}`,
+    `sync      ${data.sync?.enabled ? (data.sync.running ? "running" : "starting") : "off"}`,
+    `telegram  ${data.settings.telegram ? "on" : "off"}`,
+    `sessions  ${data.counts.projects} projects, ${data.counts.memories} memories`,
+  ];
+}
+
+function syncLines(data: any, label: string) {
+  return [
+    `${label.padEnd(9)} ${data.enabled ? (data.running ? "running" : "starting") : "off"}${data.deviceId ? ` · ${data.deviceId.slice(0, 7)}…` : ""}`,
+    ...data.folders.map((f: any) => `  ${String(f.id).padEnd(18)} ${f.state ?? ""} ${f.needBytes ? `${f.needBytes} B behind` : ""}`),
+  ];
+}
+
+const updateLine = (data: any) =>
+  data.error
+    ? data.error
+    : data.updated
+      ? `updated to ${data.head}${data.restarting ? " — restarting" : ""}`
+      : `${data.head} on ${data.branch} · ${data.behind} behind${data.dirty ? " · dirty" : ""}${data.reason ? ` · ${data.reason}` : ""}`;
+
+async function devCommand() {
   switch (cmd) {
     case "daemon": {
       if (foreground) {
@@ -143,48 +287,6 @@ try {
     case "install":
       await import(process.platform === "darwin" ? "../host/install-daemon.ts" : "../host/install-daemon-linux.ts");
       break;
-    // `pai ssh` is a shell on the box; `pai ssh <command>` runs that there and comes back.
-    case "ssh":
-    case "connect": {
-      const r = await import("../host/remote.ts");
-      const box = r.remote();
-      if (!box) throw new Error("no box configured: set PAI_REMOTE=user@host (`pai settings PAI_REMOTE=pai@1.2.3.4`)");
-      if (r.isHere(box)) throw new Error(`${box.target} is this machine`);
-      const access = await r.ensureAccess();
-      if (access.changed) console.error(`firewall: port 22 now open for ${access.ip}`);
-      process.exit(await r.ssh(box, positional.length ? positional.join(" ") : undefined));
-    }
-    // The main conversation, interactively. From a laptop that is the same command on the
-    // box over ssh; on the box it is `claude --resume` in the workspace, with the daemon's
-    // process for that conversation stopped so the two never write one transcript at once.
-    case "claude": {
-      const r = await import("../host/remote.ts");
-      const box = r.remote();
-      const rest = args.filter((a) => a !== "--force");
-      if (box && !r.isHere(box)) {
-        const access = await r.ensureAccess();
-        if (access.changed) console.error(`firewall: port 22 now open for ${access.ip}`);
-        process.exit(await r.ssh(box, ["pai", "claude", ...args].map(r.quote).join(" ")));
-      }
-      const attach = await post("/attach", { force: args.includes("--force") });
-      if (attach.error) throw new Error(attach.error);
-      const bin = Bun.which("claude") ?? `${process.env.HOME}/.local/bin/claude`;
-      if (!(await Bun.file(bin).exists())) {
-        console.error("installing claude…");
-        const install = Bun.spawn(["sh", "-c", "curl -fsSL https://claude.ai/install.sh | bash"], { stdio: ["ignore", "inherit", "inherit"] });
-        if ((await install.exited) !== 0) throw new Error("claude did not install; see https://docs.claude.com/en/docs/claude-code/setup");
-      }
-      const mode = attach.fresh ? ["--session-id", attach.id] : ["--resume", attach.id];
-      const proc = Bun.spawn([bin, ...mode, ...rest], { cwd: attach.cwd, stdio: ["inherit", "inherit", "inherit"] });
-      const code = await proc.exited;
-      // Nothing was said in a conversation that did not exist yet: forget it, or the daemon
-      // would try to resume a transcript that is not there.
-      if (attach.fresh) {
-        const said = await api(`/transcript?session=${attach.id}&limit=1`).catch(() => []);
-        if (!Array.isArray(said) || !said.length) await post("/reset", {});
-      }
-      process.exit(code);
-    }
     case "chat": {
       const data = await post("/chat", { text: positional.join(" ") });
       out(data, () => data.text || (data.error ?? "(no reply)"));
@@ -241,46 +343,9 @@ try {
       );
       break;
     }
-    // `pai sync` shows this machine's device id; `pai sync <id>` pairs it with the other one.
-    case "sync": {
-      const peer = positional[0];
-      if (peer) {
-        await patch("/settings", { PAI_SYNC: "1", PAI_SYNC_PEER: peer });
-        await post("/restart", {});
-        console.log(`paired with ${peer}; the daemon is restarting to pick it up`);
-        break;
-      }
-      const data = await api("/sync");
-      out(data, () =>
-        [
-          `enabled   ${data.enabled ? "yes" : "no"}${data.running ? " (running)" : ""}`,
-          `device    ${data.deviceId || "(not started)"}`,
-          `peer      ${data.peer || "(none — run `pai sync <device id>` on both machines)"}`,
-          ...data.folders.map((f: any) => `${String(f.id).padEnd(18)} ${f.state ?? ""} ${f.needBytes ? `${f.needBytes} B behind` : ""}`),
-        ].join("\n"),
-      );
-      break;
-    }
     case "projects": {
       const data = await api(`/projects${args.includes("--refresh") ? "?refresh=1" : ""}`);
       out(data, () => data.map((p: any) => `${p.slug.padEnd(28)} ${p.summary.slice(0, 80)}`).join("\n"));
-      break;
-    }
-    case "status": {
-      const data = await api("/health");
-      out(data, () =>
-        [
-          `version   ${data.version}`,
-          `host      ${data.host.hostname} (${data.host.platform}), api ${data.host.api}`,
-          `public    ${data.public?.url ?? "(off)"}${data.public?.state && data.public.state !== "up" ? ` — ${data.public.state}${data.public.reason ? `: ${data.public.reason}` : ""}` : ""}`,
-          `editor    ${data.editor?.enabled ? `${data.editor.running ? "running" : "starting"} at ${data.editor.url}` : "off"}`,
-          `sync      ${data.sync?.enabled ? (data.sync.running ? "running" : "starting") : "off"}`,
-          `telegram  ${data.settings.telegram ? "on" : "off"}`,
-          `token     ${data.settings.tokenSet ? "set" : "none"}`,
-          `google    ${data.settings.google ? `on, allowed: ${data.settings.google.join(", ") || "(nobody — set PAI_GOOGLE_ALLOWED)"}` : "off"}`,
-          `sessions  ${data.counts.projects} projects, ${data.counts.memories} memories`,
-        ].join("\n"),
-      );
       break;
     }
     case "settings": {
@@ -303,23 +368,15 @@ try {
       out(data, () => "restarting");
       break;
     }
-    case "cost": {
-      const data = await api("/cost");
-      out(data, () =>
-        data.error
-          ? data.error
-          : [
-              ...data.lines.map((l: any) => `${l.name.padEnd(28)} ${l.monthly.toFixed(2)} ${data.currency}/mo`),
-              `${"total".padEnd(28)} ${data.monthlyTotal.toFixed(2)} ${data.currency}/mo`,
-            ].join("\n"),
-      );
-      break;
-    }
     default:
-      console.log(usage);
+      console.log(devUsage);
   }
+}
+
+try {
+  await (dev ? devCommand() : userCommand());
 } catch (err) {
   console.error(`error: ${(err as Error).message}`);
-  if ((err as Error).message.includes("Unable to connect")) console.error("is the daemon running? `pai daemon`");
+  if ((err as Error).message.includes("Unable to connect")) console.error("is the daemon running? `pai dev daemon`");
   process.exit(1);
 }

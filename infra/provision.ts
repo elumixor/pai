@@ -1,11 +1,13 @@
 /**
- * Creates the pai host on Hetzner Cloud from `cloud-init.yaml`.
+ * Creates the pai host on Hetzner Cloud from `cloud-init.yaml`. `bun run infra` is the whole
+ * thing — this, then `bootstrap.ts`; on its own:
  *
- *   HCLOUD_TOKEN=... TAILSCALE_AUTHKEY=... bun run infra/provision.ts
- *   HCLOUD_TOKEN=...                       bun run infra/provision.ts --delete
+ *   HCLOUD_TOKEN=... bun run infra/provision.ts
+ *   HCLOUD_TOKEN=... bun run infra/provision.ts --delete
  *
- * The token is a project-scoped API token from the Hetzner console; the Tailscale key
- * should be single-use and pre-authorised, because it ends up in instance metadata.
+ * The token is a project-scoped API token from the Hetzner console. `TAILSCALE_AUTHKEY`,
+ * if set, joins the host to a tailnet as well — single-use and pre-authorised, because it
+ * ends up in instance metadata; without it the host is reached with `pai ssh`.
  */
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -27,13 +29,13 @@ class HetznerError extends Error {
   }
 }
 
-const token = required("HCLOUD_TOKEN");
-
 function required(name: string) {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is not set`);
   return value;
 }
+
+const token = required("HCLOUD_TOKEN");
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API}${path}`, {
@@ -52,7 +54,7 @@ interface Server {
   readonly public_net: { readonly ipv4: { readonly ip: string } | null };
 }
 
-async function findServer() {
+export async function findServer() {
   const { servers } = await api<{ servers: Server[] }>(`/servers?name=${NAME}`);
   return servers[0];
 }
@@ -84,11 +86,22 @@ async function ensureSshKey() {
 const AUTHKEY = /^tskey-auth-[A-Za-z0-9]+-[A-Za-z0-9]+$/;
 
 function userData(publicKey: string) {
-  const authkey = required("TAILSCALE_AUTHKEY");
-  if (!AUTHKEY.test(authkey)) throw new Error(`TAILSCALE_AUTHKEY is not shaped like tskey-auth-<id>-<secret>: ${authkey}`);
-  return readFileSync(join(import.meta.dir, "cloud-init.yaml"), "utf8")
-    .replaceAll("${SSH_PUBLIC_KEY}", publicKey)
-    .replaceAll("${TAILSCALE_AUTHKEY}", authkey);
+  const authkey = process.env.TAILSCALE_AUTHKEY ?? "";
+  if (authkey && !AUTHKEY.test(authkey)) throw new Error(`TAILSCALE_AUTHKEY is not shaped like tskey-auth-<id>-<secret>: ${authkey}`);
+  const yaml = readFileSync(join(import.meta.dir, "cloud-init.yaml"), "utf8").replaceAll("${SSH_PUBLIC_KEY}", publicKey);
+  return authkey
+    ? yaml.replaceAll("${TAILSCALE_AUTHKEY}", authkey)
+    : yaml.replace(/^.*tailscale.*\n/gm, "");
+}
+
+/** The host, created if there is none; its public address either way. */
+export async function ensureServer() {
+  const existing = await findServer();
+  if (existing?.public_net.ipv4) {
+    console.log(`${existing.name} exists at ${existing.public_net.ipv4.ip}`);
+    return existing.public_net.ipv4.ip;
+  }
+  return create();
 }
 
 async function create() {
@@ -112,16 +125,15 @@ async function create() {
   for (let attempt = 0; attempt < 60; attempt++) {
     const current = await findServer();
     if (current?.status === "running" && current.public_net.ipv4) {
-      console.log(`running at ${current.public_net.ipv4.ip}`);
-      console.log("cloud-init still has a few minutes of work; then reach it as `pai` over Tailscale");
-      return;
+      console.log(`running at ${current.public_net.ipv4.ip}; cloud-init has a few minutes of work left`);
+      return current.public_net.ipv4.ip;
     }
     await Bun.sleep(5000);
   }
   throw new Error("server did not reach running state in five minutes");
 }
 
-async function destroy() {
+export async function destroy() {
   const server = await findServer();
   if (!server) {
     console.log(`no server called ${NAME}`);
@@ -131,4 +143,4 @@ async function destroy() {
   console.log(`deleted ${server.name} (${server.id})`);
 }
 
-await (process.argv.includes("--delete") ? destroy() : create());
+if (import.meta.main) await (process.argv.includes("--delete") ? destroy() : create());

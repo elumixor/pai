@@ -57,3 +57,24 @@ export async function ssh(r: Remote, command?: string) {
 
 /** A command-line argument quoted for the box's shell. */
 export const quote = (arg: string) => `'${arg.replace(/'/g, `'\\''`)}'`;
+
+/** Runs `command` on the box and returns what it printed, for output that is parsed rather than shown. */
+export async function sshCapture(r: Remote, command: string) {
+  const args = sshArgs(r, command).filter((a) => a !== "-t");
+  const proc = Bun.spawn(args, { stdio: ["ignore", "pipe", "pipe"] });
+  const [out, err, code] = await Promise.all([
+    new Response(proc.stdout as ReadableStream).text(),
+    new Response(proc.stderr as ReadableStream).text(),
+    proc.exited,
+  ]);
+  if (code !== 0) throw new Error(`${r.target}: ${err.trim().split("\n").pop() || `exit ${code}`}`);
+  return out;
+}
+
+/** `pai <command> --json` on the box, parsed. */
+export async function boxJson(r: Remote, command: string) {
+  const out = await sshCapture(r, `pai ${command} --json`);
+  const start = out.indexOf("{") >= 0 ? Math.min(...[out.indexOf("{"), out.indexOf("[")].filter((i) => i >= 0)) : -1;
+  if (start < 0) throw new Error(`${r.target}: pai ${command} printed no JSON: ${out.trim().slice(0, 200)}`);
+  return JSON.parse(out.slice(start)) as any;
+}

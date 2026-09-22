@@ -112,15 +112,14 @@ of `~/.claude` — settings, skills, agents, commands, plugins — so `claude` i
 on every machine. Pairing is one command on each side —
 
 ```sh
-pai sync                       # prints this machine's device id
-pai sync <the other device id> # on both machines
+pai sync                       # pairs this machine with the box, and shows what is in flight
 ```
 
 — and after that a laptop has the box's files locally. Work offline; Syncthing resolves the
 two directories when the laptop is back, and messages written meanwhile leave the client's
 outbox. Build output (`node_modules`, `target`, `dist`, …) never travels.
 
-A laptop that also runs a daemon of its own (`pai install` with `PAI_NO_TELEGRAM=1` in
+A laptop that also runs a daemon of its own (`bun run install` with `PAI_NO_TELEGRAM=1` in
 `data/config.json`, so only the box answers the bot) gets the rest for free: the client tries
 the box first and falls back to the daemon on this machine, so threads, files and terminals
 keep working on a plane.
@@ -130,6 +129,8 @@ keep working on a plane.
 ```sh
 pai claude                     # the main conversation, on the box, in this terminal
 pai ssh                        # a shell on the box; `pai ssh <command>` runs one thing there
+pai status | sync | update     # this machine and the box
+bun run infra                  # the box itself, from nothing: Hetzner server + bootstrap
 ```
 
 `pai claude` from a laptop goes to the box (`PAI_REMOTE`, `user@host`; by default the Hetzner
@@ -144,8 +145,8 @@ Hetzner API (`HCLOUD_TOKEN`).
 One setting and nothing installed on any other device:
 
 ```sh
-pai settings PAI_PUBLIC=1     # or the dashboard's settings page
-pai restart
+pai dev settings PAI_PUBLIC=1 # or the dashboard's settings page
+pai dev restart
 ```
 
 The daemon then runs Caddy as a child of its own: TLS on 80 and 443 with a real certificate,

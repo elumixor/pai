@@ -9,32 +9,26 @@ by the main session (`start_task` tool), by `/new <title>`, or by the user creat
 Never test through Telegram. The CLI drives the identical code path.
 
 ```sh
-bun run src/clients/cli.ts daemon [-f]             # detached; -f/--foreground = attached, verbose, telegram off
-bun run src/clients/cli.ts chat "<text>"           # a main-conversation turn, waits for the reply
-bun run src/clients/cli.ts task "<title>" "<text>" [--project <slug>]
-bun run src/clients/cli.ts send <id> "<text>" [--wait]
-bun run src/clients/cli.ts answer <id|main> "<text>"   # answer a pending AskUserQuestion
-bun run src/clients/cli.ts tasks
-bun run src/clients/cli.ts stop <id|main> [--kill]
-bun run src/clients/cli.ts tail [id] [--raw]
-bun run src/clients/cli.ts events [id]
-bun run src/clients/cli.ts projects
-bun run src/clients/cli.ts cost                    # Hetzner spend per month (HCLOUD_TOKEN in .env)
-bun run src/clients/cli.ts memory [query]
-bun run src/clients/cli.ts update [--check] [--force]  # pull, reinstall, rebuild menubar, restart
-bun run desktop [--build|--install]                # the desktop app (dev, a .app/.dmg, or /Applications)
-bun run src/clients/cli.ts sync [device id]        # file sync between machines; with an id, pair
-bun run src/clients/cli.ts status                  # version, address, public URL, editor, sync
-bun run src/clients/cli.ts settings [KEY=value …]  # read or change data/config.json; a change needs restart
-bun run src/clients/cli.ts restart
-bun run src/clients/cli.ts claude [args]           # the main conversation in this terminal, on the box
-bun run src/clients/cli.ts ssh [command]           # a shell (or one command) on the box; `connect` is the same
-bun run dev                                        # the client in a browser, rebuilt on save (port 5180)
-bun run install [--no-app]                         # bundles, the service, `pai` on PATH, the Mac app in /Applications
+pai claude [args]          # the main conversation in this terminal, on the box
+pai ssh [command]          # a shell (or one command) on the box; `connect` is the same
+pai status | sync | update | cost   # this machine and the box; `sync` pairs them by itself
+bun run infra [--destroy]  # the Hetzner host from nothing (provision + bootstrap), idempotent
+
+pai dev daemon [-f]        # detached; -f/--foreground = attached, verbose, telegram off
+pai dev chat "<text>"      # a main-conversation turn, waits for the reply
+pai dev task "<title>" "<text>" [--project <slug>]
+pai dev send <id> "<text>" [--wait]
+pai dev answer <id|main> "<text>"   # answer a pending AskUserQuestion
+pai dev tasks | stop <id|main> [--kill] | tail [id] [--raw] | events [id] | projects | memory [query]
+pai dev settings [KEY=value …]      # read or change data/config.json; a change needs restart
+pai dev restart | update [--check] [--force] | install [--uninstall]
+bun run dev                # the client in a browser, rebuilt on save (port 5180)
+bun run install [--no-app] # bundles, the service, `pai` on PATH, the Mac app in /Applications
 ```
 
-`--json` on any command. Session ids in full or as the 6-char short form. After
-`install`, `pai <command>` is the same thing.
+`--json` on any command. Session ids in full or as the 6-char short form. `pai` is
+`bun run src/clients/cli.ts`; the user-facing commands are the first block, `pai dev` is the
+daemon's own controls and stays out of `pai --help`.
 
 ## How sessions work
 

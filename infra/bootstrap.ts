@@ -22,10 +22,6 @@ const flag = (name: string) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 
-const box = remote();
-const host = flag("host") ?? box?.target;
-if (!host) throw new Error("no host: pass --host, or set PAI_REMOTE / PAI_HOST_IP");
-if (!flag("host")) await ensureAccess();
 const state = flag("state") ?? config.repo;
 const envFile = flag("env") ?? join(config.repo, ".env");
 const REPO = "elumixor/pai";
@@ -70,12 +66,25 @@ async function carryState() {
 async function install() {
   await remote("cd ~/pai && bun install");
   await remote("cd ~/pai && bun run build:ui");
-  await remote("cd ~/pai && bun run src/clients/cli.ts install");
+  await remote("cd ~/pai && bun run scripts/install.ts");
   await remote("systemctl --user is-active pai");
 }
 
-await ensureDeployKey();
-await clone();
-await carryState();
-await install();
-console.log(`\n${host} is running pai; check with: ssh ${host} '~/.local/bin/pai tasks'`);
+let host = "";
+
+export async function bootstrap(target: string) {
+  host = target;
+  await ensureDeployKey();
+  await clone();
+  await carryState();
+  await install();
+  console.log(`\n${host} is running pai; check with: pai status`);
+}
+
+if (import.meta.main) {
+  const box = remote();
+  const target = flag("host") ?? box?.target;
+  if (!target) throw new Error("no host: pass --host, or set PAI_REMOTE / PAI_HOST_IP");
+  if (!flag("host")) await ensureAccess();
+  await bootstrap(target);
+}
