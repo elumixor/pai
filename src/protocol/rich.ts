@@ -17,6 +17,8 @@ export const MAX_PAYLOAD_CHARS = 2048;
 
 export type RichKind = "turn" | "status" | "question" | "result";
 
+export type RichState = "starting" | "busy" | "idle" | "waiting" | "dead" | "error";
+
 export interface RichTool {
   readonly name: string;
   readonly detail?: string;
@@ -35,6 +37,10 @@ export interface RichMeta {
   readonly tools?: readonly RichTool[];
   readonly usage?: RichUsage;
   readonly durationMs?: number;
+  /** A status card: what the session is doing right now. */
+  readonly state?: RichState;
+  readonly tool?: string;
+  readonly startedAt?: number;
 }
 
 export class RichProtocolError extends Error {
