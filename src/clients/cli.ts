@@ -237,6 +237,42 @@ async function userCommand() {
       else out(m.status(), () => (m.status().installed ? "installed" : "not installed (`pai menubar install`)"));
       break;
     }
+    case "projects": {
+      const data = await api(`/projects${args.includes("--refresh") ? "?refresh=1" : ""}`);
+      out(data, () => data.map((p: any) => `${p.slug.padEnd(28)} ${p.summary.slice(0, 80)}`).join("\n"));
+      break;
+    }
+    // Every conversation there is: the live ones with their state, the rest as held on disk, by project.
+    case "threads": {
+      const [tasks, disk] = await Promise.all([api("/tasks"), api("/threads/all?per=15")]);
+      const byId = new Map<string, any>();
+      for (const t of disk) byId.set(t.sessionId, { ...t, state: "held", lastActivity: Date.parse(t.lastActivity) });
+      for (const t of [...tasks.recent, ...tasks.live]) byId.set(t.sessionId, { ...byId.get(t.sessionId), ...t, state: t.waiting ? "waiting" : t.state });
+      const only = positional[0];
+      const rows = [...byId.values()].filter((t) => !t.parent && (!only || (t.project ?? "general") === only));
+      const groups = new Map<string, any[]>();
+      for (const t of rows) groups.set(t.project ?? "general", [...(groups.get(t.project ?? "general") ?? []), t]);
+      const rank = (t: any) => (t.state === "waiting" ? 0 : t.state === "busy" || t.state === "starting" ? 1 : 2);
+      const age = (ms: number) => {
+        const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+        return s < 60 ? "now" : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : `${Math.floor(s / 86400)}d`;
+      };
+      out([...groups.entries()].map(([project, threads]) => ({ project, threads })), () =>
+        [...groups.keys()]
+          .sort((a, b) => (a === "general" ? -1 : b === "general" ? 1 : a.localeCompare(b)))
+          .map((project) =>
+            [
+              project,
+              ...groups
+                .get(project)!
+                .sort((a, b) => rank(a) - rank(b) || b.lastActivity - a.lastActivity)
+                .map((t) => `  ${t.shortId}  ${t.state.padEnd(8)} ${age(t.lastActivity).padStart(4)}  ${String(t.title).replace(/\s+/g, " ").slice(0, 60)}`),
+            ].join("\n"),
+          )
+          .join("\n\n"),
+      );
+      break;
+    }
     case "modules": {
       const sub = positional[0] ?? "list";
       if (sub === "update") {
@@ -469,11 +505,6 @@ async function devCommand() {
     case "events": {
       const data = await api(`/events${positional[0] ? `?session=${positional[0]}` : ""}`);
       out(data, () => data.map((e: any) => `${clock(e.ts)} ${(e.sessionId ?? "").slice(0, 6).padEnd(6)} ${e.kind.padEnd(18)} ${summarize(e)}`).join("\n"));
-      break;
-    }
-    case "projects": {
-      const data = await api(`/projects${args.includes("--refresh") ? "?refresh=1" : ""}`);
-      out(data, () => data.map((p: any) => `${p.slug.padEnd(28)} ${p.summary.slice(0, 80)}`).join("\n"));
       break;
     }
     case "settings": {

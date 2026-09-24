@@ -18,6 +18,7 @@ Never test through Telegram. The CLI drives the identical code path.
 pai claude [--resume]      # a new conversation with the assistant on the box, in its workspace
 pai ssh [command]          # a shell (or one command) on the box; `connect` is the same
 pai status | update | cost | files [status|watch|sync|push|pull|diff|on|off|reset]
+pai threads [project] | projects     # every conversation by project (live state, or held on disk); the projects
 pai menubar [install|uninstall]     # the Mac menu bar app: quota rings, what runs, files, links
 pai completion install              # zsh completion (src/clients/help.ts is the one table: help + completion)
 bun run infra [--destroy]  # the Hetzner host from nothing (provision + bootstrap), idempotent
@@ -27,7 +28,7 @@ pai dev chat "<text>"      # a main-conversation turn, waits for the reply
 pai dev task "<title>" "<text>" [--project <slug>]
 pai dev send <id> "<text>" [--wait]
 pai dev answer <id|main> "<text>"   # answer a pending AskUserQuestion
-pai dev tasks | stop <id|main> [--kill] | tail [id] [--raw] | events [id] | projects | memory [query]
+pai dev tasks | stop <id|main> [--kill] | tail [id] [--raw] | events [id] | memory [query]
 pai dev settings [KEY=value …]      # read or change data/config.json; a change needs restart
 pai dev restart | update [--check] [--force] | install [--uninstall]
 bun run dev                # the client in a browser, rebuilt on save (port 5180)
@@ -78,7 +79,7 @@ project's `CLAUDE.md`.
 - `src/domain/transcript.ts` — a thread's conversation read from `~/.claude/projects` (`GET /transcript`).
 - `src/domain/settings.ts` — the editable settings in `data/config.json`, merged over the environment at import (`GET`/`PATCH /settings`; a change needs a restart).
 - `src/protocol/rich.ts` — metadata trailer: plain text for stock clients, structured for ours.
-- `src/host/` — the box: `update.ts`, `install-daemon-linux.ts` (systemd). A Mac is a client, not a host: `install-client.ts` (`pai` on PATH, no daemon), `menubar.ts` (the Swift menu bar app, `pai menubar`), `client.ts` (`pai update` here = pull + rebuild). `remote.ts`: the box as `PAI_REMOTE` (`user@host`, default `pai@$PAI_HOST_IP`), ssh with port 22 opened for this machine's public address on the Hetzner firewall, and `boxApi()` — the box's https address and token learned once over ssh into `~/.config/pai/box.json`, which every CLI command then uses. `pai claude` from a Mac is `pai claude` on the box over ssh; there it is `claude` in the workspace (a new conversation; `--resume` is claude's picker). `POST /attach {id, cwd}` hands a daemon session to a terminal (the builder uses it).
+- `src/host/` — the box: `update.ts`, `install-daemon-linux.ts` (systemd). A Mac is a client, not a host: `install-client.ts` (`pai` on PATH, no daemon), `menubar.ts` (the Swift menu bar app, `pai menubar`), `client.ts` (`pai update` here = pull + rebuild). `remote.ts`: the box as `PAI_REMOTE` (`user@host`, default `pai@$PAI_HOST_IP`), ssh with port 22 opened for this machine's public address on the Hetzner firewall, and `boxApi()` — the box's https address and token learned once over ssh into `~/.config/pai/box.json`, which every CLI command then uses. `pai claude` from a Mac is `pai claude` on the box over ssh; there it is `claude` in the workspace (a new conversation; `--resume` is claude's picker). `POST /attach {id, cwd}` hands a daemon session to a terminal (the builder uses it); `POST /adopt {id, cwd, title}` makes a conversation held on disk a live session without a turn (Paigram opens synced threads with it).
 - `src/domain/editor.ts` — code-server on 8788, a supervised child of the daemon: builds `editor/vscode`, copies it into the extensions directory and registers it. `PAI_NO_EDITOR`, `PAI_EDITOR_PORT`, `PAI_EDITOR_BIND`, `PAI_EDITOR_PASSWORD`.
 - `editor/vscode/` — the VS Code extension: threads, projects and terminals over the API. `bun run editor` serves it without the daemon.
 - `desktop/` — the Tauri desktop app: `ui/` is the whole client — files, a viewer, a terminal dock, two thread panes, projects with their threads, dashboard and settings — with an offline cache and an outbox; `src-tauri/` is an empty Rust shell. `bun run dev` for the loop, `bun run desktop` for the window, `bun run desktop:build` for the bundle.

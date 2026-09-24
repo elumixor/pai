@@ -193,6 +193,14 @@ export async function handle(req: Request): Promise<Response> {
       return json({ session: s.shortId, ...(await done).payload });
     }
 
+    // A conversation held on disk (this box's or one synced from another machine) becomes a live session
+    // without a turn: a client opens it, its channel gets a place for it.
+    if (path === "/adopt" && req.method === "POST") {
+      const { id, cwd, title } = await body<{ id: string; cwd: string; title?: string }>(req);
+      if (!cwd) return json({ error: "cwd required" }, 400);
+      return json(sessions.adopt(id, cwd, title ?? "").summary());
+    }
+
     if (path === "/answer" && req.method === "POST") {
       const { id, text } = await body<{ id: string; text: string }>(req);
       const s = resolveLive(id);
