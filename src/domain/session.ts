@@ -29,9 +29,10 @@ function build(kind: SessionKind, cwd: string, ref: SessionRef, project?: string
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
     includePartialMessages: true,
-    // Project settings only: the user's global hooks and plugins are for their
-    // terminal sessions, not for the assistant. claude.ai connectors still load.
-    settingSources: ["project"],
+    // claude.ai connectors (Calendar, Balance, Notion, …) only load with the user's settings, so those
+    // are in; the user's hooks are for their terminal sessions, not the assistant, and stay off.
+    settingSources: ["user", "project"],
+    disableAllHooks: true,
     // Discovered from .claude/skills under the project (and, for code sessions, the repo).
     // No global plugins: hooks like caveman's `~/.claude/.caveman-active` toggle assume one
     // interactive terminal and would race across pai's concurrent sessions.

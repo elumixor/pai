@@ -49,8 +49,9 @@ into bus events (`session.delta`, `session.text`, `session.tool`, `session.turn_
 a thread's results reach its parent without a model call.
 
 `prewarm()` keeps one initialised `task` process ready via `startup()`; a new task adopts it and its session id, so first replies take ~1s instead of ~30s. A dead process is revived with `resume` (`sessions.ensureLive()`); the transcript lives in
-`~/.claude/projects`. `settingSources: ["project"]` keeps the user's global hooks and
-plugins out of assistant sessions; claude.ai connectors still load.
+`~/.claude/projects`. `settingSources: ["user", "project"]` with `disableAllHooks`: claude.ai
+connectors only load with the user's settings (they are the account's, so anything connected on
+claude.ai is in every new session, no sync step), while the user's hooks stay out.
 
 Long-term memory is `workspace/MEMORY.md`, imported by `workspace/CLAUDE.md` and edited by
 the sessions themselves with the Edit tool; no memory tools. A change re-warms the task process
