@@ -22,7 +22,7 @@ export const CORE: readonly Command[] = [
   { name: "ssh", args: "[command…]", description: "a shell on the box, or one command there" },
   { name: "status", description: "version, address, what is on" },
   { name: "sync", description: "watch the files sync until in step" },
-  { name: "files", args: "[command]", description: "files here and on the box; `pai files help`" },
+  { name: "files", args: "[command]", description: "files here and on the box (`fs` too); `pai files help`" },
   { name: "update", description: "update pai here and on the box" },
   { name: "cost", description: "Claude limits and what the box costs" },
   { name: "menubar", args: "[install|uninstall]", description: "the menu bar app on this Mac" },
@@ -34,11 +34,11 @@ export const CORE: readonly Command[] = [
 
 export const FILES: readonly Command[] = [
   { name: "status", description: "what is in sync, what is not" },
-  { name: "watch", args: "[on|off] [--forever]", description: "live; on/off pauses and resumes" },
+  { name: "watch", args: "[on|off] [--forever]", description: "live view, leaves once in sync; on/off pauses and resumes" },
   { name: "sync", args: "[--local|--remote]", description: "one cycle; conflicts listed, settled only with a side" },
   { name: "push", description: "sync --local" },
   { name: "pull", description: "sync --remote" },
-  { name: "diff", description: "the conflicts" },
+  { name: "diff", args: "[tree|<path>]", description: "the conflicts as diffs; `tree` walks them and settles each" },
   { name: "reset", description: "forget what was agreed; compare afresh" },
 ];
 

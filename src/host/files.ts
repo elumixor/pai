@@ -11,7 +11,7 @@
  */
 import { $ } from "bun";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { config } from "../core/config.ts";
 import { ensureAccess, remote, type Remote } from "./remote.ts";
@@ -53,6 +53,13 @@ export interface Conflict {
   readonly remote: "changed" | "deleted";
 }
 
+/** Something Mutagen could not do on one side: a symlink it will not follow, a file it could not write. */
+export interface Problem {
+  readonly side: "here" | "box";
+  readonly path: string;
+  readonly error: string;
+}
+
 export interface FolderStatus {
   readonly name: string;
   readonly local: string;
@@ -62,8 +69,13 @@ export interface FolderStatus {
   readonly paused: boolean;
   readonly connected: boolean;
   readonly conflicts: readonly Conflict[];
+  readonly problems: readonly Problem[];
+  /** The file being staged right now and how far the whole staging is. */
+  readonly progress?: { readonly path: string; readonly done: number; readonly total: number };
   readonly error?: string;
   readonly files?: number;
+  readonly directories?: number;
+  readonly size?: number;
   readonly cycles?: number;
 }
 
@@ -93,6 +105,16 @@ async function mutagen(...args: string[]) {
   return res.stdout.toString();
 }
 
+interface RawEndpoint {
+  connected: boolean;
+  scanned: boolean;
+  files?: number;
+  directories?: number;
+  totalFileSize?: number;
+  scanProblems?: { path: string; error: string }[];
+  transitionProblems?: { path: string; error: string }[];
+}
+
 interface RawSession {
   name: string;
   labels?: Record<string, string>;
@@ -101,8 +123,9 @@ interface RawSession {
   lastError?: string;
   successfulCycles?: number;
   conflicts?: { root: string; alphaChanges: { old: unknown; new: unknown }[]; betaChanges: { old: unknown; new: unknown }[] }[];
-  alpha: { connected: boolean; scanned: boolean; files?: number };
-  beta: { connected: boolean; scanned: boolean; files?: number };
+  stagingStatus?: { path: string; received: number; expected: number };
+  alpha: RawEndpoint;
+  beta: RawEndpoint;
 }
 
 async function sessions(): Promise<RawSession[]> {
@@ -160,7 +183,8 @@ export async function status(): Promise<FolderStatus[]> {
   const found = await sessions();
   return FOLDERS.map((folder) => {
     const s = found.find((x) => x.name === folder.name);
-    if (!s) return { name: folder.name, local: folder.local, remote: `~/${folder.remote}`, state: "missing", paused: false, connected: false, conflicts: [] };
+    if (!s) return { name: folder.name, local: folder.local, remote: `~/${folder.remote}`, state: "missing", paused: false, connected: false, conflicts: [], problems: [] };
+    const problems = (side: "here" | "box", e: RawEndpoint): Problem[] => [...(e.scanProblems ?? []), ...(e.transitionProblems ?? [])].map((p) => ({ side, path: p.path, error: p.error }));
     return {
       name: folder.name,
       local: folder.local,
@@ -169,32 +193,15 @@ export async function status(): Promise<FolderStatus[]> {
       paused: s.paused,
       connected: s.alpha.connected && s.beta.connected,
       conflicts: (s.conflicts ?? []).map((c) => ({ path: c.root, local: side(c.alphaChanges), remote: side(c.betaChanges) })),
+      problems: [...problems("here", s.alpha), ...problems("box", s.beta)],
+      progress: s.stagingStatus ? { path: s.stagingStatus.path, done: s.stagingStatus.received, total: s.stagingStatus.expected } : undefined,
       error: s.lastError,
       files: s.alpha.files,
+      directories: s.alpha.directories,
+      size: s.alpha.totalFileSize,
       cycles: s.successfulCycles,
     };
   });
-}
-
-/** The status with what Mutagen is doing right now in words (staging 12/300, reconciling…), from its long listing. */
-export async function detailedStatus(): Promise<(FolderStatus & { detail?: string })[]> {
-  const base = await status();
-  const out = [];
-  for (const folder of base) {
-    if (folder.state === "watching" || folder.state === "missing") {
-      out.push(folder);
-      continue;
-    }
-    const text = await mutagen("sync", "list", "--long", folder.name).catch(() => "");
-    const lines = text.split("\n").map((l) => l.trim());
-    const detail = lines
-      .filter((l) => /^(Status|Staging progress|Scan progress|Reconciliation|Transition)/i.test(l) || /progress:/i.test(l))
-      .map((l) => l.replace(/^Status:\s*/, ""))
-      .slice(0, 2)
-      .join(" · ");
-    out.push({ ...folder, detail: detail || undefined });
-  }
-  return out;
 }
 
 /** One synchronization cycle now, waited for. */
@@ -208,13 +215,14 @@ export const reset = () => mutagen("sync", "reset", ...FOLDERS.map((f) => f.name
  * copied over the other (or the path deleted there, when the winner has none), then a cycle
  * runs so Mutagen sees them agree.
  */
-export async function resolve(winner: "local" | "remote") {
+export async function resolve(winner: "local" | "remote", only?: readonly string[]) {
   const r = box();
   await ensureAccess();
   const settled: string[] = [];
   for (const folder of await status()) {
     const spec = FOLDERS.find((f) => f.name === folder.name)!;
     for (const conflict of folder.conflicts) {
+      if (only && !only.includes(`${folder.name}:${conflict.path}`)) continue;
       const local = join(spec.local, conflict.path);
       const remotePath = `${spec.remote}/${conflict.path}`;
       const gone = winner === "local" ? conflict.local === "deleted" : conflict.remote === "deleted";
@@ -235,8 +243,41 @@ export async function resolve(winner: "local" | "remote") {
   return settled;
 }
 
+const short = (p: string) => p.replace(homedir(), "~");
 const q = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 const dirnameOf = (p: string) => p.slice(0, p.lastIndexOf("/")) || ".";
+
+/**
+ * A conflict as a unified diff, this machine's version against the box's: the box's copy is
+ * fetched next to a temporary file and `git diff --no-index` compares (a side that deleted the
+ * path is `/dev/null`). Binary files say so.
+ */
+export async function diff(folderName: string, path: string, colour = false): Promise<string> {
+  const spec = FOLDERS.find((f) => f.name === folderName);
+  if (!spec) throw new Error(`no folder ${folderName}`);
+  const r = box();
+  await ensureAccess();
+  const local = join(spec.local, path);
+  const tmp = join(tmpdir(), `pai-diff-${process.pid}-${Math.random().toString(36).slice(2)}`);
+  let remoteCopy = "/dev/null";
+  const fetched = await $`rsync -a ${`${r.target}:${spec.remote}/${path}`} ${tmp}`.nothrow().quiet();
+  if (fetched.exitCode === 0) remoteCopy = tmp;
+  const here = existsSync(local) ? local : "/dev/null";
+  try {
+    const res = await $`git diff --no-index ${colour ? "--color=always" : "--color=never"} -- ${here} ${remoteCopy}`.nothrow().quiet();
+    // Git's header names the temporary file; the reader wants the two machines' paths.
+    const plain = (l: string) => l.replace(/\x1b\[[0-9;]*m/g, "");
+    const body = res.stdout
+      .toString()
+      .split("\n")
+      .filter((l) => !/^(diff --git|index |--- |\+\+\+ |new file mode|deleted file mode)/.test(plain(l)))
+      .map((l) => l.replaceAll(tmp, `~/${spec.remote}/${path}`).replaceAll(local, `${short(spec.local)}/${path}`));
+    const dim = (t: string) => (colour ? `\x1b[1m${t}\x1b[0m` : t);
+    return [dim(`--- here: ${here === "/dev/null" ? "(deleted)" : `${short(spec.local)}/${path}`}`), dim(`+++ box:  ${remoteCopy === "/dev/null" ? "(deleted)" : `~/${spec.remote}/${path}`}`), ...body].join("\n");
+  } finally {
+    if (remoteCopy !== "/dev/null") await $`rm -rf ${tmp}`.quiet().nothrow();
+  }
+}
 
 /** Pending changes on each side, as Mutagen last saw them: what a flush would carry. */
 export async function pending() {

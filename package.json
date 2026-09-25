@@ -43,6 +43,7 @@
     "@xterm/xterm": "^6.0.0",
     "codemirror": "^6.0.2",
     "grammy": "^1.46.0",
+    "ink": "7",
     "node-pty": "^1.1.0",
     "react": "^19.2.8",
     "telegram": "^2.26.22",

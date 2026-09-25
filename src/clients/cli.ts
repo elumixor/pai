@@ -202,26 +202,13 @@ async function userCommand() {
         case "watch": {
           if (positional[1] === "on") return void out(await f.resume(), () => "watching");
           if (positional[1] === "off") return void out(await f.pause(), () => "paused; `pai files watch on` to resume");
-          // A live view, redrawn in place, that leaves once everything is in sync (--forever stays).
-          const forever = args.includes("--forever");
-          const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-          let tick = 0;
-          let drawn = 0;
-          for (;;) {
-            const detailed = await f.detailedStatus();
-            const settled = detailed.every((x) => x.state === "watching" && !x.paused && !x.conflicts.length);
-            const lines = detailed.flatMap((x) => {
-              const icon = x.paused ? "⏸" : x.state === "watching" ? (x.conflicts.length ? "!" : "✓") : frames[tick % frames.length];
-              return [`${icon} ${filesLines([x])}`, ...(x.detail ? [`    ${x.detail}`] : [])];
-            });
-            lines.push("", settled ? "in sync" : `${new Date().toLocaleTimeString()} · syncing… ctrl-c to leave`);
-            if (drawn) process.stdout.write(`\x1b[${drawn}A\x1b[J`);
-            process.stdout.write(`${lines.join("\n")}\n`);
-            drawn = lines.length;
-            if (settled && !forever) break;
-            tick++;
-            await Bun.sleep(700);
+          // A live view that leaves once everything is in sync (--forever stays); without a terminal, one reading.
+          if (!process.stdout.isTTY || jsonOut) {
+            await refresh();
+            await show();
+            break;
           }
+          await (await import("./files-ui.tsx")).watch(args.includes("--forever"));
           break;
         }
         case "on":
@@ -247,14 +234,32 @@ async function userCommand() {
           break;
         }
         case "diff": {
-          await refresh();
-          const lines: string[] = [];
-          for (const x of current!) {
-            lines.push(`${x.name}  ${x.local} ↔ box:${x.remote}`);
-            if (!x.conflicts.length) lines.push("  no conflicts");
-            for (const c of x.conflicts) lines.push(`  ${c.path}  here ${c.local} · box ${c.remote}`);
+          // `diff` prints every conflict as a unified diff; `diff tree` walks them in a terminal; `diff <path>` is one.
+          const ui = await import("./files-ui.tsx");
+          if (positional[1] === "tree") {
+            if (!process.stdout.isTTY) throw new Error("`diff tree` needs a terminal; `pai files diff` prints them");
+            if (!(await ui.tree())) console.log("no conflicts");
+            break;
           }
-          out(current, () => lines.join("\n"));
+          await refresh();
+          const want = positional[1];
+          const pairs = current!.flatMap((x) => x.conflicts.filter((c) => !want || c.path === want || c.path.endsWith(`/${want}`)).map((c) => ({ folder: x.name, ...c })));
+          if (jsonOut) {
+            const withText = [];
+            for (const p of pairs) withText.push({ ...p, diff: await f.diff(p.folder, p.path) });
+            console.log(JSON.stringify(withText, null, 2));
+            break;
+          }
+          if (!pairs.length) {
+            console.log(want ? `no conflict at ${want}` : "no conflicts");
+            break;
+          }
+          const colour = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
+          for (const p of pairs) {
+            console.log(`${help.c.head(p.path)}  ${help.c.dim(`here ${p.local} · box ${p.remote}`)}`);
+            console.log((await f.diff(p.folder, p.path, colour)).trimEnd() || help.c.dim("  (identical now)"));
+            console.log();
+          }
           break;
         }
         case "reset":
@@ -447,15 +452,32 @@ const STATE: Record<string, string> = {
   missing: "not set up",
 };
 
+/** Like `git status`: a line per folder, then its conflicts and problems indented, coloured on a terminal. */
 function filesLines(folders: any[]) {
+  const { c } = help;
+  const paint = (x: any) => (x.paused ? c.args : x.state === "watching" ? (x.conflicts.length ? paintRed : c.command) : x.state.startsWith("halted") ? paintRed : c.pai);
   return folders
     .map((x) => {
       const state = x.paused ? "paused" : (STATE[x.state] ?? x.state);
-      const head = `${x.local.replace(process.env.HOME ?? "", "~").padEnd(20)} ${state}${x.conflicts.length ? ` · ${x.conflicts.length} conflict${x.conflicts.length > 1 ? "s" : ""}` : ""}${x.files ? ` · ${x.files} files` : ""}${x.error ? ` · ${x.error}` : ""}`;
-      return [head, ...x.conflicts.slice(0, 8).map((c: any) => `  ${c.path}  here ${c.local} · box ${c.remote}`), ...(x.conflicts.length > 8 ? [`  … ${x.conflicts.length - 8} more (pai files diff)`] : [])].join("\n");
+      const mark = x.paused ? "⏸" : x.state === "watching" ? (x.conflicts.length ? "!" : "✓") : x.state.startsWith("halted") || x.state === "missing" ? "✗" : "…";
+      const facts = [x.files !== undefined && `${x.files.toLocaleString("en-US")} files`, x.cycles !== undefined && `${x.cycles} cycles`, x.progress && `${x.progress.total ? Math.round((x.progress.done / x.progress.total) * 100) : 0}% ${x.progress.path}`].filter(Boolean).join(" · ");
+      const head = `${paint(x)(mark)} ${c.head(x.local.replace(process.env.HOME ?? "", "~").padEnd(12))} ${paint(x)(state)}${facts ? c.dim(`  ${facts}`) : ""}${x.error ? paintRed(`  ${x.error}`) : ""}`;
+      const lines = [head];
+      if (x.conflicts.length) {
+        lines.push(paintRed(`  ${x.conflicts.length} conflict${x.conflicts.length > 1 ? "s" : ""}`) + c.dim("  (pai files diff; sync --local or --remote settles)"));
+        for (const k of x.conflicts.slice(0, 12)) lines.push(`    ${k.local === "deleted" ? paintRed("−") : k.remote === "deleted" ? c.command("+") : c.args("±")} ${k.path}${c.dim(`  here ${k.local} · box ${k.remote}`)}`);
+        if (x.conflicts.length > 12) lines.push(c.dim(`    … ${x.conflicts.length - 12} more (pai files diff tree)`));
+      }
+      if (x.problems?.length) {
+        lines.push(c.args(`  ${x.problems.length} problem${x.problems.length > 1 ? "s" : ""}`) + c.dim("  (skipped, not synced)"));
+        for (const p of x.problems.slice(0, 6)) lines.push(`    ${c.dim(p.side.padEnd(4))} ${p.path}${c.dim(`  ${p.error}`)}`);
+        if (x.problems.length > 6) lines.push(c.dim(`    … ${x.problems.length - 6} more (--json lists all)`));
+      }
+      return lines.join("\n");
     })
     .join("\n");
 }
+const paintRed = (s: string) => (process.stdout.isTTY && !process.env.NO_COLOR ? `\x1b[31m${s}\x1b[0m` : s);
 
 const updateLine = (data: any) =>
   data.error
