@@ -96,7 +96,8 @@ describe("transcripts from another machine", () => {
     expect(transcriptDirs(here).sort()).toEqual([laptop, own].sort());
     const found = await sessionsIn(here);
     expect(found.map((s) => s.sessionId).sort()).toEqual(["aaa", "bbb"]);
-    expect(found.find((s) => s.sessionId === "bbb")?.cwd).toBe("/Users/someone/dev/thing");
+    // The laptop's transcript reports this machine's directory: that is where `claude --resume` continues it.
+    expect(found.find((s) => s.sessionId === "bbb")?.cwd).toBe(here);
   });
 
   it("looks only at its own directory for a path outside devRoot", () => {
