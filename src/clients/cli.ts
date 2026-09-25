@@ -354,7 +354,7 @@ async function userCommand() {
       if (shell !== "zsh") throw new Error(`completion is zsh only; this shell is ${shell || "unknown"} (\`pai completion zsh\` prints the script)`);
       const { installCompletion } = await import("../host/client.ts");
       const result = await installCompletion(script);
-      const messages = { current: "completion already installed", updated: "completion updated — open a new shell (or `source ~/.zshrc`)", installed: "completion installed — open a new shell (or `source ~/.zshrc`)" };
+      const messages = { current: "completion already installed", updated: "completion updated — this shell predates it: run `exec zsh` (or open a new tab)", installed: "completion installed — this shell predates it: run `exec zsh` (or open a new tab)" };
       out(result, (): string => messages[result.status]);
       break;
     }

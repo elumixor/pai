@@ -53,8 +53,14 @@ function build(kind: SessionKind, cwd: string, ref: SessionRef, project?: string
     stderr: (data) => ref.session && log.debug(`${ref.session.shortId} stderr`, data.trim().slice(0, 300)),
     // A token in the environment makes claude skip the account's claude.ai connectors; the box is
     // logged in through ~/.claude, so the sessions use that and the token stays for `usage.ts`.
-    env: { ...process.env, CLAUDE_CODE_OAUTH_TOKEN: undefined },
+    env: sessionEnv(),
   };
+}
+
+function sessionEnv(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) if (value !== undefined && key !== "CLAUDE_CODE_OAUTH_TOKEN") env[key] = value;
+  return env;
 }
 
 /** Starts a subprocess for `kind` now so the next session of that kind opens without the spawn cost. */
