@@ -315,6 +315,8 @@ export class Session {
           bus.emitEvent("session.ready", { state: this.state }, this.id);
         }
         if (m.subtype === "init") {
+          const servers = ((m as { mcp_servers?: { name: string; status: string }[] }).mcp_servers ?? []).map((x) => `${x.name}:${x.status}`);
+          log.info(`${this.shortId} mcp ${servers.join(", ") || "none"}`);
           if (m.model && m.model !== this.model) {
             this.model = m.model;
             this.persist();
