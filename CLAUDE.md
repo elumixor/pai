@@ -21,7 +21,7 @@ pai status | update | cost | files [status|watch|sync|push|pull|diff|on|off|rese
 pai threads [project]      # every conversation by project; in a terminal a list to pick from: the choice runs
                            # `pai claude --resume <id>` (that thread's directory and model). `projects` = same
 pai menubar [install|uninstall]     # the Mac menu bar app: quota rings, what runs, files, links
-pai completion install              # zsh completion (src/clients/help.ts is the one table: help + completion)
+pai completion                      # installs zsh completion (src/clients/help.ts is the one table: help + completion)
 bun run infra [--destroy]  # the Hetzner host from nothing (provision + bootstrap), idempotent
 
 pai dev daemon [-f]        # detached; -f/--foreground = attached, verbose, telegram off

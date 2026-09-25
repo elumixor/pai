@@ -346,12 +346,16 @@ async function userCommand() {
     }
     case "completion": {
       const script = help.zshCompletion(await moduleHelp());
-      if (positional[0] !== "install") {
+      if (positional[0] === "zsh") {
         console.log(script);
         break;
       }
+      const shell = (process.env.SHELL ?? "").split("/").pop();
+      if (shell !== "zsh") throw new Error(`completion is zsh only; this shell is ${shell || "unknown"} (\`pai completion zsh\` prints the script)`);
       const { installCompletion } = await import("../host/client.ts");
-      out(await installCompletion(script), (): string => "completion installed — open a new shell (or `source ~/.zshrc`)");
+      const result = await installCompletion(script);
+      const messages = { current: "completion already installed", updated: "completion updated — open a new shell (or `source ~/.zshrc`)", installed: "completion installed — open a new shell (or `source ~/.zshrc`)" };
+      out(result, (): string => messages[result.status]);
       break;
     }
     case "dev":
