@@ -15,10 +15,11 @@ thread in a repo is `code`.
 Never test through Telegram. The CLI drives the identical code path.
 
 ```sh
-pai claude [--resume]      # a new conversation with the assistant on the box, in its workspace
+pai claude [--resume [id]] # a new conversation with the assistant on the box; --resume <id> continues a thread
 pai ssh [command]          # a shell (or one command) on the box; `connect` is the same
 pai status | update | cost | files [status|watch|sync|push|pull|diff|on|off|reset]
-pai threads [project] | projects     # every conversation by project (live state, or held on disk); the projects
+pai threads [project]      # every conversation by project; in a terminal a list to pick from: the choice runs
+                           # `pai claude --resume <id>` (that thread's directory and model). `projects` = same
 pai menubar [install|uninstall]     # the Mac menu bar app: quota rings, what runs, files, links
 pai completion install              # zsh completion (src/clients/help.ts is the one table: help + completion)
 bun run infra [--destroy]  # the Hetzner host from nothing (provision + bootstrap), idempotent
