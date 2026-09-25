@@ -51,7 +51,9 @@ function build(kind: SessionKind, cwd: string, ref: SessionRef, project?: string
       return { behavior: "allow", updatedInput: input };
     },
     stderr: (data) => ref.session && log.debug(`${ref.session.shortId} stderr`, data.trim().slice(0, 300)),
-    env: { ...process.env },
+    // A token in the environment makes claude skip the account's claude.ai connectors; the box is
+    // logged in through ~/.claude, so the sessions use that and the token stays for `usage.ts`.
+    env: { ...process.env, CLAUDE_CODE_OAUTH_TOKEN: undefined },
   };
 }
 
