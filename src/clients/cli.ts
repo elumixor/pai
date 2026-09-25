@@ -100,6 +100,63 @@ async function moduleHelp(): Promise<ModuleHelp[]> {
   return ext.map((m: any) => ({ name: m.name, description: m.description ?? "", commands: (m.commands ?? []).map((x: any) => ({ name: x.name.split(" ")[0] === x.name ? x.name : x.name.split(" ")[0], args: x.name.includes(" ") ? x.name.slice(x.name.indexOf(" ") + 1) : x.args, description: x.description })) }));
 }
 
+interface ThreadRow {
+  sessionId: string;
+  shortId: string;
+  title: string;
+  project: string | null;
+  cwd: string;
+  state: string;
+  lastActivity: number;
+  parent?: string | null;
+  modelPref?: string | null;
+}
+
+/** Live sessions over the ones held on disk, one row each, roots only. */
+async function listThreads(only?: string): Promise<ThreadRow[]> {
+  const [tasks, disk] = await Promise.all([api("/tasks"), api("/threads/all?per=15")]);
+  const byId = new Map<string, ThreadRow>();
+  for (const t of disk) byId.set(t.sessionId, { ...t, state: "held", lastActivity: Date.parse(t.lastActivity) });
+  for (const t of [...tasks.recent, ...tasks.live]) byId.set(t.sessionId, { ...byId.get(t.sessionId), ...t, state: t.waiting ? "waiting" : t.state });
+  return [...byId.values()].filter((t) => !t.parent && (!only || (t.project ?? "general") === only));
+}
+
+function groupThreads(rows: ThreadRow[]) {
+  const rank = (t: ThreadRow) => (t.state === "waiting" ? 0 : t.state === "busy" || t.state === "starting" ? 1 : 2);
+  const groups = new Map<string, ThreadRow[]>();
+  for (const t of rows) groups.set(t.project ?? "general", [...(groups.get(t.project ?? "general") ?? []), t]);
+  for (const threads of groups.values()) threads.sort((a, b) => rank(a) - rank(b) || b.lastActivity - a.lastActivity);
+  const latest = (threads: ThreadRow[]) => Math.max(...threads.map((t) => t.lastActivity));
+  return new Map([...groups.entries()].sort(([a, x], [b, y]) => (a === "general" ? -1 : b === "general" ? 1 : latest(y) - latest(x))));
+}
+
+function threadLine(t: ThreadRow) {
+  const age = (ms: number) => {
+    const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+    return s < 60 ? "now" : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : `${Math.floor(s / 86400)}d`;
+  };
+  return `${t.shortId}  ${t.state.padEnd(8)} ${age(t.lastActivity).padStart(4)}  ${String(t.title).replace(/\s+/g, " ").slice(0, 60)}`;
+}
+
+async function claude(args: string[], cwd: string) {
+  const bin = Bun.which("claude") ?? `${process.env.HOME}/.local/bin/claude`;
+  if (!(await Bun.file(bin).exists())) {
+    console.error("installing claude…");
+    const install = Bun.spawn(["sh", "-c", "curl -fsSL https://claude.ai/install.sh | bash"], { stdio: ["ignore", "inherit", "inherit"] });
+    if ((await install.exited) !== 0) throw new Error("claude did not install; see https://docs.claude.com/en/docs/claude-code/setup");
+  }
+  return Bun.spawn([bin, ...args], { cwd, stdio: ["inherit", "inherit", "inherit"] }).exited;
+}
+
+/** The daemon hands the thread over (its transcript in place, its process stopped), then claude continues it here. */
+async function resumeThread(id: string, extra: string[]) {
+  const thread = (await listThreads()).find((t) => t.sessionId === id || t.shortId === id || t.sessionId.startsWith(id));
+  const handed = await post("/attach", { id: thread?.sessionId ?? id, cwd: thread?.cwd, force: extra.includes("--force") });
+  if (handed.error) throw new Error(handed.error);
+  const flags = thread?.modelPref ? ["--model", thread.modelPref] : [];
+  return claude(["--resume", handed.id, ...flags, ...extra.filter((a) => a !== "--force")], handed.cwd);
+}
+
 async function userCommand() {
   switch (cmd) {
     // `pai ssh` is a shell on the box; `pai ssh <command>` runs that there and comes back.
@@ -112,15 +169,13 @@ async function userCommand() {
     // A conversation with the assistant, in this terminal: a new one each time, in the
     // workspace (its persona, its memory); `--resume` is claude's own picker of earlier ones.
     // From a laptop that is the same command on the box over ssh.
+    // `--resume <id>` is one of pai's threads: it continues in that thread's directory with its
+    // model, after the daemon lets go of it.
     case "claude": {
       if (remoteBox) process.exit(await r.ssh(remoteBox, ["pai", "claude", ...args].map(r.quote).join(" ")));
-      const bin = Bun.which("claude") ?? `${process.env.HOME}/.local/bin/claude`;
-      if (!(await Bun.file(bin).exists())) {
-        console.error("installing claude…");
-        const install = Bun.spawn(["sh", "-c", "curl -fsSL https://claude.ai/install.sh | bash"], { stdio: ["ignore", "inherit", "inherit"] });
-        if ((await install.exited) !== 0) throw new Error("claude did not install; see https://docs.claude.com/en/docs/claude-code/setup");
-      }
-      process.exit(await Bun.spawn([bin, ...args], { cwd: config.workspace, stdio: ["inherit", "inherit", "inherit"] }).exited);
+      const at = args.indexOf("--resume");
+      const id = at >= 0 && args[at + 1] && !args[at + 1]!.startsWith("-") ? args[at + 1]! : undefined;
+      process.exit(id ? await resumeThread(id, args.filter((_, i) => i !== at && i !== at + 1)) : await claude(args, config.workspace));
     }
     case "status": {
       const data = await api("/health");
@@ -237,41 +292,26 @@ async function userCommand() {
       else out(m.status(), () => (m.status().installed ? "installed" : "not installed (`pai menubar install`)"));
       break;
     }
-    case "projects": {
-      const data = await api(`/projects${args.includes("--refresh") ? "?refresh=1" : ""}`);
-      out(data, () => data.map((p: any) => `${p.slug.padEnd(28)} ${p.summary.slice(0, 80)}`).join("\n"));
-      break;
-    }
-    // Every conversation there is: the live ones with their state, the rest as held on disk, by project.
+    // Every conversation there is — running, waiting, held on disk — by project. In a terminal
+    // it is a list to choose from; the choice continues in this terminal.
+    case "projects":
     case "threads": {
-      const [tasks, disk] = await Promise.all([api("/tasks"), api("/threads/all?per=15")]);
-      const byId = new Map<string, any>();
-      for (const t of disk) byId.set(t.sessionId, { ...t, state: "held", lastActivity: Date.parse(t.lastActivity) });
-      for (const t of [...tasks.recent, ...tasks.live]) byId.set(t.sessionId, { ...byId.get(t.sessionId), ...t, state: t.waiting ? "waiting" : t.state });
-      const only = positional[0];
-      const rows = [...byId.values()].filter((t) => !t.parent && (!only || (t.project ?? "general") === only));
-      const groups = new Map<string, any[]>();
-      for (const t of rows) groups.set(t.project ?? "general", [...(groups.get(t.project ?? "general") ?? []), t]);
-      const rank = (t: any) => (t.state === "waiting" ? 0 : t.state === "busy" || t.state === "starting" ? 1 : 2);
-      const age = (ms: number) => {
-        const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
-        return s < 60 ? "now" : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : `${Math.floor(s / 86400)}d`;
-      };
-      out([...groups.entries()].map(([project, threads]) => ({ project, threads })), () =>
-        [...groups.keys()]
-          .sort((a, b) => (a === "general" ? -1 : b === "general" ? 1 : a.localeCompare(b)))
-          .map((project) =>
-            [
-              project,
-              ...groups
-                .get(project)!
-                .sort((a, b) => rank(a) - rank(b) || b.lastActivity - a.lastActivity)
-                .map((t) => `  ${t.shortId}  ${t.state.padEnd(8)} ${age(t.lastActivity).padStart(4)}  ${String(t.title).replace(/\s+/g, " ").slice(0, 60)}`),
-            ].join("\n"),
-          )
-          .join("\n\n"),
+      const threads = await listThreads(positional[0]);
+      const groups = groupThreads(threads);
+      if (jsonOut || !process.stdin.isTTY) {
+        out([...groups.entries()].map(([project, threads]) => ({ project, threads })), () =>
+          [...groups.entries()].map(([project, threads]) => [project, ...threads.map((t) => `  ${threadLine(t)}`)].join("\n")).join("\n\n"),
+        );
+        break;
+      }
+      const { pick } = await import("./picker.ts");
+      const chosen = await pick(
+        [...groups.entries()].flatMap(([project, threads]) => threads.map((t) => ({ group: project, value: t, text: `${project} ${t.title} ${t.shortId}`, line: threadLine(t) }))),
+        "type to filter · enter opens · esc leaves",
       );
-      break;
+      if (!chosen) break;
+      if (remoteBox) process.exit(await r.ssh(remoteBox, ["pai", "claude", "--resume", chosen.sessionId].map(r.quote).join(" ")));
+      process.exit(await resumeThread(chosen.sessionId, []));
     }
     case "modules": {
       const sub = positional[0] ?? "list";

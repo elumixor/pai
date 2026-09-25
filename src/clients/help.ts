@@ -18,7 +18,7 @@ export interface ModuleHelp {
 }
 
 export const CORE: readonly Command[] = [
-  { name: "claude", args: "[--resume] [args…]", description: "a new conversation with the assistant; --resume picks an earlier one" },
+  { name: "claude", args: "[--resume [id]] [args…]", description: "a new conversation with the assistant; --resume continues one (an id, or claude's picker)" },
   { name: "ssh", args: "[command…]", description: "a shell on the box, or one command there" },
   { name: "status", description: "version, address, what is on" },
   { name: "sync", description: "watch the files sync until in step" },
@@ -26,8 +26,7 @@ export const CORE: readonly Command[] = [
   { name: "update", description: "update pai here and on the box" },
   { name: "cost", description: "Claude limits and what the box costs" },
   { name: "menubar", args: "[install|uninstall]", description: "the menu bar app on this Mac" },
-  { name: "threads", args: "[project]", description: "every conversation, by project: running, waiting, held on disk" },
-  { name: "projects", args: "[--refresh]", description: "projects as the assistant sees them" },
+  { name: "threads", args: "[project]", description: "every conversation by project; pick one to continue it here (`projects` is the same)" },
   { name: "modules", args: "[update|restart]", description: "the modules: state, health" },
   { name: "completion", args: "[install]", description: "shell completion for zsh" },
   { name: "version", description: "pai here and on the box" },

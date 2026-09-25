@@ -303,6 +303,7 @@ export class Session {
           // never be reaped and would look mid-turn to every restart after this one.
           this.state = this.activeTurn || this.inbox.length > 0 ? "busy" : "idle";
           this.persist();
+          bus.emitEvent("session.ready", { state: this.state }, this.id);
         }
         if (m.subtype === "init") {
           if (m.model && m.model !== this.model) {

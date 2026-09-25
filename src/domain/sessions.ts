@@ -1,3 +1,4 @@
+import { ensureTranscriptAt } from "./transcript.ts";
 import { Session, UNTITLED, asKind, closeWarm, prewarm, rewarm, type Effort, type SessionKind } from "./session.ts";
 import { db, kv, now } from "../core/db.ts";
 import { existsSync, watch } from "node:fs";
@@ -96,6 +97,8 @@ export function adopt(sessionId: string, cwd: string, title: string): Session {
   const known = ensureLive(sessionId);
   if (known) return known;
   const project = getProject(cwd) ?? allProjects().find((p) => cwd === p.path || cwd.startsWith(`${p.path}/`));
+  // A transcript written by another machine sits under that machine's path; `claude --resume` looks only under this one.
+  ensureTranscriptAt(sessionId, workingDirectory(cwd, project?.slug ?? null));
   const session = new Session({
     kind: project ? "code" : "chat",
     title: title.slice(0, 80) || sessionId.slice(0, 8),
@@ -105,7 +108,7 @@ export function adopt(sessionId: string, cwd: string, title: string): Session {
   });
   live.set(session.id, session);
   log.info(`adopted ${session.shortId} "${session.title}" from ${cwd}`);
-  bus.emitEvent("task.created", session.summary(), session.id);
+  bus.emitEvent("task.created", { ...session.summary(), adopted: true }, session.id);
   return session;
 }
 

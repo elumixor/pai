@@ -207,7 +207,8 @@ function titleIn(head: string, sessionId: string, cwd: string): DiskSession | un
     const text = typeof content === "string" ? content : (content ?? []).find((block) => block.type === "text")?.text;
     if (!text || isInjected(text)) continue;
     const title = text.replace(/\s+/g, " ").trim().slice(0, 80);
-    return { sessionId, cwd: entry.cwd ?? cwd, title, lastActivity: "" };
+    // The directory asked for, not the one in the entry: a transcript synced from another machine names that machine's path.
+    return { sessionId, cwd, title, lastActivity: "" };
   }
   return undefined;
 }
