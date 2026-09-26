@@ -1,6 +1,6 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { config } from "../core/config.ts";
 import { allPrompts as externalPrompts } from "../modules/external.ts";
 import { modules } from "../modules/index.ts";
@@ -44,11 +44,25 @@ export interface Inventory {
   readonly at: string;
 }
 
-const inventories: Partial<Record<SessionKind, Inventory>> = {};
+// Kept next to the database, so a daemon that just restarted still knows what its last sessions had.
+const inventoryPath = join(dirname(config.dbPath), "inventory.json");
+const inventories: Partial<Record<SessionKind, Inventory>> = (() => {
+  try {
+    return JSON.parse(readFileSync(inventoryPath, "utf8")) as Partial<Record<SessionKind, Inventory>>;
+  } catch {
+    return {};
+  }
+})();
 
 /** The session that just initialised tells what it was given; the newest per kind is what the views show. */
 export function noteInit(kind: SessionKind, inventory: Inventory) {
   inventories[kind] = inventory;
+  try {
+    mkdirSync(dirname(inventoryPath), { recursive: true });
+    writeFileSync(inventoryPath, JSON.stringify(inventories, null, 2));
+  } catch {
+    // A read-only data directory only costs the memory across restarts.
+  }
 }
 
 /** `mcp__<server>__<tool>` → server and tool; a built-in has no server. */
