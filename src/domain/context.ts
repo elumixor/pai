@@ -147,14 +147,17 @@ function liveTools(): ContextItem[] {
       entry.kinds.add(kind);
       byServer.set(server, entry);
     }
-  const status = new Map<string, string>();
-  for (const kind of kinds) for (const s of inventories[kind]!.mcpServers) status.set(s.name, s.status);
+  // Tool names carry the server with dots and spaces turned into underscores ("claude.ai Balance"
+  // → "claude_ai_Balance"); the status list has the name as configured.
+  const key = (name: string) => name.replace(/[^A-Za-z0-9_-]/g, "_");
+  const status = new Map<string, { name: string; status: string }>();
+  for (const kind of kinds) for (const s of inventories[kind]!.mcpServers) status.set(key(s.name), s);
   for (const [server, entry] of byServer) {
     const names = [...entry.tools].sort();
     out.push({
       kind: "tool",
-      name: server || "Claude Code built-ins",
-      description: server ? `MCP server, ${status.get(server) ?? "connected"} · ${names.length} tools` : `${names.length} tools`,
+      name: server ? (status.get(server)?.name ?? server) : "Claude Code built-ins",
+      description: server ? `MCP server, ${status.get(server)?.status ?? "connected"} · ${names.length} tools` : `${names.length} tools`,
       source: server.startsWith("claude.ai ") ? "claude.ai connector" : server ? (modules.some((m) => m.tools?.server === server) ? `src/modules/${server}.ts` : `modules/${server}`) : "claude code",
       editable: false,
       surfaces: [...entry.kinds],
@@ -162,8 +165,8 @@ function liveTools(): ContextItem[] {
     });
   }
   // A server that came up without tools (failed, needs auth) still deserves a line.
-  for (const [server, state] of status)
-    if (!byServer.has(server)) out.push({ kind: "tool", name: server, description: `MCP server, ${state} · no tools`, source: server.startsWith("claude.ai ") ? "claude.ai connector" : `modules/${server}`, editable: false, surfaces: [] });
+  for (const [server, s] of status)
+    if (!byServer.has(server)) out.push({ kind: "tool", name: s.name, description: `MCP server, ${s.status} · no tools`, source: s.name.startsWith("claude.ai ") ? "claude.ai connector" : `modules/${s.name}`, editable: false, surfaces: [] });
   return out.sort((a, b) => (a.source === "claude code" ? -1 : b.source === "claude code" ? 1 : a.name.localeCompare(b.name)));
 }
 
