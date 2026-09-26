@@ -89,7 +89,7 @@ const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.
  * `~/.claude/.credentials.json` elsewhere; the `security` CLI reads the keychain
  * without an access-control dialog.
  */
-async function accessToken(): Promise<string | undefined> {
+export async function accessToken(): Promise<string | undefined> {
   let raw: string | undefined;
   if (process.platform === "darwin") {
     const res = await $`security find-generic-password -s "Claude Code-credentials" -w`.nothrow().quiet();

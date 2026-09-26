@@ -11,6 +11,7 @@ import { instructionsFor } from "./prompts.ts";
 import { gmailModule, gmailTools } from "../modules/gmail.ts";
 import { mcpServers as externalMcpServers } from "../modules/external.ts";
 import { noteInit } from "./context.ts";
+import { describeServers } from "./mcp-describe.ts";
 
 /** Subprocesses spawned and initialised ahead of time, keyed by kind. Only kinds with a fixed cwd can be warmed. */
 interface Warm {
@@ -180,6 +181,8 @@ export class Session {
   recentTools: string[] = [];
 
   private q?: Query;
+  /** The MCP servers this session was started with; the in-process ones carry their tool registry. */
+  private mcpConfig?: Options["mcpServers"];
   private inbox: SDKUserMessage[] = [];
   private wake?: () => void;
   private closed = false;
@@ -233,6 +236,7 @@ export class Session {
     this.resuming = resume;
     const ref: SessionRef = { session: this };
     const options = build(this.kind, this.cwd, ref, this.project, { model: this.modelPref, effort: this.effort });
+    this.mcpConfig = options.mcpServers;
     options.title = this.title;
     if (resume) options.resume = this.id;
     else options.sessionId = this.id;
@@ -322,7 +326,10 @@ export class Session {
           noteInit(this.kind, inventory);
           // The init lists tool names; the status request has each server's tools with their descriptions.
           void this.q?.mcpServerStatus()
-            .then((servers) => noteInit(this.kind, { ...inventory, mcpServers: servers.map((s) => ({ name: s.name, status: s.status, tools: s.tools?.map((t) => ({ name: t.name, description: t.description })) })) }))
+            .then(async (servers) => {
+              const described = await describeServers(servers, this.mcpConfig ?? {});
+              noteInit(this.kind, { ...inventory, mcpServers: servers.map((s) => ({ name: s.name, status: s.status, tools: described[s.name] ?? s.tools?.map((t) => ({ name: t.name, description: t.description })) })) });
+            })
             .catch(() => {});
           if (m.model && m.model !== this.model) {
             this.model = m.model;
