@@ -1,7 +1,7 @@
 import { config } from "../core/config.ts";
 import { all as allProjects, clone, CloneError, createContext, refresh } from "../domain/catalog.ts";
 import * as automations from "../domain/automations.ts";
-import { context } from "../domain/context.ts";
+import { context, save as saveContext } from "../domain/context.ts";
 import { byName as moduleByName, describeModules } from "../modules/index.ts";
 import * as external from "../modules/external.ts";
 import { handleConnect as gmailConnect, listAccounts as gmailAccounts, removeAccount as gmailRemove } from "../modules/gmail.ts";
@@ -227,6 +227,10 @@ export async function handle(req: Request): Promise<Response> {
     }
 
     // What each kind of session is given, for the dashboard.
+    if (path === "/context" && req.method === "PUT") {
+      const { name, text } = await body<{ name: string; text: string }>(req);
+      return json(saveContext(name, text));
+    }
     if (path === "/context") return json(context());
 
     // A module's own http, under its name; anything else under /m/ is a message page (below).

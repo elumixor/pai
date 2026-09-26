@@ -336,7 +336,11 @@ async function userCommand() {
         chosen
           .map((x) => {
             const head = `${help.c.head(x.name)}  ${help.c.dim(`${x.description} · ${where(x)}`)}${x.editable ? `\n${help.c.dim(x.source)}` : ""}`;
-            if (cmd === "tools") return `${head}\n${(x.body ?? "").split("\n").filter(Boolean).map((t: string) => `  ${t}`).join("\n")}`;
+            if (cmd === "tools") {
+              const tools = (x.tools ?? []) as { name: string; description?: string }[];
+              const w = Math.max(0, ...tools.map((t) => t.name.length));
+              return `${head}\n${tools.map((t) => `  ${t.name.padEnd(w)}  ${help.c.dim((t.description ?? "").split("\n")[0]!.slice(0, 100))}`).join("\n")}`;
+            }
             return full && x.body ? `${head}\n\n${x.body.trim()}\n` : head;
           })
           .join(full && cmd !== "tools" ? "\n" + "─".repeat(60) + "\n" : "\n"),

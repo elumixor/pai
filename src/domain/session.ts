@@ -318,7 +318,12 @@ export class Session {
         if (m.subtype === "init") {
           const servers = (m.mcp_servers ?? []).map((x) => `${x.name}:${x.status}`);
           log.info(`${this.shortId} mcp ${servers.join(", ") || "none"}`);
-          noteInit(this.kind, { tools: m.tools ?? [], mcpServers: m.mcp_servers ?? [], skills: m.skills ?? [], slashCommands: m.slash_commands ?? [], agents: m.agents ?? [], model: m.model, at: new Date().toISOString() });
+          const inventory = { tools: m.tools ?? [], mcpServers: m.mcp_servers ?? [], skills: m.skills ?? [], slashCommands: m.slash_commands ?? [], agents: m.agents ?? [], model: m.model, at: new Date().toISOString() };
+          noteInit(this.kind, inventory);
+          // The init lists tool names; the status request has each server's tools with their descriptions.
+          void this.q?.mcpServerStatus()
+            .then((servers) => noteInit(this.kind, { ...inventory, mcpServers: servers.map((s) => ({ name: s.name, status: s.status, tools: s.tools?.map((t) => ({ name: t.name, description: t.description })) })) }))
+            .catch(() => {});
           if (m.model && m.model !== this.model) {
             this.model = m.model;
             this.persist();

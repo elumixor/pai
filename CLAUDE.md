@@ -104,7 +104,9 @@ than main, runs the checks, bumps the version as a commit and a `v*` tag, pushes
 box to report it. The tag runs CI: checks, then on macOS the
 universal desktop app and a daemon archive, a GitHub release with both (`pai-macos.dmg` is the
 stable name the client links to), then `POST /update` on the host (`PAI_URL`, `PAI_TOKEN`
-repository secrets) and a wait until `/health` reports the tag.
+repository secrets) and a wait until `/health` reports the tag. When CI cannot start (GitHub billing,
+quota), the release script falls back to `pai update`, which builds the daemon on the box from the tag;
+the desktop app is then `bun run desktop:build` here.
 
 ## Tests
 
