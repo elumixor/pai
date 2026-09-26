@@ -318,6 +318,31 @@ async function userCommand() {
       if (remoteBox) process.exit(await r.ssh(remoteBox, ["pai", "claude", "--resume", chosen.sessionId].map(r.quote).join(" ")));
       process.exit(await resumeThread(chosen.sessionId, []));
     }
+    // What the sessions are given, one kind at a time; `GET /context` is the one source.
+    case "tools":
+    case "skills":
+    case "instructions":
+    case "memories": {
+      const kind = ({ tools: "tool", skills: "skill", instructions: "instruction", memories: "memory" } as const)[cmd];
+      const data = await api("/context");
+      const items = (data.items as any[]).filter((x) => x.kind === kind);
+      const wanted = positional[0]?.toLowerCase();
+      const chosen = wanted ? items.filter((x) => x.name.toLowerCase().includes(wanted) || (x.project ?? "").toLowerCase() === wanted) : items;
+      if (wanted && !chosen.length) throw new Error(`no ${cmd} match "${positional[0]}"`);
+      // A body is printed when asked for one thing, for memories (the content is the point), or with --full.
+      const full = Boolean(wanted) || args.includes("--full") || cmd === "memories";
+      const where = (x: any) => (x.surfaces.length ? x.surfaces.join(", ") : "nowhere");
+      out(chosen, () =>
+        chosen
+          .map((x) => {
+            const head = `${help.c.head(x.name)}  ${help.c.dim(`${x.description} · ${where(x)}`)}${x.editable ? `\n${help.c.dim(x.source)}` : ""}`;
+            if (cmd === "tools") return `${head}\n${(x.body ?? "").split("\n").filter(Boolean).map((t: string) => `  ${t}`).join("\n")}`;
+            return full && x.body ? `${head}\n\n${x.body.trim()}\n` : head;
+          })
+          .join(full && cmd !== "tools" ? "\n" + "─".repeat(60) + "\n" : "\n"),
+      );
+      break;
+    }
     case "modules": {
       const sub = positional[0] ?? "list";
       if (sub === "update") {

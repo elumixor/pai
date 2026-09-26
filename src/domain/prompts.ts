@@ -28,10 +28,15 @@ Changing pai itself:
 - A thread in the pai project finishes the job end to end: once the checks pass, it releases (\`bun run release\`; CI builds and updates this host). Do not stop at a branch and ask the user to release; a change that is not released changed nothing. The release restarts the daemon, so release as the very last step, after reporting.
 - Restarting or updating the daemon cuts off every running turn, yours included. Do it only as the very last step of a turn, after reporting, and say the reply may arrive after the restart.`;
 
-const moduleSection = (kind: SessionKind) => {
-  const lines = [...modules.filter((m) => m.enabled() && m.prompt?.kinds.includes(kind)).map((m) => m.prompt!.text), ...externalPrompts(kind)].map((t) => `- ${t}`);
-  return lines.length ? `\nAlso available:\n${lines.join("\n")}` : "";
-};
+/** The heading a module's paragraph sits under, so what each module adds can be told apart. */
+export const moduleHeading = (title: string) => `# Instructions (from ${title})`;
+
+/** Every module's paragraph for a session of `kind`, each under its own heading. */
+export const moduleSections = (kind: SessionKind) =>
+  [
+    ...modules.filter((m) => m.enabled() && m.prompt?.kinds.includes(kind)).map((m) => ({ module: m.name, title: m.title, text: m.prompt!.text })),
+    ...externalPrompts(kind),
+  ].map((m) => ({ ...m, section: `${moduleHeading(m.title)}\n${m.text}` }));
 
 const CHAT = `
 You are one conversation with the user — a Telegram topic, a terminal, or a thread in the app. There are others like it, each with its own context; none of them is the main one. Most messages are conversation or quick lookups: answer them directly. If this thread was opened by the user typing a message, that message is what it is about; there is no earlier conversation.
@@ -43,13 +48,14 @@ You are a coding session in one of the user's repositories. Work in the repo dir
 
 export function instructionsFor(kind: SessionKind, project?: string): string {
   const role = kind === "code" ? CODE : CHAT;
-  return `${COMMON}\n${role}${moduleSection(kind)}`;
+  const sections = moduleSections(kind).map((m) => m.section);
+  return [`${COMMON}\n${role}`, ...sections].join("\n\n");
 }
 
 /** The fixed paragraphs with the sessions they go to, for the dashboard's context view. */
 export function sections(): [name: string, text: string, kinds: SessionKind[]][] {
   return [
-    ["common", COMMON.trim(), ["chat", "code"]],
+    ["general", COMMON.trim(), ["chat", "code"]],
     ["conversation", CHAT.trim(), ["chat"]],
     ["coding session", CODE.trim(), ["code"]],
   ];

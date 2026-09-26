@@ -10,6 +10,7 @@ import { browserMcp } from "./browser.ts";
 import { instructionsFor } from "./prompts.ts";
 import { gmailModule, gmailTools } from "../modules/gmail.ts";
 import { mcpServers as externalMcpServers } from "../modules/external.ts";
+import { noteInit } from "./context.ts";
 
 /** Subprocesses spawned and initialised ahead of time, keyed by kind. Only kinds with a fixed cwd can be warmed. */
 interface Warm {
@@ -315,8 +316,9 @@ export class Session {
           bus.emitEvent("session.ready", { state: this.state }, this.id);
         }
         if (m.subtype === "init") {
-          const servers = ((m as { mcp_servers?: { name: string; status: string }[] }).mcp_servers ?? []).map((x) => `${x.name}:${x.status}`);
+          const servers = (m.mcp_servers ?? []).map((x) => `${x.name}:${x.status}`);
           log.info(`${this.shortId} mcp ${servers.join(", ") || "none"}`);
+          noteInit(this.kind, { tools: m.tools ?? [], mcpServers: m.mcp_servers ?? [], skills: m.skills ?? [], slashCommands: m.slash_commands ?? [], agents: m.agents ?? [], model: m.model, at: new Date().toISOString() });
           if (m.model && m.model !== this.model) {
             this.model = m.model;
             this.persist();

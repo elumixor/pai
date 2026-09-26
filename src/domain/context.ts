@@ -2,9 +2,11 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { config } from "../core/config.ts";
+import { allPrompts as externalPrompts } from "../modules/external.ts";
 import { modules } from "../modules/index.ts";
 import { all as allProjects } from "./catalog.ts";
-import { sections } from "./prompts.ts";
+import type { SessionKind } from "./session.ts";
+import { moduleHeading, sections } from "./prompts.ts";
 
 /**
  * What each kind of Claude session is given, laid out so it can be read and edited in one
@@ -31,6 +33,30 @@ export interface ContextItem {
 
 const readIf = (path: string) => (existsSync(path) ? readFileSync(path, "utf8") : undefined);
 
+/** What Claude Code reported at a session's start: the tools it has, the MCP servers and how they came up. */
+export interface Inventory {
+  readonly tools: readonly string[];
+  readonly mcpServers: readonly { name: string; status: string }[];
+  readonly skills: readonly string[];
+  readonly slashCommands: readonly string[];
+  readonly agents: readonly string[];
+  readonly model: string;
+  readonly at: string;
+}
+
+const inventories: Partial<Record<SessionKind, Inventory>> = {};
+
+/** The session that just initialised tells what it was given; the newest per kind is what the views show. */
+export function noteInit(kind: SessionKind, inventory: Inventory) {
+  inventories[kind] = inventory;
+}
+
+/** `mcp__<server>__<tool>` → server and tool; a built-in has no server. */
+const split = (name: string) => {
+  const m = /^mcp__(.+?)__(.+)$/.exec(name);
+  return m ? { server: m[1]!, tool: m[2]! } : { server: "", tool: name };
+};
+
 function instructions(): ContextItem[] {
   const out: ContextItem[] = [];
   const persona = join(config.workspace, "CLAUDE.md");
@@ -39,7 +65,9 @@ function instructions(): ContextItem[] {
     out.push({ kind: "instruction", name, description: "appended to the system prompt by src/domain/prompts.ts", source: "src/domain/prompts.ts", editable: false, surfaces: kinds, body: text });
   for (const m of modules)
     if (m.prompt && m.enabled())
-      out.push({ kind: "instruction", name: `${m.title} (module)`, description: "one paragraph telling sessions the module exists", source: `src/modules/${m.name}.ts`, editable: false, surfaces: m.prompt.kinds, body: m.prompt.text });
+      out.push({ kind: "instruction", name: moduleHeading(m.title), description: `what the ${m.title} module adds, appended after the general instructions`, source: `src/modules/${m.name}.ts`, editable: false, surfaces: m.prompt.kinds, body: m.prompt.text });
+  for (const p of externalPrompts())
+    out.push({ kind: "instruction", name: moduleHeading(p.title), description: `what the ${p.title} module adds, appended after the general instructions`, source: `modules/${p.module}`, editable: false, surfaces: p.kinds, body: p.text });
   for (const project of allProjects()) {
     const file = join(project.path, "CLAUDE.md");
     if (existsSync(file))
@@ -50,9 +78,27 @@ function instructions(): ContextItem[] {
   return out;
 }
 
+/** Claude Code's own memory for a directory: `~/.claude/projects/<cwd as a slug>/memory/`. */
+function autoMemories(cwd: string, surfaces: readonly Surface[], project?: string): ContextItem[] {
+  const dir = join(homedir(), ".claude", "projects", cwd.replace(/[/.]/g, "-"), "memory");
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((name) => name.endsWith(".md"))
+    .sort((a, b) => (a === "MEMORY.md" ? -1 : b === "MEMORY.md" ? 1 : a.localeCompare(b)))
+    .map((name) => {
+      const file = join(dir, name);
+      const raw = readIf(file) ?? "";
+      const description = /^description:\s*(.+)$/m.exec(raw)?.[1] ?? (name === "MEMORY.md" ? "the index Claude Code loads each session" : "");
+      return { kind: "memory" as const, name: project ? `${project}: ${name}` : name, description, source: file, editable: true, surfaces, project, body: raw };
+    });
+}
+
 function memories(): ContextItem[] {
   const file = join(config.workspace, "MEMORY.md");
-  return [{ kind: "memory", name: "MEMORY.md", description: "what the assistant remembers, a markdown file it edits itself", source: file, editable: true, surfaces: ["chat", "code"], body: readIf(file) ?? "" }];
+  const out: ContextItem[] = [{ kind: "memory", name: "MEMORY.md", description: "what the assistant remembers, a markdown file it edits itself", source: file, editable: true, surfaces: ["chat", "code"], body: readIf(file) ?? "" }];
+  out.push(...autoMemories(config.workspace, ["chat"]));
+  for (const project of allProjects()) out.push(...autoMemories(project.path, [project.kind === "context" ? "chat" : "code", "terminal"], project.slug));
+  return out;
 }
 
 function skillsIn(dir: string, surfaces: readonly Surface[], project?: string): ContextItem[] {
@@ -74,7 +120,42 @@ function skills(): ContextItem[] {
   return out;
 }
 
+/** What a running session actually has, server by server, from the newest init of each kind. */
+function liveTools(): ContextItem[] {
+  const out: ContextItem[] = [];
+  const kinds = Object.keys(inventories) as SessionKind[];
+  const byServer = new Map<string, { tools: Set<string>; kinds: Set<SessionKind> }>();
+  for (const kind of kinds)
+    for (const name of inventories[kind]!.tools) {
+      const { server, tool } = split(name);
+      const entry = byServer.get(server) ?? { tools: new Set(), kinds: new Set() };
+      entry.tools.add(tool);
+      entry.kinds.add(kind);
+      byServer.set(server, entry);
+    }
+  const status = new Map<string, string>();
+  for (const kind of kinds) for (const s of inventories[kind]!.mcpServers) status.set(s.name, s.status);
+  for (const [server, entry] of byServer) {
+    const names = [...entry.tools].sort();
+    out.push({
+      kind: "tool",
+      name: server || "Claude Code built-ins",
+      description: server ? `MCP server, ${status.get(server) ?? "connected"} · ${names.length} tools` : `${names.length} tools`,
+      source: server.startsWith("claude.ai ") ? "claude.ai connector" : server ? (modules.some((m) => m.tools?.server === server) ? `src/modules/${server}.ts` : `modules/${server}`) : "claude code",
+      editable: false,
+      surfaces: [...entry.kinds],
+      body: names.join("\n"),
+    });
+  }
+  // A server that came up without tools (failed, needs auth) still deserves a line.
+  for (const [server, state] of status)
+    if (!byServer.has(server)) out.push({ kind: "tool", name: server, description: `MCP server, ${state} · no tools`, source: server.startsWith("claude.ai ") ? "claude.ai connector" : `modules/${server}`, editable: false, surfaces: [] });
+  return out.sort((a, b) => (a.source === "claude code" ? -1 : b.source === "claude code" ? 1 : a.name.localeCompare(b.name)));
+}
+
 function tools(): ContextItem[] {
+  const live = liveTools();
+  if (live.length) return live;
   const out: ContextItem[] = [];
   for (const m of modules) {
     if (!m.tools) continue;
@@ -94,5 +175,6 @@ function tools(): ContextItem[] {
 }
 
 export function context() {
-  return { surfaces: SURFACES, items: [...instructions(), ...memories(), ...skills(), ...tools()] };
+  const seen = Object.entries(inventories).map(([kind, inv]) => ({ kind, model: inv.model, at: inv.at, skills: inv.skills, agents: inv.agents }));
+  return { surfaces: SURFACES, items: [...instructions(), ...memories(), ...skills(), ...tools()], sessions: seen };
 }

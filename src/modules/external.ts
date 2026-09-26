@@ -302,8 +302,12 @@ export function mcpServers(kind: "chat" | "code", ref: import("../domain/tools.t
 
 const promptsOf = (m: PaiModule) => (m.prompt ? (Array.isArray(m.prompt) ? m.prompt : [m.prompt]) : []) as readonly import("./sdk.ts").ModulePrompt[];
 
+/** Each external module's paragraph for a session of `kind`, with the module it comes from. */
 export const prompts = (kind: "chat" | "code") =>
-  active().flatMap((l) => promptsOf(l.module).filter((p) => p.kinds.includes(kind)).map((p) => p.text));
+  active().flatMap((l) => promptsOf(l.module).filter((p) => p.kinds.includes(kind)).map((p) => ({ module: l.name, title: l.module.title, text: p.text })));
+
+/** Every external module's paragraphs, for the context view. */
+export const allPrompts = () => active().flatMap((l) => promptsOf(l.module).map((p) => ({ module: l.name, title: l.module.title, text: p.text, kinds: p.kinds })));
 
 /** `/m/<name>/…` */
 export async function route(req: Request, url: URL): Promise<Response | undefined> {
