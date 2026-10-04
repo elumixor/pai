@@ -1,8 +1,8 @@
 /**
  * The same files on this machine and the box: `~/dev` and `~/.claude`, two-way over ssh with
- * Mutagen, which runs as a small daemon here and an agent it installs on the box. Safe mode:
- * a file changed on both sides since they last agreed is a conflict Mutagen leaves alone and
- * `pai files` shows; `sync --local` or `--remote` settles them one way.
+ * Mutagen, which runs as a small daemon here and an agent it installs on the box. A file
+ * changed on both sides since they last agreed is settled on its own in this machine's favour
+ * (`two-way-resolved`); `sync --remote` takes the box's side of anything still listed.
  *
  * `.git` never travels: two machines running git on one shared `.git` corrupt it (loose refs
  * from one side overwrite the other's). Each side owns its clone; the working trees are what
@@ -19,7 +19,7 @@ import { ensureAccess, remote, type Remote } from "./remote.ts";
 const localBin = join(homedir(), ".local", "bin");
 
 /** What never travels: build output, Syncthing's leftovers, and of `~/.claude` the login and this machine's scratch. */
-const BUILD_OUTPUT = ["node_modules", "target", "dist", "build", ".build", "DerivedData", ".next", ".venv", "__pycache__", ".DS_Store", "*.log", ".stfolder", ".stignore", "/pai/data", "/pai/menubar/pai-menubar", "/pai/modules", "/pai/pai.config.local.ts", "/.pai-clone-*"];
+const BUILD_OUTPUT = ["node_modules", "target", "dist", "build", ".build", "DerivedData", ".next", ".nitro", ".output", ".venv", "__pycache__", "SourcePackages", "bazel-*", ".DS_Store", "*.log", ".stfolder", ".stignore", "/pai/data", "/pai/menubar/pai-menubar", "/pai/modules", "/pai/pai.config.local.ts", "/.pai-clone-*"];
 const CLAUDE_LOCAL = [
   ".credentials.json", "/cache", "/backups", "/debug", "/downloads", "/file-history", "/ide", "/jobs", "/paste-cache", "/session-env",
   "/sessions", "/shell-snapshots", "/statsig", "/telemetry", "/tmp", "/todos", "/daemon*", "*.bak*", "*.orig", "/projects/.pai", ".DS_Store", "*.log", ".stfolder", ".stignore",
@@ -43,8 +43,8 @@ export interface RemoteEntry {
 export const REMOTES_FILE = ".pai-remotes.json";
 
 export const FOLDERS: readonly Folder[] = [
-  { name: "pai-dev", local: config.devRoot, remote: "dev", ignores: BUILD_OUTPUT, version: 4 },
-  { name: "pai-claude", local: join(homedir(), ".claude"), remote: ".claude", ignores: CLAUDE_LOCAL, version: 2 },
+  { name: "pai-dev", local: config.devRoot, remote: "dev", ignores: BUILD_OUTPUT, version: 5 },
+  { name: "pai-claude", local: join(homedir(), ".claude"), remote: ".claude", ignores: CLAUDE_LOCAL, version: 3 },
 ];
 
 export interface Conflict {
@@ -155,7 +155,7 @@ export async function ensureSessions() {
     await ensureAccess();
     if (running) await mutagen("sync", "terminate", folder.name);
     const ignores = folder.ignores.flatMap((i) => ["--ignore", i]);
-    await mutagen("sync", "create", "--name", folder.name, "--label", `version=${folder.version}`, "--mode", "two-way-safe", "--ignore-vcs", ...ignores, folder.local, `${r.target}:~/${folder.remote}`);
+    await mutagen("sync", "create", "--name", folder.name, "--label", `version=${folder.version}`, "--mode", "two-way-resolved", "--ignore-vcs", ...ignores, folder.local, `${r.target}:~/${folder.remote}`);
     created.push(folder.name);
   }
   return created;
