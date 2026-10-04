@@ -22,6 +22,7 @@ pai threads [project]      # every conversation by project; in a terminal a list
                            # `pai claude --resume <id>` (that thread's directory and model). `projects` = same
 pai tools | skills | instructions | memories [name]   # what sessions are given (`GET /context`); a name prints one
 pai menubar [install|uninstall]     # the Mac menu bar app: quota rings, what runs, files, links
+pai channel install                 # `claude` in this shell loads the pai channel: Paigram messages reach the terminal
 pai completion                      # installs zsh completion (src/clients/help.ts is the one table: help + completion)
 bun run infra [--destroy]  # the Hetzner host from nothing (provision + bootstrap), idempotent
 
@@ -81,6 +82,8 @@ project's `CLAUDE.md`.
 - `src/clients/tg-user.ts` — the user's own Telegram account (gramjs, `TELEGRAM_USER_SESSION`) as the `tg` MCP server.
 - `src/clients/cli.ts` — the CLI over the HTTP API.
 - `src/domain/transcript.ts` — a thread's conversation read from `~/.claude/projects` (`GET /transcript`).
+- `src/domain/mirror.ts` — conversations a terminal holds (`claude` on the Mac, synced, or on the box; entrypoint `cli`): their transcripts followed as they grow (offsets in `transcript_offsets`) and told to the bus as session events with `terminal: true`, rows in `sessions` with the topic. A message for one goes into the terminal through its channel, else the daemon resumes it (`revive` copies the newest transcript first).
+- `src/domain/channels.ts`, `src/clients/channel.ts` — `pai channel`: an MCP channel server (`claude/channel`) `claude` starts via `--mcp-config ~/.config/pai/channel.json --dangerously-load-development-channels server:pai` (the CLI's `claude()` and the zsh function from `pai channel install` add it); it finds its conversation in `~/.claude/sessions/<pid>.json` and holds `GET /channel?session=`.
 - `src/domain/settings.ts` — the editable settings in `data/config.json`, merged over the environment at import (`GET`/`PATCH /settings`; a change needs a restart).
 - `src/protocol/rich.ts` — metadata trailer: plain text for stock clients, structured for ours.
 - `src/host/` — the box: `update.ts`, `install-daemon-linux.ts` (systemd). A Mac is a client, not a host: `install-client.ts` (`pai` on PATH, no daemon), `menubar.ts` (the Swift menu bar app, `pai menubar`), `client.ts` (`pai update` here = pull + rebuild). `remote.ts`: the box as `PAI_REMOTE` (`user@host`, default `pai@$PAI_HOST_IP`), ssh with port 22 opened for this machine's public address on the Hetzner firewall, and `boxApi()` — the box's https address and token learned once over ssh into `~/.config/pai/box.json`, which every CLI command then uses. `pai claude` from a Mac is `pai claude` on the box over ssh; there it is `claude` in the workspace (a new conversation; `--resume` is claude's picker). `POST /attach {id, cwd}` hands a daemon session to a terminal (the builder uses it); `POST /adopt {id, cwd, title}` makes a conversation held on disk a live session without a turn (Paigram opens synced threads with it).

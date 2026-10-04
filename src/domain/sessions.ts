@@ -12,6 +12,9 @@ const log = logger("sessions");
 
 const live = new Map<string, Session>();
 
+/** Conversations a terminal holds (see mirror.ts): busy or idle by their transcripts, though no process of ours runs them. */
+export const terminalStates = new Map<string, "busy" | "idle">();
+
 export interface SpawnTask {
   title: string;
   project?: string;
@@ -75,10 +78,13 @@ export function revive(sessionId: string): Session | undefined {
     | { kind: SessionKind; title: string; cwd: string; project: string | null; thread_id: number | null; parent_id: string | null }
     | undefined;
   if (!row) return undefined;
+  const cwd = workingDirectory(row.cwd, row.project);
+  // A terminal may have carried the conversation on since, on this machine or another.
+  ensureTranscriptAt(sessionId, cwd);
   const session = new Session({
     kind: asKind(row.kind),
     title: row.title,
-    cwd: workingDirectory(row.cwd, row.project),
+    cwd,
     project: row.project ?? undefined,
     threadId: row.thread_id,
     parent: row.parent_id,
@@ -186,7 +192,7 @@ export function recent(limit = 20, kind?: SessionKind): SessionRow[] {
     cwd: r.cwd,
     threadId: r.thread_id,
     parent: r.parent_id ?? null,
-    state: live.get(r.session_id)?.state ?? "detached",
+    state: live.get(r.session_id)?.state ?? terminalStates.get(r.session_id) ?? "detached",
     startedAt: r.started_at,
     lastActivity: r.last_activity,
     lastResult: r.last_result ?? "",

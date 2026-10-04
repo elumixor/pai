@@ -26,6 +26,7 @@ export const CORE: readonly Command[] = [
   { name: "update", description: "update pai here and on the box" },
   { name: "cost", description: "Claude limits and what the box costs" },
   { name: "menubar", args: "[install|uninstall]", description: "the menu bar app on this Mac" },
+  { name: "channel", args: "[install]", description: "Paigram reaches `claude` in a terminal; `install` makes `claude` in your shell load it" },
   { name: "threads", args: "[project]", description: "every conversation by project; pick one to continue it here (`projects` is the same)" },
   { name: "tools", args: "[server]", description: "what the sessions can call, by MCP server; a name lists its tools" },
   { name: "skills", args: "[name]", description: "the skills sessions load; a name prints one" },

@@ -145,7 +145,9 @@ async function claude(args: string[], cwd: string) {
     const install = Bun.spawn(["sh", "-c", "curl -fsSL https://claude.ai/install.sh | bash"], { stdio: ["ignore", "inherit", "inherit"] });
     if ((await install.exited) !== 0) throw new Error("claude did not install; see https://docs.claude.com/en/docs/claude-code/setup");
   }
-  return Bun.spawn([bin, ...args], { cwd, stdio: ["inherit", "inherit", "inherit"] }).exited;
+  // The pai channel: what is typed for this conversation in Paigram arrives here.
+  const { channelArgs } = await import("./channel.ts");
+  return Bun.spawn([bin, ...channelArgs(), ...args], { cwd, stdio: ["inherit", "inherit", "inherit"] }).exited;
 }
 
 /** The daemon hands the thread over (its transcript in place, its process stopped), then claude continues it here. */
@@ -176,6 +178,12 @@ async function userCommand() {
       const at = args.indexOf("--resume");
       const id = at >= 0 && args[at + 1] && !args[at + 1]!.startsWith("-") ? args[at + 1]! : undefined;
       process.exit(id ? await resumeThread(id, args.filter((_, i) => i !== at && i !== at + 1)) : await claude(args, config.workspace));
+    }
+    // The MCP server `claude` starts in a terminal (see channel.ts); `install` makes `claude` in this shell load it.
+    case "channel": {
+      const channel = await import("./channel.ts");
+      if (positional[0] === "install") return console.log(`claude in ${channel.install()} now loads the pai channel; open a new shell`);
+      return channel.run({ base, auth });
     }
     case "status": {
       const data = await api("/health");

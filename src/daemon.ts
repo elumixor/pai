@@ -12,6 +12,7 @@ import { startAutoUpdate } from "./host/update.ts";
 import { startAutomations } from "./domain/automations.ts";
 import { startModules } from "./modules/index.ts";
 import * as external from "./modules/external.ts";
+import { start as startMirror } from "./domain/mirror.ts";
 import { logger } from "./core/log.ts";
 
 const log = logger("daemon");
@@ -34,6 +35,8 @@ const stopAutoUpdate = startAutoUpdate();
 const stopAutomations = startAutomations();
 const stopModules = startModules();
 await external.startAll();
+// After the modules: the chat has to be listening when the threads held in terminals are announced.
+const stopMirror = startMirror();
 
 const catalogTimer = setInterval(refresh, 15 * 60 * 1000);
 const reaper = setInterval(reapIdle, 60 * 1000);
@@ -48,6 +51,7 @@ function shutdown(signal: string) {
   stopAutomations();
   stopMemoryWatch();
   stopModules();
+  stopMirror();
   void external.stopAll();
   noteInterrupted();
   killAll();

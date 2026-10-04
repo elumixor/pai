@@ -74,6 +74,12 @@ CREATE TABLE IF NOT EXISTS kv (
   value TEXT NOT NULL
 );
 
+-- How far each transcript has been read by the mirror (domain/mirror.ts), so a restart does not repeat it.
+CREATE TABLE IF NOT EXISTS transcript_offsets (
+  path    TEXT PRIMARY KEY,
+  offset  INTEGER NOT NULL
+);
+
 -- One row per Gmail account connected through /gmail/connect; see modules/gmail.ts.
 CREATE TABLE IF NOT EXISTS gmail_accounts (
   label         TEXT PRIMARY KEY,

@@ -9,6 +9,7 @@ import { installCredentials, needsLogin, usage } from "../domain/usage.ts";
 import { diagnostics } from "../domain/diagnostics.ts";
 import { recentEvents, waitFor } from "../core/bus.ts";
 import * as sessions from "../domain/sessions.ts";
+import * as channels from "../domain/channels.ts";
 import * as terminals from "../domain/terminals.ts";
 import { status as updateStatus, update } from "../host/update.ts";
 import { logger } from "../core/log.ts";
@@ -50,6 +51,12 @@ export async function handle(req: Request): Promise<Response> {
     }
 
     if (path === "/health") return json(await status());
+
+    // A terminal's `claude` listening for what is typed for its conversation elsewhere (`pai channel`).
+    if (path === "/channel" && req.method === "GET") {
+      const session = url.searchParams.get("session");
+      return session ? channels.stream(session) : json({ error: "session required" }, 400);
+    }
 
     // Hands the main conversation to a terminal: its process goes down so an interactive
     // `claude --resume` owns the transcript alone; the next message here revives it, with

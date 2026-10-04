@@ -15,7 +15,8 @@ export const MARKER = "·";
 /** Telegram's message limit is 4096; the trailer may not crowd out the message itself. */
 export const MAX_PAYLOAD_CHARS = 2048;
 
-export type RichKind = "turn" | "status" | "question" | "result";
+/** `user`: what the user typed somewhere else (a terminal), shown as their own message. */
+export type RichKind = "turn" | "status" | "question" | "result" | "user";
 
 export type RichState = "starting" | "busy" | "idle" | "waiting" | "dead" | "error";
 

@@ -163,16 +163,22 @@ export async function allThreads(perProject = 15): Promise<Thread[]> {
 
 /**
  * `claude --resume` looks only under the directory named after its cwd; a transcript that
- * another machine wrote for the same project sits under that machine's name. Copied over
- * once, so the terminal finds it; the copy is the one both then continue.
+ * another machine wrote for the same project sits under that machine's name. The newest of
+ * the copies is put there, so the terminal finds it and continues from what was said last,
+ * wherever that was.
  */
 export function ensureTranscriptAt(sessionId: string, cwd: string) {
   const wanted = join(projectsDir, slug(cwd), `${sessionId}.jsonl`);
-  if (existsSync(wanted)) return wanted;
-  const found = transcriptPath(sessionId, cwd);
-  if (!found) return undefined;
+  if (!existsSync(projectsDir)) return existsSync(wanted) ? wanted : undefined;
+  const newest = readdirSync(projectsDir)
+    .map((dir) => join(projectsDir, dir, `${sessionId}.jsonl`))
+    .filter((path) => existsSync(path))
+    .map((path) => ({ path, mtime: statSync(path).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime)[0];
+  if (!newest) return undefined;
+  if (newest.path === wanted) return wanted;
   mkdirSync(join(projectsDir, slug(cwd)), { recursive: true });
-  copyFileSync(found, wanted);
+  copyFileSync(newest.path, wanted);
   return wanted;
 }
 
@@ -270,7 +276,7 @@ function toMessage(entry: Entry): TranscriptMessage | undefined {
 }
 
 /** System reminders, hook output and task results arrive as user messages but were not typed. */
-const isInjected = (text: string) =>
+export const isInjected = (text: string) =>
   text.startsWith("<") || text.startsWith("Caveat:") || text.includes("<system-reminder>");
 
 function summarize(input: unknown) {
