@@ -98,9 +98,17 @@ export class TerminalThread {
     return { sessionId: this.id, shortId: this.shortId, kind: this.kind, title: this.title, project: this.project, cwd: this.cwd, threadId: this.threadId, state: this.state, turns: this.turns, terminal: true };
   }
 
-  /** Into the terminal while its channel is connected; otherwise the conversation is resumed here and answers itself. */
+  /**
+   * Into the terminal while its channel is connected. A turn running in a terminal pai cannot
+   * reach (started without the channel) is left alone; otherwise the conversation is resumed
+   * here and answers itself.
+   */
   send(text: string, opts: { images?: { media_type: string; data: string }[] } = {}) {
     if (channels.deliver(this.id, text)) return;
+    if (this.busy) {
+      bus.emitEvent("session.progress", { text: "Not sent: this conversation is mid-turn in a terminal started without the pai channel. Try again once it is done, and I will continue it here.", terminal: true }, this.id);
+      return;
+    }
     log.info(`${this.shortId}: no terminal connected, resuming it here`);
     sessions.adopt(this.id, this.cwd, this.title).send(text, opts);
   }
