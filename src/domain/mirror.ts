@@ -117,6 +117,11 @@ export class TerminalThread {
     return false;
   }
 
+  replay(entries: Entry[]) {
+    this.turns = 0;
+    for (const e of entries) this.take(e, true);
+  }
+
   /** One transcript entry, told to the bus; `quiet` only follows along (what history already showed). */
   take(e: Entry, quiet: boolean) {
     const emit = (kind: string, payload: Record<string, unknown>) => !quiet && bus.emitEvent(kind, { ...payload, terminal: true }, this.id);
@@ -259,6 +264,8 @@ async function follow(path: string, place: Place, size: number, startup: boolean
       if (!entries.some(isPrompt)) return;
     }
     thread = open(id, place, entries);
+    // Followed before (the daemon restarted): where the conversation stands — mid-turn, how many turns — comes from what was read then.
+    if (from > 0) thread.replay(readFrom(path, 0, from).lines.map(parse).filter((e): e is Entry => e !== undefined));
   }
   for (const e of entries) thread.take(e, false);
 }
