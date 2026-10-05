@@ -235,6 +235,8 @@ export class Session {
   private turnStream = "";
   /** True between a user turn being sent and its result; injected context produces results too, which are not turns. */
   private activeTurn = false;
+  /** Injected messages whose (empty) results have not come back yet. */
+  private injections = 0;
   pending?: PendingQuestion;
   /** The slash commands this session's process accepts, minus the ones bound to a terminal. */
   commands: SlashCommand[] = [];
@@ -454,9 +456,10 @@ export class Session {
         this.turnStream = "";
         this.recentTools = [];
         // A result with no model turn behind it (context injected with shouldQuery false) is
-        // not the end of a turn a message is waiting for.
-        if ((!this.activeTurn || m.num_turns === 0) && !text) {
-          // An injection's result can land while a real turn runs; that turn is still going.
+        // not the end of a turn a message is waiting for — and can land while a real turn runs.
+        const injected = m.num_turns === 0 && !text && this.injections > 0;
+        if (injected) this.injections -= 1;
+        if (injected || (!this.activeTurn && !text)) {
           if (!this.activeTurn) {
             this.state = "idle";
             this.persist();
@@ -526,6 +529,7 @@ export class Session {
   /** Append context to the transcript without spending a model turn on it. */
   inject(text: string) {
     if (this.state === "dead") return;
+    this.injections += 1;
     this.inbox.push({
       type: "user",
       message: { role: "user", content: text },
