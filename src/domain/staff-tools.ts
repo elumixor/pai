@@ -209,14 +209,13 @@ export function staffTools(me: string | undefined) {
           turns_per_day: z.number().optional(),
           turn_minutes: z.number().optional().describe("how long one turn may run (default 20); up to 90 for a long read-through"),
           task_id: z.number().optional(),
-          await_report: z.boolean().optional().describe("get a turn of your own when it reports, instead of a note"),
         },
-        guard((a: { name: string; kind?: "standing" | "sub" | "service"; brief: string; task?: string; tools?: string[]; model?: string; project?: string; turns_per_day?: number; turn_minutes?: number; task_id?: number; await_report?: boolean }) => {
+        guard((a: { name: string; kind?: "standing" | "sub" | "service"; brief: string; task?: string; tools?: string[]; model?: string; project?: string; turns_per_day?: number; turn_minutes?: number; task_id?: number }) => {
           const created = agents.create(
             { name: a.name, kind: isPai ? (a.kind ?? "standing") : "sub", parent: isPai && a.kind !== "sub" ? agents.PAI : self, brief: a.brief, tools: a.tools, model: a.model, project: a.project, budget: a.turns_per_day || a.turn_minutes ? { ...(a.turns_per_day ? { turnsPerDay: a.turns_per_day } : {}), ...(a.turn_minutes ? { turnMinutes: Math.min(90, a.turn_minutes) } : {}) } : undefined },
             self,
           );
-          if (a.task?.trim()) agents.message(created.slug, a.task, { from: self, kind: "delegate", taskId: a.task_id, awaitReport: a.await_report });
+          if (a.task?.trim()) agents.message(created.slug, a.task, { from: self, kind: "delegate", taskId: a.task_id });
           if (a.task_id) tasks.update(a.task_id, { owner: created.slug, status: "active" });
           return agentSummary(agents.get(created.slug)!);
         }),
@@ -224,10 +223,10 @@ export function staffTools(me: string | undefined) {
       tool(
         "message_agent",
         isPai ? "Hand work or a follow-up to an agent. It wakes with this as its next turn and reports back." : "Send one of your sub-agents a follow-up.",
-        { agent: z.string(), text: z.string(), task_id: z.number().optional(), await_report: z.boolean().optional().describe("get a turn when it reports, not a note") },
-        guard((a: { agent: string; text: string; task_id?: number; await_report?: boolean }) => {
+        { agent: z.string(), text: z.string(), task_id: z.number().optional() },
+        guard((a: { agent: string; text: string; task_id?: number }) => {
           const target = mine(self, a.agent);
-          agents.message(target.slug, a.text, { from: self, kind: "delegate", taskId: a.task_id, awaitReport: a.await_report });
+          agents.message(target.slug, a.text, { from: self, kind: "delegate", taskId: a.task_id });
           return { sent: true, agent: target.slug, status: agents.get(target.slug)!.status };
         }),
       ),

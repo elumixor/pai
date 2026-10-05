@@ -142,14 +142,21 @@ describe("agents", () => {
     expect(sessionOf("hiring").sent.at(-1)).toContain("Post the 2D artist job.");
     finish("hiring", "Posted on LinkedIn; 3 applicants so far.");
     expect(agents.get("hiring")!.status).toBe("idle");
-    expect(pai.notes.at(-1)).toContain("3 applicants");
+    agents.flushReports();
+    expect(pai.turns.at(-1)).toContain("3 applicants");
     expect(messages.list({ agent: "hiring", kinds: ["report"] }).at(-1)!.to).toBe("pai");
   });
 
-  it("gives pai a turn for a report it waits on", () => {
-    agents.message("hiring", "How many applicants?", { from: "pai", kind: "delegate", awaitReport: true });
+  it("gathers reports that land together into one turn for pai", () => {
+    agents.message("hiring", "How many applicants?", { from: "pai", kind: "delegate" });
     finish("hiring", "Five.");
+    agents.message("hiring", "Any replies?", { from: "pai", kind: "delegate" });
+    finish("hiring", "Two replied.");
+    const before = pai.turns.length;
+    agents.flushReports();
+    expect(pai.turns.length).toBe(before + 1);
     expect(pai.turns.at(-1)).toContain("Five.");
+    expect(pai.turns.at(-1)).toContain("Two replied.");
   });
 
   it("closes a sub-agent after its one report, which wakes its parent", () => {
@@ -178,7 +185,8 @@ describe("agents", () => {
     agents.configure("visit", { budget: { turnsPerDay: 1 } });
     agents.message("visit", "again", { from: "pai" });
     expect(agents.get("visit")!.status).toBe("idle");
-    expect(pai.notes.at(-1)).toContain("budget");
+    agents.flushReports();
+    expect(pai.turns.at(-1)).toContain("budget");
     agents.configure("visit", { budget: { turnsPerDay: 40 } });
   });
 });

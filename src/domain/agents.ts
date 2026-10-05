@@ -344,7 +344,6 @@ const turnTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /** What each process had cost at its last turn end; the SDK reports a running total. */
 const booked = new Map<string, number>();
 /** Parents that asked to hear back with a turn rather than a note. */
-const awaited = new Set<string>();
 
 function load() {
   return list().filter((a) => a.kind !== "orchestrator" && a.status === "working").reduce((n, a) => n + (isCoding(a) ? 2 : 1), 0);
@@ -355,8 +354,6 @@ export interface MessageOptions {
   kind?: messages.MessageKind;
   taskId?: number | null;
   requestId?: number;
-  /** pai wants a turn of its own when this agent reports, not a note. */
-  awaitReport?: boolean;
   meta?: messages.MessageMeta;
   /** The caller logged this hop already. */
   logged?: boolean;
@@ -372,7 +369,6 @@ export function message(slug: string, text: string, opts: MessageOptions): messa
   if (a.status === "closed") throw new AgentError(`${a.name} is closed`);
   if (a.kind === "orchestrator") throw new AgentError("pai is reached through main.ts");
   const row = opts.logged ? undefined : messages.log({ from: opts.from, to: slug, kind: opts.kind ?? "chat", body: text, taskId: opts.taskId, meta: { ...opts.meta, requestId: opts.requestId } });
-  if (opts.awaitReport) awaited.add(slug);
   const prefix = opts.from === "user" ? "[the user, writing to you directly]" : opts.from === PAI ? "[pai]" : `[${get(opts.from)?.name ?? opts.from}]`;
   wake(slug, `${prefix} ${text}${opts.taskId ? `\n\n(task #${opts.taskId})` : ""}`, opts.requestId);
   return row;
@@ -475,6 +471,30 @@ export function linkPai(link: PaiLink) {
 }
 const notePai = (text: string) => paiLink.note(text);
 
+/**
+ * What pai's staff hand back to it — reports, failures, spent budgets — is pai's to act on, never left for
+ * the user to pick up. A burst of them becomes one turn once things settle for a moment.
+ */
+const REPORT_BATCH_MS = 15_000;
+let forPai: string[] = [];
+let forPaiTimer: ReturnType<typeof setTimeout> | undefined;
+function toPai(text: string) {
+  forPai.push(text);
+  clearTimeout(forPaiTimer);
+  forPaiTimer = setTimeout(flushReports, REPORT_BATCH_MS);
+}
+
+/** Hands pai what has gathered now (tests call it rather than wait). */
+export function flushReports() {
+  clearTimeout(forPaiTimer);
+  if (!forPai.length) return;
+  const batch = forPai;
+  forPai = [];
+  paiLink.turn(
+      `${batch.join("\n\n")}\n\n[Handle this yourself: the next step to an agent (message_agent), the task list, or closing what is done. Only a choice that is the user's goes to them, as one AskUserQuestion with one-tap options. If nothing is for the user, end with no text.]`,
+  );
+}
+
 /** How a finished turn's text answers a request: requests.ts registers it. */
 let onAnswered: (requestId: number, by: string, text: string) => void = () => {};
 export function onRequestAnswered(fn: typeof onAnswered) {
@@ -482,7 +502,7 @@ export function onRequestAnswered(fn: typeof onAnswered) {
 }
 
 function tellParent(a: Agent, text: string) {
-  if (!a.parent || a.parent === PAI) return notePai(`[${a.name}] ${text}`);
+  if (!a.parent || a.parent === PAI) return toPai(`[${a.name}] ${text}`);
   const p = get(a.parent);
   if (p && p.status !== "closed") sessionOf(p)?.inject(`[${a.name}] ${text}`);
 }
@@ -525,8 +545,7 @@ function turnEnded(a: Agent, payload: Record<string, unknown>) {
     }
     messages.log({ from: a.slug, to: a.parent ?? PAI, kind: "report", body: report, meta: { agent: a.slug } });
     if (a.parent === PAI || !a.parent) {
-      if (awaited.delete(a.slug)) paiLink.turn(`[${a.name} reported]\n${report}`);
-      else notePai(`[${a.name} reported]\n${report}`);
+      toPai(`[${a.name} reported]\n${report}`);
     } else {
       const parent = get(a.parent);
       if (parent && parent.status !== "closed") message(parent.slug, `${a.name} reported:\n${report}`, { from: a.slug, kind: "report", meta: { agent: a.slug } });
