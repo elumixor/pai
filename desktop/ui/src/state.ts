@@ -10,7 +10,7 @@ export interface Layout {
   /** The agent whose chat the staff page shows. */
   agent?: string;
   /** How the staff page's task list is grouped, and which side tab is up. */
-  taskGrouping?: "owner" | "status";
+  taskGrouping?: "owner" | "status" | "board";
   staffTab?: "asks" | "tasks";
   sizes: Record<string, number>;
   collapsed: string[];

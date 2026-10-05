@@ -624,7 +624,7 @@ export function staff(root: HTMLElement) {
       created.textContent = result.error ?? (result.queued ? "queued" : "");
       if (!result.error) titleInput.value = "";
     });
-    const seg = (id: "owner" | "status", label: string) =>
+    const seg = (id: "owner" | "status" | "board", label: string) =>
       el(
         "button.seg",
         {
@@ -640,7 +640,7 @@ export function staff(root: HTMLElement) {
     const toolbar = el(
       "div.task-toolbar",
       {},
-      el("div.segmented", {}, seg("owner", "by owner"), seg("status", "by status")),
+      el("div.segmented", {}, seg("owner", "by owner"), seg("status", "by status"), seg("board", "board")),
       el("span.grow"),
       el(
         "button.seg",
@@ -682,6 +682,11 @@ export function staff(root: HTMLElement) {
       );
     };
 
+    if (grouping === "board") {
+      clear(sideBody, el("div.task-new", {}, icon("plus", 12), titleInput, created), toolbar, tasks === undefined ? el("p.hint", {}, "This daemon keeps no task list yet.") : board(list));
+      return;
+    }
+
     const sections = new Map<string, TaskItem[]>();
     const keyOf = (t: TaskItem) => (grouping === "owner" ? t.owner : t.status);
     // Owners in tree order with the selected one first; statuses in the order they need attention.
@@ -701,6 +706,47 @@ export function staff(root: HTMLElement) {
       el("div.task-new", {}, icon("plus", 12), titleInput, created),
       toolbar,
       ...(tasks === undefined ? [el("p.hint", {}, "This daemon keeps no task list yet.")] : blocks.length ? blocks : [el("p.hint", {}, "No open tasks.")]),
+    );
+  }
+
+  /** The open tasks as a kanban board: a column per status, a card dragged to another column moves there. */
+  function board(list: TaskItem[]) {
+    const columns: [TaskStatus, string][] = [["inbox", "Inbox"], ["active", "Active"], ["waiting_user", "Waiting on you"], ["waiting_other", "Waiting on others"], ["scheduled", "Scheduled"], ["done", "Done"]];
+    const move = async (id: number, status: TaskStatus) => {
+      const task = list.find((t) => t.id === id);
+      if (!task || task.status === status) return;
+      const result = await updateTask(id, { status });
+      if (!result.error && !result.queued) upsertTask({ ...task, status });
+    };
+    const card = (task: TaskItem) => {
+      const node = el(
+        "div.board-card",
+        { class: `board-card status-${task.status}`, draggable: "true", title: task.nextAction || task.title },
+        el("span.task-title", {}, task.title),
+        el("span.dim.task-sub", {}, party(task.owner), task.due ? el("span.tag", { class: `tag${task.due <= new Date().toISOString().slice(0, 10) ? " due" : ""}` }, task.due) : undefined),
+      );
+      node.addEventListener("dragstart", (event) => (event as DragEvent).dataTransfer?.setData("text/plain", String(task.id)));
+      return node;
+    };
+    return el(
+      "div.board",
+      {},
+      ...columns.map(([status, label]) => {
+        const items = list.filter((t) => t.status === status);
+        const column = el("section.board-column", {}, el("h3.section-title", {}, label, el("span.dim", {}, String(items.length))), ...items.map(card));
+        column.addEventListener("dragover", (event) => {
+          event.preventDefault();
+          column.classList.add("over");
+        });
+        column.addEventListener("dragleave", () => column.classList.remove("over"));
+        column.addEventListener("drop", (event) => {
+          event.preventDefault();
+          column.classList.remove("over");
+          const id = Number((event as DragEvent).dataTransfer?.getData("text/plain"));
+          if (id) void move(id, status);
+        });
+        return column;
+      }),
     );
   }
 

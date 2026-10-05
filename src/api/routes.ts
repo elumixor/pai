@@ -348,7 +348,7 @@ export async function handle(req: Request): Promise<Response> {
       }
     }
     if (path === "/agents") return json(agents.tree(tasks.openCounts()));
-    const agentPath = /^\/agents\/([a-z0-9-]+)(?:\/(message|close))?$/.exec(path);
+    const agentPath = /^\/agents\/([a-z0-9-]+)(?:\/(message|close|stop))?$/.exec(path);
     if (agentPath?.[1]) {
       const slug = agentPath[1];
       const a = agents.get(slug);
@@ -359,6 +359,14 @@ export async function handle(req: Request): Promise<Response> {
           if (!text?.trim()) return json({ error: "text required" }, 400);
           if (slug === agents.PAI) return json({ session: main.send(text).shortId });
           return json(agents.fromUser(slug, text));
+        }
+        // Stopping pai is stopping its one session; an agent stops with everything below it.
+        if (agentPath[2] === "stop" && req.method === "POST") {
+          if (slug === agents.PAI) {
+            await main.session().interrupt();
+            return json({ stopped: [agents.PAI] });
+          }
+          return json({ stopped: await agents.stop(slug) });
         }
         if (agentPath[2] === "close" && req.method === "POST") return json(agents.close(slug, (await body<{ summary?: string }>(req).catch(() => ({}) as { summary?: string })).summary ?? ""));
         if (req.method === "PATCH") return json(agents.configure(slug, await body<Parameters<typeof agents.configure>[1]>(req)));

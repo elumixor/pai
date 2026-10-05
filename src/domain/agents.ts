@@ -577,6 +577,39 @@ export function start() {
   return () => bus.off("event", handler);
 }
 
+// ---- stopping --------------------------------------------------------------
+
+/**
+ * The user stopped an agent: its running turn is interrupted and its waiting turns dropped, and its
+ * sub-agents stop with it. It stays open — the next message wakes it as usual. The slugs that stopped.
+ */
+export async function stop(slug: string): Promise<string[]> {
+  const a = get(slug);
+  if (!a || a.kind === "orchestrator") throw new AgentError(`no agent ${slug}`);
+  const stopped: string[] = [];
+  const targets = [a];
+  for (let i = 0; i < targets.length; i++) targets.push(...list({ parent: targets[i]!.slug }));
+  for (const target of targets) {
+    if (target.status === "closed") continue;
+    for (let i = queue.length - 1; i >= 0; i--) if (queue[i]!.slug === target.slug) queue.splice(i, 1);
+    clearTimeout(turnTimers.get(target.slug));
+    const s = sessionOf(target);
+    const busy = s?.state === "busy";
+    if (busy) await s!.interrupt();
+    if (busy || target.status === "working" || target.status === "queued") {
+      if (target.status === "queued" || !busy) setStatus(target.slug, "idle");
+      stopped.push(target.slug);
+    }
+  }
+  saveQueue();
+  if (stopped.length) {
+    messages.event(slug, "stopped", `${a.name} stopped by the user`, { to: a.parent ?? PAI });
+    notePai(`[the user stopped ${breadcrumb(slug)}${stopped.length > 1 ? ` and ${stopped.length - 1} below it` : ""}]`);
+  }
+  drain();
+  return stopped;
+}
+
 // ---- closing ---------------------------------------------------------------
 
 /** Done: the session goes, the folder is archived, a line goes into the journal. Its sub-agents close with it. */
@@ -611,9 +644,42 @@ export function close(slug: string, summary = ""): Agent {
 }
 
 /** Status, open work and spend per agent, for the tree view. */
+/** A plain thread an agent started (or, with no agent behind it, one of pai's: terminal, a chat). */
+export interface AgentThread {
+  readonly sessionId: string;
+  readonly shortId: string;
+  readonly title: string;
+  readonly project: string | null;
+  readonly state: string;
+  readonly threadId: number | null;
+  readonly lastActivity: number;
+  readonly costUsd: number;
+}
+
+const THREADS_SHOWN_FOR_MS = 7 * 86_400_000;
+
+/** Each agent's threads, by who started them: the session a thread's parent is belongs to an agent, or else to pai. */
+function threadsByAgent(): Map<string, AgentThread[]> {
+  const rows = sessions.recent(80);
+  const ownerOf = new Map(list().filter((a) => a.sessionId).map((a) => [a.sessionId!, a.slug]));
+  for (const r of rows) if (r.agent) ownerOf.set(r.sessionId, r.agent);
+  const out = new Map<string, AgentThread[]>();
+  for (const r of rows) {
+    if (r.agent) continue;
+    const live = r.state === "busy" || r.state === "starting";
+    if (!live && now() - r.lastActivity > THREADS_SHOWN_FOR_MS) continue;
+    const owner = (r.parent && ownerOf.get(r.parent)) || PAI;
+    const thread: AgentThread = { sessionId: r.sessionId, shortId: r.shortId, title: r.title, project: r.project, state: r.state, threadId: r.threadId, lastActivity: r.lastActivity, costUsd: r.costUsd };
+    out.set(owner, [...(out.get(owner) ?? []), thread]);
+  }
+  return out;
+}
+
 export function tree(openTasks: Record<string, number>) {
+  const threads = threadsByAgent();
   return list().map((a) => ({
     ...a,
+    threads: threads.get(a.slug) ?? [],
     depth: depth(a.slug),
     breadcrumb: breadcrumb(a.slug),
     openTasks: openTasks[a.slug] ?? 0,

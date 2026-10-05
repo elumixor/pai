@@ -58,6 +58,7 @@ export const EVENT_ICONS: Readonly<Record<string, string>> = {
   sent: "paperplane",
   notice: "bell",
   error: "exclamationmark.triangle",
+  stopped: "stop.circle",
   "agent.closed": "archivebox",
 };
 

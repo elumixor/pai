@@ -286,3 +286,77 @@ function summarize(input: unknown) {
   const value = typeof first === "string" ? first : JSON.stringify(input);
   return value.length > 200 ? `${value.slice(0, 200)}…` : value;
 }
+
+export interface Conversation {
+  readonly id: string;
+  /** The project as the user knows it: the directory name under ~/dev, or the path for anything else. */
+  readonly project: string;
+  readonly title: string;
+  readonly lastActivity: string;
+  readonly kb: number;
+  /** A coding thread pai started for the user, rather than a conversation the user opened. */
+  readonly byPai?: boolean;
+}
+
+/** pai's own sessions and throwaway scratch directories are not the user's conversations. */
+const ownOrScratch = (dir: string) => dir.includes("-pai-workspace") || /^-(private-)?tmp-/.test(dir) || dir.startsWith("-var-");
+
+/** `-Users-x-dev-balance-app` → `balance-app`, `-home-pai-dev-pai` → `pai`, `-Users-x` → `~`. */
+function projectLabel(dir: string) {
+  const dev = dir.lastIndexOf("-dev-");
+  if (dev >= 0) return dir.slice(dev + "-dev-".length);
+  return /^-(Users|home)-[^-]+$/.test(dir) ? "~" : dir.replace(/^-/, "/").replaceAll("-", "/");
+}
+
+/**
+ * The user's Claude Code conversations from the last `days` days, every project and both machines
+ * (the Mac's arrive over sync), newest first — what someone reviewing how the user works reads first.
+ */
+export async function conversations(days = 60, limit = 300): Promise<Conversation[]> {
+  if (!existsSync(projectsDir)) return [];
+  const since = Date.now() - days * 86_400_000;
+  const files = readdirSync(projectsDir)
+    .filter((dir) => !ownOrScratch(dir) && statSync(join(projectsDir, dir)).isDirectory())
+    .flatMap((dir) =>
+      readdirSync(join(projectsDir, dir))
+        .filter((name) => name.endsWith(".jsonl"))
+        .map((name) => {
+          const path = join(projectsDir, dir, name);
+          const stat = statSync(path);
+          return { dir, path, id: name.slice(0, -".jsonl".length), mtime: stat.mtimeMs, size: stat.size };
+        }),
+    )
+    .filter((f) => f.mtime >= since)
+    .sort((a, b) => b.mtime - a.mtime)
+    .slice(0, limit);
+  const out: Conversation[] = [];
+  for (const f of files) {
+    const cached = titles.get(f.path);
+    const session = cached?.mtime === f.mtime ? cached.session : await describe(f.path, f.id, "");
+    if (!session) continue;
+    titles.set(f.path, { mtime: f.mtime, session });
+    out.push({ id: f.id, project: projectLabel(f.dir), title: session.title, lastActivity: new Date(f.mtime).toISOString(), kb: Math.round(f.size / 1024), ...(session.title.startsWith("You are session") ? { byPai: true } : {}) });
+  }
+  return out;
+}
+
+const DIGEST_MESSAGE_CHARS = 1500;
+
+/**
+ * One conversation as what was said: the user's prompts and the assistant's answers, without tool
+ * output or injected context, each message cut short. Past `maxChars` the middle goes: how a
+ * conversation starts and how it ends say the most.
+ */
+export async function conversationDigest(id: string, maxChars = 30_000): Promise<string> {
+  const messages = (await transcript(id, undefined, 100_000)).filter((m) => !m.meta && m.text.trim());
+  const lines = messages.map((m) => {
+    const text = m.text.replace(/\n{3,}/g, "\n\n").trim();
+    const cut = text.length > DIGEST_MESSAGE_CHARS ? `${text.slice(0, DIGEST_MESSAGE_CHARS)}…` : text;
+    return `${m.role === "user" ? "USER" : "CLAUDE"} (${m.ts.slice(0, 16)}): ${cut}`;
+  });
+  const all = lines.join("\n\n");
+  if (all.length <= maxChars) return all || "(empty conversation)";
+  const head = all.slice(0, Math.floor(maxChars * 0.4));
+  const tail = all.slice(-Math.floor(maxChars * 0.6));
+  return `${head}\n\n[… ${all.length - head.length - tail.length} characters left out …]\n\n${tail}`;
+}

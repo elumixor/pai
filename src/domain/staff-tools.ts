@@ -9,6 +9,7 @@ import * as recall from "./recall.ts";
 import * as requests from "./requests.ts";
 import * as settings from "./settings.ts";
 import * as tasks from "./tasks.ts";
+import { conversationDigest, conversations } from "./transcript.ts";
 
 /**
  * The tools that make a session one of pai's staff, by role: pai (the orchestrator) runs the
@@ -122,6 +123,21 @@ export function staffTools(me: string | undefined) {
       { query: z.string(), sources: z.array(z.enum(["transcript", "message", "mail", "telegram", "linkedin", "calendar"])).optional(), limit: z.number().optional() },
       guard((a: { query: string; sources?: string[]; limit?: number }) => recall.search(a.query, { sources: a.sources, limit: a.limit })),
     ),
+    tool(
+      "conversations",
+      "The user's own Claude Code conversations (terminal and app, both machines), newest first: id, project, title (their first prompt), last activity, size. pai's own sessions are not in it. Read one with conversation.",
+      { days: z.number().optional().describe("how far back, default 60"), project: z.string().optional().describe("only this project"), limit: z.number().optional() },
+      guard(async (a: { days?: number; project?: string; limit?: number }) => {
+        const all = await conversations(a.days ?? 60, a.project ? 1000 : (a.limit ?? 300));
+        return (a.project ? all.filter((c) => c.project === a.project) : all).slice(0, a.limit ?? 300);
+      }),
+    ),
+    tool(
+      "conversation",
+      "One of the user's conversations as what was said — their prompts and the answers, without tool output — cut to max_chars (default 30000, the middle goes first).",
+      { id: z.string(), max_chars: z.number().optional() },
+      guard((a: { id: string; max_chars?: number }) => conversationDigest(a.id, a.max_chars)),
+    ),
   );
   if (role === "thread") return out;
 
@@ -129,10 +145,10 @@ export function staffTools(me: string | undefined) {
   out.push(
     tool(
       "ask_user",
-      "Ask the user a question; it reaches them through pai's chat as a card with your name. blocking: you are parked until they answer and the answer arrives as a new message. Non-blocking: give a fallback you go on with now; you hear back only if they answer differently.",
+      "Ask the user a question; it reaches them through pai's chat (and their phone and watch) as a card with your name, answered with one tap. The question is one short line; options are two to four short choices — Yes / No, or A / B / C with the choice in each label, your recommendation first; they can still type an answer. blocking: you are parked until they answer and the answer arrives as a new message. Non-blocking: give a fallback you go on with now; you hear back only if they answer differently.",
       {
         question: z.string(),
-        options: z.array(z.string()).max(6).optional(),
+        options: z.array(z.string().max(40)).max(4).optional(),
         allow_free_text: z.boolean().optional().describe("default true"),
         priority: priority.optional().describe("urgent: minutes to act; normal (default); digest: can wait for the brief"),
         blocking: z.boolean().optional().describe("default true"),
@@ -151,7 +167,7 @@ export function staffTools(me: string | undefined) {
     out.push(
       tool(
         "notify",
-        "Tell the user something through pai's chat. urgent: now with sound, even at night (minutes to act). normal: now, silent; held in quiet hours. digest: in the next brief. log: only in your own chat.",
+        "Tell the user something through pai's chat — only what they would act on or want to know today, in one line, the conclusion first; routine progress stays in your own chat (log). urgent: now with sound, even at night (minutes to act). normal: now, silent; held in quiet hours. digest: in the next brief. log: only in your own chat.",
         { text: z.string().max(1500), priority: priority.optional() },
         guard((a: { text: string; priority?: asks.Priority }) => asks.notify(self, a.text, a.priority ?? "normal")),
       ),
@@ -191,12 +207,13 @@ export function staffTools(me: string | undefined) {
           model: model.optional(),
           project: z.string().optional().describe("a repo slug: a coding agent working there"),
           turns_per_day: z.number().optional(),
+          turn_minutes: z.number().optional().describe("how long one turn may run (default 20); up to 90 for a long read-through"),
           task_id: z.number().optional(),
           await_report: z.boolean().optional().describe("get a turn of your own when it reports, instead of a note"),
         },
-        guard((a: { name: string; kind?: "standing" | "sub" | "service"; brief: string; task?: string; tools?: string[]; model?: string; project?: string; turns_per_day?: number; task_id?: number; await_report?: boolean }) => {
+        guard((a: { name: string; kind?: "standing" | "sub" | "service"; brief: string; task?: string; tools?: string[]; model?: string; project?: string; turns_per_day?: number; turn_minutes?: number; task_id?: number; await_report?: boolean }) => {
           const created = agents.create(
-            { name: a.name, kind: isPai ? (a.kind ?? "standing") : "sub", parent: isPai && a.kind !== "sub" ? agents.PAI : self, brief: a.brief, tools: a.tools, model: a.model, project: a.project, budget: a.turns_per_day ? { turnsPerDay: a.turns_per_day } : undefined },
+            { name: a.name, kind: isPai ? (a.kind ?? "standing") : "sub", parent: isPai && a.kind !== "sub" ? agents.PAI : self, brief: a.brief, tools: a.tools, model: a.model, project: a.project, budget: a.turns_per_day || a.turn_minutes ? { ...(a.turns_per_day ? { turnsPerDay: a.turns_per_day } : {}), ...(a.turn_minutes ? { turnMinutes: Math.min(90, a.turn_minutes) } : {}) } : undefined },
             self,
           );
           if (a.task?.trim()) agents.message(created.slug, a.task, { from: self, kind: "delegate", taskId: a.task_id, awaitReport: a.await_report });
