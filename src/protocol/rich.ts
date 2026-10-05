@@ -146,8 +146,26 @@ export function escapeHtml(text: string) {
   return text.replace(/[&<>]/g, (c) => escapes[c] ?? c);
 }
 
+/**
+ * The metadata made small enough for a trailer: a long turn's tool list loses its details first, then its
+ * oldest tools, a long fold its oldest events — the rest of the row (state, duration, the agent) always fits.
+ */
+export function fit(meta: RichMeta): RichMeta {
+  const size = (m: RichMeta) => toBase64Url(encoder.encode(JSON.stringify(m))).length;
+  if (size(meta) <= MAX_PAYLOAD_CHARS) return meta;
+  let tools = meta.tools?.map((t) => ({ ...t, detail: t.detail && t.detail.length > 60 ? `${t.detail.slice(0, 59)}…` : t.detail }));
+  let items = meta.items;
+  let fitted: RichMeta = { ...meta, ...(tools ? { tools } : {}) };
+  while (size(fitted) > MAX_PAYLOAD_CHARS && ((tools?.length ?? 0) > 1 || (items?.length ?? 0) > 1)) {
+    if ((tools?.length ?? 0) > 1) tools = tools!.slice(-Math.floor(tools!.length * 0.7));
+    if ((items?.length ?? 0) > 1) items = items!.slice(-Math.floor(items!.length * 0.7));
+    fitted = { ...meta, ...(tools ? { tools } : {}), ...(items ? { items } : {}) };
+  }
+  return fitted;
+}
+
 export function trailerUrl(baseUrl: string, meta: RichMeta) {
-  return `${baseUrl.replace(/\/$/, "")}/m/${encodePayload(meta)}`;
+  return `${baseUrl.replace(/\/$/, "")}/m/${encodePayload(fit(meta))}`;
 }
 
 /** The message as a stock client sees it: the text, then one small link. */
