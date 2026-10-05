@@ -62,6 +62,34 @@ export const post = <T>(path: string, body: unknown) =>
   request<T>(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
 export const tasks = () => get<{ live: SessionSummary[]; recent: SessionSummary[] }>("/tasks");
+
+/** pai and its staff, as `GET /agents` lists them. */
+export interface AgentSummary {
+  slug: string;
+  name: string;
+  kind: "orchestrator" | "standing" | "sub" | "service";
+  parent: string | null;
+  brief: string;
+  status: "idle" | "queued" | "working" | "waiting" | "closed";
+  openTasks: number;
+  turnsToday: number;
+  costUsd: number;
+  breadcrumb: string;
+}
+
+/** One row of the message log. */
+export interface LogRow {
+  id: number;
+  from: string;
+  to: string;
+  kind: string;
+  body: string;
+  meta: { event?: string };
+  createdAt: number;
+}
+
+export const agents = () => get<AgentSummary[]>("/agents");
+export const agentLog = (slug: string) => get<LogRow[]>(`/messages?agent=${encodeURIComponent(slug)}&limit=200`);
 export const projects = () => get<ProjectSummary[]>("/projects");
 export const terminals = () => get<TerminalSummary[]>("/terminals");
 export const history = (session: string) => get<PaiEvent[]>(`/events?session=${session}`);

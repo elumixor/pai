@@ -3,6 +3,8 @@ import { kv } from "../core/db.ts";
 import { logger } from "../core/log.ts";
 import { stamp, zoned } from "../core/time.ts";
 import { config } from "../core/config.ts";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import * as agents from "./agents.ts";
 import * as asks from "./asks.ts";
 import * as journal from "./journal.ts";
@@ -175,6 +177,7 @@ export function start() {
       });
   };
   bus.on("event", handler);
+  const profile = setTimeout(fillProfile, 10 * 60_000);
   const clock = setInterval(() => {
     const z = zoned();
     if (z.hour >= config.rotateHour && kv.get(ROTATED_DAY) !== journal.logicalDay() && !rotating && agents.get(agents.PAI)?.sessionId) void rotate("daily");
@@ -182,7 +185,25 @@ export function start() {
   return () => {
     bus.off("event", handler);
     clearInterval(clock);
+    clearTimeout(profile);
   };
+}
+
+const PROFILE_FILLED = "profile_filled";
+
+/**
+ * The profile starts from what pai already knows: once, when MEMORY.md is thin, pai goes through
+ * its past conversations (recall, after the archive has had a few minutes to fill) and writes it.
+ */
+function fillProfile() {
+  if (kv.get(PROFILE_FILLED)) return;
+  const file = join(config.workspace, "MEMORY.md");
+  const lines = existsSync(file) ? readFileSync(file, "utf8").split("\n").filter((l) => l.trim().startsWith("-")).length : 0;
+  kv.set(PROFILE_FILLED, new Date().toISOString());
+  if (lines >= 15) return;
+  silent(
+    "[profile] MEMORY.md is the user's profile and it is nearly empty. Fill it from what you already know: use recall over past conversations (search the user's name, their companies and projects, family, places, tools, preferences, recurring people) and the workspace. Lasting facts only, one per line, grouped under short headings, under about 150 lines, absolute dates. Facts about other people go into people/<name>.md. End with no text.",
+  );
 }
 
 /** The logical day pai's session last started over. */

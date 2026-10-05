@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { projects, type ProjectSummary, type SessionSummary, tasks, terminals, type TerminalSummary } from "./api.ts";
+import { type AgentSummary, agents, projects, type ProjectSummary, type SessionSummary, tasks, terminals, type TerminalSummary } from "./api.ts";
 
 const icon = (session: SessionSummary) => {
   if (session.waiting) return new vscode.ThemeIcon("question", new vscode.ThemeColor("charts.yellow"));
@@ -41,6 +41,42 @@ export class ThreadsTree extends Tree<SessionSummary> {
     item.iconPath = icon(session);
     item.contextValue = "thread";
     item.command = { command: "pai.openThread", title: "Open", arguments: [session] };
+    return item;
+  }
+}
+
+const AGENT_ICON: Record<AgentSummary["status"], [string, string?]> = {
+  working: ["zap", "charts.blue"],
+  waiting: ["question", "charts.yellow"],
+  queued: ["clock", "charts.blue"],
+  idle: ["circle-filled", "charts.green"],
+  closed: ["archive"],
+};
+
+/** pai at the root, each agent under the one it reports to. */
+export class AgentsTree implements vscode.TreeDataProvider<AgentSummary> {
+  private readonly changed = new vscode.EventEmitter<void>();
+  readonly onDidChangeTreeData = this.changed.event;
+  private rows: AgentSummary[] = [];
+
+  refresh() {
+    this.changed.fire();
+  }
+
+  async getChildren(element?: AgentSummary) {
+    if (!element) this.rows = await agents();
+    return this.rows.filter((a) => a.parent === (element?.slug ?? null));
+  }
+
+  getTreeItem(agent: AgentSummary) {
+    const hasChildren = this.rows.some((a) => a.parent === agent.slug);
+    const item = new vscode.TreeItem(agent.name, hasChildren ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
+    const [icon, colour] = AGENT_ICON[agent.status] ?? ["circle-outline"];
+    item.iconPath = new vscode.ThemeIcon(icon, colour ? new vscode.ThemeColor(colour) : undefined);
+    item.description = [agent.status, agent.openTasks ? `${agent.openTasks} open` : "", agent.turnsToday ? `${agent.turnsToday} turns · $${agent.costUsd.toFixed(2)}` : ""].filter(Boolean).join(" · ");
+    item.tooltip = `${agent.breadcrumb}\n${agent.brief}`;
+    item.contextValue = "agent";
+    item.command = { command: "pai.openAgent", title: "Open", arguments: [agent] };
     return item;
   }
 }

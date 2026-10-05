@@ -1,14 +1,16 @@
 import * as vscode from "vscode";
-import { follow, post, type ProjectSummary, type SessionSummary, tasks } from "./api.ts";
+import { type AgentSummary, agentLog, follow, post, type ProjectSummary, type SessionSummary } from "./api.ts";
 import { attach, openTerminal } from "./terminal.ts";
 import { openThread } from "./thread.ts";
-import { ProjectsTree, TerminalsTree, ThreadsTree } from "./trees.ts";
+import { AgentsTree, ProjectsTree, TerminalsTree, ThreadsTree } from "./trees.ts";
 
 export function activate(context: vscode.ExtensionContext) {
+  const staff = new AgentsTree();
   const threads = new ThreadsTree();
   const projects = new ProjectsTree();
   const terminals = new TerminalsTree();
   const refresh = () => {
+    staff.refresh();
     threads.refresh();
     projects.refresh();
     terminals.refresh();
@@ -21,7 +23,10 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     status,
+    vscode.window.registerTreeDataProvider("pai.agents", staff),
     vscode.window.registerTreeDataProvider("pai.threads", threads),
+    vscode.commands.registerCommand("pai.openAgent", (agent: AgentSummary) => run(() => openAgent(agent))),
+    vscode.commands.registerCommand("pai.messageAgent", (agent: AgentSummary) => run(() => messageAgent(agent))),
     vscode.window.registerTreeDataProvider("pai.projects", projects),
     vscode.window.registerTreeDataProvider("pai.terminals", terminals),
     vscode.commands.registerCommand("pai.refresh", refresh),
@@ -79,15 +84,29 @@ async function newTask(refresh: () => void) {
   });
 }
 
+/** A message to pai's one chat; the reply comes back as a notification. */
 async function chat() {
   const text = await vscode.window.showInputBox({ prompt: "Message pai" });
   if (!text) return;
   await run(async () => {
-    const { live } = await tasks();
-    const opened = (await post("/chat", { text })) as { session?: string };
-    const started = live.find((s) => s.shortId === opened.session);
-    if (started) openThread(started);
+    const reply = (await post("/pai", { text, wait: true })) as { text?: string; error?: string };
+    if (reply.text) vscode.window.showInformationMessage(reply.text.slice(0, 1000));
   });
+}
+
+/** An agent's chat — the message log filtered to it — as a read-only document. */
+async function openAgent(agent: AgentSummary) {
+  const rows = await agentLog(agent.slug);
+  const at = (ms: number) => new Date(ms).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const lines = rows.map((m) => (m.kind === "event" ? `*${at(m.createdAt)} · ${m.body}*` : `**${m.from} → ${m.to}** · ${m.kind} · ${at(m.createdAt)}\n\n${m.body}`));
+  const doc = await vscode.workspace.openTextDocument({ language: "markdown", content: `# ${agent.breadcrumb}\n\n${agent.brief}\n\n---\n\n${lines.join("\n\n")}\n` });
+  await vscode.window.showTextDocument(doc, { preview: true });
+}
+
+/** Writing to an agent directly: pai hears that the user stepped in. */
+async function messageAgent(agent: AgentSummary) {
+  const text = await vscode.window.showInputBox({ prompt: `Message ${agent.name}` });
+  if (text) await post(`/agents/${agent.slug}/message`, { text });
 }
 
 /** `pai.sshHost` set means projects live on the box and open over Remote-SSH. */
