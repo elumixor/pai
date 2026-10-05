@@ -456,8 +456,11 @@ export class Session {
         // A result with no model turn behind it (context injected with shouldQuery false) is
         // not the end of a turn a message is waiting for.
         if ((!this.activeTurn || m.num_turns === 0) && !text) {
-          this.state = "idle";
-          this.persist();
+          // An injection's result can land while a real turn runs; that turn is still going.
+          if (!this.activeTurn) {
+            this.state = "idle";
+            this.persist();
+          }
           break;
         }
         this.activeTurn = false;
