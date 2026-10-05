@@ -516,7 +516,13 @@ function turnEnded(a: Agent, payload: Record<string, unknown>) {
 
   // A parked agent's "asked, waiting" is not a report; its answer brings the next turn.
   if (text && !ids.length && !waiting) {
-    const report = text.slice(0, REPORT_CHARS);
+    let report = String(payload.final ?? text).trim().slice(0, REPORT_CHARS);
+    // A sub-agent does one job: once it has said what came of it, it closes. Closing archives its folder, so
+    // the files its report points at are named where they are now.
+    if (current.kind === "sub") {
+      const closed = close(a.slug, report.split("\n")[0]!.slice(0, 200));
+      if (closed.folder !== a.folder) report = report.replaceAll(a.folder, closed.folder);
+    }
     messages.log({ from: a.slug, to: a.parent ?? PAI, kind: "report", body: report, meta: { agent: a.slug } });
     if (a.parent === PAI || !a.parent) {
       if (awaited.delete(a.slug)) paiLink.turn(`[${a.name} reported]\n${report}`);
@@ -525,8 +531,6 @@ function turnEnded(a: Agent, payload: Record<string, unknown>) {
       const parent = get(a.parent);
       if (parent && parent.status !== "closed") message(parent.slug, `${a.name} reported:\n${report}`, { from: a.slug, kind: "report", meta: { agent: a.slug } });
     }
-    // A sub-agent does one job: once it has said what came of it, it closes.
-    if (current.kind === "sub" && !waiting) close(a.slug, report.split("\n")[0]!.slice(0, 200));
   }
   drain();
 }
@@ -637,6 +641,8 @@ export function close(slug: string, summary = ""): Agent {
     queue.splice(index, 1);
     saveQueue();
   }
+  // Routines that would wake it, or that it kept for itself, go with it.
+  db.prepare("DELETE FROM automations WHERE agent = ? OR owner = ?").run(slug, slug);
   const closed = set(slug, { status: "closed", closed_at: now(), folder })!;
   journal.append(`${a.name} (${a.kind}) closed${summary ? `: ${summary}` : ""}`);
   messages.event(slug, "agent.closed", `${a.name} closed${summary ? `: ${summary}` : ""}`, { to: a.parent ?? PAI });

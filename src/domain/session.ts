@@ -447,6 +447,8 @@ export class Session {
 
       case "result": {
         const text = this.turnText.join("\n\n").trim() || (m.subtype === "success" ? m.result : "");
+        // What the turn ended on, without the narration that led there: an agent's report to whoever asked.
+        const final = this.turnText.at(-1)?.trim() || text;
         this.turnText = [];
         this.streamText = "";
         this.turnStream = "";
@@ -469,6 +471,7 @@ export class Session {
           "session.turn_end",
           {
             text,
+            final,
             isError: m.subtype !== "success" || Boolean(m.is_error),
             subtype: m.subtype,
             durationMs: m.duration_ms,

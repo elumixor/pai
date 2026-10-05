@@ -397,6 +397,41 @@ export async function handle(req: Request): Promise<Response> {
     }
     if (path === "/pai") return json({ session: main.session().summary(), thread: main.thread(), lastRotation: main.lastRotation() });
 
+    // Everything that waits on the user, newest first, in one shape: the agents' asks and the questions sessions
+    // have open (pai's AskUserQuestion). A phone answers either with one tap: `asks/<id>/answer` or `/answer`.
+    if (path === "/needs") {
+      const fromAsks = asks.open().map((a) => ({
+        kind: "ask" as const,
+        id: `ask:${a.id}`,
+        askId: a.id,
+        from: agents.get(a.agent)?.name ?? a.agent,
+        question: a.question,
+        options: a.options,
+        freeText: a.freeText,
+        priority: a.priority,
+        createdAt: a.createdAt,
+      }));
+      const fromSessions = sessions.list().flatMap((summary) => {
+        const s = sessions.find(summary.sessionId);
+        const index = s?.nextUnanswered();
+        const q = index === undefined ? undefined : s!.pending!.questions[index];
+        if (!s || !q) return [];
+        const owner = summary.agent ? agents.get(summary.agent) : undefined;
+        return [{
+          kind: "question" as const,
+          id: `q:${s.id}:${s.pending!.id}:${index}`,
+          session: s.id,
+          from: owner?.name ?? summary.title,
+          question: q.question,
+          options: q.options.map((o) => o.label),
+          freeText: true,
+          priority: "normal",
+          createdAt: summary.lastActivity,
+        }];
+      });
+      return json([...fromSessions, ...fromAsks].sort((a, b) => b.createdAt - a.createdAt));
+    }
+
     // What the agents are waiting on the user for, and the answers.
     if (path === "/asks") return json(url.searchParams.get("all") ? asks.recentAsks() : asks.open());
     const askPath = /^\/asks\/(\d+)\/(answer|drop)$/.exec(path);

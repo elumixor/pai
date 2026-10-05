@@ -342,13 +342,27 @@ export async function conversations(days = 60, limit = 300): Promise<Conversatio
 
 const DIGEST_MESSAGE_CHARS = 1500;
 
+/** A conversation's full id from its first characters, the way lists and people quote it. */
+function resolveId(id: string): string | undefined {
+  if (id.length >= 36 || !existsSync(projectsDir)) return id;
+  for (const dir of readdirSync(projectsDir)) {
+    const path = join(projectsDir, dir);
+    if (!statSync(path).isDirectory()) continue;
+    const found = readdirSync(path).find((name) => name.startsWith(id) && name.endsWith(".jsonl"));
+    if (found) return found.slice(0, -".jsonl".length);
+  }
+  return undefined;
+}
+
 /**
  * One conversation as what was said: the user's prompts and the assistant's answers, without tool
  * output or injected context, each message cut short. Past `maxChars` the middle goes: how a
  * conversation starts and how it ends say the most.
  */
 export async function conversationDigest(id: string, maxChars = 30_000): Promise<string> {
-  const messages = (await transcript(id, undefined, 100_000)).filter((m) => !m.meta && m.text.trim());
+  const full = resolveId(id);
+  if (!full) throw new Error(`no conversation ${id}`);
+  const messages = (await transcript(full, undefined, 100_000)).filter((m) => !m.meta && m.text.trim());
   const lines = messages.map((m) => {
     const text = m.text.replace(/\n{3,}/g, "\n\n").trim();
     const cut = text.length > DIGEST_MESSAGE_CHARS ? `${text.slice(0, DIGEST_MESSAGE_CHARS)}…` : text;
