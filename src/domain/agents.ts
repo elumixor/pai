@@ -335,7 +335,10 @@ const queue: Pending[] = (() => {
 })();
 const saveQueue = () => kv.set(QUEUE_KEY, JSON.stringify(queue));
 
-/** The request each agent is answering in its current turn; its turn's text is the response. */
+/**
+ * The turns each agent has been sent and not finished, oldest first, with the request a turn
+ * answers (0 for none): a session queues turns, so the head is the one whose end comes next.
+ */
 const answering = new Map<string, number[]>();
 const turnTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /** What each process had cost at its last turn end; the SDK reports a running total. */
@@ -398,7 +401,7 @@ function wake(slug: string, text: string, requestId?: number) {
 
 function run(a: Agent, text: string, requestId?: number) {
   const s = ensureSession(a);
-  if (requestId) answering.set(a.slug, [...(answering.get(a.slug) ?? []), requestId]);
+  answering.set(a.slug, [...(answering.get(a.slug) ?? []), requestId ?? 0]);
   const today = day();
   db.prepare("UPDATE agents SET turns_today = CASE WHEN turns_day = ? THEN turns_today + 1 ELSE 1 END, turns_day = ? WHERE slug = ?").run(today, today, a.slug);
   setStatus(a.slug, "working");
@@ -501,13 +504,14 @@ function turnEnded(a: Agent, payload: Record<string, unknown>) {
   booked.set(key, cost);
   db.prepare("UPDATE agents SET cost_usd = cost_usd + ? WHERE slug = ?").run(Math.max(0, cost - before), a.slug);
 
-  // Requests this turn was answering get its text as their response.
-  const ids = answering.get(a.slug) ?? [];
-  answering.delete(a.slug);
-  for (const id of ids) onAnswered(id, a.slug, text);
+  // A turn that answered a request has its text as the response.
+  const pending = answering.get(a.slug) ?? [];
+  const requestId = pending.shift() ?? 0;
+  if (requestId) onAnswered(requestId, a.slug, text);
+  const ids = requestId ? [requestId] : [];
 
   const waiting = current.status === "waiting";
-  if (!waiting) setStatus(a.slug, s && s.state === "busy" ? "working" : "idle");
+  if (!waiting) setStatus(a.slug, pending.length ? "working" : "idle");
   checkState(current);
 
   // A parked agent's "asked, waiting" is not a report; its answer brings the next turn.
@@ -529,7 +533,7 @@ function turnEnded(a: Agent, payload: Record<string, unknown>) {
 
 function turnFailed(a: Agent, message: string) {
   clearTimeout(turnTimers.get(a.slug));
-  answering.delete(a.slug);
+  answering.get(a.slug)?.shift();
   setStatus(a.slug, "idle");
   messages.event(a.slug, "error", `${a.name} failed: ${message}`, { to: a.parent ?? PAI });
   tellParent(a, `failed: ${message}`);
