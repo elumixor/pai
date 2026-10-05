@@ -40,6 +40,9 @@ export function serverAllowed(name: string, allowed: readonly string[] | undefin
   return allowed.some((a) => a === "*" || n.includes(a.toLowerCase()));
 }
 
+/** The builder's tools that start or feed a thread; pai keeps the ones that read threads, to answer about terminal work. */
+const PAI_THREAD_TOOLS = ["mcp__builder__find_or_create_thread", "mcp__builder__send_to_thread"];
+
 /** The prefix Claude Code gives a server's tools, so a deny rule can remove a whole connector. */
 const toolPrefix = (server: string) => `mcp__${server.replace(/[^A-Za-z0-9_-]/g, "_")}`;
 
@@ -55,7 +58,8 @@ function build(kind: SessionKind, cwd: string, ref: SessionRef, project?: string
   // ones an agent may not use are denied by their tool prefix, as the last session init named them.
   const disallowedTools = agent?.tools ? knownServers().filter((name) => !(name in servers) && !serverAllowed(name, agent.tools)).map(toolPrefix) : [];
   // pai delegates through its own agents, which the user can watch and answer; Claude Code's Agent tool would hide the work.
-  if (agent?.slug === "pai") disallowedTools.push("Agent", "Task");
+  // Threads are the same kind of hidden work: whatever pai hands off is an agent, so it shows in the agent tree.
+  if (agent?.slug === "pai") disallowedTools.push("Agent", "Task", ...PAI_THREAD_TOOLS);
   return {
     cwd,
     model: prefs?.model ?? (kind === "chat" ? config.models.main : config.models.task),

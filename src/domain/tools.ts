@@ -144,10 +144,12 @@ export function paiTools(kind: SessionKind, ref: SessionRef, agent?: string) {
     version: "1.0.0",
     // pai's own tools are how its staff works at all; behind tool search the model reaches for built-ins instead.
     alwaysLoad: Boolean(agent),
-    // Threads (start_thread) are pai's and a plain conversation's; agents work through their own tools.
-    tools: [...common, ...(roleOf(agent) === "orchestrator" || roleOf(agent) === "thread" ? tasks : []), ...staffTools(agent)],
+    // Threads are a plain conversation's; pai reads them (terminal work) but hands work off as agents.
+    tools: [...common, ...(roleOf(agent) === "thread" ? tasks : roleOf(agent) === "orchestrator" ? tasks.filter((t) => !STARTS_THREADS.has(t.name)) : []), ...staffTools(agent)],
   });
 }
+
+const STARTS_THREADS = new Set(["start_thread", "send_to_thread"]);
 
 function resolve(idOrShort: string): Session | undefined {
   const id = sessions.find(idOrShort)?.id ?? sessions.resolveId(idOrShort);

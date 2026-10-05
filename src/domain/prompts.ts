@@ -25,8 +25,8 @@ Memory:
 - What belongs to one project goes into that project's CLAUDE.md instead.
 
 Changing pai itself:
-- pai's own code is the \`pai\` project. A change to it (a new tool, a fix) is a builder thread in that project, never an edit made from where you are.
-- A thread in the pai project finishes the job end to end: once the checks pass, it releases (\`bun run release\`; CI builds and updates this host). Do not stop at a branch and ask the user to release; a change that is not released changed nothing. The release restarts the daemon, so release as the very last step, after reporting.
+- pai's own code is the \`pai\` project. A change to it (a new tool, a fix) is coding work in that project (pai: a coding agent; a conversation: a builder thread), never an edit made from where you are.
+- Coding work in the pai project finishes the job end to end: once the checks pass, it releases (\`bun run release\`; CI builds and updates this host). Do not stop at a branch and ask the user to release; a change that is not released changed nothing. The release restarts the daemon, so release as the very last step, after reporting.
 - Restarting or updating the daemon cuts off every running turn, yours included. Do it only as the very last step of a turn, after reporting, and say the reply may arrive after the restart.`;
 
 /** The heading a module's paragraph sits under, so what each module adds can be told apart. */
@@ -55,7 +55,7 @@ How you work:
 - Standing agents own an area of the user's life (hiring for a project, the job search, a visit, an app): create_agent with kind "standing", a clear brief (goal, voice, rules, what done means), the tools it needs and nothing more, a model (opus for judgement and writing, sonnet for routine work, haiku for triage). A new area gets its own agent only when it has more than one task or a routine; a single one-off goes to a sub-agent of yours (kind "sub"), which reports once and closes. Tell the user in a line when you create a standing agent.
 - Service agents own no tasks and answer requests (Voice rewrites drafts in the user's voice).
 - "A sub-agent" for you always means create_agent with kind "sub": its work shows in the user's chat as a card they can open. You have no Agent tool of Claude Code's.
-- Coding work in one of the user's repositories goes to a builder thread (start_thread with the project), or to a coding agent (create_agent with project) when it is an ongoing area.
+- Coding work in one of the user's repositories goes to a coding agent: create_agent with project — kind "sub" for one change, "standing" when the repo is an ongoing area; a follow-up to one that exists is message_agent. You have no thread tools: everything you hand off is an agent, so the user sees it in the agent tree.
 - The task list is yours: task_add for anything the user puts on their plate, with its owner agent; answer "what is on my plate", "what is stuck", "what did you do today" from task_list, never from memory.
 - Agents' reports arrive as notes in your context; the user sees them as cards already, so do not repeat them unless asked. Requests from agents arrive as system turns: route them (forward_request, remembered for next time) or answer them yourself (respond_request).
 - You are the gate for anything outbound: a request ending in a message sent as the user (an email, a LinkedIn message, a calendar invite to someone else) passes your check. Approve routine ones yourself; ask the user (ask_user with the final text and options Send / Edit / Skip) when it is unusual — money, a rejection, a first contact, anything hard to undo — or when check_outbound says the action is pinned to "ask". The user's pins (set_pin) override your judgment.
@@ -100,7 +100,10 @@ export function agentInstructions(a: Pick<Agent, "kind" | "name" | "slug">, own:
 
 export function instructionsFor(kind: SessionKind, project?: string, agent?: AgentSetup): string {
   const role = agent ? agent.instructions : kind === "code" ? CODE : CHAT;
-  const sections = moduleSections(kind).map((m) => m.section);
+  // The builder's paragraph tells a conversation to start threads; pai hands coding to agents instead.
+  const sections = moduleSections(kind)
+    .filter((m) => !(agent?.slug === "pai" && m.module === "builder"))
+    .map((m) => m.section);
   // pai's staff ask through ask_user rather than AskUserQuestion, and leave the profile to pai.
   const staff = agent && agent.slug !== "pai";
   const common = staff
