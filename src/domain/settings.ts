@@ -22,6 +22,11 @@ export const EDITABLE = [
   "PAI_NO_EDITOR",
   "PAI_EDITOR_PORT",
   "PAI_EDITOR_BIND",
+  "PAI_TIMEZONE",
+  "PAI_QUIET_HOURS",
+  "PAI_MAX_AGENTS",
+  "PAI_TRIAGE_MODEL",
+  "PAI_ROTATE_HOUR",
 ] as const;
 
 export type Editable = (typeof EDITABLE)[number];
@@ -49,6 +54,11 @@ export function effective() {
     PAI_NO_EDITOR: config.editor.enabled ? "0" : "1",
     PAI_EDITOR_PORT: String(config.editor.port),
     PAI_EDITOR_BIND: config.editor.host,
+    PAI_TIMEZONE: config.timezone,
+    PAI_QUIET_HOURS: config.quietHours,
+    PAI_MAX_AGENTS: String(config.maxWorkingAgents),
+    PAI_TRIAGE_MODEL: config.models.triage,
+    PAI_ROTATE_HOUR: String(config.rotateHour),
   } satisfies Record<Editable, string>;
 }
 

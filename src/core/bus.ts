@@ -8,8 +8,8 @@ export interface PaiEvent {
   ts: number;
 }
 
-/** Text deltas are high volume and only matter live; they are not written to the log. */
-const EPHEMERAL = new Set(["session.delta"]);
+/** Text deltas are high volume and only matter live; message rows have a table of their own. Neither goes in the event log. */
+const EPHEMERAL = new Set(["session.delta", "message.new"]);
 
 class Bus extends EventEmitter {
   emitEvent(kind: string, payload: Record<string, unknown>, sessionId?: string) {

@@ -103,6 +103,13 @@ export function noteInit(kind: SessionKind, inventory: Inventory) {
   }
 }
 
+/** Every MCP server a session has come up with lately, connectors included: what an agent's tools list picks from. */
+export function knownServers(): string[] {
+  const names = new Set<string>();
+  for (const inv of Object.values(inventories)) for (const s of inv?.mcpServers ?? []) names.add(s.name);
+  return [...names];
+}
+
 /** `mcp__<server>__<tool>` → server and tool; a built-in has no server. */
 const split = (name: string) => {
   const m = /^mcp__(.+?)__(.+)$/.exec(name);

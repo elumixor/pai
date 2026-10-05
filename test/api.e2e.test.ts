@@ -226,3 +226,43 @@ describe("terminals over the api", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("pai and its staff over the api", () => {
+  const patch = (path: string, payload: unknown) =>
+    fetch(`${base}${path}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+
+  it("keeps the task list, and still lists sessions for older clients", async () => {
+    const created = (await (await post("/tasks", { title: "Prepare for the visit", due: "2026-10-20" })).json()) as { id: number; status: string; createdBy: string };
+    expect(created).toMatchObject({ status: "inbox", createdBy: "user" });
+    const done = (await (await patch(`/tasks/${created.id}`, { status: "done" })).json()) as { status: string };
+    expect(done.status).toBe("done");
+    const list = (await (await get("/tasks?all=1")).json()) as { items: { id: number }[]; live: unknown[]; recent: unknown[] };
+    expect(list.items.some((t) => t.id === created.id)).toBe(true);
+    expect(Array.isArray(list.live) && Array.isArray(list.recent)).toBe(true);
+    expect((await post("/tasks", { title: "" })).status).toBe(400);
+  });
+
+  it("creates an agent, shows it in the tree and its chat", async () => {
+    const res = await post("/agents", { name: "Job search", kind: "standing", brief: "Find a better job." });
+    expect(res.status).toBe(201);
+    const tree = (await (await get("/agents")).json()) as { slug: string; depth: number; breadcrumb: string }[];
+    expect(tree.find((a) => a.slug === "pai")?.depth).toBe(1);
+    expect(tree.find((a) => a.slug === "job-search")?.breadcrumb).toBe("pai › Job search");
+    const chat = (await (await get("/messages?agent=job-search")).json()) as { kind: string; meta: { event?: string } }[];
+    expect(chat.some((m) => m.meta.event === "agent.created")).toBe(true);
+    expect((await get("/agents/nobody")).status).toBe(404);
+  });
+
+  it("lists and answers nothing when nothing is asked", async () => {
+    expect(await (await get("/asks")).json()).toEqual([]);
+    expect((await post("/asks/999/answer", { text: "yes" })).status).toBe(400);
+    expect(Array.isArray(await (await get("/routines")).json())).toBe(true);
+    expect((await post("/routines", { name: "bad", schedule: "every day", action: "turn" })).status).toBe(400);
+  });
+
+  it("pins outbound actions and mutes senders", async () => {
+    expect(await (await post("/pins", { action: "send email", mode: "ask" })).json()).toEqual([{ action: "send email", mode: "ask" }]);
+    const mute = (await (await post("/mutes", { pattern: "newsletter" })).json()) as { id: number };
+    expect((await (await fetch(`${base}/mutes?id=${mute.id}`, { method: "DELETE" })).json()) as unknown).toEqual({ removed: true });
+  });
+});

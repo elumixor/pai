@@ -22,12 +22,12 @@ export const modules: readonly Module[] = [
   },
   {
     name: "tasks",
-    title: "Tasks",
-    description: "The orchestrator's way of doing work: start_task opens another session in a project, with its own topic.",
+    title: "Threads",
+    description: "Another session in a project, with its own topic: start_thread, for coding work and one-offs.",
     kind: "tools",
     enabled: () => true,
     status: () => ({}),
-    tools: { server: "pai", names: ["start_task", "send_to_task", "list_tasks", "task_output", "stop_task", "progress", "list_projects", "describe_project"], kinds: ["chat"] },
+    tools: { server: "pai", names: ["start_thread", "send_to_thread", "list_threads", "thread_output", "stop_thread", "progress", "list_projects", "describe_project"], kinds: ["chat"] },
   },
   gmailModule,
   {

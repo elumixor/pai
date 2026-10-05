@@ -400,6 +400,55 @@ async function userCommand() {
       out(result, (): string => messages[result.status]);
       break;
     }
+    // pai and its staff, the way the chat would show them.
+    case "agents": {
+      const data = await api("/agents");
+      out(data, () => agentTree(data).join("\n"));
+      break;
+    }
+    case "log": {
+      const agent = positional[0];
+      const data = await api(`/messages?limit=${flag("limit") ?? 40}${agent ? `&agent=${agent}` : ""}`);
+      out(data, () => data.map(logLine).join("\n") || "(nothing yet)");
+      break;
+    }
+    case "tasks": {
+      const [sub, ...rest] = positional;
+      if (sub === "add") {
+        const data = await post("/tasks", { title: rest.join(" "), owner: flag("owner"), due: flag("due") });
+        out(data, () => data.error ?? taskLine(data));
+        break;
+      }
+      if (sub === "done" || sub === "drop") {
+        const data = await patch(`/tasks/${rest[0]}`, { status: sub === "done" ? "done" : "dropped" });
+        out(data, () => data.error ?? taskLine(data));
+        break;
+      }
+      const data = await api(`/tasks${args.includes("--all") ? "?all=1" : ""}${flag("owner") ? `${args.includes("--all") ? "&" : "?"}owner=${flag("owner")}` : ""}`);
+      out(data.items, () => data.items.map(taskLine).join("\n") || "(nothing on the plate)");
+      break;
+    }
+    case "asks": {
+      const data = await api("/asks");
+      out(data, () => data.map((a: any) => `#${a.id}  ${a.agent.padEnd(12)} ${a.question}${a.options.length ? `  [${a.options.join(" / ")}]` : ""}${a.delivered ? "" : "  (held)"}`).join("\n") || "(nothing waiting on you)");
+      break;
+    }
+    case "answer": {
+      const [id, ...rest] = positional;
+      const data = await post(`/asks/${String(id).replace(/^#/, "")}/answer`, { text: rest.join(" ") });
+      out(data, () => data.error ?? `answered #${data.id}`);
+      break;
+    }
+    case "routines": {
+      const data = await api("/routines");
+      out(data, () => data.map((r: any) => `${String(r.id).padStart(3)}  ${r.enabled ? "on " : "off"} ${(r.schedule || r.event).padEnd(18)} ${r.action.padEnd(6)} ${(r.agent || "").padEnd(12)} ${r.name}  · ${r.runs} runs`).join("\n"));
+      break;
+    }
+    case "recall": {
+      const data = await api(`/recall?q=${encodeURIComponent(positional.join(" "))}`);
+      out(data, () => (Array.isArray(data) && data.length && "snippet" in data[0] ? data.map((h: any) => `${h.at}  ${h.source.padEnd(10)} ${h.title}\n    ${h.snippet.replace(/\s+/g, " ")}`).join("\n") : data.map?.((s: any) => `${s.source.padEnd(12)} ${s.entries}`).join("\n") || "(nothing found)"));
+      break;
+    }
     case "dev":
       console.log(help.section("dev", help.DEV));
       break;
@@ -422,6 +471,33 @@ async function userCommand() {
       process.exit(code);
     }
   }
+}
+
+const STATE_MARK: Record<string, string> = { idle: "○", queued: "◔", working: "●", waiting: "?", closed: "×" };
+
+function agentTree(rows: any[]): string[] {
+  const byParent = new Map<string | null, any[]>();
+  for (const a of rows) byParent.set(a.parent, [...(byParent.get(a.parent) ?? []), a]);
+  const lines: string[] = [];
+  const walk = (parent: string | null, indent: string) => {
+    for (const a of byParent.get(parent) ?? []) {
+      const extra = [a.kind === "orchestrator" ? "" : a.kind, a.openTasks ? `${a.openTasks} open` : "", a.turnsToday ? `${a.turnsToday} turns today` : "", a.costUsd ? `$${a.costUsd.toFixed(2)}` : "", a.queued ? `${a.queued} queued` : ""].filter(Boolean).join(" · ");
+      lines.push(`${indent}${STATE_MARK[a.status] ?? "·"} ${a.name.padEnd(Math.max(1, 16 - indent.length))} ${a.status.padEnd(8)} ${extra}`);
+      walk(a.slug, `${indent}  `);
+    }
+  };
+  walk(null, "");
+  return lines;
+}
+
+function logLine(m: any) {
+  const at = new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const arrow = m.kind === "event" ? `· ${m.meta?.event ?? "event"}` : `${m.from} → ${m.to}`;
+  return `${at}  ${m.kind.padEnd(8)} ${arrow.padEnd(24)} ${m.body.replace(/\s+/g, " ").slice(0, 140)}`;
+}
+
+function taskLine(t: any) {
+  return `#${String(t.id).padEnd(4)} ${t.status.padEnd(13)} ${t.owner.padEnd(12)} ${t.title}${t.due ? `  due ${t.due}` : ""}${t.nextAction ? `  → ${t.nextAction}` : ""}`;
 }
 
 /**
@@ -566,6 +642,14 @@ async function devCommand() {
     case "install":
       await import("../host/install-daemon-linux.ts");
       break;
+    case "say": {
+      const data = await post("/pai", { text: positional.join(" "), wait: true });
+      out(data, () => data.text || (data.error ?? "(no reply)"));
+      break;
+    }
+    case "rotate":
+      out(await post("/pai/rotate", {}));
+      break;
     case "chat": {
       const data = await post("/chat", { text: positional.join(" "), id: flag("id") });
       out(data, () => data.text || (data.error ?? "(no reply)"));
@@ -589,7 +673,7 @@ async function devCommand() {
       break;
     }
     case "tasks": {
-      const data = await api("/tasks");
+      const data = await api("/sessions");
       out(data, () =>
         data.recent.length
           ? data.recent

@@ -5,9 +5,10 @@ import { all as allProjects, get as getProject, refresh } from "./catalog.ts";
 import { bus, recentEvents } from "../core/bus.ts";
 import * as sessions from "./sessions.ts";
 import { cost as hostingCost } from "./hetzner.ts";
+import { roleOf, staffTools } from "./staff-tools.ts";
 
 const ok = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });
-const taskArg = z.string().describe("task id, full or the 6-character short form");
+const taskArg = z.string().describe("thread id, full or the 6-character short form");
 
 export interface SessionRef {
   session?: Session;
@@ -17,7 +18,7 @@ export interface SessionRef {
  * In-process MCP server. One instance per session, so the tools know who is calling; the
  * session arrives through a ref because pre-warmed processes are built before it exists.
  */
-export function paiTools(kind: SessionKind, ref: SessionRef) {
+export function paiTools(kind: SessionKind, ref: SessionRef, agent?: string) {
   const self = () => {
     if (!ref.session) throw new Error("tool called before its session was bound");
     return ref.session;
@@ -61,11 +62,11 @@ export function paiTools(kind: SessionKind, ref: SessionRef) {
 
   const tasks = [
     tool(
-      "start_task",
-      "Start a task in its own Telegram topic and its own context, running in parallel; it reports back here when it finishes. Give it a short title (topic name) and a complete prompt: everything the task needs, since it does not see this conversation. Pass a project slug for coding work in one of the user's repos — the `pai` project is this assistant's own code.",
+      "start_thread",
+      "Start a thread in its own Telegram topic and its own context, running in parallel; it reports back here when it finishes. Give it a short title (topic name) and a complete prompt: everything the task needs, since it does not see this conversation. Pass a project slug for coding work in one of the user's repos — the `pai` project is this assistant's own code.",
       {
         title: z.string().max(60).describe("short topic name, e.g. 'Find game designer'"),
-        prompt: z.string().describe("the full instruction for the task"),
+        prompt: z.string().describe("the full instruction for the thread"),
         project: z.string().optional().describe("project slug from list_projects: a repo for coding work, a context project for work that has its own voice and memory"),
       },
       async ({ title, prompt, project }) => {
@@ -80,8 +81,8 @@ export function paiTools(kind: SessionKind, ref: SessionRef) {
       },
     ),
     tool(
-      "send_to_task",
-      "Send a follow-up, correction, or answer to a running or finished task. It resumes with full context.",
+      "send_to_thread",
+      "Send a follow-up, correction, or answer to a running or finished thread. It resumes with full context.",
       { task: taskArg, message: z.string() },
       async ({ task, message }) => {
         const s = resolve(task);
@@ -91,8 +92,8 @@ export function paiTools(kind: SessionKind, ref: SessionRef) {
       },
     ),
     tool(
-      "list_tasks",
-      "Tasks: running, waiting for the user, and recently finished, with their last result.",
+      "list_threads",
+      "Threads: running, waiting for the user, and recently finished, with their last result.",
       {},
       async () =>
         ok(
@@ -110,8 +111,8 @@ export function paiTools(kind: SessionKind, ref: SessionRef) {
         ),
     ),
     tool(
-      "task_output",
-      "What a task actually did: its inputs, tool calls, and replies, oldest first.",
+      "thread_output",
+      "What a thread actually did: its inputs, tool calls, and replies, oldest first.",
       { task: taskArg, limit: z.number().optional() },
       async ({ task, limit }) => {
         const id = sessions.find(task)?.id ?? sessions.resolveId(task);
@@ -126,8 +127,8 @@ export function paiTools(kind: SessionKind, ref: SessionRef) {
       },
     ),
     tool(
-      "stop_task",
-      "Interrupt a running task. Its transcript survives and it can be continued later with send_to_task.",
+      "stop_thread",
+      "Interrupt a running thread. Its transcript survives and it can be continued later with send_to_thread.",
       { task: taskArg },
       async ({ task }) => {
         const s = sessions.find(task);
@@ -141,7 +142,10 @@ export function paiTools(kind: SessionKind, ref: SessionRef) {
   return createSdkMcpServer({
     name: "pai",
     version: "1.0.0",
-    tools: [...common, ...tasks],
+    // pai's own tools are how its staff works at all; behind tool search the model reaches for built-ins instead.
+    alwaysLoad: Boolean(agent),
+    // Threads (start_thread) are pai's and a plain conversation's; agents work through their own tools.
+    tools: [...common, ...(roleOf(agent) === "orchestrator" || roleOf(agent) === "thread" ? tasks : []), ...staffTools(agent)],
   });
 }
 

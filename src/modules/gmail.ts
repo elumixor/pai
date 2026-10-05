@@ -1,7 +1,9 @@
 import { z } from "zod";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "../core/config.ts";
-import { db } from "../core/db.ts";
+import { cursors, db } from "../core/db.ts";
+import { bus } from "../core/bus.ts";
+import { put as archive } from "../domain/recall.ts";
 import { logger } from "../core/log.ts";
 import { origin, sign } from "../api/auth.ts";
 import type { Module } from "./types.ts";
@@ -21,7 +23,9 @@ const log = logger("gmail");
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
-const SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+// Calendar rides along so the meeting watcher can read what is coming up; mail stays read-only.
+const SCOPE = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly";
+const CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 
 interface Account {
   readonly label: string;
@@ -238,6 +242,109 @@ export async function read(label: string, id: string) {
   };
 }
 
+// --- watchers: new mail and meetings coming up, as bus events ------------------------------
+
+/** How often the mailboxes are looked at: one list call per account, nothing more when nothing is new. */
+const MAIL_EVERY = 5 * 60_000;
+/** A meeting is announced this long before it starts. */
+const UPCOMING_MS = 30 * 60_000;
+
+interface ListedMessage {
+  readonly id: string;
+  readonly threadId: string;
+}
+
+/**
+ * New messages in one inbox since the last look, oldest first. The cursor is the newest
+ * internalDate seen; the first look only sets it, so connecting a mailbox does not replay it.
+ */
+export async function newMail(label: string): Promise<{ id: string; threadId: string; from: string; subject: string; snippet: string; at: number }[]> {
+  const key = `gmail:${label}`;
+  const since = Number(cursors.get(key) ?? 0);
+  const list = await call<{ messages?: ListedMessage[] }>(label, `/messages?q=${encodeURIComponent("in:inbox newer_than:2d")}&maxResults=25`);
+  const found = [];
+  let newest = since;
+  for (const { id } of list.messages ?? []) {
+    const m = await call<{ id: string; threadId: string; snippet: string; internalDate: string; payload?: { headers?: Headers[] } }>(label, `/messages/${id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`);
+    const at = Number(m.internalDate);
+    newest = Math.max(newest, at);
+    // Messages come newest first: everything at or before the cursor was seen.
+    if (at <= since) break;
+    found.push({ id: m.id, threadId: m.threadId, from: headerValue(m.payload?.headers, "From"), subject: headerValue(m.payload?.headers, "Subject"), snippet: m.snippet, at });
+  }
+  cursors.set(key, String(newest || Date.now()));
+  return since ? found.reverse() : [];
+}
+
+interface CalendarEvent {
+  readonly id: string;
+  readonly summary?: string;
+  readonly description?: string;
+  readonly htmlLink?: string;
+  readonly start?: { dateTime?: string };
+  readonly attendees?: { email: string; self?: boolean }[];
+  readonly status?: string;
+}
+
+/** Meetings starting within the next half hour that were not announced yet. */
+export async function upcoming(label: string): Promise<CalendarEvent[]> {
+  const token = await accessToken(label);
+  const from = new Date().toISOString();
+  const to = new Date(Date.now() + UPCOMING_MS).toISOString();
+  const response = await fetch(`${CALENDAR_API}/calendars/primary/events?singleEvents=true&orderBy=startTime&timeMin=${from}&timeMax=${to}`, {
+    headers: { authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (response.status === 403) throw new CalendarScopeError(label);
+  if (!response.ok) throw new Error(`calendar: ${response.status}`);
+  const events = ((await response.json()) as { items?: CalendarEvent[] }).items ?? [];
+  const key = `calendar:${label}`;
+  const announced = new Set((cursors.get(key) ?? "").split(",").filter(Boolean));
+  const fresh = events.filter((e) => e.status !== "cancelled" && e.start?.dateTime && !announced.has(e.id));
+  cursors.set(key, [...announced, ...fresh.map((e) => e.id)].slice(-200).join(","));
+  return fresh;
+}
+
+class CalendarScopeError extends Error {
+  constructor(label: string) {
+    super(`${label} was connected before calendar access was asked for; reconnect it at /gmail/connect?label=${label}`);
+  }
+}
+
+/** Polls every connected mailbox and calendar; each new thing becomes a bus event. */
+export function startWatch(emit: (kind: string, payload: Record<string, unknown>) => void) {
+  const noCalendar = new Set<string>();
+  const pass = async () => {
+    for (const { label, email } of listAccounts()) {
+      try {
+        for (const m of await newMail(label)) {
+          emit("gmail.new", { account: label, email, id: m.id, threadId: m.threadId, from: m.from, subject: m.subject, snippet: m.snippet, link: `https://mail.google.com/mail/u/${email}/#inbox/${m.threadId}` });
+          archive("mail", m.id, `${m.from} — ${m.subject}`, m.snippet, m.at);
+        }
+      } catch (err) {
+        log.warn(`${label}: ${(err as Error).message}`);
+      }
+      if (noCalendar.has(label)) continue;
+      try {
+        for (const e of await upcoming(label)) {
+          const attendees = (e.attendees ?? []).filter((a) => !a.self).map((a) => a.email);
+          emit("calendar.upcoming", { account: label, id: e.id, summary: e.summary ?? "", start: e.start?.dateTime, attendees, description: (e.description ?? "").slice(0, 1000), link: e.htmlLink });
+          archive("calendar", e.id, e.summary ?? "meeting", `${e.start?.dateTime} with ${attendees.join(", ")}\n${e.description ?? ""}`, Date.now());
+        }
+      } catch (err) {
+        if (err instanceof CalendarScopeError) noCalendar.add(label);
+        log.warn(`${label} calendar: ${(err as Error).message}`);
+      }
+    }
+  };
+  const first = setTimeout(pass, 20_000);
+  const timer = setInterval(pass, MAIL_EVERY);
+  return () => {
+    clearTimeout(first);
+    clearInterval(timer);
+  };
+}
+
 // --- the tools sessions get -----------------------------------------------------------------
 
 export function gmailTools() {
@@ -266,6 +373,8 @@ export function gmailTools() {
   });
 }
 
+let stopWatch: (() => void) | undefined;
+
 export const gmailModule: Module = {
   name: "gmail",
   title: "Gmail",
@@ -274,6 +383,14 @@ export const gmailModule: Module = {
   enabled: configured,
   status: () => ({ configured: configured(), accounts: listAccounts().map(({ label, email }) => ({ label, email })) }),
   tools: { server: "gmail", names: ["gmail_list_accounts", "gmail_search", "gmail_read"], kinds: ["chat"] },
+  events: [
+    { kind: "gmail.new", description: "a new message in a connected inbox (account, from, subject, snippet, link)" },
+    { kind: "calendar.upcoming", description: "a meeting starts within 30 minutes (summary, start, attendees, link)" },
+  ],
+  start: () => {
+    if (configured()) stopWatch = startWatch((kind, payload) => bus.emitEvent(kind, payload));
+  },
+  stop: () => stopWatch?.(),
   accounts: {
     list: () => listAccounts().map(({ label, email }) => ({ label, detail: email })),
     connectPath: "/gmail/connect?label={label}",

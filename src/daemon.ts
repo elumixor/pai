@@ -14,6 +14,14 @@ import { startModules } from "./modules/index.ts";
 import * as external from "./modules/external.ts";
 import { start as startMirror } from "./domain/mirror.ts";
 import { logger } from "./core/log.ts";
+import * as agents from "./domain/agents.ts";
+import * as main from "./domain/main.ts";
+import * as automations from "./domain/automations.ts";
+import * as triage from "./domain/triage.ts";
+import * as briefs from "./domain/briefs.ts";
+import * as recall from "./domain/recall.ts";
+import * as staff from "./domain/staff.ts";
+import { flush as flushNotices } from "./domain/asks.ts";
 
 const log = logger("daemon");
 
@@ -22,6 +30,12 @@ refresh();
 // Before anything spawns a session: their tools and prompt come from the modules too.
 await external.load();
 relayToParent();
+// pai and its staff: the agents' turns, the one chat, routines feeding both.
+const stopAgents = agents.start();
+const stopMain = main.start();
+automations.link({ turn: main.system, triage: triage.add, fields: { brief: briefs.morning, digest: briefs.evening } });
+automations.seed();
+staff.seed();
 const stopMemoryWatch = watchMemory();
 const server = startServer();
 const stopBrowser = startBrowser();
@@ -37,6 +51,9 @@ const stopModules = startModules();
 await external.startAll();
 // After the modules: the chat has to be listening when the threads held in terminals are announced.
 const stopMirror = startMirror();
+const stopRecall = recall.start();
+// Notices and asks held through quiet hours go out when they end.
+const noticeTimer = setInterval(flushNotices, 60 * 1000);
 
 const catalogTimer = setInterval(refresh, 15 * 60 * 1000);
 const reaper = setInterval(reapIdle, 60 * 1000);
@@ -47,6 +64,10 @@ function shutdown(signal: string) {
   log.info(`${signal} — shutting down`);
   clearInterval(catalogTimer);
   clearInterval(reaper);
+  clearInterval(noticeTimer);
+  stopRecall();
+  stopMain();
+  stopAgents();
   stopAutoUpdate?.();
   stopAutomations();
   stopMemoryWatch();

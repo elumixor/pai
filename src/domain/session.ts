@@ -10,7 +10,7 @@ import { browserMcp } from "./browser.ts";
 import { instructionsFor } from "./prompts.ts";
 import { gmailModule, gmailTools } from "../modules/gmail.ts";
 import { mcpServers as externalMcpServers } from "../modules/external.ts";
-import { noteInit } from "./context.ts";
+import { knownServers, noteInit } from "./context.ts";
 import { describeServers } from "./mcp-describe.ts";
 
 /** Subprocesses spawned and initialised ahead of time, keyed by kind. Only kinds with a fixed cwd can be warmed. */
@@ -23,7 +23,39 @@ const warm = new Map<SessionKind, Warm>();
 
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 
-function build(kind: SessionKind, cwd: string, ref: SessionRef, project?: string, prefs?: { model?: string | null; effort?: Effort | null }): Options {
+/** What an agent's session is built with on top of a plain one: its role, its tools. */
+export interface AgentSetup {
+  readonly slug: string;
+  /** Instructions appended after the general ones: the agent's role, and its own CLAUDE.md when its cwd is not its folder. */
+  readonly instructions: string;
+  /** Substrings of the MCP server names it may use (case-insensitive); undefined means every server. */
+  readonly tools?: readonly string[];
+  readonly additionalDirectories?: readonly string[];
+}
+
+/** An MCP server an agent may use: `pai` always; anything else only when its tools list names it. */
+export function serverAllowed(name: string, allowed: readonly string[] | undefined) {
+  if (!allowed || name === "pai") return true;
+  const n = name.toLowerCase();
+  return allowed.some((a) => a === "*" || n.includes(a.toLowerCase()));
+}
+
+/** The prefix Claude Code gives a server's tools, so a deny rule can remove a whole connector. */
+const toolPrefix = (server: string) => `mcp__${server.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+
+function build(kind: SessionKind, cwd: string, ref: SessionRef, project?: string, prefs?: { model?: string | null; effort?: Effort | null }, agent?: AgentSetup): Options {
+  const servers: NonNullable<Options["mcpServers"]> = {
+    pai: paiTools(kind, ref, agent?.slug),
+    playwright: browserMcp(),
+    ...(gmailModule.enabled() && gmailModule.tools?.kinds.includes(kind) ? { gmail: gmailTools() } : {}),
+    ...externalMcpServers(kind, ref),
+  };
+  const mcpServers = Object.fromEntries(Object.entries(servers).filter(([name]) => serverAllowed(name, agent?.tools)));
+  // claude.ai connectors arrive with the user's settings rather than through mcpServers; the
+  // ones an agent may not use are denied by their tool prefix, as the last session init named them.
+  const disallowedTools = agent?.tools ? knownServers().filter((name) => !(name in servers) && !serverAllowed(name, agent.tools)).map(toolPrefix) : [];
+  // pai delegates through its own agents, which the user can watch and answer; Claude Code's Agent tool would hide the work.
+  if (agent?.slug === "pai") disallowedTools.push("Agent", "Task");
   return {
     cwd,
     model: prefs?.model ?? (kind === "chat" ? config.models.main : config.models.task),
@@ -39,14 +71,10 @@ function build(kind: SessionKind, cwd: string, ref: SessionRef, project?: string
     // No global plugins: hooks like caveman's `~/.claude/.caveman-active` toggle assume one
     // interactive terminal and would race across pai's concurrent sessions.
     skills: "all",
-    additionalDirectories: kind === "code" ? [config.workspace] : [],
-    systemPrompt: { type: "preset", preset: "claude_code", append: instructionsFor(kind, project) },
-    mcpServers: {
-      pai: paiTools(kind, ref),
-      playwright: browserMcp(),
-      ...(gmailModule.enabled() && gmailModule.tools?.kinds.includes(kind) ? { gmail: gmailTools() } : {}),
-      ...externalMcpServers(kind, ref),
-    },
+    additionalDirectories: [...(kind === "code" ? [config.workspace] : []), ...(agent?.additionalDirectories ?? [])],
+    systemPrompt: { type: "preset", preset: "claude_code", append: instructionsFor(kind, project, agent) },
+    mcpServers,
+    ...(disallowedTools.length ? { disallowedTools } : {}),
     canUseTool: async (tool, input) => {
       const s = ref.session;
       if (tool === "AskUserQuestion" && s) return s.ask(input as { questions: Question[] });
@@ -149,7 +177,12 @@ export interface SessionOptions {
   /** A model alias (sonnet, opus, fable, …) and reasoning effort for this session; the defaults otherwise. */
   model?: string | null;
   effort?: Effort | null;
+  /** The agent this session works for: pai itself or one of its staff. */
+  agent?: AgentSetup;
 }
+
+/** Who a turn came from: the user typing, or the daemon (a report, a request, a routine) speaking to the session. */
+export type TurnOrigin = "user" | "system" | "silent";
 
 /**
  * One Claude Code session driven through the Agent SDK in streaming-input mode.
@@ -167,6 +200,11 @@ export class Session {
   title: string;
   threadId: number | null;
   readonly parent: string | null;
+  /** The agent this session works for, if any. */
+  readonly agent: string | null;
+  private readonly agentSetup?: AgentSetup;
+  /** Where each queued turn came from, oldest first; the head is the turn in flight. */
+  private origins: TurnOrigin[] = [];
   cardId: number | null = null;
   state: SessionState = "starting";
   costUsd = 0;
@@ -207,7 +245,7 @@ export class Session {
     this.modelPref = opts.model ?? null;
     this.effort = opts.effort ?? null;
     // A warm process was built with the defaults; a session that wants otherwise starts its own.
-    this.warm = !opts.resume && opts.cwd === config.workspace && !this.modelPref && !this.effort ? takeWarm(opts.kind) : undefined;
+    this.warm = !opts.resume && opts.cwd === config.workspace && !this.modelPref && !this.effort && !opts.agent ? takeWarm(opts.kind) : undefined;
     this.id = opts.resume ?? this.warm?.id ?? randomUUID();
     this.shortId = this.id.slice(0, 6);
     this.kind = opts.kind;
@@ -216,6 +254,8 @@ export class Session {
     this.title = opts.title;
     this.threadId = opts.threadId ?? null;
     this.parent = opts.parent ?? null;
+    this.agent = opts.agent?.slug ?? null;
+    this.agentSetup = opts.agent;
     if (opts.resume) {
       const row = db.query("SELECT card_id, cost_usd, turns, model, model_pref, effort FROM sessions WHERE session_id = ?").get(this.id) as
         | { card_id: number | null; cost_usd: number; turns: number; model: string | null; model_pref: string | null; effort: Effort | null }
@@ -235,7 +275,7 @@ export class Session {
   private start(resume: boolean) {
     this.resuming = resume;
     const ref: SessionRef = { session: this };
-    const options = build(this.kind, this.cwd, ref, this.project, { model: this.modelPref, effort: this.effort });
+    const options = build(this.kind, this.cwd, ref, this.project, { model: this.modelPref, effort: this.effort }, this.agentSetup);
     this.mcpConfig = options.mcpServers;
     options.title = this.title;
     if (resume) options.resume = this.id;
@@ -323,12 +363,14 @@ export class Session {
           const servers = (m.mcp_servers ?? []).map((x) => `${x.name}:${x.status}`);
           log.info(`${this.shortId} mcp ${servers.join(", ") || "none"}`);
           const inventory = { tools: m.tools ?? [], mcpServers: m.mcp_servers ?? [], skills: m.skills ?? [], slashCommands: m.slash_commands ?? [], agents: m.agents ?? [], model: m.model, at: new Date().toISOString() };
-          noteInit(this.kind, inventory);
+          // A restricted agent's view of the tools is not what the kind has; it would hide servers from the next agent.
+          const full = !this.agentSetup?.tools;
+          if (full) noteInit(this.kind, inventory);
           // The init lists tool names; the status request has each server's tools with their descriptions.
           void this.q?.mcpServerStatus()
             .then(async (servers) => {
               const described = await describeServers(servers, this.mcpConfig ?? {});
-              noteInit(this.kind, { ...inventory, mcpServers: servers.map((s) => ({ name: s.name, status: s.status, tools: described[s.name] ?? s.tools?.map((t) => ({ name: t.name, description: t.description })) })) });
+              if (full) noteInit(this.kind, { ...inventory, mcpServers: servers.map((s) => ({ name: s.name, status: s.status, tools: described[s.name] ?? s.tools?.map((t) => ({ name: t.name, description: t.description })) })) });
             })
             .catch(() => {});
           if (m.model && m.model !== this.model) {
@@ -413,6 +455,7 @@ export class Session {
           break;
         }
         this.activeTurn = false;
+        const origin = this.origins.shift() ?? "user";
         this.turns += 1;
         this.costUsd = m.total_cost_usd ?? this.costUsd;
         this.state = "idle";
@@ -427,6 +470,8 @@ export class Session {
             durationMs: m.duration_ms,
             costUsd: m.total_cost_usd,
             numTurns: m.num_turns,
+            origin,
+            agent: this.agent ?? undefined,
           },
           this.id,
         );
@@ -436,7 +481,7 @@ export class Session {
   }
 
   /** Enqueue a user turn. The SDK queues it if a turn is already running. */
-  send(text: string, opts: { images?: { media_type: string; data: string }[] } = {}) {
+  send(text: string, opts: { images?: { media_type: string; data: string }[]; origin?: TurnOrigin } = {}) {
     if (this.state === "dead") throw new Error(`session ${this.shortId} is dead`);
     const content: any[] = [{ type: "text", text }];
     for (const img of opts.images ?? [])
@@ -445,12 +490,13 @@ export class Session {
     // A thread started without a title is named after what was first said in it.
     if (this.title === UNTITLED && text.trim()) this.title = text.replace(/\s+/g, " ").trim().slice(0, 60);
     this.activeTurn = true;
+    this.origins.push(opts.origin ?? "user");
     this.wake?.();
     if (this.state === "idle") {
       this.state = "busy";
       this.persist();
     }
-    bus.emitEvent("session.input", { text }, this.id);
+    bus.emitEvent("session.input", { text, origin: opts.origin ?? "user", agent: this.agent ?? undefined }, this.id);
   }
 
   private terminalCommands = new Set<string>();
@@ -526,6 +572,16 @@ export class Session {
     return true;
   }
 
+  /** How full the context window is, as Claude Code counts it; undefined while no process answers. */
+  async contextUsage(): Promise<{ totalTokens: number; maxTokens: number; percentage: number } | undefined> {
+    try {
+      const u = await this.q?.getContextUsage({ detail: "summary" });
+      return u ? { totalTokens: u.totalTokens, maxTokens: u.maxTokens, percentage: u.percentage } : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   async interrupt() {
     if (!this.q || this.state !== "busy") return false;
     await this.q.interrupt();
@@ -552,8 +608,8 @@ export class Session {
 
   persist() {
     db.prepare(
-      `INSERT INTO sessions (session_id, short_id, kind, title, cwd, project, thread_id, card_id, state, started_at, last_activity, cost_usd, turns, parent_id, model, model_pref, effort)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO sessions (session_id, short_id, kind, title, cwd, project, thread_id, card_id, state, started_at, last_activity, cost_usd, turns, parent_id, model, model_pref, effort, agent)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(session_id) DO UPDATE SET state=excluded.state, title=excluded.title, thread_id=excluded.thread_id,
          card_id=excluded.card_id, last_activity=excluded.last_activity, cost_usd=excluded.cost_usd, turns=excluded.turns, model=excluded.model,
          model_pref=excluded.model_pref, effort=excluded.effort`,
@@ -575,6 +631,7 @@ export class Session {
       this.model,
       this.modelPref,
       this.effort,
+      this.agent,
     );
   }
 
@@ -588,6 +645,7 @@ export class Session {
       cwd: this.cwd,
       threadId: this.threadId,
       parent: this.parent,
+      agent: this.agent,
       state: this.state,
       lastActivity: this.lastActivity,
       costUsd: this.costUsd,

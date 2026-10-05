@@ -80,6 +80,137 @@ CREATE TABLE IF NOT EXISTS transcript_offsets (
   offset  INTEGER NOT NULL
 );
 
+-- pai and its staff: the orchestrator, standing agents, sub-agents, service agents; see domain/agents.ts.
+CREATE TABLE IF NOT EXISTS agents (
+  slug         TEXT PRIMARY KEY,
+  name         TEXT NOT NULL,
+  kind         TEXT NOT NULL,             -- orchestrator | standing | sub | service
+  parent       TEXT,                      -- who it reports to; null only for pai
+  brief        TEXT NOT NULL DEFAULT '',
+  folder       TEXT NOT NULL,
+  project      TEXT,                      -- a repo it works in (a coding agent), else its folder is its cwd
+  tools        TEXT,                      -- JSON list of MCP server names it may use; null = all
+  model        TEXT,
+  effort       TEXT,
+  budget       TEXT NOT NULL DEFAULT '{}',-- {"turnsPerDay": n, "turnMinutes": n}
+  priority     INTEGER NOT NULL DEFAULT 0,-- shifts its notices up or down a level
+  status       TEXT NOT NULL,             -- idle | queued | working | waiting | closed
+  session_id   TEXT,
+  thread_id    INTEGER,                   -- its forum topic in the plain bot
+  card_id      INTEGER,                   -- the delegation card in the parent's chat
+  turns_day    TEXT NOT NULL DEFAULT '',
+  turns_today  INTEGER NOT NULL DEFAULT 0,
+  cost_usd     REAL NOT NULL DEFAULT 0,
+  created_at   INTEGER NOT NULL,
+  last_active  INTEGER NOT NULL,
+  closed_at    INTEGER
+);
+
+-- The one task list; see domain/tasks.ts.
+CREATE TABLE IF NOT EXISTS tasks (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  title        TEXT NOT NULL,
+  parent_id    INTEGER,
+  owner        TEXT NOT NULL DEFAULT 'pai',
+  status       TEXT NOT NULL DEFAULT 'inbox',
+  next_action  TEXT NOT NULL DEFAULT '',
+  due          TEXT,
+  source       TEXT,
+  notes        TEXT NOT NULL DEFAULT '',
+  created_by   TEXT NOT NULL DEFAULT 'pai',
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS tasks_owner ON tasks(owner, status);
+
+-- Every word between the user, pai, agents, routines and watchers; see domain/messages.ts.
+CREATE TABLE IF NOT EXISTS messages (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  sender      TEXT NOT NULL,
+  recipient   TEXT NOT NULL,
+  kind        TEXT NOT NULL,
+  body        TEXT NOT NULL,
+  task_id     INTEGER,
+  meta        TEXT NOT NULL DEFAULT '{}',
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS messages_sender ON messages(sender, id);
+CREATE INDEX IF NOT EXISTS messages_recipient ON messages(recipient, id);
+
+-- An agent's need routed through pai; routes remember who answered a need before.
+CREATE TABLE IF NOT EXISTS requests (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  requester    TEXT NOT NULL,
+  need         TEXT NOT NULL,
+  payload      TEXT NOT NULL,
+  reply_to_me  INTEGER NOT NULL DEFAULT 1,
+  handler      TEXT,
+  status       TEXT NOT NULL DEFAULT 'open',  -- open | forwarded | answered | failed
+  response     TEXT,
+  created_at   INTEGER NOT NULL,
+  answered_at  INTEGER
+);
+CREATE TABLE IF NOT EXISTS routes (
+  need        TEXT PRIMARY KEY,
+  agent       TEXT NOT NULL,
+  uses        INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL
+);
+
+-- Questions for the user from agents; see domain/asks.ts.
+CREATE TABLE IF NOT EXISTS asks (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  agent       TEXT NOT NULL,
+  question    TEXT NOT NULL,
+  options     TEXT NOT NULL DEFAULT '[]',
+  free_text   INTEGER NOT NULL DEFAULT 1,
+  priority    TEXT NOT NULL DEFAULT 'normal',
+  blocking    INTEGER NOT NULL DEFAULT 1,
+  fallback    TEXT,
+  context     TEXT NOT NULL DEFAULT '',
+  task_id     INTEGER,
+  status      TEXT NOT NULL DEFAULT 'open',   -- open | answered | dropped
+  answer      TEXT,
+  message_id  INTEGER,
+  created_at  INTEGER NOT NULL,
+  answered_at INTEGER
+);
+
+-- Notices waiting for quiet hours to end or for the next brief.
+CREATE TABLE IF NOT EXISTS notices (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  agent        TEXT NOT NULL,
+  text         TEXT NOT NULL,
+  priority     TEXT NOT NULL,                 -- urgent | normal | digest | log
+  created_at   INTEGER NOT NULL,
+  delivered_at INTEGER
+);
+
+-- What the user said to always ask about or always let through, per outbound action type.
+CREATE TABLE IF NOT EXISTS pins (
+  action      TEXT PRIMARY KEY,
+  mode        TEXT NOT NULL,                  -- ask | auto
+  created_at  INTEGER NOT NULL
+);
+
+-- "Stop telling me about newsletters": triage ignores what matches.
+CREATE TABLE IF NOT EXISTS mutes (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  pattern     TEXT NOT NULL,
+  source      TEXT NOT NULL DEFAULT '',
+  created_at  INTEGER NOT NULL
+);
+
+-- Where each watcher left off, so nothing fires twice.
+CREATE TABLE IF NOT EXISTS cursors (
+  source      TEXT PRIMARY KEY,
+  value       TEXT NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+
+-- Transcripts, the message log, mail and chat copies, searched with the recall tool; see domain/recall.ts.
+CREATE VIRTUAL TABLE IF NOT EXISTS archive USING fts5(source, ref UNINDEXED, title, body, ts UNINDEXED, tokenize = 'porter unicode61');
+
 -- One row per Gmail account connected through /gmail/connect; see modules/gmail.ts.
 CREATE TABLE IF NOT EXISTS gmail_accounts (
   label         TEXT PRIMARY KEY,
@@ -98,6 +229,25 @@ if (!sessionColumns.includes("model")) db.exec("ALTER TABLE sessions ADD COLUMN 
 // What a session was told to run with, as opposed to `model`, which is what answered.
 if (!sessionColumns.includes("model_pref")) db.exec("ALTER TABLE sessions ADD COLUMN model_pref TEXT");
 if (!sessionColumns.includes("effort")) db.exec("ALTER TABLE sessions ADD COLUMN effort TEXT");
+// The agent a session works for (pai itself, or one of its staff); null for plain threads.
+if (!sessionColumns.includes("agent")) db.exec("ALTER TABLE sessions ADD COLUMN agent TEXT");
+// Routines: a schedule next to the event, an agent next to the action, a check in code before any model runs.
+const automationColumns = (db.query("PRAGMA table_info(automations)").all() as { name: string }[]).map((c) => c.name);
+if (!automationColumns.includes("schedule")) db.exec("ALTER TABLE automations ADD COLUMN schedule TEXT NOT NULL DEFAULT ''");
+if (!automationColumns.includes("agent")) db.exec("ALTER TABLE automations ADD COLUMN agent TEXT NOT NULL DEFAULT ''");
+if (!automationColumns.includes("check_rule")) db.exec("ALTER TABLE automations ADD COLUMN check_rule TEXT NOT NULL DEFAULT ''");
+if (!automationColumns.includes("owner")) db.exec("ALTER TABLE automations ADD COLUMN owner TEXT NOT NULL DEFAULT 'user'");
+if (!automationColumns.includes("last_fire")) db.exec("ALTER TABLE automations ADD COLUMN last_fire TEXT NOT NULL DEFAULT ''");
+
+/** Where a watcher left off. */
+export const cursors = {
+  get(source: string): string | undefined {
+    return (db.query("SELECT value FROM cursors WHERE source = ?").get(source) as { value: string } | undefined)?.value;
+  },
+  set(source: string, value: string) {
+    db.prepare("INSERT OR REPLACE INTO cursors (source, value, updated_at) VALUES (?, ?, ?)").run(source, value, Date.now());
+  },
+};
 
 export function now() {
   return Date.now();

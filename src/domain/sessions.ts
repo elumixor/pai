@@ -1,5 +1,5 @@
 import { ensureTranscriptAt } from "./transcript.ts";
-import { Session, UNTITLED, asKind, closeWarm, prewarm, rewarm, type Effort, type SessionKind } from "./session.ts";
+import { Session, UNTITLED, asKind, closeWarm, prewarm, rewarm, type AgentSetup, type Effort, type SessionKind } from "./session.ts";
 import { db, kv, now } from "../core/db.ts";
 import { existsSync, watch } from "node:fs";
 import { join } from "node:path";
@@ -7,6 +7,7 @@ import { config } from "../core/config.ts";
 import { bus, type PaiEvent } from "../core/bus.ts";
 import { all as allProjects, get as getProject } from "./catalog.ts";
 import { logger } from "../core/log.ts";
+import * as messages from "./messages.ts";
 
 const log = logger("sessions");
 
@@ -23,6 +24,16 @@ export interface SpawnTask {
   parent?: string | null;
   model?: string | null;
   effort?: Effort | null;
+  /** The agent the session works for; its role and tools come with it. */
+  agent?: AgentSetup;
+  /** A working directory other than the project's or the workspace (an agent's folder). */
+  cwd?: string;
+}
+
+/** How a revived session finds its agent's setup again; agents.ts registers it, so this file does not import that one. */
+let agentSetup: (slug: string) => AgentSetup | undefined = () => undefined;
+export function resolveAgentsWith(fn: (slug: string) => AgentSetup | undefined) {
+  agentSetup = fn;
 }
 
 /** A task session: its own topic, its own context. With a project it runs in that repo. */
@@ -37,7 +48,8 @@ export function spawnTask(opts: SpawnTask): Session {
     cwd = proj.path;
     project = proj.slug;
   }
-  const session = new Session({ kind, title: opts.title.trim() || UNTITLED, cwd, project, threadId: opts.threadId, parent: opts.parent, model: opts.model, effort: opts.effort });
+  if (opts.cwd) cwd = opts.cwd;
+  const session = new Session({ kind, title: opts.title.trim() || UNTITLED, cwd, project, threadId: opts.threadId, parent: opts.parent, model: opts.model, effort: opts.effort, agent: opts.agent });
   live.set(session.id, session);
   log.info(`spawned ${kind} ${session.shortId} "${opts.title}"`);
   prewarm("chat");
@@ -75,7 +87,7 @@ function workingDirectory(recorded: string, project: string | null) {
 /** Resumes a session whose process died but whose transcript is still on disk. */
 export function revive(sessionId: string): Session | undefined {
   const row = db.query("SELECT * FROM sessions WHERE session_id = ?").get(sessionId) as
-    | { kind: SessionKind; title: string; cwd: string; project: string | null; thread_id: number | null; parent_id: string | null }
+    | { kind: SessionKind; title: string; cwd: string; project: string | null; thread_id: number | null; parent_id: string | null; agent: string | null }
     | undefined;
   if (!row) return undefined;
   const cwd = workingDirectory(row.cwd, row.project);
@@ -89,6 +101,7 @@ export function revive(sessionId: string): Session | undefined {
     threadId: row.thread_id,
     parent: row.parent_id,
     resume: sessionId,
+    agent: row.agent ? agentSetup(row.agent) : undefined,
   });
   live.set(session.id, session);
   log.info(`revived ${session.shortId} "${row.title}"`);
@@ -174,6 +187,7 @@ export interface SessionRow {
   model: string | null;
   modelPref: string | null;
   effort: Effort | null;
+  agent: string | null;
 }
 
 /** Recent sessions, live or not, newest activity first. */
@@ -201,6 +215,7 @@ export function recent(limit = 20, kind?: SessionKind): SessionRow[] {
     model: r.model ?? null,
     modelPref: r.model_pref ?? null,
     effort: r.effort ?? null,
+    agent: r.agent ?? null,
   }));
 }
 
@@ -262,11 +277,6 @@ export function reapIdle() {
   }
 }
 
-/**
- * What tasks report becomes part of the main conversation, so "did it finish?"
- * needs no tool call and works regardless of which frontend was attached. A task started
- * by another session reports to that session too.
- */
 /** A changed MEMORY.md is a changed prompt: the warm task process is rebuilt so the next task reads it. */
 export function watchMemory() {
   const file = join(config.workspace, "MEMORY.md");
@@ -279,22 +289,33 @@ export function watchMemory() {
   return () => watcher.close();
 }
 
-/** What a thread reports goes to the thread that started it, as a note in its context. */
+/** Who a session is in the message log: its agent, or the thread it is. */
+export const party = (s: { agent?: string | null; shortId: string }) => s.agent ?? `thread:${s.shortId}`;
+
+/**
+ * What a thread reports goes to the thread that started it, as a note in its context, and into
+ * the message log. Agents report through agents.ts instead; this is for threads started with start_thread.
+ */
 export function relayToParent() {
   bus.on("event", (e: PaiEvent) => {
     if (!e.sessionId) return;
     const s = find(e.sessionId);
-    if (!s?.parent) return;
+    if (!s?.parent || s.agent) return;
     const m = find(s.parent);
     if (!m || m.state === "dead" || m === s) return;
     const tag = `[thread ${s.shortId} · ${s.title}]`;
+    const report = (body: string, kind: "report" | "event" = "report") =>
+      messages.log({ from: party(s), to: party(m), kind, body, meta: { session: s.shortId, title: s.title, ...(kind === "event" ? { event: "error" as const } : {}) } });
     if (e.kind === "session.turn_end") {
       const text = String(e.payload.text ?? "").trim();
-      if (text) m.inject(`${tag} reported:\n${text.slice(0, 1500)}`);
+      if (!text) return;
+      m.inject(`${tag} reported:\n${text.slice(0, 1500)}`);
+      report(text.slice(0, 1500));
     } else if (e.kind === "session.question") {
       m.inject(`${tag} is waiting for the user to answer a question.`);
     } else if (e.kind === "session.error") {
       m.inject(`${tag} failed: ${e.payload.message}`);
+      report(`failed: ${e.payload.message}`, "event");
     }
   });
 }

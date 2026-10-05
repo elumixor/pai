@@ -15,8 +15,13 @@ export const MARKER = "·";
 /** Telegram's message limit is 4096; the trailer may not crowd out the message itself. */
 export const MAX_PAYLOAD_CHARS = 2048;
 
-/** `user`: what the user typed somewhere else (a terminal), shown as their own message. */
-export type RichKind = "turn" | "status" | "question" | "result" | "user";
+/**
+ * `user`: what the user typed somewhere else (a terminal), shown as their own message.
+ * The rest come from the message log (pai and its agents): `event` is one service row, `events`
+ * a folded run of them; `delegation` a card for work handed to an agent, with its live status;
+ * `report` what an agent said back; `ask` a question with buttons; `notice` something to know.
+ */
+export type RichKind = "turn" | "status" | "question" | "result" | "user" | "event" | "events" | "delegation" | "report" | "ask" | "notice";
 
 export type RichState = "starting" | "busy" | "idle" | "waiting" | "dead" | "error";
 
@@ -24,6 +29,37 @@ export interface RichTool {
   readonly name: string;
   readonly detail?: string;
 }
+
+/** One row of a folded run of events. */
+export interface RichEvent {
+  readonly event: string;
+  readonly text: string;
+  readonly icon: string;
+  readonly agent?: string;
+}
+
+/** The SF Symbol each kind of row is drawn with, here so every client draws the same one. */
+export const EVENT_ICONS: Readonly<Record<string, string>> = {
+  "agent.created": "person.crop.circle.badge.plus",
+  "agent.spawned": "arrow.triangle.branch",
+  delegate: "arrow.turn.down.right",
+  request: "arrow.turn.down.right",
+  report: "arrow.turn.up.left",
+  response: "arrow.turn.up.left",
+  "agent.woken": "bolt",
+  "routine.fired": "clock.arrow.circlepath",
+  "item.arrived": "envelope",
+  "item.telegram": "bubble.left",
+  "item.linkedin": "bubble.left",
+  "calendar.upcoming": "calendar",
+  ask: "questionmark.bubble",
+  approval: "hand.raised",
+  answered: "checkmark.bubble",
+  sent: "paperplane",
+  notice: "bell",
+  error: "exclamationmark.triangle",
+  "agent.closed": "archivebox",
+};
 
 export interface RichUsage {
   readonly input: number;
@@ -42,6 +78,24 @@ export interface RichMeta {
   readonly state?: RichState;
   readonly tool?: string;
   readonly startedAt?: number;
+  /** Rows from the message log: the agent it is about, its display name and where it sits (`pai › Hiring`). */
+  readonly agent?: string;
+  readonly agentName?: string;
+  readonly breadcrumb?: string;
+  /** An event row: what happened and its icon. */
+  readonly event?: string;
+  readonly icon?: string;
+  /** A folded run of events. */
+  readonly items?: readonly RichEvent[];
+  /** A delegation card: the agent's status now (idle, queued, working, waiting, closed). */
+  readonly status?: string;
+  /** An ask card. */
+  readonly askId?: number;
+  readonly options?: readonly string[];
+  readonly answer?: string;
+  readonly priority?: string;
+  /** The forum topic the agent's chat is in, so a client can open it. */
+  readonly thread?: number;
 }
 
 export class RichProtocolError extends Error {

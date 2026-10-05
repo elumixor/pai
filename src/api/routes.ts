@@ -20,6 +20,13 @@ import * as files from "../domain/files.ts";
 import * as settings from "../domain/settings.ts";
 import { allThreads, ensureTranscriptAt, sessionsIn, transcript, transcriptPath } from "../domain/transcript.ts";
 import { cost as hostingCost } from "../domain/hetzner.ts";
+import * as agents from "../domain/agents.ts";
+import * as asks from "../domain/asks.ts";
+import * as main from "../domain/main.ts";
+import * as messages from "../domain/messages.ts";
+import * as recall from "../domain/recall.ts";
+import * as requests from "../domain/requests.ts";
+import * as tasks from "../domain/tasks.ts";
 
 const log = logger("api");
 
@@ -281,9 +288,16 @@ export async function handle(req: Request): Promise<Response> {
       return json(describeModules().find((m) => m.name === module.name));
     }
 
-    if (path === "/automations" && req.method === "POST") return json(automations.create(await body<automations.AutomationInput>(req)), 201);
-    if (path === "/automations") return json(automations.all());
-    const automationPath = /^\/automations\/(\d+)$/.exec(path);
+    // Routines (the automations table): an event or a schedule, a check, an action.
+    if ((path === "/automations" || path === "/routines") && req.method === "POST") {
+      try {
+        return json(automations.create(await body<automations.AutomationInput>(req)), 201);
+      } catch (err) {
+        return json({ error: (err as Error).message }, 400);
+      }
+    }
+    if (path === "/automations" || path === "/routines") return json(automations.all());
+    const automationPath = /^\/(?:automations|routines)\/(\d+)$/.exec(path);
     if (automationPath?.[1]) {
       const id = Number(automationPath[1]);
       if (req.method === "DELETE") return json({ removed: automations.remove(id) });
@@ -296,7 +310,115 @@ export async function handle(req: Request): Promise<Response> {
     if (path === "/cost")
       return json(await hostingCost().catch((err: Error) => ({ error: err.message })));
 
-    if (path === "/tasks") return json({ live: sessions.list(), recent: sessions.recent(30) });
+    if (path === "/sessions") return json({ live: sessions.list(), recent: sessions.recent(30) });
+
+    // The task list (`items`); `live` and `recent` are the sessions, as clients built before the list read them.
+    if (path === "/tasks" && req.method === "POST") {
+      try {
+        return json(tasks.add({ ...(await body<tasks.TaskInput>(req)), createdBy: "user" }), 201);
+      } catch (err) {
+        return json({ error: (err as Error).message }, 400);
+      }
+    }
+    if (path === "/tasks") {
+      const status = url.searchParams.get("status") as tasks.TaskStatus | null;
+      const items = tasks.list({ owner: url.searchParams.get("owner") ?? undefined, status: status ?? undefined, open: url.searchParams.get("all") ? false : undefined });
+      return json({ items, live: sessions.list(), recent: sessions.recent(30) });
+    }
+    const taskPath = /^\/tasks\/(\d+)$/.exec(path);
+    if (taskPath?.[1]) {
+      const id = Number(taskPath[1]);
+      if (req.method === "PATCH") {
+        try {
+          return json(tasks.update(id, await body<tasks.TaskChanges>(req)));
+        } catch (err) {
+          return json({ error: (err as Error).message }, 400);
+        }
+      }
+      const t = tasks.get(id);
+      return t ? json({ ...t, children: tasks.list({ parentId: id, open: false }) }) : json({ error: "no such task" }, 404);
+    }
+
+    // pai and its staff: the tree, one agent's chat, creating, writing to, closing.
+    if (path === "/agents" && req.method === "POST") {
+      try {
+        return json(agents.create(await body<agents.CreateInput>(req)), 201);
+      } catch (err) {
+        return json({ error: (err as Error).message }, 400);
+      }
+    }
+    if (path === "/agents") return json(agents.tree(tasks.openCounts()));
+    const agentPath = /^\/agents\/([a-z0-9-]+)(?:\/(message|close))?$/.exec(path);
+    if (agentPath?.[1]) {
+      const slug = agentPath[1];
+      const a = agents.get(slug);
+      if (!a) return json({ error: "no such agent" }, 404);
+      try {
+        if (agentPath[2] === "message" && req.method === "POST") {
+          const { text } = await body<{ text: string }>(req);
+          if (!text?.trim()) return json({ error: "text required" }, 400);
+          if (slug === agents.PAI) return json({ session: main.send(text).shortId });
+          return json(agents.fromUser(slug, text));
+        }
+        if (agentPath[2] === "close" && req.method === "POST") return json(agents.close(slug, (await body<{ summary?: string }>(req).catch(() => ({}) as { summary?: string })).summary ?? ""));
+        if (req.method === "PATCH") return json(agents.configure(slug, await body<Parameters<typeof agents.configure>[1]>(req)));
+      } catch (err) {
+        return json({ error: (err as Error).message }, 400);
+      }
+      return json({ ...a, breadcrumb: agents.breadcrumb(slug), children: agents.list({ parent: slug }), tasks: tasks.list({ owner: slug }) });
+    }
+
+    // The message log: one agent's chat (`agent`), paged back with `before`, caught up with `after`.
+    if (path === "/messages") {
+      const num = (k: string) => (url.searchParams.get(k) ? Number(url.searchParams.get(k)) : undefined);
+      return json(messages.list({ agent: url.searchParams.get("agent") ?? undefined, before: num("before"), after: num("after"), limit: num("limit") }));
+    }
+
+    // A message to pai, the one chat; `wait` holds the response until pai has answered.
+    if (path === "/pai" && req.method === "POST") {
+      const { text, wait } = await body<{ text: string; wait?: boolean }>(req);
+      if (!text?.trim()) return json({ error: "text required" }, 400);
+      const s = main.session();
+      const done = wait ? waitFor("session.turn_end", s.id, TURN_TIMEOUT) : undefined;
+      main.send(text);
+      return json(done ? { session: s.shortId, ...(await done).payload } : s.summary());
+    }
+    if (path === "/pai/rotate" && req.method === "POST") {
+      void main.rotate("asked");
+      return json({ rotating: true });
+    }
+    if (path === "/pai") return json({ session: main.session().summary(), thread: main.thread(), lastRotation: main.lastRotation() });
+
+    // What the agents are waiting on the user for, and the answers.
+    if (path === "/asks") return json(url.searchParams.get("all") ? asks.recentAsks() : asks.open());
+    const askPath = /^\/asks\/(\d+)\/(answer|drop)$/.exec(path);
+    if (askPath?.[1] && req.method === "POST") {
+      try {
+        if (askPath[2] === "drop") return json({ dropped: asks.drop(Number(askPath[1])) });
+        const { text } = await body<{ text: string }>(req);
+        return json(asks.answer(Number(askPath[1]), text));
+      } catch (err) {
+        return json({ error: (err as Error).message }, 400);
+      }
+    }
+    if (path === "/notices") return json({ digest: asks.digest() });
+    if (path === "/requests") return json({ requests: requests.list({ limit: 50 }), routes: requests.routes() });
+    if (path === "/pins" && req.method === "POST") {
+      const { action, mode } = await body<{ action: string; mode: asks.PinMode | null }>(req);
+      return json(asks.pin(action, mode));
+    }
+    if (path === "/pins") return json(asks.pins());
+    if (path === "/mutes" && req.method === "POST") {
+      const { pattern, source } = await body<{ pattern: string; source?: string }>(req);
+      return json(asks.mute(pattern, source ?? ""), 201);
+    }
+    if (path === "/mutes" && req.method === "DELETE") return json({ removed: asks.unmute(Number(url.searchParams.get("id"))) });
+    if (path === "/mutes") return json(asks.mutes());
+    if (path === "/recall") {
+      const q = url.searchParams.get("q") ?? "";
+      const sources = url.searchParams.get("sources")?.split(",").filter(Boolean);
+      return json(q ? recall.search(q, { sources, limit: Number(url.searchParams.get("limit") ?? 15) }) : recall.stats());
+    }
 
     if (path === "/terminals" && req.method === "POST") {
       const opts = await body<terminals.OpenOptions>(req);

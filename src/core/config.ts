@@ -120,7 +120,21 @@ export const config = {
   models: {
     main: setting("PAI_MAIN_MODEL") ?? "sonnet",
     task: setting("PAI_TASK_MODEL") ?? "sonnet",
+    /** The cheap pass that routes batches of incoming events (watchers → triage). */
+    triage: setting("PAI_TRIAGE_MODEL") ?? "haiku",
   },
+
+  /** The user's time zone: schedules, quiet hours, the journal's dates and the 04:00 rotation are read in it. */
+  timezone: setting("PAI_TIMEZONE") ?? "Europe/Prague",
+
+  /** `HH:MM-HH:MM` in that zone: notices other than urgent ones are held; agents keep working. */
+  quietHours: setting("PAI_QUIET_HOURS") ?? "23:00-08:00",
+
+  /** Agents working at once; the rest queue. A coding agent counts double. */
+  maxWorkingAgents: Number(setting("PAI_MAX_AGENTS") ?? 4),
+
+  /** The hour (in the user's zone) the orchestrator's session is rebuilt from the journal and a briefing. */
+  rotateHour: Number(setting("PAI_ROTATE_HOUR") ?? 4),
 
   /** Kill a session process that has been idle this long (ms). The session stays resumable. */
   idleShutdownMs: Number(setting("PAI_IDLE_SHUTDOWN_MS") ?? 60 * 60 * 1000),

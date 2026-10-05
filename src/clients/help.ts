@@ -28,6 +28,13 @@ export const CORE: readonly Command[] = [
   { name: "menubar", args: "[install|uninstall]", description: "the menu bar app on this Mac" },
   { name: "channel", args: "[install]", description: "Paigram reaches `claude` in a terminal; `install` makes `claude` in your shell load it" },
   { name: "threads", args: "[project]", description: "every conversation by project; pick one to continue it here (`projects` is the same)" },
+  { name: "agents", description: "pai and its staff as a tree: status, open tasks, spend today" },
+  { name: "log", args: "[agent] [--limit n]", description: "the message log: everything said between you, pai and the agents; an agent's chat" },
+  { name: "tasks", args: "[add <title>|done <id>|drop <id>] [--all] [--owner a]", description: "the task list: what is on your plate" },
+  { name: "asks", description: "what the agents are waiting on you for" },
+  { name: "answer", args: "<id> <text>", description: "answer an ask" },
+  { name: "routines", description: "what runs on a schedule or an event, and whom it wakes" },
+  { name: "recall", args: "<words…>", description: "search transcripts, the message log, mail and chats" },
   { name: "tools", args: "[server]", description: "what the sessions can call, by MCP server; a name lists its tools" },
   { name: "skills", args: "[name]", description: "the skills sessions load; a name prints one" },
   { name: "instructions", args: "[name|--full]", description: "the system prompt in its parts: general, per module, per project; a name prints one" },
@@ -48,6 +55,8 @@ export const FILES: readonly Command[] = [
 ];
 
 export const DEV: readonly Command[] = [
+  { name: "say", args: "<text>", description: "a turn in pai's one chat; waits for the reply" },
+  { name: "rotate", description: "rebuild pai's session now (journal, briefing)" },
   { name: "chat", args: "<text> [--id <thread>]", description: "a turn in a new conversation, or in one" },
   { name: "task", args: "<title> <text> [--project <slug>]", description: "start a task" },
   { name: "send", args: "<id> <text> [--wait]", description: "a turn in a task" },
