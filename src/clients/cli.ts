@@ -11,7 +11,9 @@ const foreground = args.includes("--foreground") || args.includes("-f");
 if (dev && cmd === "daemon" && foreground) process.env.PAI_VERBOSE ??= "1";
 const { config } = await import("../core/config.ts");
 const jsonOut = args.includes("--json");
-const positional = args.filter((a) => !a.startsWith("--"));
+/** Flags that take a value: the word after one is its value, not a positional argument. */
+const VALUED = new Set(["--id", "--project", "--limit", "--owner", "--due"]);
+const positional = args.filter((a, i) => !a.startsWith("--") && !VALUED.has(args[i - 1] ?? ""));
 const r = await import("../host/remote.ts");
 const box = r.remote();
 const remoteBox = box && !r.isHere(box) ? box : undefined;
