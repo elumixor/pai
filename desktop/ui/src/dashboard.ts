@@ -6,12 +6,14 @@ import { ago, clear, dialog, el, until } from "./dom.ts";
 import { editor } from "./editor.ts";
 import { icon, type IconName } from "./icons.ts";
 import { linkTo, navigate, type Route } from "./router.ts";
+import { staff } from "./staff.ts";
 import type { Automation, ContextItem, ModuleInfo, ProjectSummary } from "./types.ts";
 
 /**
- * The dashboard: a view of its own, beside the work view. What pai is made of (modules),
- * what makes them act on each other (automations), the projects, and the context — every
- * instruction, memory, skill and tool, with which sessions see it, editable in place.
+ * The dashboard: a view of its own, beside the work view. pai and its agents (the staff),
+ * what pai is made of (modules), what makes them act on each other (automations), the
+ * projects, and the context — every instruction, memory, skill and tool, with which
+ * sessions see it, editable in place.
  */
 
 export interface DashboardHandlers {
@@ -20,9 +22,10 @@ export interface DashboardHandlers {
   readonly selectProject: (slug: string) => void;
 }
 
-export type Page = "overview" | "modules" | "automations" | "projects" | "context";
+export type Page = "overview" | "agents" | "modules" | "automations" | "projects" | "context";
 const PAGES: { id: Page; label: string; icon: IconName }[] = [
   { id: "overview", label: "Overview", icon: "layout" },
+  { id: "agents", label: "Agents", icon: "users" },
   { id: "modules", label: "Modules", icon: "zap" },
   { id: "automations", label: "Automations", icon: "play" },
   { id: "projects", label: "Projects", icon: "folder" },
@@ -51,7 +54,9 @@ export function dashboard(root: HTMLElement, handlers: DashboardHandlers) {
     disposePage();
     disposePage = () => {};
     clear(body, el("p.hint", {}, "…"));
-    const renderers: Record<Page, () => Promise<(() => void) | void>> = { overview, modules, automations, projects, context };
+    // The staff page fills the body: a tree, a chat and a side panel, each scrolling on its own.
+    body.classList.toggle("full", next === "agents");
+    const renderers: Record<Page, () => Promise<(() => void) | void>> = { overview, agents: async () => staff(body), modules, automations, projects, context };
     try {
       disposePage = (await renderers[next]()) ?? (() => {});
     } catch (err) {

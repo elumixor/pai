@@ -166,3 +166,90 @@ export interface PaiEvent {
   readonly ts: number;
   readonly payload: Record<string, unknown>;
 }
+
+// ---- the staff: pai, its agents, the message log between them, tasks, asks, routines -----
+
+export type AgentKind = "orchestrator" | "standing" | "sub" | "service";
+export type AgentStatus = "idle" | "queued" | "working" | "waiting" | "closed";
+
+/** One agent as `GET /agents` lists it; `agent.changed` carries the same row without the tree fields. */
+export interface Agent {
+  readonly slug: string;
+  readonly name: string;
+  readonly kind: AgentKind;
+  readonly parent: string | null;
+  readonly brief: string;
+  readonly status: AgentStatus;
+  readonly model?: string | null;
+  readonly tools?: readonly string[] | null;
+  readonly turnsToday: number;
+  readonly costUsd: number;
+  readonly lastActive?: number | null;
+  readonly depth?: number;
+  /** Names from pai down: "pai › Hiring › Screener". */
+  readonly breadcrumb?: string;
+  readonly openTasks?: number;
+  readonly queued?: number;
+}
+
+export type MessageKind = "chat" | "delegate" | "report" | "request" | "response" | "ask" | "answer" | "notice" | "event";
+
+/** One row of the message log: who said what to whom. `from`/`to` are `user`, `pai`, a slug, `routine:<id>`, `watcher:<source>`. */
+export interface LogMessage {
+  readonly id: number;
+  readonly from: string;
+  readonly to: string;
+  readonly kind: MessageKind;
+  readonly body: string;
+  readonly taskId: number | null;
+  readonly meta: {
+    readonly event?: string;
+    readonly askId?: number;
+    readonly options?: readonly string[];
+    readonly breadcrumb?: string;
+    readonly priority?: string;
+    readonly agent?: string;
+    readonly source?: string;
+    readonly link?: string;
+  };
+  readonly createdAt: number;
+}
+
+export type TaskStatus = "inbox" | "active" | "waiting_user" | "waiting_other" | "scheduled" | "done" | "dropped";
+
+export interface TaskItem {
+  readonly id: number;
+  readonly title: string;
+  readonly owner: string;
+  readonly status: TaskStatus;
+  readonly nextAction: string;
+  readonly due: string | null;
+  readonly source: string | null;
+  readonly updatedAt?: number;
+}
+
+export interface Ask {
+  readonly id: number;
+  readonly agent: string;
+  readonly question: string;
+  readonly options: readonly string[];
+  readonly freeText: boolean;
+  readonly priority: string;
+  readonly blocking: boolean;
+  readonly context?: string;
+  readonly status?: "open" | "answered" | "dropped";
+  readonly createdAt: number;
+}
+
+export interface Routine {
+  readonly id: number;
+  readonly name: string;
+  readonly event: string;
+  readonly schedule: string;
+  readonly action: string;
+  readonly agent: string;
+  readonly enabled: boolean;
+  readonly runs: number;
+  readonly lastRun: number | null;
+  readonly owner: string;
+}

@@ -1,4 +1,4 @@
-import type { Automation, ContextItem, Diagnostic, SlashCommand, DiskSession, Entry, ModuleInfo, PaiEvent, ProjectSummary, SessionSummary, Status, TerminalSummary, Usage } from "./types.ts";
+import type { Agent, Ask, Automation, ContextItem, LogMessage, Routine, TaskItem, TaskStatus, Diagnostic, SlashCommand, DiskSession, Entry, ModuleInfo, PaiEvent, ProjectSummary, SessionSummary, Status, TerminalSummary, Usage } from "./types.ts";
 
 /**
  * The daemon, with the app's offline story in one place: every GET is cached, a failed GET
@@ -244,7 +244,8 @@ export async function flush() {
   return outbox().length;
 }
 
-export const tasks = () => get<{ live: SessionSummary[]; recent: SessionSummary[] }>("/tasks");
+/** `/tasks` is the task list (`items`) plus the sessions (`live`, `recent`); a daemon before the staff had only the sessions. */
+export const tasks = () => get<{ items?: TaskItem[]; live: SessionSummary[]; recent: SessionSummary[] }>("/tasks");
 export const projects = () => get<ProjectSummary[]>("/projects");
 export const status = () => get<Status>("/health");
 export const settings = () => get<Settings>("/settings");
@@ -281,6 +282,20 @@ export const file = (path: string) => get<{ path: string; text: string; truncate
 export const transcript = (session: string, cwd?: string, limit = 300) =>
   get<Transcript[]>(`/transcript?session=${session}&limit=${limit}${cwd ? `&cwd=${encodeURIComponent(cwd)}` : ""}`);
 export const threadsIn = (cwd: string) => get<DiskSession[]>(`/threads?cwd=${encodeURIComponent(cwd)}`);
+
+// ---- the staff: pai and its agents, the message log, tasks, asks, routines ----------------
+
+export const agents = () => get<Agent[]>("/agents");
+export const messages = (agent: string, options: { before?: number; after?: number; limit?: number } = {}) =>
+  get<LogMessage[]>(`/messages?agent=${encodeURIComponent(agent)}&limit=${options.limit ?? 100}${options.before ? `&before=${options.before}` : ""}${options.after ? `&after=${options.after}` : ""}`);
+export const messageAgent = (slug: string, text: string) => send(`/agents/${slug}/message`, { text });
+export const closeAgent = (slug: string) => send(`/agents/${slug}/close`, {});
+export const taskItems = async () => (await tasks()).items ?? [];
+export const createTask = (input: { title: string; owner?: string; due?: string }) => send("/tasks", input);
+export const updateTask = (id: number, changes: { status?: TaskStatus; title?: string; owner?: string; due?: string | null; nextAction?: string }) => send(`/tasks/${id}`, changes, "PATCH");
+export const asks = () => get<Ask[]>("/asks");
+export const answerAsk = (id: number, text: string) => send(`/asks/${id}/answer`, { text });
+export const routines = () => get<Routine[]>("/routines");
 
 export interface FollowOptions {
   /** Text as it streams; a thread view wants it, the rail does not. */

@@ -6,8 +6,8 @@ import { inDesktop } from "./api.ts";
  * means something. Served by the daemon the path is under `/ui/`; the desktop app has no
  * server behind its window, so there the route lives in the hash.
  */
-export type Route = "work" | "dashboard" | "modules" | "automations" | "projects" | "context" | "editor" | "settings";
-const ROUTES: readonly Route[] = ["work", "dashboard", "modules", "automations", "projects", "context", "editor", "settings"];
+export type Route = "work" | "dashboard" | "agents" | "modules" | "automations" | "projects" | "context" | "editor" | "settings";
+const ROUTES: readonly Route[] = ["work", "dashboard", "agents", "modules", "automations", "projects", "context", "editor", "settings"];
 
 const underServer = location.protocol.startsWith("http") && location.pathname.startsWith("/ui") && !inDesktop;
 const base = underServer ? location.pathname.replace(/^(\/ui).*/, "$1") : "";

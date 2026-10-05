@@ -16,7 +16,7 @@ const MODES: { value: Mode; label: string; icon: IconName }[] = [
 export const SHORTCUTS: { keys: string; what: string }[] = [
   { keys: "⌘K", what: "search everything: actions, settings, projects, threads, files" },
   { keys: inDesktop ? "⌘," : "⌘⇧,", what: "settings" },
-  { keys: "⌘1 / ⌘2", what: "work view / dashboard" },
+  { keys: "⌘1 / ⌘2 / ⌘3", what: "work view / dashboard / agents" },
   { keys: "⌃Tab / ⌃⇧Tab", what: "next / previous thread" },
   { keys: "⌃J", what: "focus the terminal (opens one if none)" },
   { keys: "⌃E", what: "focus the editor" },

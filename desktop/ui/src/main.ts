@@ -1,4 +1,4 @@
-import { baseUrl, fileIndex, flush, follow, inDesktop, isOnline, lastError, onConnection, outbox, projects, resolveBase, send, status, usage } from "./api.ts";
+import { asks, baseUrl, fileIndex, flush, follow, inDesktop, isOnline, lastError, onConnection, outbox, projects, resolveBase, send, status, usage } from "./api.ts";
 import { dashboard, type Page } from "./dashboard.ts";
 import { ago, clear, el, sheet, until } from "./dom.ts";
 import "./theme.ts";
@@ -82,7 +82,7 @@ const showEditor = () => (state.file ? openFile(state.file) : emptyEditor(viewer
 
 /** Each address is one of the views: the dashboard's pages, the editor in the work view, the settings sheet over it. */
 function applyRoute(route: Route) {
-  const pages: Partial<Record<Route, Page>> = { dashboard: "overview", modules: "modules", automations: "automations", projects: "projects", context: "context" };
+  const pages: Partial<Record<Route, Page>> = { dashboard: "overview", agents: "agents", modules: "modules", automations: "automations", projects: "projects", context: "context" };
   const page = pages[route];
   if (page) return showView("dashboard", page);
   showView("work");
@@ -261,11 +261,22 @@ function renderStatusRight(editorUrl?: string) {
     statusRight,
     el("span.stat.dim", { title: `daemon at ${baseUrl()}` }, baseUrl().replace(/^https?:\/\//, "")),
     navButton("zap", "Search everything (⌘K)", openPalette),
+    staffButton,
     navButton("layout", "Dashboard (⌘2) · Work (⌘1)", showDashboard),
     navButton("code", "Editor", () => navigate("editor")),
     editorUrl ? el("a.iconbtn.slim", { title: "VS Code in the browser", href: editorUrl, target: "_blank", rel: "noreferrer" }, icon("external", 13)) : undefined,
     navButton("settings", "Settings", () => navigate("settings")),
   );
+}
+
+/** The way to the staff, with how many questions the agents are waiting on you for. */
+const asksBadge = el("span.badge.ask", { hidden: true });
+const staffButton = el("button.iconbtn.slim.staff-nav", { title: "Agents (⌘3)", onclick: () => navigate("agents") }, icon("users", 13), asksBadge);
+async function refreshAsks() {
+  const open = await asks().catch(() => []);
+  asksBadge.textContent = String(open.length);
+  asksBadge.hidden = !open.length;
+  staffButton.title = open.length ? `Agents (⌘3) · ${open.length} question${open.length === 1 ? "" : "s"} for you` : "Agents (⌘3)";
 }
 
 function unreachable() {
@@ -289,6 +300,7 @@ onConnection((online) => {
 async function commands(): Promise<Command[]> {
   const actions: Command[] = [
     { id: "dashboard", title: "Dashboard", group: "view", icon: "layout", run: () => navigate("dashboard") },
+    { id: "agents", title: "Agents", group: "view", icon: "users", hint: "pai's staff, their chats, tasks and asks", run: () => navigate("agents") },
     { id: "modules", title: "Modules", group: "view", icon: "zap", run: () => navigate("modules") },
     { id: "automations", title: "Automations", group: "view", icon: "play", run: () => navigate("automations") },
     { id: "projects", title: "Projects", group: "view", icon: "folder", run: () => navigate("projects") },
@@ -334,9 +346,9 @@ document.addEventListener("keydown", (event) => {
     // ⌘F: the open file, found in the tree.
     event.preventDefault();
     if (state.file) void fileTree?.reveal(state.file);
-  } else if (meta && (event.key === "1" || event.key === "2")) {
+  } else if (meta && (event.key === "1" || event.key === "2" || event.key === "3")) {
     event.preventDefault();
-    navigate(event.key === "1" ? "work" : "dashboard");
+    navigate(event.key === "1" ? "work" : event.key === "2" ? "dashboard" : "agents");
   } else if (event.metaKey && event.key === "," && event.shiftKey === !inDesktop) {
     // ⌘, in the app; a browser keeps that one for itself, so ⌘⇧, on the web.
     event.preventDefault();
@@ -372,6 +384,7 @@ async function refreshAll() {
   await refreshRail();
   void terminals.refresh();
   void refreshUsage();
+  void refreshAsks();
 }
 
 document.body.classList.toggle("desktop", inDesktop);
@@ -406,5 +419,6 @@ void (async () => {
     if (event.kind.startsWith("session.started") || event.kind === "session.resumed" || event.kind === "session.turn_end" || event.kind === "session.exit" || event.kind === "task.created" || event.kind === "session.question")
       void refreshRail();
     if (event.kind.startsWith("terminal.")) void terminals.refresh();
+    if (event.kind === "ask.created" || event.kind === "ask.answered") void refreshAsks();
   });
 })();
