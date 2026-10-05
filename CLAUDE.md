@@ -6,9 +6,11 @@ session each, over the Agent SDK), the HTTP API, the client, files, hosting. Eve
 a module from its own repository (`pai.config.ts`): `pai-browser` (a signed-in headless browser on the
 box, one session per site, logins captured from the Mac's Arc), `pai-builder` (coding threads),
 `pai-telegram` (the chat and the user's account), `pai-linkedin` (requires browser). A module's
-`requires` orders loading; `ctx.use(name)` hands it another module's `api`. There is no main thread: every Telegram topic, every
-`pai claude`, every thread in the app is one conversation (`chat`) with the same assistant; a builder
-thread in a repo is `code`.
+`requires` orders loading; `ctx.use(name)` hands it another module's `api`. pai is one chat (the
+orchestrator, `main.ts`): Telegram's pai topic, Paigram's bot chat, `pai dev say`. Its staff are agents
+(`agents.ts`): standing (own an area, own topic), sub (one job, reports once, closes), service (answers
+requests, e.g. Voice); depth pai › standing › sub. Other topics and `pai claude` are plain threads (`chat`);
+a builder thread in a repo is `code`.
 
 ## Feedback loop
 
@@ -27,7 +29,9 @@ pai completion                      # installs zsh completion (src/clients/help.
 bun run infra [--destroy]  # the Hetzner host from nothing (provision + bootstrap), idempotent
 
 pai dev daemon [-f]        # detached; -f/--foreground = attached, verbose, telegram off
-pai dev chat "<text>"      # a main-conversation turn, waits for the reply
+pai agents | log [agent] | tasks [add|done|drop] | asks | answer <id> <text> | routines | recall <words>
+pai dev say "<text>"       # a turn in pai's one chat, waits for the reply; `pai dev rotate` rebuilds its session
+pai dev chat "<text>"      # a turn in a new plain thread, waits for the reply
 pai dev task "<title>" "<text>" [--project <slug>]
 pai dev send <id> "<text>" [--wait]
 pai dev answer <id|main> "<text>"   # answer a pending AskUserQuestion
@@ -63,6 +67,13 @@ project's `CLAUDE.md`.
 
 `AskUserQuestion` reaches `canUseTool` even under `bypassPermissions`. It becomes a
 `session.question` event; Telegram renders buttons, the CLI has `answer`.
+
+## pai and its staff
+
+- `src/domain/main.ts` — pai's session (agent `pai`): user messages, system turns (`system`, shown) and housekeeping (`silent`, never shown). Rotates at `PAI_ROTATE_HOUR` (04:00, `PAI_TIMEZONE`) or at 50% context: the old session writes `journal/<day>.md` + MEMORY.md, a fresh one starts from a briefing (open tasks, asks, staff, journal, last 20 messages).
+- `src/domain/agents.ts` — rows + folders `workspace/agents/<slug>/` (CLAUDE.md imports STATE.md); sessions resumed if active within a day, else fresh; ≤ `PAI_MAX_AGENTS` working (coding ×2), the rest queue; per-agent daily turn and per-turn minute budgets; reports (turn text) go to the parent; sub-agents close after reporting; tools = MCP server name substrings (connectors denied by prefix).
+- `messages.ts` (the log every client renders; `message.new` on the bus), `tasks.ts` (the one task list), `requests.ts` (needs routed by pai, routes learned), `asks.ts` (ask_user, notify priorities, quiet hours, pins, mutes), `staff-tools.ts` (role-based MCP tools), `automations.ts` (routines: event or cron, code check, notify|turn|wake|triage|task; slows ≥70% weekly), `triage.ts` (5-min batches, Haiku routes), `briefs.ts`, `recall.ts` (FTS5 archive: transcripts, log, mail), `journal.ts`, `staff.ts` (seeds Voice, Hiring, Job search).
+- Telegram renders log rows with trailer kinds `event(s)`, `delegation`, `report`, `ask`, `notice` (`protocol/rich.ts`); Paigram draws them natively.
 
 ## Layout
 
