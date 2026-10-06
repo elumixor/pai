@@ -67,7 +67,7 @@ describe("gmail: oauth routes", () => {
     expect(response.status).toBe(302);
     const location = new URL(response.headers.get("location")!);
     expect(location.origin).toBe("https://accounts.google.com");
-    expect(location.searchParams.get("scope")).toBe("https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly");
+    expect(location.searchParams.get("scope")).toBe("https://www.googleapis.com/auth/gmail.readonly");
     expect(location.searchParams.get("access_type")).toBe("offline");
     expect(location.searchParams.get("prompt")).toBe("consent");
     expect(location.searchParams.get("redirect_uri")).toBe("http://pai.example/auth/google/callback");
