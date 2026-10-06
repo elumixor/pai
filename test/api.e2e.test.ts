@@ -8,6 +8,8 @@ import { join } from "node:path";
 const scratch = mkdtempSync(join(tmpdir(), "pai-e2e-"));
 process.env.PAI_DB = join(scratch, "pai.db");
 process.env.PAI_PORT = "8899";
+// Loopback, not whatever tailnet address this machine has: the test talks to 127.0.0.1.
+process.env.PAI_BIND = "127.0.0.1";
 process.env.PAI_NO_TELEGRAM = "1";
 process.env.PAI_NO_EDITOR = "1";
 process.env.PAI_CONFIG = join(scratch, "config.json");
