@@ -541,7 +541,14 @@ export class Session {
     this.wake?.();
   }
 
-  ask(input: { questions: Question[] }) {
+  ask(input: { questions: Question[] }): Promise<{ behavior: "allow"; updatedInput: Record<string, unknown> } | { behavior: "deny"; message: string }> {
+    // pai answering a report or a routine is not talking to the user: a blocking question there would hold its
+    // one session — and every message the user sends it — until they happen to answer.
+    if (this.agent === "pai" && (this.origins[0] ?? "user") !== "user")
+      return Promise.resolve({
+        behavior: "deny",
+        message: "The user is not in this conversation right now. Ask with ask_user (blocking false) and the same options instead; the answer comes back as a turn.",
+      });
     return new Promise<{ behavior: "allow"; updatedInput: Record<string, unknown> }>((resolve) => {
       const id = randomUUID().slice(0, 8);
       this.pending = {
