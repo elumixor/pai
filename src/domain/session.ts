@@ -44,7 +44,7 @@ function build(kind: SessionKind, cwd: string, ref: SessionRef, project?: string
   const servers: NonNullable<Options["mcpServers"]> = {
     pai: paiTools(kind, ref, agent?.slug),
     playwright: browserMcp(),
-    ...(gmailModule.enabled() && gmailModule.tools?.kinds.includes(kind) ? { gmail: gmailTools() } : {}),
+    ...(gmailModule.enabled() && gmailModule.tools?.kinds.includes(kind) ? { gmail: gmailTools(agent?.slug) } : {}),
     ...externalMcpServers(kind, ref),
   };
   const mcpServers = Object.fromEntries(Object.entries(servers).filter(([name]) => serverAllowed(name, agent?.tools)));

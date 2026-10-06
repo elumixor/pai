@@ -8,7 +8,7 @@ process.env.PAI_CONFIG = join(mkdtempSync(join(tmpdir(), "pai-gmail-cfg-")), "co
 process.env.PAI_GOOGLE_CLIENT_ID = "test-client-id";
 process.env.PAI_GOOGLE_CLIENT_SECRET = "test-client-secret";
 
-const { decodeBody, findPart, gmailModule, handleConnect, headerValue, listAccounts, removeAccount, stripHtml } = await import("./gmail.ts");
+const { decodeBody, encodeHeader, findPart, gmailModule, handleConnect, headerValue, listAccounts, mimeMessage, removeAccount, stripHtml } = await import("./gmail.ts");
 const { db } = await import("../core/db.ts");
 
 const request = (path: string, init?: RequestInit) => {
@@ -61,13 +61,13 @@ describe("gmail: oauth routes", () => {
     expect(handleConnect(req, url).status).toBe(400);
   });
 
-  it("redirects to google with the readonly scope, through the sign-in callback, with a signed state cookie", () => {
+  it("redirects to google with the mail scopes, through the sign-in callback, with a signed state cookie", () => {
     const { req, url } = request("/gmail/connect?label=personal");
     const response = handleConnect(req, url);
     expect(response.status).toBe(302);
     const location = new URL(response.headers.get("location")!);
     expect(location.origin).toBe("https://accounts.google.com");
-    expect(location.searchParams.get("scope")).toBe("https://www.googleapis.com/auth/gmail.readonly");
+    expect(location.searchParams.get("scope")).toBe("https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send");
     expect(location.searchParams.get("access_type")).toBe("offline");
     expect(location.searchParams.get("prompt")).toBe("consent");
     expect(location.searchParams.get("redirect_uri")).toBe("http://pai.example/auth/google/callback");
@@ -90,10 +90,51 @@ describe("gmail: oauth routes", () => {
   });
 });
 
+describe("gmail: the message that goes on the wire", () => {
+  const decode = (mime: string) => Buffer.from(mime.split("\r\n\r\n")[1]!.replace(/\r\n/g, ""), "base64").toString("utf8");
+
+  it("writes the headers a mail client expects, body base64 in short lines", () => {
+    const mime = mimeMessage("me@example.com", { to: "them@example.com", subject: "Hello", body: "Hi there" });
+    expect(mime.startsWith("From: me@example.com\r\nTo: them@example.com\r\nSubject: Hello\r\n")).toBe(true);
+    expect(mime).toContain('Content-Type: text/plain; charset="UTF-8"');
+    expect(mime).toContain("Content-Transfer-Encoding: base64");
+    expect(decode(mime)).toBe("Hi there");
+    for (const line of mime.split("\r\n")) expect(line.length).toBeLessThanOrEqual(998);
+  });
+
+  it("carries cc, and a reply's In-Reply-To and References", () => {
+    const mime = mimeMessage(
+      "me@example.com",
+      { to: "them@example.com", subject: "Re: Offer", body: "Yes", cc: "boss@example.com" },
+      { messageId: "<b@mail>", references: "<a@mail> <b@mail>" },
+    );
+    expect(mime).toContain("Cc: boss@example.com");
+    expect(mime).toContain("In-Reply-To: <b@mail>");
+    expect(mime).toContain("References: <a@mail> <b@mail>");
+  });
+
+  it("encodes a non-ascii subject as an encoded word and leaves an ascii one alone", () => {
+    expect(encodeHeader("Hello")).toBe("Hello");
+    expect(encodeHeader("Привіт")).toBe(`=?UTF-8?B?${Buffer.from("Привіт", "utf8").toString("base64")}?=`);
+    const mime = mimeMessage("me@example.com", { to: "them@example.com", subject: "Привіт", body: "Привіт, Аліса" });
+    expect(mime).toContain("Subject: =?UTF-8?B?");
+    expect(decode(mime)).toBe("Привіт, Аліса");
+  });
+
+  it("refuses to send without a recipient, a body or a subject", async () => {
+    const { send } = await import("./gmail.ts");
+    db.prepare("INSERT INTO gmail_accounts (label, email, refresh_token, created_at) VALUES (?, ?, ?, ?)").run("personal", "me@example.com", "secret", Date.now());
+    await expect(send("personal", { to: " ", subject: "x", body: "y" })).rejects.toThrow("recipient");
+    await expect(send("personal", { to: "a@b.com", subject: "x", body: " " })).rejects.toThrow("body");
+    await expect(send("personal", { to: "a@b.com", subject: " ", body: "y" })).rejects.toThrow("subject");
+    await expect(send("nope", { to: "a@b.com", subject: "x", body: "y" })).rejects.toThrow("no gmail account");
+  });
+});
+
 describe("gmail: module", () => {
   it("is enabled once a google oauth client is configured", () => {
     expect(gmailModule.enabled()).toBe(true);
-    expect(gmailModule.tools?.names).toEqual(["gmail_list_accounts", "gmail_search", "gmail_read"]);
+    expect(gmailModule.tools?.names).toEqual(["gmail_list_accounts", "gmail_search", "gmail_read", "gmail_send"]);
   });
 
   it("reports connected accounts in its status", () => {

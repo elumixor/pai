@@ -3,6 +3,7 @@ import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "../core/config.ts";
 import { cursors, db } from "../core/db.ts";
 import { bus } from "../core/bus.ts";
+import * as messages from "../domain/messages.ts";
 import { put as archive } from "../domain/recall.ts";
 import { logger } from "../core/log.ts";
 import { origin, sign } from "../api/auth.ts";
@@ -23,10 +24,10 @@ const log = logger("gmail");
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
-// Calendar rides along so the meeting watcher can read what is coming up; mail stays read-only.
-// Mail only: the calendar is Balance's. An account connected before this still reads its calendar; a new one
-// does not, and the watcher stops asking after its first refusal.
-const SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+// Mail only: the calendar is Balance's. An account connected before that change still reads its calendar; a
+// new one does not, and the watcher stops asking after its first refusal. `gmail.send` sends as that account
+// and is a sensitive scope: an account connected before it was asked for cannot send until it is reconnected.
+const SCOPE = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send";
 const CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 
 interface Account {
@@ -174,6 +175,26 @@ async function call<T>(label: string, path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+/** The scope an account was connected with is fixed; Google answers 403 until the user consents again. */
+export class GmailScopeError extends Error {
+  constructor(label: string, what: string) {
+    super(`"${label}" was connected without permission to ${what} — reconnect it at /gmail/connect?label=${label}`);
+  }
+}
+
+async function post<T>(label: string, path: string, payload: unknown): Promise<T> {
+  const token = await accessToken(label);
+  const response = await fetch(`${API}${path}`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (response.status === 403) throw new GmailScopeError(label, "send mail");
+  if (!response.ok) throw new Error(`gmail: ${response.status} on ${path} — ${(await response.text()).slice(0, 300)}`);
+  return (await response.json()) as T;
+}
+
 export const headerValue = (headers: Headers[] | undefined, name: string) => headers?.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? "";
 
 /** The first text/plain part, depth-first; text/html only when nothing plain exists. */
@@ -260,6 +281,72 @@ interface ListedMessage {
  * New messages in one inbox since the last look, oldest first. The cursor is the newest
  * internalDate seen; the first look only sets it, so connecting a mailbox does not replay it.
  */
+// --- sending ------------------------------------------------------------------------------
+
+export interface SendInput {
+  /** One address or several, comma-separated, as a mail client would take them. */
+  readonly to: string;
+  readonly subject: string;
+  /** Plain text; sent as UTF-8, base64 encoded, so long lines and non-ASCII survive. */
+  readonly body: string;
+  readonly cc?: string;
+  /** The message being answered: its thread, subject and Message-ID are carried over. */
+  readonly replyTo?: string;
+}
+
+/** A header value Google will accept: anything beyond ASCII goes as an RFC 2047 encoded word. */
+export const encodeHeader = (value: string) =>
+  /^[\x20-\x7e]*$/.test(value) ? value : `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=`;
+
+/** The message as RFC 2822 text. Pure, so what goes on the wire can be read in a test. */
+export function mimeMessage(from: string, input: Readonly<SendInput>, reply?: Readonly<{ messageId: string; references: string }>): string {
+  const headers = [
+    `From: ${from}`,
+    `To: ${input.to}`,
+    ...(input.cc ? [`Cc: ${input.cc}`] : []),
+    `Subject: ${encodeHeader(input.subject)}`,
+    ...(reply?.messageId ? [`In-Reply-To: ${reply.messageId}`, `References: ${reply.references}`] : []),
+    "MIME-Version: 1.0",
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: base64",
+  ];
+  // Base64 in 76-character lines, as the transfer encoding requires.
+  const body = (Buffer.from(input.body, "utf8").toString("base64").match(/.{1,76}/g) ?? []).join("\r\n");
+  return `${headers.join("\r\n")}\r\n\r\n${body}`;
+}
+
+/** What a reply has to carry so Gmail hangs it under the original instead of starting a thread. */
+async function replyContext(label: string, id: string) {
+  const original = await call<{ threadId: string; payload?: { headers?: Headers[] } }>(label, `/messages/${id}?format=metadata&metadataHeaders=Message-ID&metadataHeaders=References&metadataHeaders=Subject`);
+  const messageId = headerValue(original.payload?.headers, "Message-ID");
+  const references = [headerValue(original.payload?.headers, "References"), messageId].filter(Boolean).join(" ");
+  const subject = headerValue(original.payload?.headers, "Subject");
+  return { threadId: original.threadId, messageId, references, subject };
+}
+
+/**
+ * Sends as the account itself — the one thing here the user cannot undo, so a session must have
+ * the user's approval (`check_outbound`) before it calls this. What went out is logged against the
+ * agent that sent it and archived, so `recall` finds it later.
+ */
+export async function send(label: string, input: Readonly<SendInput>, by?: string) {
+  const account = getAccount(label);
+  if (!account) throw new Error(`no gmail account labeled "${label}" — see gmail_list_accounts`);
+  if (!input.to.trim()) throw new Error("gmail_send needs a recipient");
+  if (!input.body.trim()) throw new Error("gmail_send needs a body");
+  const reply = input.replyTo ? await replyContext(label, input.replyTo) : undefined;
+  // A reply keeps the original subject unless the caller wrote one.
+  const subject = input.subject.trim() || (reply ? (reply.subject.startsWith("Re:") ? reply.subject : `Re: ${reply.subject}`) : "");
+  if (!subject) throw new Error("gmail_send needs a subject");
+  const raw = Buffer.from(mimeMessage(account.email, { ...input, subject }, reply), "utf8").toString("base64url");
+  const sent = await post<{ id: string; threadId: string }>(label, "/messages/send", { raw, ...(reply ? { threadId: reply.threadId } : {}) });
+  const link = `https://mail.google.com/mail/u/${account.email}/#sent/${sent.threadId}`;
+  messages.event(by ?? "pai", "sent", `email from ${account.email} to ${input.to}: ${subject}`, { meta: { link } });
+  archive("mail", sent.id, `${account.email} → ${input.to} — ${subject}`, input.body);
+  log.info(`${label}: sent to ${input.to}`);
+  return { id: sent.id, threadId: sent.threadId, from: account.email, to: input.to, subject, link };
+}
+
 export async function newMail(label: string): Promise<{ id: string; threadId: string; from: string; subject: string; snippet: string; at: number }[]> {
   const key = `gmail:${label}`;
   const since = Number(cursors.get(key) ?? 0);
@@ -349,7 +436,7 @@ export function startWatch(emit: (kind: string, payload: Record<string, unknown>
 
 // --- the tools sessions get -----------------------------------------------------------------
 
-export function gmailTools() {
+export function gmailTools(by?: string) {
   const ok = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });
   const accountArg = z.string().describe("account label from gmail_list_accounts");
   return createSdkMcpServer({
@@ -371,6 +458,20 @@ export function gmailTools() {
         { account: accountArg, id: z.string().describe("message id, from gmail_search") },
         async ({ account, id }) => ok(await read(account, id).catch((err: Error) => ({ error: err.message }))),
       ),
+      tool(
+        "gmail_send",
+        "Sends an email as that mailbox — it leaves immediately and cannot be taken back, so get the user's approval (check_outbound, then ask_user with the final text) before calling it. Pass reply_to_message_id to answer a message in its own thread; the subject is then optional.",
+        {
+          account: accountArg,
+          to: z.string().describe("one address, or several comma-separated"),
+          subject: z.string().describe("optional only when replying"),
+          body: z.string().describe("plain text"),
+          cc: z.string().optional(),
+          reply_to_message_id: z.string().optional().describe("message id from gmail_search: sends as a reply in that thread"),
+        },
+        async ({ account, to, subject, body, cc, reply_to_message_id }) =>
+          ok(await send(account, { to, subject, body, cc, replyTo: reply_to_message_id }, by).catch((err: Error) => ({ error: err.message }))),
+      ),
     ],
   });
 }
@@ -380,11 +481,11 @@ let stopWatch: (() => void) | undefined;
 export const gmailModule: Module = {
   name: "gmail",
   title: "Gmail",
-  description: "Reads one or more Gmail accounts, each connected with its own Google consent.",
+  description: "Reads one or more Gmail accounts and sends as them, each connected with its own Google consent.",
   kind: "tools",
   enabled: configured,
   status: () => ({ configured: configured(), accounts: listAccounts().map(({ label, email }) => ({ label, email })) }),
-  tools: { server: "gmail", names: ["gmail_list_accounts", "gmail_search", "gmail_read"], kinds: ["chat"] },
+  tools: { server: "gmail", names: ["gmail_list_accounts", "gmail_search", "gmail_read", "gmail_send"], kinds: ["chat"] },
   events: [
     { kind: "gmail.new", description: "a new message in a connected inbox (account, from, subject, snippet, link)" },
     { kind: "calendar.upcoming", description: "a meeting starts within 30 minutes (summary, start, attendees, link)" },
@@ -400,7 +501,7 @@ export const gmailModule: Module = {
     hint: "a short name for the mailbox: personal, work, atma",
   },
   prompt: {
-    text: "Gmail: gmail_list_accounts shows which mailboxes are connected (by label — e.g. personal, work), gmail_search finds messages in one of them with Gmail's search syntax, gmail_read gets a message's full text. Ask which account when it's ambiguous rather than guessing.",
+    text: "Gmail: gmail_list_accounts shows which mailboxes are connected (by label — e.g. personal, work), gmail_search finds messages in one of them with Gmail's search syntax, gmail_read gets a message's full text, gmail_send sends as that mailbox. Ask which account when it's ambiguous rather than guessing. Sending is irreversible and goes out in the user's name: check_outbound first, then their approval of the final text, and reply with reply_to_message_id so it threads.",
     kinds: ["chat"],
   },
 };
