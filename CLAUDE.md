@@ -65,6 +65,11 @@ the sessions themselves with the Edit tool; no memory tools. A change re-warms t
 (`src/domain/sessions.ts` watches the file). What belongs to one project goes into that
 project's `CLAUDE.md`.
 
+A connector's grant is fixed at the moment it was connected: an account connected before a module
+widened its scopes cannot use the new one until it is reconnected (`/gmail/connect?label=<name>` for
+a mailbox), and the failure shows up as a 403 mid-task. Widening scopes means asking the user to
+reconnect every account, so say so in the same breath as shipping it.
+
 `AskUserQuestion` reaches `canUseTool` even under `bypassPermissions`. It becomes a
 `session.question` event; Telegram renders buttons, the CLI has `answer`.
 
