@@ -3,6 +3,7 @@ import type { Agent } from "./agents.ts";
 import { config } from "../core/config.ts";
 import { modules } from "../modules/index.ts";
 import { prompts as externalPrompts } from "../modules/external.ts";
+import { unavailable, unresolved } from "./capabilities.ts";
 
 const COMMON = `
 You are pai, a personal assistant that the user talks to from Telegram on their phone, from a terminal, or from the app.
@@ -116,7 +117,24 @@ export function instructionsFor(kind: SessionKind, project?: string, agent?: Age
     : agent
       ? `${COMMON}\n- Facts about a person go into people/<name>.md here (search before creating one); a day's events into journal/; MEMORY.md is the profile, kept under about 150 lines.`
       : COMMON;
-  return [`${common}\n${role}`, ...(kind === "code" && agent ? [CODE.trim()] : []), ...sections].join("\n\n");
+  return [`${common}\n${role}`, ...(kind === "code" && agent ? [CODE.trim()] : []), missingTools(agent), ...sections].filter(Boolean).join("\n\n");
+}
+
+/**
+ * The tools in a session's list that will never answer, with the move to make instead. Generated
+ * from what the last sessions actually came up with — a hand-kept list here would go stale and
+ * start lying, which is worse than the silence this replaces.
+ */
+export function missingTools(agent?: AgentSetup): string {
+  const lines = [
+    ...(agent?.tools ? unresolved(agent.tools).map((c) => `- \`${c}\` is in your tools list, but no MCP server here provides it.`) : []),
+    ...unavailable().map((u) => {
+      const why = u.reason === "off" ? "is switched off for every session" : "never signed in, so every call fails";
+      const instead = u.instead ? ` — use ${u.instead.server} instead${u.instead.tools.length ? ` (${u.instead.tools.slice(0, 3).join(", ")})` : ""}, the \`${u.instead.capability}\` capability.` : ".";
+      return `- ${u.server} ${why}${instead}`;
+    }),
+  ];
+  return lines.length ? `# Tools you do not have\n\n${lines.join("\n")}\n\nSay so rather than working around them.` : "";
 }
 
 /** The fixed paragraphs with the sessions they go to, for the dashboard's context view. */

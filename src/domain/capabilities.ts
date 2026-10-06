@@ -1,5 +1,5 @@
 import { config } from "../core/config.ts";
-import { knownServers } from "./context.ts";
+import { knownServers, serverStates } from "./context.ts";
 
 /**
  * An agent's tools list names capabilities — `gmail`, `browser`, `calendar` — while a session
@@ -34,6 +34,54 @@ export function serverAllowed(server: string, allowed: readonly string[] | undef
 /** A sub-agent gets at most its parent's tools: the capabilities of `wanted` its parent also covers. */
 export function narrowed(wanted: readonly string[], parent: readonly string[]): string[] {
   return wanted.filter((w) => parent.some((p) => p === "*" || matchTerms(w).some((term) => matches(term, p))));
+}
+
+/** A server a session is offered but cannot use, and what to reach for instead. */
+export interface Unavailable {
+  readonly server: string;
+  /** `off`: the user switched it off for every session. `needs-auth`: it never signed in. */
+  readonly reason: "off" | "needs-auth";
+  /** The live server that answers the same capability, with a few of its tools — derived, never written down. */
+  readonly instead?: { readonly server: string; readonly capability: string; readonly tools: readonly string[] };
+}
+
+const DEAD = new Set(["needs-auth", "failed"]);
+
+/**
+ * Servers a session sees in its tool list and will never get an answer from: the ones the user
+ * denied (`deniedConnectors`) and the ones that came up unauthenticated. Each is paired, through
+ * the alias table, with the live server that covers the same capability — so the sentence an agent
+ * reads names the move to make instead of leaving it to improvise.
+ */
+export function unavailable(): Unavailable[] {
+  const states = serverStates();
+  const live = states.filter((s) => s.status === "connected" && !config.deniedConnectors.includes(s.name));
+  const out: Unavailable[] = [];
+  for (const s of states) {
+    const reason = config.deniedConnectors.includes(s.name) ? "off" : DEAD.has(s.status) ? "needs-auth" : undefined;
+    if (!reason) continue;
+    const instead = replacement(s, live);
+    out.push({ server: s.name, reason, ...(instead ? { instead } : {}) });
+  }
+  return out;
+}
+
+/**
+ * The capability whose word names the dead server, and the live server its alias points at. The
+ * tools named are the ones both offer — the same call under a different server, which is the move
+ * an agent should make — falling back to whatever the live one starts with.
+ */
+function replacement(dead: Readonly<{ name: string; tools: readonly string[] }>, live: readonly { name: string; tools: readonly string[] }[]) {
+  for (const [capability, targets] of Object.entries(ALIASES)) {
+    if (!matches(dead.name, capability)) continue;
+    for (const target of targets) {
+      const server = live.find((s) => matches(s.name, target));
+      if (!server) continue;
+      const shared = server.tools.filter((t) => dead.tools.includes(t));
+      return { server: server.name, capability, tools: (shared.length ? shared : server.tools).slice(0, 4) };
+    }
+  }
+  return undefined;
 }
 
 /**

@@ -9,7 +9,7 @@ process.env.PAI_DB = join(scratch, "pai.db");
 process.env.PAI_DENY_CONNECTORS = "claude.ai Google Calendar";
 
 const { noteInit } = await import("./context.ts");
-const { narrowed, serverAllowed, unresolved } = await import("./capabilities.ts");
+const { narrowed, serverAllowed, unavailable, unresolved } = await import("./capabilities.ts");
 
 const SERVERS = ["pai", "playwright", "gmail", "telegram", "linkedin", "claude.ai Balance", "claude.ai Notion", "claude.ai Google Calendar"];
 
@@ -39,6 +39,33 @@ describe("capabilities", () => {
     expect(narrowed(["browser"], ["playwright"])).toEqual(["browser"]);
     expect(narrowed(["playwright"], ["browser"])).toEqual(["playwright"]);
     expect(narrowed(["browser", "gmail"], ["*"])).toEqual(["browser", "gmail"]);
+  });
+
+  test("a dead server is named with the live one that answers the same capability", () => {
+    noteInit("chat", {
+      tools: [],
+      mcpServers: [
+        { name: "pai", status: "connected" },
+        { name: "claude.ai Balance", status: "connected", tools: [{ name: "list_events" }, { name: "create_event" }, { name: "get_balance" }] },
+        { name: "claude.ai Google Calendar", status: "needs-auth", tools: [{ name: "list_events" }, { name: "create_event" }, { name: "suggest_time" }] },
+        { name: "slackish", status: "failed", tools: [] },
+      ],
+      skills: [],
+      slashCommands: [],
+      agents: [],
+      model: "test",
+      at: new Date().toISOString(),
+    });
+    const dead = unavailable();
+    // Denied by the user beats whatever status it came up with.
+    expect(dead.find((d) => d.server === "claude.ai Google Calendar")).toEqual({
+      server: "claude.ai Google Calendar",
+      reason: "off",
+      instead: { server: "claude.ai Balance", capability: "calendar", tools: ["list_events", "create_event"] },
+    });
+    // A server that failed with no alias to offer is still named, without a replacement invented for it.
+    expect(dead.find((d) => d.server === "slackish")).toEqual({ server: "slackish", reason: "needs-auth" });
+    expect(dead.some((d) => d.server === "claude.ai Balance")).toBe(false);
   });
 
   test("a capability no server provides is reported, an aliased one is not", () => {

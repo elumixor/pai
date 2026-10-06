@@ -279,15 +279,10 @@ export function setupOf(a: Agent): AgentSetup {
   const cwd = workdir(a);
   // In its own folder Claude Code reads its CLAUDE.md by itself; in a repo it has to be told.
   const own = cwd === a.folder ? "" : readIf(join(a.folder, "CLAUDE.md")).replace("@STATE.md", readIf(join(a.folder, "STATE.md")));
-  const missing = unresolved(a.tools);
   return {
     slug: a.slug,
-    instructions: [
-      agentInstructions(a, own),
-      missing.length ? `# Tools you do not have\n\nDeclared for you but matching no MCP server on this box: ${missing.join(", ")}. Say so in your report instead of hunting for them.` : "",
-    ]
-      .filter(Boolean)
-      .join("\n\n"),
+    // What it does not have is one generated paragraph in prompts.ts, for every session kind.
+    instructions: agentInstructions(a, own),
     tools: a.tools ?? undefined,
     additionalDirectories: cwd === a.folder ? [] : [a.folder],
   };

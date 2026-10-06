@@ -6,6 +6,7 @@ import { allPrompts as externalPrompts } from "../modules/external.ts";
 import { modules } from "../modules/index.ts";
 import { all as allProjects } from "./catalog.ts";
 import type { SessionKind } from "./session.ts";
+import { unavailable, type Unavailable } from "./capabilities.ts";
 import { moduleHeading, sections } from "./prompts.ts";
 
 /**
@@ -110,6 +111,14 @@ export function knownServers(): string[] {
   return [...names];
 }
 
+/** Every MCP server with how it came up and what it offers; the newest sighting of each one wins. */
+export function serverStates(): { name: string; status: string; tools: readonly string[] }[] {
+  const out = new Map<string, { name: string; status: string; tools: readonly string[] }>();
+  for (const inv of Object.values(inventories))
+    for (const s of inv?.mcpServers ?? []) out.set(s.name, { name: s.name, status: s.status, tools: (s.tools ?? []).map((t) => t.name) });
+  return [...out.values()];
+}
+
 /** `mcp__<server>__<tool>` → server and tool; a built-in has no server. */
 const split = (name: string) => {
   const m = /^mcp__(.+?)__(.+)$/.exec(name);
@@ -180,8 +189,16 @@ function skills(): ContextItem[] {
 }
 
 /** What a running session actually has, server by server, from the newest init of each kind. */
+/** For a server that cannot answer: why, and the live one that covers the same capability. */
+function deadNote(server: string, dead: ReadonlyMap<string, Unavailable>) {
+  const u = dead.get(server);
+  if (!u) return "";
+  return ` · ${u.reason === "off" ? "off for every session" : "not signed in"}${u.instead ? `, use ${u.instead.server} (the ${u.instead.capability} capability)` : ""}`;
+}
+
 function liveTools(): ContextItem[] {
   const out: ContextItem[] = [];
+  const dead = new Map(unavailable().map((u) => [u.server, u]));
   const kinds = Object.keys(inventories) as SessionKind[];
   const byServer = new Map<string, { tools: Set<string>; kinds: Set<SessionKind> }>();
   for (const kind of kinds)
@@ -204,7 +221,9 @@ function liveTools(): ContextItem[] {
     out.push({
       kind: "tool",
       name: server ? (status.get(server)?.name ?? server) : "Claude Code built-ins",
-      description: server ? `MCP server, ${status.get(server)?.status ?? "connected"} · ${names.length} tools` : `${names.length} tools`,
+      description: server
+        ? `MCP server, ${status.get(server)?.status ?? "connected"} · ${names.length} tools${deadNote(status.get(server)?.name ?? server, dead)}`
+        : `${names.length} tools`,
       source: server.startsWith("claude.ai ") ? "claude.ai connector" : server ? (modules.some((m) => m.tools?.server === server) ? `src/modules/${server}.ts` : `modules/${server}`) : "claude code",
       editable: false,
       surfaces: [...entry.kinds],
@@ -214,7 +233,7 @@ function liveTools(): ContextItem[] {
   }
   // A server that came up without tools (failed, needs auth) still deserves a line.
   for (const [server, s] of status)
-    if (!byServer.has(server)) out.push({ kind: "tool", name: s.name, description: `MCP server, ${s.status} · no tools`, source: s.name.startsWith("claude.ai ") ? "claude.ai connector" : `modules/${s.name}`, editable: false, surfaces: [] });
+    if (!byServer.has(server)) out.push({ kind: "tool", name: s.name, description: `MCP server, ${s.status} · no tools${deadNote(s.name, dead)}`, source: s.name.startsWith("claude.ai ") ? "claude.ai connector" : `modules/${s.name}`, editable: false, surfaces: [] });
   return out.sort((a, b) => (a.source === "claude code" ? -1 : b.source === "claude code" ? 1 : a.name.localeCompare(b.name)));
 }
 
