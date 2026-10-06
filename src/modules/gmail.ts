@@ -24,7 +24,9 @@ const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
 // Calendar rides along so the meeting watcher can read what is coming up; mail stays read-only.
-const SCOPE = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly";
+// Mail only: the calendar is Balance's. An account connected before this still reads its calendar; a new one
+// does not, and the watcher stops asking after its first refusal.
+const SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 const CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 
 interface Account {
@@ -307,7 +309,7 @@ export async function upcoming(label: string): Promise<CalendarEvent[]> {
 
 class CalendarScopeError extends Error {
   constructor(label: string) {
-    super(`${label} was connected before calendar access was asked for; reconnect it at /gmail/connect?label=${label}`);
+    super(`${label} has no calendar access (the calendar is Balance's)`);
   }
 }
 
