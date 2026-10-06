@@ -34,6 +34,7 @@ export type EventName =
   | "agent.spawned"
   | "agent.woken"
   | "agent.closed"
+  | "agent.tools_missing"
   | "stopped"
   | "routine.fired"
   | "item.arrived"

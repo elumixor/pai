@@ -7,6 +7,16 @@ const log = logger("browser");
 let proc: Subprocess | undefined;
 let stopping = false;
 
+/** Pinned: the daemon is long-lived, and `@latest` would change the browser under it on any restart. */
+const MCP = "@playwright/mcp@0.0.83";
+/**
+ * The default is the branded `chrome` channel, which is not on the box and is not worth a 150MB
+ * download per rebuild; `chromium` is Playwright's own build, pinned to the version above.
+ */
+const BROWSER = "chromium";
+/** What `--browser chromium` resolves to, and what install-browser installs under ~/.cache/ms-playwright. */
+const BUILD = "chrome-for-testing";
+
 /**
  * One Playwright MCP server for the whole daemon, over HTTP. Every session connecting to
  * it skips the `npx` spawn that otherwise costs seconds on each cold start, and they
@@ -14,16 +24,32 @@ let stopping = false;
  */
 export function startBrowser() {
   stopping = false;
-  spawn();
+  void (async () => {
+    await installBrowser();
+    if (!stopping) spawn();
+  })();
   return () => {
     stopping = true;
     proc?.kill();
   };
 }
 
+/**
+ * Nothing should have to be installed by hand on the box: a missing browser only shows up as a
+ * failed navigation inside an agent's turn. A second or two when it is already there. `--no-remove`
+ * keeps it from evicting the build another playwright (the browser module's) is pinned to.
+ */
+async function installBrowser() {
+  const install = Bun.spawn(["npx", MCP, "install-browser", BUILD, "--no-progress", "--no-remove"], { stdout: "ignore", stderr: "pipe", env: { ...process.env } });
+  const err = await new Response(install.stderr as ReadableStream).text();
+  const code = await install.exited;
+  if (code === 0) log.info(`${BROWSER} ready`);
+  else log.warn(`installing ${BROWSER} failed (code ${code}) ${err.trim().slice(-300)} — starting anyway`);
+}
+
 function spawn() {
   proc = Bun.spawn(
-    ["npx", "@playwright/mcp@latest", "--port", String(config.browserPort), "--host", "127.0.0.1", "--headless"],
+    ["npx", MCP, "--port", String(config.browserPort), "--host", "127.0.0.1", "--headless", "--browser", BROWSER],
     { stdout: "ignore", stderr: "pipe", env: { ...process.env } },
   );
   const pid = proc.pid;

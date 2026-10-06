@@ -60,6 +60,7 @@ export const EVENT_ICONS: Readonly<Record<string, string>> = {
   error: "exclamationmark.triangle",
   stopped: "stop.circle",
   "agent.closed": "archivebox",
+  "agent.tools_missing": "exclamationmark.triangle",
 };
 
 export interface RichUsage {

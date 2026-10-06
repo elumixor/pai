@@ -483,7 +483,7 @@ function agentTree(rows: any[]): string[] {
   const lines: string[] = [];
   const walk = (parent: string | null, indent: string) => {
     for (const a of byParent.get(parent) ?? []) {
-      const extra = [a.kind === "orchestrator" ? "" : a.kind, a.openTasks ? `${a.openTasks} open` : "", a.turnsToday ? `${a.turnsToday} turns today` : "", a.costUsd ? `$${a.costUsd.toFixed(2)}` : "", a.queued ? `${a.queued} queued` : ""].filter(Boolean).join(" · ");
+      const extra = [a.kind === "orchestrator" ? "" : a.kind, a.openTasks ? `${a.openTasks} open` : "", a.turnsToday ? `${a.turnsToday} turns today` : "", a.costUsd ? `$${a.costUsd.toFixed(2)}` : "", a.queued ? `${a.queued} queued` : "", a.unresolvedTools?.length ? `⚠ no server for ${a.unresolvedTools.join(", ")}` : ""].filter(Boolean).join(" · ");
       lines.push(`${indent}${STATE_MARK[a.status] ?? "·"} ${a.name.padEnd(Math.max(1, 16 - indent.length))} ${a.status.padEnd(8)} ${extra}`);
       walk(a.slug, `${indent}  `);
     }

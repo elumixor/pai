@@ -190,6 +190,8 @@ export interface Agent {
   readonly breadcrumb?: string;
   readonly openTasks?: number;
   readonly queued?: number;
+  /** Capabilities it was given that no MCP server here provides: tools it will not have. */
+  readonly unresolvedTools?: readonly string[];
 }
 
 export type MessageKind = "chat" | "delegate" | "report" | "request" | "response" | "ask" | "answer" | "notice" | "event";

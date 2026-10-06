@@ -264,6 +264,9 @@ export function staff(root: HTMLElement) {
       el("span.tag", { class: `tag status-${agent.status}`, title: agent.queued ? `${agent.queued} queued` : "" }, status.label),
       el("span.tag", { title: "what kind of agent" }, agent.kind),
       agent.model ? el("span.tag.model", { title: agent.model }, modelName(agent.model)) : undefined,
+      agent.unresolvedTools?.length
+        ? el("span.tag.warn", { title: `declared for it, but no MCP server here provides it: ${agent.unresolvedTools.join(", ")}` }, `no server for ${agent.unresolvedTools.join(", ")}`)
+        : undefined,
       el("span.grow"),
       el("span.dim", { title: "turns today · what it has cost" }, `${agent.turnsToday} turns · ${money(agent.costUsd)}`),
       agent.slug !== PAI && agent.status !== "closed"

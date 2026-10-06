@@ -4,6 +4,7 @@ import { config } from "../core/config.ts";
 import * as agents from "./agents.ts";
 import * as asks from "./asks.ts";
 import * as automations from "./automations.ts";
+import * as capabilities from "./capabilities.ts";
 import * as messages from "./messages.ts";
 import * as recall from "./recall.ts";
 import * as requests from "./requests.ts";
@@ -49,6 +50,7 @@ const agentSummary = (a: agents.Agent) => ({
   status: a.status,
   brief: a.brief.split("\n")[0]!.slice(0, 200),
   tools: a.tools ?? "all",
+  toolsMissing: capabilities.unresolved(a.tools),
   model: a.model ?? "default",
   project: a.project ?? undefined,
   turnsToday: a.turnsToday,
@@ -203,7 +205,7 @@ export function staffTools(me: string | undefined) {
           ...(isPai ? { kind: z.enum(["standing", "sub", "service"]) } : {}),
           brief: z.string(),
           task: z.string().optional().describe("the first job"),
-          tools: z.array(z.string()).optional().describe("MCP servers it may use, by name or part of one: gmail, linkedin, telegram, notion, calendar, drive, balance, playwright, browser. Omit for all of yours."),
+          tools: z.array(z.string()).optional().describe("What it may use, by capability: gmail, linkedin, telegram, notion, drive, browser, calendar, balance. Omit for all of yours."),
           model: model.optional(),
           project: z.string().optional().describe("a repo slug: a coding agent working there"),
           turns_per_day: z.number().optional(),

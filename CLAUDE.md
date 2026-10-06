@@ -71,7 +71,7 @@ project's `CLAUDE.md`.
 ## pai and its staff
 
 - `src/domain/main.ts` — pai's session (agent `pai`): user messages, system turns (`system`, shown) and housekeeping (`silent`, never shown). Rotates at `PAI_ROTATE_HOUR` (04:00, `PAI_TIMEZONE`) or at 50% context: the old session writes `journal/<day>.md` + MEMORY.md, a fresh one starts from a briefing (open tasks, asks, staff, journal, last 20 messages).
-- `src/domain/agents.ts` — rows + folders `workspace/agents/<slug>/` (CLAUDE.md imports STATE.md); sessions resumed if active within a day, else fresh; ≤ `PAI_MAX_AGENTS` working (coding ×2), the rest queue; per-agent daily turn and per-turn minute budgets; reports (turn text) go to the parent; sub-agents close after reporting; tools = MCP server name substrings (connectors denied by prefix).
+- `src/domain/agents.ts` — rows + folders `workspace/agents/<slug>/` (CLAUDE.md imports STATE.md); sessions resumed if active within a day, else fresh; ≤ `PAI_MAX_AGENTS` working (coding ×2), the rest queue; per-agent daily turn and per-turn minute budgets; reports (turn text) go to the parent; sub-agents close after reporting; tools = capabilities matched against the MCP server names (`capabilities.ts`: aliases like `browser` → `playwright`, `calendar` → Balance; one matching no server is warned about at creation and carried as `unresolvedTools`); connectors denied by prefix.
 - `messages.ts` (the log every client renders; `message.new` on the bus), `tasks.ts` (the one task list), `requests.ts` (needs routed by pai, routes learned), `asks.ts` (ask_user, notify priorities, quiet hours, pins, mutes), `staff-tools.ts` (role-based MCP tools), `automations.ts` (routines: event or cron, code check, notify|turn|wake|triage|task; slows ≥70% weekly), `triage.ts` (5-min batches, Haiku routes), `briefs.ts`, `recall.ts` (FTS5 archive: transcripts, log, mail), `journal.ts`. No agents at first: pai creates them.
 - Telegram renders log rows with trailer kinds `event(s)`, `delegation`, `report`, `ask`, `notice` (`protocol/rich.ts`); Paigram draws them natively.
 
@@ -83,7 +83,7 @@ project's `CLAUDE.md`.
 - `src/domain/memory.ts` — long-term memory files, index, search.
 - `src/domain/terminal.ts`, `terminals.ts`, `pty-host.mjs` — PTYs on the host. node-pty only loads under Node, so each terminal is a small Node process the daemon talks to in JSON lines.
 - `src/domain/tools.ts` — the in-process `pai` MCP server, one instance per session (bound through a ref, since warm processes exist before their session).
-- `src/domain/browser.ts` — one Playwright MCP server per daemon over HTTP; sessions connect instead of spawning `npx`.
+- `src/domain/browser.ts` — one Playwright MCP server per daemon over HTTP (pinned version, `--browser chromium`, its build installed at start); sessions connect instead of spawning `npx`.
 - `src/domain/prompts.ts` — instructions appended to the Claude Code system prompt, per session kind: the general part, the role, then `# Instructions (from <module>)` per module that adds a paragraph.
 - `src/domain/catalog.ts` — coding projects under `~/dev`; `projects.json` overrides.
 - `src/api/` — `server.ts` (transport, the terminal websocket, the client), `routes.ts`, `events.ts` (SSE), `port.ts`, `app.ts` (serves the client at `/ui`), `auth.ts` (`PAI_TOKEN` for programs, a signed session cookie for browsers; loopback and the bundles are exempt), `google.ts` (Sign in with Google: `PAI_GOOGLE_CLIENT_ID/SECRET` in `.env`, `PAI_GOOGLE_ALLOWED` emails; `/auth/check` is Caddy's forward_auth for the editor).

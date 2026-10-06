@@ -5,6 +5,7 @@ import { config } from "../core/config.ts";
 import { db, kv, now } from "../core/db.ts";
 import { logger } from "../core/log.ts";
 import { day } from "../core/time.ts";
+import { narrowed, unresolved } from "./capabilities.ts";
 import { get as getProject } from "./catalog.ts";
 import * as journal from "./journal.ts";
 import * as messages from "./messages.ts";
@@ -208,7 +209,7 @@ export function create(input: CreateInput, by: string = PAI): Agent {
 
   // A sub-agent gets at most its parent's tools, never more.
   let tools = input.tools === undefined ? parent.tools : input.tools;
-  if (parent.tools && tools) tools = tools.filter((t) => parent.tools!.some((p) => p === "*" || t.toLowerCase().includes(p.toLowerCase())));
+  if (parent.tools && tools) tools = narrowed(tools, parent.tools);
   else if (parent.tools && !tools) tools = parent.tools;
 
   const slug = freeSlug(input.name);
@@ -224,10 +225,24 @@ export function create(input: CreateInput, by: string = PAI): Agent {
   ).run(slug, input.name.trim(), input.kind, parentSlug, input.brief.trim(), folder, input.project ?? null, tools ? JSON.stringify(tools) : null, input.model ?? null, input.effort ?? null, JSON.stringify(budget), now(), now());
   const agent = get(slug)!;
   log.info(`created ${agent.kind} ${slug} under ${parentSlug}`);
+  warnUnresolved(agent);
   messages.event(slug, input.kind === "sub" ? "agent.spawned" : "agent.created", `${parent.name} ${input.kind === "sub" ? "started" : "created"} ${agent.name}`, { from: parentSlug, to: parentSlug });
   bus.emitEvent("agent.created", agent as unknown as Record<string, unknown>);
   if (input.task?.trim()) message(slug, input.task, { from: parentSlug, kind: "delegate", taskId: input.taskId });
   return agent;
+}
+
+/**
+ * A capability that matches no MCP server would otherwise be found out by the agent mid-task,
+ * searching for tools it was promised. It is said once here, and carried on the agent's row
+ * (`unresolvedTools`) for `pai agents` and for its own instructions.
+ */
+function warnUnresolved(a: Agent) {
+  const missing = unresolved(a.tools);
+  if (!missing.length) return;
+  const what = missing.join(", ");
+  log.warn(`${a.slug}: no MCP server matches ${what}; it will have no such tools`);
+  messages.event(a.slug, "agent.tools_missing", `${a.name} declares tools no server provides: ${what}`, { from: a.parent ?? PAI, to: a.parent ?? PAI });
 }
 
 /** An agent's CLAUDE.md: who it is, with its STATE.md pulled in, so a fresh session starts knowing both. */
@@ -251,6 +266,7 @@ export function configure(slug: string, changes: { brief?: string; tools?: strin
   if (changes.budget) fields.budget = JSON.stringify({ ...a.budget, ...changes.budget });
   if (changes.priority !== undefined) fields.priority = Math.max(-2, Math.min(2, Math.round(changes.priority)));
   const updated = set(slug, fields);
+  if (changes.tools !== undefined && updated) warnUnresolved(updated);
   // Tools and model are fixed when a process starts; the next message starts one with these.
   if (changes.tools !== undefined || changes.model !== undefined || changes.effort !== undefined || changes.brief) sessionOf(a)?.kill();
   return updated!;
@@ -263,9 +279,15 @@ export function setupOf(a: Agent): AgentSetup {
   const cwd = workdir(a);
   // In its own folder Claude Code reads its CLAUDE.md by itself; in a repo it has to be told.
   const own = cwd === a.folder ? "" : readIf(join(a.folder, "CLAUDE.md")).replace("@STATE.md", readIf(join(a.folder, "STATE.md")));
+  const missing = unresolved(a.tools);
   return {
     slug: a.slug,
-    instructions: agentInstructions(a, own),
+    instructions: [
+      agentInstructions(a, own),
+      missing.length ? `# Tools you do not have\n\nDeclared for you but matching no MCP server on this box: ${missing.join(", ")}. Say so in your report instead of hunting for them.` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
     tools: a.tools ?? undefined,
     additionalDirectories: cwd === a.folder ? [] : [a.folder],
   };
@@ -708,6 +730,7 @@ export function tree(openTasks: Record<string, number>) {
     depth: depth(a.slug),
     breadcrumb: breadcrumb(a.slug),
     openTasks: openTasks[a.slug] ?? 0,
+    unresolvedTools: unresolved(a.tools),
     queued: queue.filter((q) => q.slug === a.slug).length,
     session: a.sessionId ? (sessions.find(a.sessionId)?.summary() ?? null) : null,
   }));

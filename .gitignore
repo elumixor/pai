@@ -3,6 +3,8 @@ node_modules
 .env.local
 data/
 *.log
+# playwright mcp writes page snapshots into the session cwd
+.playwright-mcp/
 .DS_Store
 web/node_modules
 web/.vercel

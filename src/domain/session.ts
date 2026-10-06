@@ -11,6 +11,7 @@ import { instructionsFor } from "./prompts.ts";
 import { gmailModule, gmailTools } from "../modules/gmail.ts";
 import { mcpServers as externalMcpServers } from "../modules/external.ts";
 import { knownServers, noteInit } from "./context.ts";
+import { serverAllowed } from "./capabilities.ts";
 import { describeServers } from "./mcp-describe.ts";
 
 /** Subprocesses spawned and initialised ahead of time, keyed by kind. Only kinds with a fixed cwd can be warmed. */
@@ -28,16 +29,9 @@ export interface AgentSetup {
   readonly slug: string;
   /** Instructions appended after the general ones: the agent's role, and its own CLAUDE.md when its cwd is not its folder. */
   readonly instructions: string;
-  /** Substrings of the MCP server names it may use (case-insensitive); undefined means every server. */
+  /** The capabilities it may use, matched against the MCP server names (see capabilities.ts); undefined means every server. */
   readonly tools?: readonly string[];
   readonly additionalDirectories?: readonly string[];
-}
-
-/** An MCP server an agent may use: `pai` always; anything else only when its tools list names it. */
-export function serverAllowed(name: string, allowed: readonly string[] | undefined) {
-  if (!allowed || name === "pai") return true;
-  const n = name.toLowerCase();
-  return allowed.some((a) => a === "*" || n.includes(a.toLowerCase()));
 }
 
 /** The builder's tools that start or feed a thread; pai keeps the ones that read threads, to answer about terminal work. */
