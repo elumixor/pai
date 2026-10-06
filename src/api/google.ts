@@ -42,6 +42,8 @@ export async function handleAuth(req: Request, url: URL): Promise<Response | und
     const wanted = req.headers.get("x-forwarded-uri") ?? "/editor/";
     return wantsHtml(req) ? redirect(loginUrl(wanted)) : json({ error: "sign in first" }, 401);
   }
+  // The consent screen links here; Google will not publish an app without a privacy policy.
+  if (path === "/auth/privacy") return new Response(PRIVACY, { headers: { "content-type": "text/html; charset=utf-8" } });
   if (!googleConfigured()) {
     if (path.startsWith("/auth/")) return json({ error: "google sign-in is not configured (PAI_GOOGLE_CLIENT_ID, PAI_GOOGLE_CLIENT_SECRET)" }, 501);
     return undefined;
@@ -121,3 +123,11 @@ const json = (data: unknown, status = 200) =>
 
 const redirect = (to: string, headers: Record<string, string> = {}) =>
   new Response(null, { status: 302, headers: { location: to, ...headers } });
+
+const PRIVACY = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>pai privacy</title>
+<body style="font:16px/1.5 system-ui;max-width:40rem;margin:2rem auto;padding:0 1rem">
+<h1>pai privacy policy</h1>
+<p>pai is a personal assistant run by one person for their own use. Signing in with Google gives it your email address, which is checked against a list of allowed accounts.</p>
+<p>Connecting a mailbox gives pai read-only access to that Gmail account. Mail is read on pai's own server to answer the owner's requests and is never sold, shared with third parties, or used for advertising. Google user data is handled in line with the Google API Services User Data Policy, including its Limited Use requirements.</p>
+<p>Revoke access at any time at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>; the stored token is then useless. Questions: vladogim97@gmail.com.</p>
+</body>`;
