@@ -57,6 +57,8 @@ function build(kind: SessionKind, cwd: string, ref: SessionRef, project?: string
   // claude.ai connectors arrive with the user's settings rather than through mcpServers; the
   // ones an agent may not use are denied by their tool prefix, as the last session init named them.
   const disallowedTools = agent?.tools ? knownServers().filter((name) => !(name in servers) && !serverAllowed(name, agent.tools)).map(toolPrefix) : [];
+  // Connectors the user switched off for the assistant (a calendar that lives in Balance instead).
+  disallowedTools.push(...config.deniedConnectors.map(toolPrefix));
   // pai delegates through its own agents, which the user can watch and answer; Claude Code's Agent tool would hide the work.
   // Threads are the same kind of hidden work: whatever pai hands off is an agent, so it shows in the agent tree.
   if (agent?.slug === "pai") disallowedTools.push("Agent", "Task", ...PAI_THREAD_TOOLS);

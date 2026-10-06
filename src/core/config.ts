@@ -130,6 +130,9 @@ export const config = {
   /** `HH:MM-HH:MM` in that zone: notices other than urgent ones are held; agents keep working. */
   quietHours: setting("PAI_QUIET_HOURS") ?? "23:00-08:00",
 
+  /** claude.ai connectors no session gets, by name (comma-separated): the calendar is Balance's, not Google's. */
+  deniedConnectors: (setting("PAI_DENY_CONNECTORS") ?? "claude.ai Google Calendar").split(",").map((name) => name.trim()).filter(Boolean),
+
   /** Agents working at once; the rest queue. A coding agent counts double. */
   maxWorkingAgents: Number(setting("PAI_MAX_AGENTS") ?? 4),
 

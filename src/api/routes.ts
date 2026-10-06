@@ -431,7 +431,54 @@ export async function handle(req: Request): Promise<Response> {
           createdAt: summary.lastActivity,
         }];
       });
-      return json([...fromSessions, ...fromAsks].sort((a, b) => b.createdAt - a.createdAt));
+      // A task waiting on the user is a decision too: done, dropped, or a word to whoever owns it.
+      const fromTasks = tasks.list({ status: "waiting_user" }).map((t) => ({
+        kind: "task" as const,
+        id: `task:${t.id}`,
+        taskId: t.id,
+        agent: t.owner === agents.PAI ? null : t.owner,
+        from: agents.get(t.owner)?.name ?? t.owner,
+        question: t.nextAction ? `${t.title}\n${t.nextAction}` : t.title,
+        options: ["Done", "Drop"],
+        freeText: true,
+        priority: "normal",
+        createdAt: t.updatedAt,
+      }));
+      return json([...fromSessions, ...fromAsks, ...fromTasks].sort((a, b) => b.createdAt - a.createdAt));
+    }
+
+    // One answer for any of them, by the id `/needs` gave it — what a notification's button sends.
+    if (path === "/needs/answer" && req.method === "POST") {
+      const { id, text } = await body<{ id: string; text: string }>(req);
+      if (!id || !text?.trim()) return json({ error: "id and text required" }, 400);
+      try {
+        const [kind, ref] = [id.slice(0, id.indexOf(":")), id.slice(id.indexOf(":") + 1)];
+        if (kind === "ask") return json({ answered: true, ask: asks.answer(Number(ref), text) });
+        if (kind === "q") {
+          const s = resolveLive(ref.split(":")[0]!);
+          if (!s?.pending) return json({ answered: false, error: "no question pending" });
+          return json({ answered: s.answer(text) });
+        }
+        if (kind === "task") {
+          const t = tasks.get(Number(ref));
+          if (!t) return json({ error: "no such task" }, 404);
+          const choice = text.trim().toLowerCase();
+          if (choice === "done" || choice === "drop") {
+            const updated = tasks.update(t.id, { status: choice === "done" ? "done" : "dropped" });
+            const note = `[the user marked task #${t.id} "${t.title}" ${choice === "done" ? "done" : "dropped"}]`;
+            if (t.owner === agents.PAI) main.note(note);
+            else agents.noteTo(t.owner, note);
+            return json({ answered: true, task: updated });
+          }
+          const said = `About task #${t.id} "${t.title}": ${text}`;
+          if (t.owner === agents.PAI) main.send(said);
+          else agents.fromUser(t.owner, said);
+          return json({ answered: true });
+        }
+        return json({ error: `unknown need ${id}` }, 400);
+      } catch (err) {
+        return json({ error: (err as Error).message }, 400);
+      }
     }
 
     // What the agents are waiting on the user for, and the answers.

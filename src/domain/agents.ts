@@ -491,7 +491,7 @@ export function flushReports() {
   const batch = forPai;
   forPai = [];
   paiLink.turn(
-      `${batch.join("\n\n")}\n\n[Handle this yourself: the next step to an agent (message_agent), the task list, or closing what is done. Only a choice that is the user's goes to them, as one AskUserQuestion with one-tap options. If nothing is for the user, end with no text.]`,
+      `${batch.join("\n\n")}\n\n[Handle this yourself: the next step to an agent (message_agent), the task list, or closing what is done. Only a choice that is the user's goes to them, as an ask_user (blocking false) with one-tap options; what they must do themselves is a task with status waiting_user. If nothing is for the user, end with no text.]`,
   );
 }
 

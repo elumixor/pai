@@ -28,7 +28,7 @@ export function morning(): string {
   const due = tasks.list().filter((t) => t.due && t.due <= stamp().slice(0, 10));
   const work = overnight();
   return [
-    "[morning brief] Write the user's morning brief as one short message: today's calendar (look it up), what is waiting on them, what the agents did overnight, and the digest folded into a line or two. Skip empty parts. No preamble.",
+    "[morning brief] Write the user's morning brief as one short message: today's calendar (Balance's list_events), what is waiting on them, what the agents did overnight, and the digest folded into a line or two. Skip empty parts. No preamble.",
     `Waiting on the user (${waiting.length}):\n${waiting.map((a) => `- #${a.id} ${agents.breadcrumb(a.agent)}: ${a.question}${old.has(a.id) ? " (open for over a day — repeat it)" : ""}`).join("\n") || "nothing"}`,
     `Due today or overdue:\n${due.map(tasks.line).join("\n") || "nothing"}`,
     `Agents overnight:\n${work.join("\n") || "nothing"}`,
