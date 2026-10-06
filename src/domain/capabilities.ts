@@ -1,5 +1,5 @@
 import { config } from "../core/config.ts";
-import { knownServers, serverStates } from "./context.ts";
+import { knownServers, serverStates } from "./inventory.ts";
 
 /**
  * An agent's tools list names capabilities — `gmail`, `browser`, `calendar` — while a session

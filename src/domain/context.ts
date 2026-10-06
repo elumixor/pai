@@ -1,12 +1,13 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { config } from "../core/config.ts";
 import { allPrompts as externalPrompts } from "../modules/external.ts";
 import { modules } from "../modules/index.ts";
 import { all as allProjects } from "./catalog.ts";
 import type { SessionKind } from "./session.ts";
 import { unavailable, type Unavailable } from "./capabilities.ts";
+import { seen as seenInventories, serverStates, type Inventory } from "./inventory.ts";
 import { moduleHeading, sections } from "./prompts.ts";
 
 /**
@@ -36,19 +37,6 @@ export interface ContextItem {
 
 const readIf = (path: string) => (existsSync(path) ? readFileSync(path, "utf8") : undefined);
 
-/** What Claude Code reported at a session's start: the tools it has, the MCP servers and how they came up. */
-export interface Inventory {
-  readonly tools: readonly string[];
-  readonly mcpServers: readonly { name: string; status: string; tools?: readonly { name: string; description?: string }[] }[];
-  readonly skills: readonly string[];
-  readonly slashCommands: readonly string[];
-  readonly agents: readonly string[];
-  readonly model: string;
-  readonly at: string;
-}
-
-// Kept next to the database, so a daemon that just restarted still knows what its last sessions had.
-const inventoryPath = join(dirname(config.dbPath), "inventory.json");
 /** What Claude Code's own tools do, in a line each; the init names them but says nothing more. */
 const BUILTIN: Record<string, string> = {
   Bash: "Runs a shell command",
@@ -84,40 +72,6 @@ const BUILTIN: Record<string, string> = {
   Workflow: "Runs a multi-agent workflow",
   LSP: "Language server queries",
 };
-
-const inventories: Partial<Record<SessionKind, Inventory>> = (() => {
-  try {
-    return JSON.parse(readFileSync(inventoryPath, "utf8")) as Partial<Record<SessionKind, Inventory>>;
-  } catch {
-    return {};
-  }
-})();
-
-/** The session that just initialised tells what it was given; the newest per kind is what the views show. */
-export function noteInit(kind: SessionKind, inventory: Inventory) {
-  inventories[kind] = inventory;
-  try {
-    mkdirSync(dirname(inventoryPath), { recursive: true });
-    writeFileSync(inventoryPath, JSON.stringify(inventories, null, 2));
-  } catch {
-    // A read-only data directory only costs the memory across restarts.
-  }
-}
-
-/** Every MCP server a session has come up with lately, connectors included: what an agent's tools list picks from. */
-export function knownServers(): string[] {
-  const names = new Set<string>();
-  for (const inv of Object.values(inventories)) for (const s of inv?.mcpServers ?? []) names.add(s.name);
-  return [...names];
-}
-
-/** Every MCP server with how it came up and what it offers; the newest sighting of each one wins. */
-export function serverStates(): { name: string; status: string; tools: readonly string[] }[] {
-  const out = new Map<string, { name: string; status: string; tools: readonly string[] }>();
-  for (const inv of Object.values(inventories))
-    for (const s of inv?.mcpServers ?? []) out.set(s.name, { name: s.name, status: s.status, tools: (s.tools ?? []).map((t) => t.name) });
-  return [...out.values()];
-}
 
 /** `mcp__<server>__<tool>` → server and tool; a built-in has no server. */
 const split = (name: string) => {
@@ -199,6 +153,7 @@ function deadNote(server: string, dead: ReadonlyMap<string, Unavailable>) {
 function liveTools(): ContextItem[] {
   const out: ContextItem[] = [];
   const dead = new Map(unavailable().map((u) => [u.server, u]));
+  const inventories = Object.fromEntries(seenInventories()) as Partial<Record<SessionKind, Inventory>>;
   const kinds = Object.keys(inventories) as SessionKind[];
   const byServer = new Map<string, { tools: Set<string>; kinds: Set<SessionKind> }>();
   for (const kind of kinds)
@@ -267,6 +222,6 @@ export function save(name: string, text: string) {
 }
 
 export function context() {
-  const seen = Object.entries(inventories).map(([kind, inv]) => ({ kind, model: inv.model, at: inv.at, skills: inv.skills, agents: inv.agents }));
+  const seen = seenInventories().map(([kind, inv]) => ({ kind, model: inv.model, at: inv.at, skills: inv.skills, agents: inv.agents }));
   return { surfaces: SURFACES, items: [...instructions(), ...memories(), ...skills(), ...tools()], sessions: seen };
 }

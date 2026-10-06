@@ -10,7 +10,7 @@ import { browserMcp } from "./browser.ts";
 import { instructionsFor } from "./prompts.ts";
 import { gmailModule, gmailTools } from "../modules/gmail.ts";
 import { mcpServers as externalMcpServers } from "../modules/external.ts";
-import { knownServers, noteInit } from "./context.ts";
+import { knownServers, noteInit } from "./inventory.ts";
 import { serverAllowed } from "./capabilities.ts";
 import { describeServers } from "./mcp-describe.ts";
 

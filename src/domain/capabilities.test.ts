@@ -8,7 +8,7 @@ const scratch = mkdtempSync(join(tmpdir(), "pai-caps-"));
 process.env.PAI_DB = join(scratch, "pai.db");
 process.env.PAI_DENY_CONNECTORS = "claude.ai Google Calendar";
 
-const { noteInit } = await import("./context.ts");
+const { noteInit } = await import("./inventory.ts");
 const { narrowed, serverAllowed, unavailable, unresolved } = await import("./capabilities.ts");
 
 const SERVERS = ["pai", "playwright", "gmail", "telegram", "linkedin", "claude.ai Balance", "claude.ai Notion", "claude.ai Google Calendar"];
