@@ -339,7 +339,10 @@ export async function send(label: string, input: Readonly<SendInput>, by?: strin
   const subject = input.subject.trim() || (reply ? (reply.subject.startsWith("Re:") ? reply.subject : `Re: ${reply.subject}`) : "");
   if (!subject) throw new Error("gmail_send needs a subject");
   const raw = Buffer.from(mimeMessage(account.email, { ...input, subject }, reply), "utf8").toString("base64url");
-  const sent = await post<{ id: string; threadId: string }>(label, "/messages/send", { raw, ...(reply ? { threadId: reply.threadId } : {}) });
+  const sent = await post<{ id?: string; threadId?: string }>(label, "/messages/send", { raw, ...(reply ? { threadId: reply.threadId } : {}) });
+  // Gmail answers with the id it filed the message under. A 2xx without one is not a send,
+  // and reporting it as one is how a tool comes to claim something that never happened.
+  if (!sent.id || !sent.threadId) throw new Error(`gmail: ${label} accepted the message but returned no id — it was not sent. Check the Sent folder of ${account.email} before sending again.`);
   const link = `https://mail.google.com/mail/u/${account.email}/#sent/${sent.threadId}`;
   messages.event(by ?? "pai", "sent", `email from ${account.email} to ${input.to}: ${subject}`, { meta: { link } });
   archive("mail", sent.id, `${account.email} → ${input.to} — ${subject}`, input.body);
