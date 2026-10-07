@@ -1,11 +1,20 @@
 // Each test file gets its own process: the daemon reads its configuration once at import,
 // so files that point it at different scratch directories cannot share an interpreter.
 import { Glob } from "bun";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const files = (await Array.fromAsync(new Glob("{src,test}/**/*.test.ts").scan("."))).sort();
+const here = (await Array.fromAsync(new Glob("{src,test}/**/*.test.ts").scan("."))).sort();
+// The modules are part of this pai (`pai.config.ts`), so their suites run with it — a module
+// is where the tools that act in the world live, and an untested one is where a send that
+// never happened gets reported as a send. `followSymlinks`: a module being worked on is a
+// link to its own checkout.
+const inModules = (existsSync("modules") ? await Array.fromAsync(new Glob("*/**/*.test.ts").scan({ cwd: "modules", followSymlinks: true, onlyFiles: true })) : [])
+  .filter((f) => !f.includes("node_modules/"))
+  .map((f) => join("modules", f))
+  .sort();
+const files = [...here, ...inModules];
 if (files.length === 0) throw new Error("no test files found");
 
 // Anything that reaches the database or the settings file gets a scratch copy, so a suite
