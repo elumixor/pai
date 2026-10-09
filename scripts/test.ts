@@ -1,7 +1,7 @@
 // Each test file gets its own process: the daemon reads its configuration once at import,
 // so files that point it at different scratch directories cannot share an interpreter.
 import { Glob } from "bun";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,10 +10,18 @@ const here = (await Array.fromAsync(new Glob("{src,test}/**/*.test.ts").scan("."
 // is where the tools that act in the world live, and an untested one is where a send that
 // never happened gets reported as a send. `followSymlinks`: a module being worked on is a
 // link to its own checkout.
-const inModules = (existsSync("modules") ? await Array.fromAsync(new Glob("*/**/*.test.ts").scan({ cwd: "modules", followSymlinks: true, onlyFiles: true })) : [])
-  .filter((f) => !f.includes("node_modules/"))
-  .map((f) => join("modules", f))
-  .sort();
+// A glob that follows the links would walk every module's node_modules; this walk skips them.
+function walk(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+    const path = join(dir, entry.name);
+    if (entry.isFile() ? entry.name.endsWith(".test.ts") : false) out.push(path);
+    else if (entry.isDirectory() || (entry.isSymbolicLink() && statSync(path).isDirectory())) out.push(...walk(path));
+  }
+  return out;
+}
+const inModules = (existsSync("modules") ? walk("modules") : []).sort();
 const files = [...here, ...inModules];
 if (files.length === 0) throw new Error("no test files found");
 
