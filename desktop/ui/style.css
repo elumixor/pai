@@ -639,7 +639,7 @@ button.status-row:hover { background: var(--panel-2); }
 .card-body { display: none; font-size: 12px; margin-top: 4px; }
 .row.card.open .card-line { display: none; }
 .row.card.open .card-body { display: block; }
-.row.question { width: 100%; padding: 8px 11px; border: 1px solid color-mix(in srgb, var(--busy) 55%, transparent); background: color-mix(in srgb, var(--busy) 12%, var(--panel)); }
+.row.question { width: 100%; padding: 8px 11px; border: 1px solid color-mix(in srgb, var(--busy) 70%, transparent); background: color-mix(in srgb, var(--busy) 18%, var(--panel)); }
 .row.question.open { animation: ask-pulse 1.6s ease-in-out 3; }
 @keyframes ask-pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--busy) 30%, transparent); } }
 .row.question.answered { border-color: var(--line); background: var(--panel); opacity: 0.8; }
