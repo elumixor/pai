@@ -83,7 +83,8 @@ export function markdown(source: string): DocumentFragment {
 
 const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*|_[^_]+_)|(\[[^\]]+\]\([^)]+\))|(https?:\/\/[^\s<>)]+)/g;
 
-function inline(text: string): (Node | string)[] {
+/** One line of markdown, inline marks only: for a summary line, a card head, a tooltip. */
+export function inline(text: string): (Node | string)[] {
   const parts: (Node | string)[] = [];
   let last = 0;
   for (const match of text.matchAll(INLINE)) {

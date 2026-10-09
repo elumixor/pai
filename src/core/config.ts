@@ -76,6 +76,8 @@ export const config = {
 
   /** Project-scoped Hetzner Cloud API token, read-only use: pricing the host actually costs. */
   hcloudToken: env.HCLOUD_TOKEN ?? "",
+  /** Vercel AI Gateway, for the small jobs around the sessions: the gist of a long message. */
+  aiGatewayKey: env.AI_GATEWAY_API_KEY ?? "",
 
   /**
    * The box, as `user@host`, for `pai ssh` and `pai claude` from a laptop. Defaults to the

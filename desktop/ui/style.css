@@ -811,8 +811,8 @@ body.in-home .badge { border-color: transparent; background: color-mix(in srgb, 
 body.in-home .badge.ask { background: var(--busy); color: var(--accent-ink); }
 /* the chat */
 body.in-home .home-centre { align-items: stretch; }
-body.in-home .chat { max-width: 860px; width: 100%; margin: 0 auto; }
-body.in-home .home-centre > .panel-head { max-width: 860px; width: 100%; margin: 0 auto; }
+body.in-home .chat { max-width: 760px; width: 100%; margin: 0 auto; }
+body.in-home .home-centre > .panel-head { max-width: 760px; width: 100%; margin: 0 auto; }
 body.in-home .chat-log { background: transparent; padding: 4px 6px 16px; gap: 8px; }
 body.in-home .row { font-size: 14px; line-height: 1.55; border-radius: 14px; }
 body.in-home .row.reply { background: var(--surface); border: 0; padding: 11px 15px; max-width: 86%; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
@@ -852,7 +852,7 @@ body.in-home .tag.status-idle { background: color-mix(in srgb, var(--idle) 30%, 
 body.in-home .tag.status-waiting { background: color-mix(in srgb, var(--accent) 30%, transparent); color: var(--text); }
 body.in-home .tag.fine { background: color-mix(in srgb, var(--warn) 28%, transparent); color: var(--text); }
 body.in-home .tag.due, body.in-home .tag.prio-urgent { background: color-mix(in srgb, var(--hot) 25%, transparent); color: var(--text); }
-body.in-home .agent-brief { border-bottom: 0; padding: 0 10px 10px; font-size: 13px; max-width: 860px; width: 100%; margin: 0 auto; }
+body.in-home .agent-brief { border-bottom: 0; padding: 0 10px 10px; font-size: 13px; max-width: 760px; width: 100%; margin: 0 auto; }
 body.in-home .chip { border-radius: 999px; border-color: transparent; background: var(--surface); padding: 4px 11px; font-size: 12px; color: var(--text); }
 /* the right column */
 body.in-home .home-status { padding: 10px 6px 220px; gap: 18px; }
@@ -908,3 +908,40 @@ body.in-home .tooltip .dim { color: color-mix(in srgb, var(--canvas) 65%, transp
 .logo-dot { position: relative; display: inline-flex; flex: 0 0 auto; margin: 2px 0 0 -4px; }
 .logo-dot .dot { position: absolute; right: -2px; bottom: -2px; box-shadow: 0 0 0 2px var(--canvas); }
 body.in-home .agent-row.rich .logo-dot { margin-top: 3px; }
+
+/* pills: a tool call, an event, a delegation, a report — one line each, the rest on hover or click */
+.row.pill { display: flex; flex-direction: column; align-items: flex-start; width: auto; max-width: 100%; padding: 0; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; }
+.pill-line { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 3px 10px 3px 8px; border-radius: 999px; font-size: 12.5px; color: var(--dim); min-width: 0; }
+.pill-line .pill-text { max-width: 56ch; color: var(--text); }
+.pill-line b { color: var(--text); font-weight: 600; white-space: nowrap; }
+.pill-line .sep { color: var(--line-2); }
+.pill-line .arrow { font-weight: 700; color: var(--text); }
+.row.pill:hover .pill-line { background: color-mix(in srgb, var(--surface) 80%, transparent); }
+.row.pill.open .pill-line .pill-text { max-width: none; white-space: normal; }
+.row.pill .card-body, .row.pill .event-body { display: none; padding: 6px 12px 8px 26px; font-size: 13px; }
+.row.pill.open .card-body, .row.pill.open .event-body { display: block; }
+.row.pill.event .pill-line > .icon { color: var(--warn); }
+.row.pill.tint-hot .pill-line > .icon, .row.pill.tint-hot .pill-text { color: var(--hot); }
+.row.card.pill .arrow { width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; background: var(--surface-2); }
+.row.card.pill.tint-accent .arrow { background: var(--accent); color: var(--accent-ink); }
+.row.card.pill.tint-ok .arrow { background: var(--idle); color: var(--accent-ink); }
+.row.card.pill.tint-warn .arrow { background: var(--warn); color: var(--accent-ink); }
+body.in-home .row.card, body.in-home .row.event { background: none; box-shadow: none; padding: 0; border-radius: 999px; }
+body.in-home .row.card:hover { box-shadow: none; }
+body.in-home .row.pill .card-body { background: var(--surface); border-radius: 12px; margin: 4px 0 2px 8px; padding: 10px 14px; }
+/* replies fold to their gist */
+.row.reply .gist { display: none; }
+.row.reply.folded .gist { display: block; }
+.row.reply.folded .bubble:not(.gist) { display: none; }
+body.in-home .row.reply.folded .bubble { -webkit-line-clamp: unset; }
+/* the agents tree */
+.agent-icon { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 7px; background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--dim); flex: 0 0 auto; margin-top: 1px; }
+.agent-icon .logo { border-radius: 26%; }
+.agent-row.on .agent-icon { color: var(--text); }
+body.in-home .agent-row.rich { padding-left: calc(10px + var(--depth, 0) * 18px); position: relative; }
+body.in-home .agent-row.rich:not(.depth-0)::before { content: ""; position: absolute; left: calc(10px + (var(--depth, 0) - 1) * 18px + 10px); top: -6px; bottom: 50%; width: 12px; border-left: 1.5px solid color-mix(in srgb, var(--text) 14%, transparent); border-bottom: 1.5px solid color-mix(in srgb, var(--text) 14%, transparent); border-bottom-left-radius: 8px; }
+.spinner { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--text) 20%, transparent); border-top-color: var(--text); animation: spin 0.9s linear infinite; flex: 0 0 auto; }
+.attention { display: inline-flex; color: var(--busy); animation: blink 1.2s ease-in-out infinite; }
+@keyframes blink { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .spinner, .attention, .dot { animation: none; } }
+.agent-doing .md-inline { font-size: 10.5px; padding: 0 3px; }

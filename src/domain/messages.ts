@@ -139,6 +139,17 @@ export function list(opts: ListOptions = {}): Message[] {
   return opts.after ? rows : rows.reverse();
 }
 
+/** Adds to a message's metadata (a summary written later, say) and tells the bus the row changed. */
+export function patchMeta(id: number, patch: MessageMeta): Message | undefined {
+  const m = get(id);
+  if (!m) return undefined;
+  const meta = { ...m.meta, ...patch };
+  db.prepare("UPDATE messages SET meta = ? WHERE id = ?").run(JSON.stringify(meta), id);
+  const updated = { ...m, meta };
+  bus.emitEvent("message.updated", updated as unknown as Record<string, unknown>);
+  return updated;
+}
+
 export function get(id: number): Message | undefined {
   const row = db.query("SELECT * FROM messages WHERE id = ?").get(id) as Record<string, any> | undefined;
   return row ? toMessage(row) : undefined;

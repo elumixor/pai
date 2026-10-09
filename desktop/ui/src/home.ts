@@ -6,8 +6,8 @@ import { board, type Board } from "./board.ts";
 import { chat, type Chat, type RevealTarget } from "./chat.ts";
 import { ago, clear, el, modelName } from "./dom.ts";
 import { icon, logo } from "./icons.ts";
-import { kindIcon } from "./kinds.ts";
-import { markdown } from "./markdown.ts";
+import { agentIcon, kindIcon } from "./kinds.ts";
+import { inline, markdown } from "./markdown.ts";
 import { linkTo, navigate } from "./router.ts";
 import { usageStats } from "./rings.ts";
 import type { Agent, AgentStatus, Automation, LogMessage, ModuleInfo, Need, TaskItem } from "./types.ts";
@@ -58,7 +58,7 @@ export function home(root: HTMLElement) {
   clear(root, el("div.home-columns", {}, agentsPane, centrePane, el("aside.home-right", {}, statusPane)), pendingPane);
 
   const bySlug = (slug: string) => agents.find((a) => a.slug === slug);
-  const nameOf = (slug: string) => (slug === "user" ? "you" : (bySlug(slug)?.name ?? slug));
+  const nameOf = (slug: string) => (slug === "user" ? "you" : slug === PAI ? "Orchestrator" : (bySlug(slug)?.name ?? slug));
 
   const ctx = {
     agents: () => agents,
@@ -117,20 +117,28 @@ export function home(root: HTMLElement) {
       const open = tasks.filter((t) => t.owner === agent.slug).length;
       const waiting = needs.filter((n) => n.agent === agent.slug || (agent.slug === PAI && n.agent === null)).length;
       const on = agent.slug === selectedSlug() && centre.kind !== "board";
+      const attention = waiting > 0 || agent.status === "waiting";
       return el(
         "button.agent-row.rich",
         {
-          class: `agent-row rich${on ? " on" : ""}${agent.status === "closed" ? " closed" : ""}`,
-          style: `padding-left: ${10 + depth * 14}px`,
-          title: [`${agent.name} · ${agent.kind}`, status.label + (agent.queued ? ` · ${agent.queued} queued` : ""), agent.model ? modelName(agent.model) : ""].filter(Boolean).join("\n"),
+          class: `agent-row rich depth-${Math.min(depth, 3)}${on ? " on" : ""}${agent.status === "closed" ? " closed" : ""}`,
+          style: `--depth: ${depth}`,
+          title: [`${nameOf(agent.slug)} · ${agent.kind}`, status.label + (agent.queued ? ` · ${agent.queued} queued` : ""), agent.model ? modelName(agent.model) : ""].filter(Boolean).join("\n"),
           onclick: () => (agent.slug === PAI ? navigate("home") : ctx.openAgent(agent.slug)),
         },
-        agent.slug === PAI ? el("span.logo-dot", {}, logo(16), el("span", { class: `dot ${status.dot}` })) : el("span", { class: `dot ${status.dot}` }),
+        el("span.agent-icon", {}, agent.slug === PAI ? logo(18) : agentIcon(agent, 14)),
         el(
           "span.agent-text",
           {},
-          el("span.agent-name", {}, el("span.label", {}, agent.name), waiting ? el("span.badge.ask", { title: `${waiting} waiting on you` }, String(waiting)) : undefined, open ? el("span.badge", { title: `${open} open task${open === 1 ? "" : "s"}` }, String(open)) : undefined),
-          el("span.dim.ellipsis.agent-doing", {}, doing(agent) || status.label),
+          el(
+            "span.agent-name",
+            {},
+            el("span.label", {}, nameOf(agent.slug)),
+            agent.status === "working" ? el("span.spinner", { title: "working now" }) : undefined,
+            attention ? el("span.attention", { title: waiting ? `${waiting} waiting on you` : "waiting on you" }, icon("hand", 12)) : undefined,
+            open ? el("span.badge", { title: `${open} open task${open === 1 ? "" : "s"}` }, String(open)) : undefined,
+          ),
+          el("span.dim.ellipsis.agent-doing", {}, ...inline(doing(agent) || status.label)),
         ),
       );
     });
@@ -142,6 +150,7 @@ export function home(root: HTMLElement) {
         icon("users", 13),
         el("h2", {}, "Agents"),
         el("span.grow"),
+        linkTo("context", el("a.iconbtn.slim", { title: "skills, tools, connectors, instructions" }, icon("book", 12)) as HTMLAnchorElement),
         linkTo("board", el("a.iconbtn.slim", { title: "the board", class: `iconbtn slim${centre.kind === "board" ? " on" : ""}` }, icon("board", 12)) as HTMLAnchorElement),
         el("button.iconbtn.slim", { title: "show closed agents", class: `iconbtn slim${showClosed ? " on" : ""}`, onclick: () => ((showClosed = !showClosed), drawAgents()) }, icon("power", 12)),
       ),
@@ -168,7 +177,7 @@ export function home(root: HTMLElement) {
     mainChat ??= chat({ agent: PAI, parent: "user", live: liveSession, send: (text) => sendPai(text), placeholder: "Message pai…" }, ctx);
     clear(
       centrePane,
-      el("header.panel-head", {}, logo(18), el("h2", {}, "pai"), el("span.dim", {}, "the main chat"), el("span.grow"), mainChat.toolsToggle),
+      el("header.panel-head", {}, logo(18), el("h2", {}, "Orchestrator"), el("span.dim", {}, "pai's one chat"), el("span.grow"), mainChat.toolsToggle),
       mainChat.node,
     );
     mainChat.focus();

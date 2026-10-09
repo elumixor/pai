@@ -219,6 +219,8 @@ export interface LogMessage {
     /** On pai's own replies: `user`, `system` or `silent` — what the turn answered. */
     readonly origin?: string;
     readonly freeText?: boolean;
+    /** A one-line gist of a long message, written by the daemon's summariser. */
+    readonly tldr?: string;
   };
   readonly createdAt: number;
 }

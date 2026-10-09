@@ -24,6 +24,7 @@ import * as agents from "../domain/agents.ts";
 import * as asks from "../domain/asks.ts";
 import * as main from "../domain/main.ts";
 import * as messages from "../domain/messages.ts";
+import * as summaries from "../domain/summaries.ts";
 import * as recall from "../domain/recall.ts";
 import * as requests from "../domain/requests.ts";
 import * as tasks from "../domain/tasks.ts";
@@ -375,6 +376,10 @@ export async function handle(req: Request): Promise<Response> {
       }
       return json({ ...a, breadcrumb: agents.breadcrumb(slug), children: agents.list({ parent: slug }), tasks: tasks.list({ owner: slug }) });
     }
+
+    // The gist of one message, written on first request and kept.
+    const tldrPath = /^\/messages\/(\d+)\/tldr$/.exec(path);
+    if (tldrPath?.[1]) return json({ tldr: (await summaries.tldr(Number(tldrPath[1]))) ?? null, enabled: summaries.enabled() });
 
     // The message log: one agent's chat (`agent`), paged back with `before`, caught up with `after`.
     if (path === "/messages") {

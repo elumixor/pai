@@ -1,9 +1,9 @@
-import { answerAsk, answerQuestion, asks as listAsks, follow, messages as listMessages, needs as listNeeds, transcript, type Transcript, type TranscriptTool } from "./api.ts";
+import { answerAsk, answerQuestion, asks as listAsks, follow, messages as listMessages, messageTldr, needs as listNeeds, transcript, type Transcript, type TranscriptTool } from "./api.ts";
 import { compose, type Compose } from "./compose.ts";
 import { ago, clear, el } from "./dom.ts";
 import { icon } from "./icons.ts";
 import { kindIcon, kindTint } from "./kinds.ts";
-import { markdown } from "./markdown.ts";
+import { inline, markdown } from "./markdown.ts";
 import { resultLine, toolLine } from "./thread.ts";
 import type { Agent, AgentStatus, LogMessage, Need, Question } from "./types.ts";
 
@@ -103,6 +103,8 @@ const dayLabel = (at: number) => {
   return day.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", ...(day.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}) });
 };
 const firstLine = (text: string) => text.replace(/^\[[^\]]+\]\s*/, "").split("\n").find((l) => l.trim()) ?? "";
+/** The gist of a long reply: the server's summary, else its first paragraph. */
+const summaryOf = (m: LogMessage) => (m.meta.tldr as string | undefined) ?? m.body.replace(/^\[[^\]]+\]\s*/, "").split(/\n\s*\n/).find((p) => p.trim()) ?? m.body;
 const duration = (ms: number) => (ms < 60_000 ? `${Math.max(1, Math.round(ms / 1000))}s` : `${Math.round(ms / 60_000)} min`);
 const time = (at: number) => el("time", { title: new Date(at).toLocaleString() }, ago(at));
 
@@ -120,11 +122,13 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   const openAsks = new Set<number>();
   const answersByAsk = new Map<number, string>();
   let toolsOpen = localStorage.getItem(TOOLS_OPEN_KEY) === "open";
+  /** Messages whose gist was asked of the daemon once already. */
+  const askedTldr = new Set<number>();
   /** What the compose box answers instead of sending a message, while a question is pinned to it. */
   let pinnedAnswer: ((text: string) => Promise<void>) | undefined;
 
   const bySlug = (slug: string) => ctx.agents().find((a) => a.slug === slug);
-  const nameOf = (party: string) => (party === "user" ? "you" : (bySlug(party)?.name ?? party.replace(/^(watcher|routine):/, "")));
+  const nameOf = (party: string) => (party === "user" ? "you" : party === PAI ? "Orchestrator" : (bySlug(party)?.name ?? party.replace(/^(watcher|routine):/, "")));
   const mine = (m: LogMessage) => m.from === options.parent || (options.parent !== "user" && m.from === "user");
 
   // ---- the box ---------------------------------------------------------------------------
@@ -176,9 +180,21 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     const body = el("div.bubble", {}, markdown(m.body));
     const long = m.body.split("\n").length > FOLD_LINES || m.body.length > 700;
     const folded = long && !latest;
-    const row = el("div.row.reply", { class: `row reply${folded ? " folded" : ""}`, "data-message": m.id }, body);
+    // Folded: the gist — the server's tl;dr when it has one, else the first paragraph while one is written.
+    const gist = long ? el("div.bubble.gist", {}, markdown(summaryOf(m))) : undefined;
+    if (gist && folded && !m.meta.tldr && !askedTldr.has(m.id)) {
+      askedTldr.add(m.id);
+      void messageTldr(m.id)
+        .then((r) => {
+          if (!r.tldr) return;
+          (m.meta as { tldr?: string }).tldr = r.tldr;
+          if (gist.isConnected) gist.replaceChildren(markdown(r.tldr));
+        })
+        .catch(() => undefined);
+    }
+    const row = el("div.row.reply", { class: `row reply${folded ? " folded" : ""}`, "data-message": m.id }, gist, body);
     if (long) {
-      const toggle = el("button.more", { onclick: () => (row.classList.toggle("folded"), (toggle.textContent = row.classList.contains("folded") ? "more" : "less")) }, folded ? "more" : "less");
+      const toggle = el("button.more", { onclick: () => (row.classList.toggle("folded"), (toggle.textContent = row.classList.contains("folded") ? "details" : "less")) }, folded ? "details" : "less");
       row.append(el("div.row-foot", {}, toggle, el("span.grow"), m.meta.origin && m.meta.origin !== "user" ? el("span.dim", { title: "answered a system turn, not you" }, m.meta.origin) : undefined, time(m.createdAt)));
     } else row.append(el("div.row-foot", {}, m.meta.origin && m.meta.origin !== "user" ? el("span.dim", { title: "answered a system turn, not you" }, m.meta.origin) : undefined, el("span.grow"), time(m.createdAt)));
     return row;
@@ -189,13 +205,17 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     return el("div.row.mine", { "data-message": m.id }, el("div.bubble", {}, markdown(m.body)), el("div.row-foot", {}, from ? el("span.dim", {}, from) : undefined, el("span.grow"), time(m.createdAt)));
   }
 
+  /** What the agent is at, beside its name: a spinner while it works, a hand while it waits on the user, nothing otherwise. */
   const statusDot = (slug: string) => {
     const status: AgentStatus | "unknown" = bySlug(slug)?.status ?? "unknown";
-    const dot = { working: "busy", waiting: "waiting", queued: "queued", idle: "idle", closed: "dead", unknown: "" }[status];
-    return el("span", { class: `dot ${dot}`, "data-agent": slug, title: status });
+    const node = el("span.live", { "data-agent": slug });
+    if (status === "working") node.append(el("span.spinner", { title: "working now" }));
+    else if (status === "waiting") node.append(el("span.attention", { title: "waiting on you" }, icon("hand", 11)));
+    else node.hidden = true;
+    return node;
   };
 
-  /** `→ pai called Screener: look at these three` — a card for work handed down or reported back. */
+  /** `← pai dev reported · Released as v0.6.16` — one line for work handed down or reported back; the body on hover, the thread on click. */
   function card(m: LogMessage) {
     const down = m.kind === "delegate" || m.kind === "request";
     const agent = m.kind === "delegate" ? m.to : m.kind === "report" ? m.from : down ? m.from : m.to;
@@ -203,16 +223,15 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     const target = m.to !== options.agent && m.to !== options.parent && m.to !== "user" ? nameOf(m.to) : "";
     const openable = Boolean(bySlug(agent)) && agent !== options.agent;
     const row = el(
-      "button.row.card",
+      "button.row.card.pill",
       {
-        class: `row card ${m.kind} tint-${kindTint(m.kind)}${mine(m) ? " mine" : ""}`,
+        class: `row card pill ${m.kind} tint-${kindTint(m.kind)}${mine(m) ? " mine" : ""}`,
         "data-message": m.id,
         "data-task": m.taskId ?? "",
-        title: openable ? `open ${nameOf(agent)}` : m.body,
+        title: `${m.body.slice(0, 600)}${m.body.length > 600 ? "…" : ""}\n${new Date(m.createdAt).toLocaleString()}${openable ? ` · click opens ${nameOf(agent)}` : ""}`,
         onclick: () => (openable ? ctx.openAgent(agent, m.id) : row.classList.toggle("open")),
       },
-      el("span.card-head", {}, el("span.arrow", {}, down ? "→" : "←"), statusDot(agent), el("b", {}, nameOf(m.from)), el("span.dim", {}, verb), target ? el("b", {}, target) : undefined, m.taskId ? el("span.tag", {}, `#${m.taskId}`) : undefined, el("span.grow"), time(m.createdAt)),
-      el("span.card-line.ellipsis", {}, firstLine(m.body)),
+      el("span.pill-line", {}, el("span.arrow", {}, down ? "→" : "←"), statusDot(agent), el("b", {}, nameOf(m.from)), el("span.dim", {}, verb), target ? el("b", {}, target) : undefined, el("span.sep", {}, "·"), el("span.ellipsis.pill-text", {}, ...inline(firstLine(m.body))), m.taskId ? el("span.tag", {}, `#${m.taskId}`) : undefined),
       el("div.card-body", {}, markdown(m.body)),
     );
     return row;
@@ -267,14 +286,20 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     for (const item of items) if (item.kind === "message" && item.m.kind === "ask" && item.m.meta.askId === askId) redraw(item);
   }
 
-  /** `⚡ mail arrived: …` — one line, the body as markdown when clicked. */
+  /** `✉ Google — You shared some data` — one line, truncated; the body as markdown when clicked, the time and the link on hover. */
   function eventRow(m: LogMessage) {
     const name = m.meta.event ?? "event";
     const row = el(
-      "button.row.event",
-      { class: `row event tint-${name === "error" ? "hot" : "muted"}`, "data-message": m.id, "data-task": m.taskId ?? "", onclick: () => row.classList.toggle("open") },
-      el("span.event-line", {}, kindIcon(name, 11), el("span.ellipsis", {}, firstLine(m.body)), m.meta.link ? el("a", { href: m.meta.link, target: "_blank", rel: "noreferrer", title: m.meta.link, onclick: (e: Event) => e.stopPropagation() }, icon("external", 10)) : undefined, time(m.createdAt)),
-      el("div.event-body", {}, markdown(m.body)),
+      "button.row.event.pill",
+      {
+        class: `row event pill tint-${name === "error" ? "hot" : "muted"}`,
+        "data-message": m.id,
+        "data-task": m.taskId ?? "",
+        title: `${firstLine(m.body)}\n${new Date(m.createdAt).toLocaleString()}${m.meta.link ? `\n${m.meta.link}` : ""}`,
+        onclick: () => row.classList.toggle("open"),
+      },
+      el("span.pill-line", {}, kindIcon(name, 11), el("span.ellipsis.pill-text", {}, ...inline(firstLine(m.body)))),
+      el("div.event-body", {}, markdown(m.body), m.meta.link ? el("a", { href: m.meta.link, target: "_blank", rel: "noreferrer" }, icon("external", 11), " open") : undefined),
     );
     return row;
   }
@@ -633,11 +658,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   }
 
   function refreshAgents() {
-    for (const dot of log.querySelectorAll<HTMLElement>(".dot[data-agent]")) {
-      const status = bySlug(dot.dataset.agent ?? "")?.status ?? "unknown";
-      dot.className = `dot ${{ working: "busy", waiting: "waiting", queued: "queued", idle: "idle", closed: "dead", unknown: "" }[status]}`;
-      dot.title = status;
-    }
+    for (const live of log.querySelectorAll<HTMLElement>(".live[data-agent]")) live.replaceWith(statusDot(live.dataset.agent ?? ""));
   }
 
   const toolsToggle = el(
