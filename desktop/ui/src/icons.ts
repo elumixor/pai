@@ -73,3 +73,14 @@ export function icon(name: IconName, size = 16) {
   svg.innerHTML = paths[name];
   return svg;
 }
+
+/** pai's own mark: the icon Paigram ships with, rendered from the same `Telegram.icon` (`desktop/ui/pai-icon.png`). */
+export function logo(size = 20) {
+  const img = document.createElement("img");
+  img.src = "./pai-icon.png";
+  img.alt = "pai";
+  img.width = size;
+  img.height = size;
+  img.className = "logo";
+  return img;
+}

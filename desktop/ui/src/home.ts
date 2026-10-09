@@ -5,7 +5,7 @@ import {
 import { board, type Board } from "./board.ts";
 import { chat, type Chat, type RevealTarget } from "./chat.ts";
 import { ago, clear, el, modelName } from "./dom.ts";
-import { icon } from "./icons.ts";
+import { icon, logo } from "./icons.ts";
 import { kindIcon } from "./kinds.ts";
 import { markdown } from "./markdown.ts";
 import { linkTo, navigate } from "./router.ts";
@@ -125,7 +125,7 @@ export function home(root: HTMLElement) {
           title: [`${agent.name} · ${agent.kind}`, status.label + (agent.queued ? ` · ${agent.queued} queued` : ""), agent.model ? modelName(agent.model) : ""].filter(Boolean).join("\n"),
           onclick: () => (agent.slug === PAI ? navigate("home") : ctx.openAgent(agent.slug)),
         },
-        el("span", { class: `dot ${status.dot}` }),
+        agent.slug === PAI ? el("span.logo-dot", {}, logo(16), el("span", { class: `dot ${status.dot}` })) : el("span", { class: `dot ${status.dot}` }),
         el(
           "span.agent-text",
           {},
@@ -168,7 +168,7 @@ export function home(root: HTMLElement) {
     mainChat ??= chat({ agent: PAI, parent: "user", live: liveSession, send: (text) => sendPai(text), placeholder: "Message pai…" }, ctx);
     clear(
       centrePane,
-      el("header.panel-head", {}, icon("bot", 13), el("h2", {}, "pai"), el("span.dim", {}, "the main chat"), el("span.grow"), mainChat.toolsToggle),
+      el("header.panel-head", {}, logo(18), el("h2", {}, "pai"), el("span.dim", {}, "the main chat"), el("span.grow"), mainChat.toolsToggle),
       mainChat.node,
     );
     mainChat.focus();

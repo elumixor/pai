@@ -1,6 +1,6 @@
 import { baseUrl, modules as listModules, status, usage } from "./api.ts";
 import { clear, el } from "./dom.ts";
-import { icon, type IconName } from "./icons.ts";
+import { icon, logo, type IconName } from "./icons.ts";
 import { usageStats } from "./rings.ts";
 import { current, linkTo, navigate, onRoute, type RouteName } from "./router.ts";
 import type { ModuleInfo } from "./types.ts";
@@ -34,7 +34,7 @@ export function topNav(root: HTMLElement) {
   const bellButton = el("button.nav-round", { title: "what waits on you", onclick: () => window.dispatchEvent(new Event("pai:pile")) }, icon("bell", 15), bell);
   clear(
     root,
-    linkTo("home", el("a.nav-brand", {}, icon("bot", 18), el("span", {}, "pai")) as HTMLAnchorElement),
+    linkTo("home", el("a.nav-brand", {}, logo(26), el("span", {}, "pai")) as HTMLAnchorElement),
     tabs,
     el("div.nav-right", {}, rings, bellButton, el("button.nav-round", { title: "settings", onclick: () => navigate("settings") }, icon("settings", 15))),
     menu,

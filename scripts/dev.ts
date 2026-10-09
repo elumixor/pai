@@ -46,7 +46,7 @@ async function configured() {
 
 await buildUi();
 
-for (const target of ["src", "index.html", "style.css"]) {
+for (const target of ["src", "index.html", "style.css", "pai-icon.png"]) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   watch(join(ui, target), { recursive: true }, () => {
     clearTimeout(timer);

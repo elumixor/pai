@@ -29,6 +29,7 @@ export async function buildUi() {
   }
   await cp(join(ui, "index.html"), join(dist, "index.html"));
   await cp(join(ui, "style.css"), join(dist, "style.css"));
+  await cp(join(ui, "pai-icon.png"), join(dist, "pai-icon.png"));
   await cp(join(config.repo, "node_modules", "@xterm", "xterm", "css", "xterm.css"), join(dist, "xterm.css"));
 }
 
