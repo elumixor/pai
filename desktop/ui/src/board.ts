@@ -157,7 +157,7 @@ export function board(initial: string | undefined, ctx: BoardContext): Board {
       el(
         "div.task-sub",
         {},
-        t.owner !== selected || includeChildren ? (t.owner === selected ? undefined : el("span.owner", {}, nameOf(t.owner))) : undefined,
+        t.owner === selected ? undefined : el("span.owner", {}, nameOf(t.owner)),
         t.due ? el("span.tag", { class: `tag${t.due <= today() && isOpen(t) ? " due" : ""}`, title: "due" }, t.due) : undefined,
         t.status !== defaultStatus ? el("span.tag.fine", {}, STATUS_LABEL[t.status]) : undefined,
         children.length

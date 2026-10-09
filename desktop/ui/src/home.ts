@@ -42,6 +42,7 @@ export function home(root: HTMLElement) {
   let agentChat: { slug: string; chat: Chat } | undefined;
   let theBoard: Board | undefined;
   let showClosed = false;
+  let loaded = false;
 
   const agentsPane = el("aside.home-agents");
   const centrePane = el("section.home-centre");
@@ -56,8 +57,13 @@ export function home(root: HTMLElement) {
     agents: () => agents,
     openAgent: (slug: string, at?: number) => {
       if (slug === PAI) return void navigate("home");
-      navigate({ name: "agents", param: slug });
       if (at !== undefined) pendingReveal = { messageId: at };
+      navigate({ name: "agents", param: slug });
+      if (pendingReveal && agentChat?.slug === slug) {
+        const target = pendingReveal;
+        pendingReveal = undefined;
+        agentChat.chat.reveal(target);
+      }
     },
     openBoard: (slug: string) => navigate(slug === PAI ? "board" : { name: "board", param: slug }),
   };
@@ -410,11 +416,14 @@ export function home(root: HTMLElement) {
   const usageTimer = setInterval(() => void drawUsage(), 60_000);
   window.addEventListener("pai:prefs", () => void drawUsage());
 
-  void load().then(() => show(centre));
+  void load().then(() => {
+    loaded = true;
+    show(centre);
+  });
 
   return {
     show(next: Centre) {
-      if (!agents.length) {
+      if (!loaded) {
         centre = next;
         return;
       }

@@ -5,7 +5,7 @@ import { icon } from "./icons.ts";
 import { kindIcon, kindTint } from "./kinds.ts";
 import { markdown } from "./markdown.ts";
 import { resultLine, toolLine } from "./thread.ts";
-import type { Agent, AgentStatus, LogMessage, Question } from "./types.ts";
+import type { Agent, AgentStatus, LogMessage, Need, Question } from "./types.ts";
 
 /**
  * A conversation read from the message log: what the user said, what pai (or an agent) said
@@ -114,6 +114,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   let loading = true;
   let liveSession: string | undefined;
   let liveText: HTMLElement | undefined;
+  let liveRaw = "";
   let liveGroup: ToolGroup | undefined;
   const liveTools = new Map<string, HTMLElement>();
   const openAsks = new Set<number>();
@@ -423,6 +424,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     if (m.kind === "chat" && !mine(m) && liveText) {
       liveText.remove();
       liveText = undefined;
+      liveRaw = "";
     }
     place({ kind: "message", key: `m${m.id}`, at: m.createdAt, m, node: undefined as unknown as HTMLElement });
   }
@@ -469,20 +471,24 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     more = page.length >= PAGE;
     liveSession = await options.live?.();
     if (liveSession) await loadTools(liveSession);
-    // Questions a session is waiting on right now, asked before this page opened: the live one's, and for pai
-    // those of its earlier sessions too (a rotation does not answer them).
-    if (options.live) {
-      const pending = needs.filter((n) => n.kind === "question" && n.session && (n.session === liveSession || n.agent === null));
-      const bySession = new Map<string, typeof pending>();
-      for (const n of pending) bySession.set(n.session!, [...(bySession.get(n.session!) ?? []), n]);
-      for (const [session, list] of bySession) {
-        const id = list[0]!.id.split(":")[2] ?? "";
-        items.push({ kind: "question", key: `q${id}`, at: list[0]!.createdAt, session, id, questions: list.map((n) => ({ header: "", question: n.question, options: n.options.map((label) => ({ label, description: "" })), multiSelect: false })), answers: [], node: undefined as unknown as HTMLElement });
-      }
-    }
+    items.push(...addQuestions(needs));
     loading = false;
     drawAll();
     scroll();
+  }
+
+  /** Questions a session is waiting on, not yet in the chat: the live one's, and for pai those of its earlier sessions too (a rotation does not answer them); an agent's own. */
+  function addQuestions(needs: readonly Need[]) {
+    const ours = needs.filter((n) => n.kind === "question" && n.session && (n.session === liveSession || (options.agent === PAI ? n.agent === null : n.agent === options.agent)));
+    const bySession = new Map<string, Need[]>();
+    for (const n of ours) bySession.set(n.session!, [...(bySession.get(n.session!) ?? []), n]);
+    const added: LiveQuestion[] = [];
+    for (const [session, list] of bySession) {
+      const id = list[0]!.id.split(":")[2] ?? "";
+      if (items.some((i) => i.key === `q${id}`)) continue;
+      added.push({ kind: "question", key: `q${id}`, at: list[0]!.createdAt, session, id, questions: list.map((n) => ({ header: "", question: n.question, options: n.options.map((label) => ({ label, description: "" })), multiSelect: false })), answers: [], node: undefined as unknown as HTMLElement });
+    }
+    return added;
   }
 
   async function loadEarlier() {
@@ -520,6 +526,28 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         case "agent.changed":
           refreshAgents();
           break;
+        // A question in a session this chat does not stream (an agent's, or one pai asked before a rotation).
+        case "session.question":
+          if (event.sessionId !== liveSession)
+            void listNeeds().then((needs) => {
+              const stick = nearBottom();
+              for (const q of addQuestions(needs)) place(q);
+              if (stick) scroll();
+            });
+          break;
+        case "session.answer":
+          if (event.sessionId !== liveSession) {
+            const q = items.find((i): i is LiveQuestion => i.kind === "question" && i.session === event.sessionId);
+            if (q) {
+              q.answers = q.questions.map((_, i) => q.answers[i] ?? "answered");
+              redraw(q);
+            }
+          }
+          break;
+        // pai's session was rotated: the stream moves to the new one.
+        case "main.rotated":
+          if (options.live) void options.live().then((session) => session && session !== liveSession && followLive(session));
+          break;
       }
     },
     { replay: false },
@@ -541,13 +569,16 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
               liveText = el("div.row.reply.live", {}, el("div.bubble"));
               log.append(liveText);
             }
-            liveText.querySelector(".bubble")!.replaceChildren(markdown(payload.text ?? ""));
+            liveRaw = payload.text ?? "";
+            liveText.querySelector(".bubble")!.replaceChildren(markdown(liveRaw));
             break;
           case "session.tool": {
             if (!liveGroup) {
-              liveGroup = { kind: "tools", key: `t${event.ts}`, at: event.ts, end: event.ts, thinking: "", tools: [], live: true, open: toolsOpen, node: undefined as unknown as HTMLElement };
+              // What streamed before the first call was the model thinking aloud, not the reply.
+              liveGroup = { kind: "tools", key: `t${event.ts}`, at: event.ts, end: event.ts, thinking: liveText ? liveRaw : "", tools: [], live: true, open: toolsOpen, node: undefined as unknown as HTMLElement };
               liveText?.remove();
               liveText = undefined;
+              liveRaw = "";
               place(liveGroup);
             }
             liveGroup.end = event.ts;
