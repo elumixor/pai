@@ -8,7 +8,7 @@ process.env.PAI_CONFIG = join(mkdtempSync(join(tmpdir(), "pai-gmail-cfg-")), "co
 process.env.PAI_GOOGLE_CLIENT_ID = "test-client-id";
 process.env.PAI_GOOGLE_CLIENT_SECRET = "test-client-secret";
 
-const { decodeBody, encodeHeader, findPart, gmailModule, handleConnect, headerValue, listAccounts, mimeMessage, removeAccount, stripHtml } = await import("./gmail.ts");
+const { decodeBody, encodeHeader, findPart, gmailModule, handleConnect, headerValue, listAccounts, mimeMessage, removeAccount, htmlToText, decodeEntities } = await import("./gmail.ts");
 const { db } = await import("../core/db.ts");
 
 const request = (path: string, init?: RequestInit) => {
@@ -32,7 +32,27 @@ describe("gmail: pure helpers", () => {
   });
 
   it("strips tags and collapses whitespace from html", () => {
-    expect(stripHtml("<div>Hi <b>there</b>\n\n<style>.x{color:red}</style></div>")).toBe("Hi there");
+    expect(htmlToText("<div>Hi <b>there</b>\n\n<style>.x{color:red}</style></div>")).toBe("Hi there");
+  });
+
+  it("keeps a link's words and its url", () => {
+    expect(htmlToText('<p>Please <a href="https://eventfirst.example/book?t=1&amp;u=2">book a slot</a> today.</p>')).toBe(
+      "Please book a slot (https://eventfirst.example/book?t=1&u=2) today.",
+    );
+  });
+
+  it("renders a bare or self-labelled link as the url alone", () => {
+    expect(htmlToText('<a href="https://x.example/a">https://x.example/a</a>')).toBe("https://x.example/a");
+    expect(htmlToText('<a href="https://x.example/a"><img src="b.png"></a>')).toBe("https://x.example/a");
+    expect(htmlToText('<a href="#top">Top</a>')).toBe("Top");
+  });
+
+  it("keeps block structure as line breaks", () => {
+    expect(htmlToText("<p>One</p><p>Two</p><br>Three")).toBe("One\n\nTwo\n\nThree");
+  });
+
+  it("decodes named and numeric entities", () => {
+    expect(decodeEntities("a &amp; b &#39;c&#39; &#x2014; &nope;")).toBe("a & b 'c' — &nope;");
   });
 
   it("finds the first matching part depth-first, and nothing when there is none", () => {
@@ -165,6 +185,68 @@ describe("gmail: the message that goes on the wire", () => {
     await expect(send("personal", { to: "a@b.com", subject: "x", body: " " })).rejects.toThrow("body");
     await expect(send("personal", { to: "a@b.com", subject: " ", body: "y" })).rejects.toThrow("subject");
     await expect(send("nope", { to: "a@b.com", subject: "x", body: "y" })).rejects.toThrow("no gmail account");
+  });
+});
+
+describe("gmail: read", () => {
+  const b64 = (text: string) => Buffer.from(text, "utf8").toString("base64url");
+
+  /** Google's token endpoint, then one message in Gmail's `format=full` shape. */
+  const stubMessage = (payload: unknown) => {
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.includes("oauth2")) return Response.json({ access_token: "tok", expires_in: 3600 });
+      return Response.json({ id: "m1", threadId: "t1", payload });
+    }) as typeof fetch;
+    return () => void (globalThis.fetch = real);
+  };
+
+  const account = () => db.prepare("INSERT INTO gmail_accounts (label, email, refresh_token, created_at) VALUES (?, ?, ?, ?)").run("personal", "me@example.com", "secret", Date.now());
+
+  it("reads the html part when there is one, so its links survive", async () => {
+    const { read } = await import("./gmail.ts");
+    account();
+    const restore = stubMessage({
+      headers: [{ name: "Subject", value: "Your interview" }],
+      parts: [
+        { mimeType: "text/plain", body: { data: b64("Open this email in a browser.") } },
+        { mimeType: "text/html", body: { data: b64('<p>Pick a time: <a href="https://eventfirst.example/book/9">book here</a></p>') } },
+      ],
+    });
+    try {
+      const message = await read("personal", "m1");
+      expect(message.body).toBe("Pick a time: book here (https://eventfirst.example/book/9)");
+      expect(message).toMatchObject({ subject: "Your interview", offset: 0, truncated: false });
+    } finally {
+      restore();
+    }
+  });
+
+  it("falls back to the plain part when there is no html", async () => {
+    const { read } = await import("./gmail.ts");
+    account();
+    const restore = stubMessage({ mimeType: "text/plain", body: { data: b64("just text") } });
+    try {
+      expect((await read("personal", "m1")).body).toBe("just text");
+    } finally {
+      restore();
+    }
+  });
+
+  it("returns a window and says how to read on", async () => {
+    const { read } = await import("./gmail.ts");
+    account();
+    const restore = stubMessage({ mimeType: "text/plain", body: { data: b64("abcdefghij") } });
+    try {
+      const first = await read("personal", "m1", 0, 4);
+      expect(first).toMatchObject({ body: "abcd", length: 10, offset: 0, truncated: true });
+      const second = await read("personal", "m1", 4, 100);
+      expect(second).toMatchObject({ body: "efghij", offset: 4, truncated: false });
+      expect(await read("personal", "m1", 99, 10)).toMatchObject({ body: "", offset: 10, truncated: false });
+    } finally {
+      restore();
+    }
   });
 });
 

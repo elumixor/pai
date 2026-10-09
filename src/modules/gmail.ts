@@ -210,13 +210,52 @@ export function findPart(part: MessagePart | undefined, mimeType: string): Messa
 
 export const decodeBody = (data: string) => Buffer.from(data, "base64url").toString("utf8");
 
-export const stripHtml = (html: string) =>
-  html
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ")
+const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", mdash: "—", ndash: "–", hellip: "…", rsquo: "’", lsquo: "‘", rdquo: "”", ldquo: "“" };
+
+const codePoint = (digits: string, radix: number) => {
+  const value = Number.parseInt(digits, radix);
+  return Number.isFinite(value) && value > 0 && value <= 0x10ffff ? String.fromCodePoint(value) : "";
+};
+
+export const decodeEntities = (text: string) =>
+  text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, name: string) => {
+    const key = name.toLowerCase();
+    if (key.startsWith("#x")) return codePoint(key.slice(2), 16) || whole;
+    if (key.startsWith("#")) return codePoint(key.slice(1), 10) || whole;
+    return ENTITIES[key] ?? whole;
+  });
+
+/** Tags that separate text: their boundaries become line breaks, so the result keeps the message's shape. */
+const BLOCK_TAGS = /<\/?(?:p|div|br|tr|li|ul|ol|table|h[1-6]|blockquote|section|article|header|footer|hr|pre)\b[^>]*>/gi;
+
+/** A link as readable text: the anchor's words, then the target, so a url that exists only in the markup survives. */
+const anchor = (href: string, inner: string) => {
+  const url = decodeEntities(href).trim();
+  const text = decodeEntities(inner.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+  if (!url || url.startsWith("#") || url.toLowerCase().startsWith("javascript:")) return ` ${text} `;
+  if (!text || url.includes(text)) return ` ${url} `;
+  return ` ${text} (${url}) `;
+};
+
+/**
+ * An HTML mail part as text that keeps its links. The plain-text alternative a sender provides is
+ * often a stub, and a booking or confirmation url can exist only in the HTML part, so every anchor
+ * is rendered as its words followed by its target rather than dropped with the tag.
+ */
+export const htmlToText = (html: string) =>
+  decodeEntities(
+    html
+      .replace(/<(style|script|head|title)\b[\s\S]*?<\/\1>/gi, " ")
+      .replace(/<!--[\s\S]*?-->/g, " ")
+      .replace(/<a\b[^>]*\bhref\s*=\s*"([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_m, href: string, inner: string) => anchor(href, inner))
+      .replace(/<a\b[^>]*\bhref\s*=\s*'([^']*)'[^>]*>([\s\S]*?)<\/a>/gi, (_m, href: string, inner: string) => anchor(href, inner))
+      .replace(BLOCK_TAGS, "\n")
+      .replace(/<[^>]+>/g, " "),
+  )
+    .split("\n")
+    .map((line) => line.replace(/[^\S\n]+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 
 export interface SearchResult {
@@ -248,12 +287,37 @@ export async function search(label: string, query: string, limit = 10): Promise<
   );
 }
 
-export async function read(label: string, id: string) {
+/** How much of a body one `gmail_read` returns when the caller does not say. */
+const BODY_WINDOW = 20_000;
+
+export interface ReadResult {
+  readonly id: string;
+  readonly threadId: string;
+  readonly subject: string;
+  readonly from: string;
+  readonly to: string;
+  readonly date: string;
+  readonly body: string;
+  /** Characters in the whole body, so a caller knows what it has not seen. */
+  readonly length: number;
+  readonly offset: number;
+  /** More body after this window: read on with `offset` = `offset` + the body's length. */
+  readonly truncated: boolean;
+}
+
+/**
+ * One message as text, a window at a time. The HTML part wins when there is one: its anchors carry
+ * urls that the sender's plain-text alternative often leaves out entirely.
+ */
+export async function read(label: string, id: string, offset = 0, limit = BODY_WINDOW): Promise<ReadResult> {
   const message = await call<{ id: string; threadId: string; payload?: MessagePart & { headers?: Headers[] } }>(label, `/messages/${id}?format=full`);
   const headers = message.payload?.headers;
+  const html = findPart(message.payload, "text/html");
   const plain = findPart(message.payload, "text/plain");
-  const html = plain ? undefined : findPart(message.payload, "text/html");
-  const body = plain ? decodeBody(plain.body!.data!) : html ? stripHtml(decodeBody(html.body!.data!)) : "(no readable body)";
+  const full = html ? htmlToText(decodeBody(html.body!.data!)) : plain ? decodeBody(plain.body!.data!) : "(no readable body)";
+  const from = Math.max(0, Math.min(Math.trunc(offset), full.length));
+  const window = Math.max(1, Math.trunc(limit));
+  const body = full.slice(from, from + window);
   return {
     id: message.id,
     threadId: message.threadId,
@@ -261,7 +325,10 @@ export async function read(label: string, id: string) {
     from: headerValue(headers, "From"),
     to: headerValue(headers, "To"),
     date: headerValue(headers, "Date"),
-    body: body.slice(0, 20_000),
+    body,
+    length: full.length,
+    offset: from,
+    truncated: from + body.length < full.length,
   };
 }
 
@@ -457,9 +524,14 @@ export function gmailTools(by?: string) {
       ),
       tool(
         "gmail_read",
-        "The full headers and body text of one Gmail message.",
-        { account: accountArg, id: z.string().describe("message id, from gmail_search") },
-        async ({ account, id }) => ok(await read(account, id).catch((err: Error) => ({ error: err.message }))),
+        "The headers and body text of one Gmail message, links included: an anchor comes back as its words followed by its url, so a booking or confirmation link that only exists in the HTML part is readable. Long bodies come in windows — when `truncated` is true, call again with `offset` past what you have.",
+        {
+          account: accountArg,
+          id: z.string().describe("message id, from gmail_search"),
+          offset: z.number().int().min(0).optional().describe("characters to skip, to read on after a truncated body"),
+          limit: z.number().int().min(1).max(100_000).optional().describe("characters to return (default 20000)"),
+        },
+        async ({ account, id, offset, limit }) => ok(await read(account, id, offset, limit).catch((err: Error) => ({ error: err.message }))),
       ),
       tool(
         "gmail_send",
@@ -504,7 +576,7 @@ export const gmailModule: Module = {
     hint: "a short name for the mailbox: personal, work, atma",
   },
   prompt: {
-    text: "Gmail: gmail_list_accounts shows which mailboxes are connected (by label — e.g. personal, work), gmail_search finds messages in one of them with Gmail's search syntax, gmail_read gets a message's full text, gmail_send sends as that mailbox. Ask which account when it's ambiguous rather than guessing. Sending is irreversible and goes out in the user's name: check_outbound first, then their approval of the final text, and reply with reply_to_message_id so it threads.",
+    text: "Gmail: gmail_list_accounts shows which mailboxes are connected (by label — e.g. personal, work), gmail_search finds messages in one of them with Gmail's search syntax, gmail_read gets a message's text with its links (windowed: when it says truncated, read on with offset), gmail_send sends as that mailbox. Ask which account when it's ambiguous rather than guessing. Sending is irreversible and goes out in the user's name: check_outbound first, then their approval of the final text, and reply with reply_to_message_id so it threads.",
     kinds: ["chat"],
   },
 };
