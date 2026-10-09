@@ -19,6 +19,13 @@ export const modules: readonly Module[] = [
     enabled: () => true,
     status: () => ({ port: config.browserPort }),
     tools: { server: "playwright", names: ["browser_navigate", "browser_click", "browser_snapshot", "…"], kinds: ["chat", "code"] },
+    prompt: {
+      // Measured on LinkedIn, 2026-10-07: with every non-GET request aborted in the browser, the
+      // page still rendered the message as sent. Ten "sent" messages that never existed came from
+      // trusting that render.
+      text: "The browser proves nothing by itself: a page will show a write as done — a message sent, a form submitted — even when nothing reached the site, so a click and the DOM that follows it are not evidence. Confirm a write by reading it back from the site's own data afterwards (the inbox, the thread, the profile, the confirmation page fetched fresh); if you cannot, say the write is unconfirmed and let the user check. Never report it as done, and never retry it blindly — the first attempt may have gone through.",
+      kinds: ["chat", "code"],
+    },
   },
   {
     name: "tasks",

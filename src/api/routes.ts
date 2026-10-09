@@ -410,6 +410,8 @@ export async function handle(req: Request): Promise<Response> {
         options: a.options,
         freeText: a.freeText,
         priority: a.priority,
+        // A card with a link in its text gets a button that opens it, instead of asking the user to copy it out.
+        link: tasks.firstUrl(a.question, a.context),
         createdAt: a.createdAt,
       }));
       const fromSessions = sessions.list().flatMap((summary) => {
@@ -428,6 +430,7 @@ export async function handle(req: Request): Promise<Response> {
           options: q.options.map((o) => o.label),
           freeText: true,
           priority: "normal",
+          link: tasks.firstUrl(q.question),
           createdAt: summary.lastActivity,
         }];
       });
@@ -442,6 +445,7 @@ export async function handle(req: Request): Promise<Response> {
         options: ["Done", "Drop"],
         freeText: true,
         priority: "normal",
+        link: tasks.firstUrl(t.nextAction, t.source, t.notes),
         createdAt: t.updatedAt,
       }));
       return json([...fromSessions, ...fromAsks, ...fromTasks].sort((a, b) => b.createdAt - a.createdAt));

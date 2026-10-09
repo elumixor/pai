@@ -48,6 +48,21 @@ const toTask = (r: Record<string, any>): Task => ({
 
 export class TaskError extends Error {}
 
+/**
+ * The first link in a piece of text, markdown or bare. A task whose next action is "book a slot
+ * at <url>" is one tap on a phone only if something hands that url to the card.
+ */
+export function firstUrl(...texts: readonly (string | null | undefined)[]): string | undefined {
+  for (const text of texts) {
+    const markdown = /\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/.exec(text ?? "");
+    if (markdown) return markdown[1];
+    // Trailing punctuation belongs to the sentence, not to the url.
+    const bare = /https?:\/\/[^\s<>"')]+/.exec(text ?? "");
+    if (bare) return bare[0].replace(/[.,;:!?]+$/, "");
+  }
+  return undefined;
+}
+
 function checkStatus(status: string | undefined): TaskStatus | undefined {
   if (status === undefined) return undefined;
   if (!(STATUSES as readonly string[]).includes(status)) throw new TaskError(`status is one of ${STATUSES.join(", ")}`);

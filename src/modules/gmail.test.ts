@@ -121,6 +121,43 @@ describe("gmail: the message that goes on the wire", () => {
     expect(decode(mime)).toBe("Привіт, Аліса");
   });
 
+  /** Google's token endpoint and the send endpoint, answering whatever the test wants. */
+  const stubGoogle = (sendAnswer: unknown, status = 200) => {
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.includes("oauth2")) return Response.json({ access_token: "tok", expires_in: 3600 });
+      return Response.json(sendAnswer, { status });
+    }) as typeof fetch;
+    return () => void (globalThis.fetch = real);
+  };
+
+  it("will not report a send when a 2xx carries no id", async () => {
+    const { send } = await import("./gmail.ts");
+    db.prepare("INSERT INTO gmail_accounts (label, email, refresh_token, created_at) VALUES (?, ?, ?, ?)").run("personal", "me@example.com", "secret", Date.now());
+    // The 2026-10-06 shape: the call succeeds and nothing was filed. Both halves of the id
+    // matter — the link is built from the thread id.
+    for (const answer of [{}, { id: "1a" }, { threadId: "1t" }]) {
+      const restore = stubGoogle(answer);
+      try {
+        await expect(send("personal", { to: "a@b.com", subject: "x", body: "y" })).rejects.toThrow("returned no id");
+      } finally {
+        restore();
+      }
+    }
+  });
+
+  it("reports a send once Gmail answers with the id it filed it under", async () => {
+    const { send } = await import("./gmail.ts");
+    db.prepare("INSERT INTO gmail_accounts (label, email, refresh_token, created_at) VALUES (?, ?, ?, ?)").run("personal", "me@example.com", "secret", Date.now());
+    const restore = stubGoogle({ id: "msg1", threadId: "thr1" });
+    try {
+      expect(await send("personal", { to: "a@b.com", subject: "x", body: "y" })).toMatchObject({ link: "https://mail.google.com/mail/u/me@example.com/#sent/thr1" });
+    } finally {
+      restore();
+    }
+  });
+
   it("refuses to send without a recipient, a body or a subject", async () => {
     const { send } = await import("./gmail.ts");
     db.prepare("INSERT INTO gmail_accounts (label, email, refresh_token, created_at) VALUES (?, ?, ?, ?)").run("personal", "me@example.com", "secret", Date.now());
