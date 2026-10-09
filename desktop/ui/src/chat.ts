@@ -195,12 +195,12 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     return el("span", { class: `dot ${dot}`, "data-agent": slug, title: status });
   };
 
-  /** `→ called Screener: look at these three` — a card for work handed down or reported back. */
+  /** `→ pai called Screener: look at these three` — a card for work handed down or reported back. */
   function card(m: LogMessage) {
-    const other = m.kind === "delegate" || m.kind === "request" ? (mine(m) ? m.to : m.from) : mine(m) ? m.to : m.from;
-    const agent = m.kind === "delegate" ? m.to : m.kind === "report" ? m.from : other;
+    const down = m.kind === "delegate" || m.kind === "request";
+    const agent = m.kind === "delegate" ? m.to : m.kind === "report" ? m.from : down ? m.from : m.to;
     const verb = { delegate: "called", report: "reported", request: "asked for", response: "answered" }[m.kind as "delegate" | "report" | "request" | "response"];
-    const arrow = m.kind === "delegate" || m.kind === "request" ? "→" : "←";
+    const target = m.to !== options.agent && m.to !== options.parent && m.to !== "user" ? nameOf(m.to) : "";
     const openable = Boolean(bySlug(agent)) && agent !== options.agent;
     const row = el(
       "button.row.card",
@@ -211,7 +211,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         title: openable ? `open ${nameOf(agent)}` : m.body,
         onclick: () => (openable ? ctx.openAgent(agent, m.id) : row.classList.toggle("open")),
       },
-      el("span.card-head", {}, el("span.arrow", {}, arrow), kindIcon(m.kind, 11), statusDot(agent), el("b", {}, nameOf(agent)), el("span.dim", {}, verb), m.taskId ? el("span.tag", {}, `#${m.taskId}`) : undefined, el("span.grow"), time(m.createdAt)),
+      el("span.card-head", {}, el("span.arrow", {}, down ? "→" : "←"), statusDot(agent), el("b", {}, nameOf(m.from)), el("span.dim", {}, verb), target ? el("b", {}, target) : undefined, m.taskId ? el("span.tag", {}, `#${m.taskId}`) : undefined, el("span.grow"), time(m.createdAt)),
       el("span.card-line.ellipsis", {}, firstLine(m.body)),
       el("div.card-body", {}, markdown(m.body)),
     );

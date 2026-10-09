@@ -239,6 +239,7 @@ export function home(root: HTMLElement) {
       else showBoard(next.slug);
     }
     if (next.kind !== "chat" && mainChat) mainChat.node.remove();
+    root.classList.toggle("board-mode", next.kind === "board");
     drawAgents();
   }
 
@@ -260,13 +261,20 @@ export function home(root: HTMLElement) {
     }
   }
 
+  const healthOf = (m: ModuleInfo) => {
+    const health = m.status.health as { ok?: boolean; detail?: string } | string | undefined;
+    if (!health) return undefined;
+    if (typeof health === "string") return el("span.dim", {}, health);
+    return el("span.dim", { class: `dim${health.ok ? "" : " off"}`, title: health.detail ?? "" }, health.detail ?? (health.ok ? "ok" : "down"));
+  };
+
   async function drawModules() {
     const [mods, health] = await Promise.all([listModules().catch(() => [] as ModuleInfo[]), status().catch(() => undefined)]);
     const withUi = mods.filter((m) => typeof m.ui === "string");
     const links = [
       linkTo("editor", el("a.status-link", {}, icon("code", 12), el("span", {}, "Editor"), el("span.dim", {}, "files, threads, terminals")) as HTMLAnchorElement),
       health?.editor.url ? el("a.status-link", { href: health.editor.url, target: "_blank", rel: "noreferrer" }, icon("external", 12), el("span", {}, "VS Code"), el("span.dim", {}, "code-server")) : undefined,
-      ...withUi.map((m) => el("a.status-link", { href: `${baseUrl()}${m.ui}`, target: "_blank", rel: "noreferrer", title: m.description }, icon("zap", 12), el("span", {}, m.title), el("span.dim", {}, String((m.status as { health?: string }).health ?? "")))),
+      ...withUi.map((m) => el("a.status-link", { href: `${baseUrl()}${m.ui}`, target: "_blank", rel: "noreferrer", title: m.description }, icon("zap", 12), el("span", {}, m.title), healthOf(m))),
       linkTo("dashboard", el("a.status-link", {}, icon("layout", 12), el("span", {}, "Dashboard"), el("span.dim", {}, "modules, context, settings")) as HTMLAnchorElement),
     ];
     clear(modulesBox, ...block("Modules", el("div.status-links", {}, ...links)));
