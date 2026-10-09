@@ -5,6 +5,7 @@ import "./theme.ts";
 import { editor, emptyEditor } from "./editor.ts";
 import { current as currentRoute, navigate, onRoute, type Route } from "./router.ts";
 import { home as homeView, type Centre } from "./home.ts";
+import { topNav } from "./nav.ts";
 import { usageStats } from "./rings.ts";
 import { tree, type Tree } from "./files.ts";
 import { icon, type IconName } from "./icons.ts";
@@ -86,7 +87,9 @@ const showEditor = () => (state.file ? openFile(state.file) : emptyEditor(viewer
 
 /** Each address is one of the views: the chat, an agent's thread or the board at home; the dashboard's pages; the editor; the settings sheet over whatever is open. */
 function applyRoute(route: Route) {
-  const pages: Partial<Record<Route["name"], Page>> = { dashboard: "overview", agents: "agents", modules: "modules", automations: "automations", projects: "projects", context: "context" };
+  const pages: Partial<Record<Route["name"], Page>> = { agents: "agents", modules: "modules", automations: "automations", projects: "projects", context: "context" };
+  // The dashboard's overview is gone: the chat is the front page now.
+  if (route.name === "dashboard") return navigate("home", true);
   if (route.name === "settings") return showSettings();
   if (route.name === "editor") {
     showView("work");
@@ -233,7 +236,7 @@ function renderStatusRight(editorUrl?: string) {
     navButton("message", "The chat (⌘1)", () => navigate("home")),
     staffButton,
     navButton("code", "Editor (⌘3)", () => navigate("editor")),
-    navButton("layout", "Dashboard (⌘4)", () => navigate("dashboard")),
+    navButton("layout", "Modules (⌘4)", () => navigate("modules")),
     editorUrl ? el("a.iconbtn.slim", { title: "VS Code in the browser", href: editorUrl, target: "_blank", rel: "noreferrer" }, icon("external", 13)) : undefined,
     navButton("settings", "Settings", () => navigate("settings")),
   );
@@ -271,7 +274,6 @@ async function commands(): Promise<Command[]> {
   const actions: Command[] = [
     { id: "home", title: "Chat with pai", group: "view", icon: "message", hint: "the main chat", run: () => navigate("home") },
     { id: "board", title: "Board", group: "view", icon: "board", hint: "the agents' tasks, a kanban per project", run: () => navigate("board") },
-    { id: "dashboard", title: "Dashboard", group: "view", icon: "layout", run: () => navigate("dashboard") },
     { id: "agents", title: "Agents", group: "view", icon: "users", hint: "pai's staff, their chats, tasks and asks", run: () => navigate("agents") },
     { id: "modules", title: "Modules", group: "view", icon: "zap", run: () => navigate("modules") },
     { id: "automations", title: "Automations", group: "view", icon: "play", run: () => navigate("automations") },
@@ -319,7 +321,7 @@ document.addEventListener("keydown", (event) => {
     if (state.file) void fileTree?.reveal(state.file);
   } else if (meta && (event.key === "1" || event.key === "2" || event.key === "3" || event.key === "4")) {
     event.preventDefault();
-    navigate(event.key === "1" ? "home" : event.key === "2" ? "board" : event.key === "3" ? "editor" : "dashboard");
+    navigate(event.key === "1" ? "home" : event.key === "2" ? "board" : event.key === "3" ? "editor" : "modules");
   } else if (event.metaKey && event.key === "," && event.shiftKey === !inDesktop) {
     // ⌘, in the app; a browser keeps that one for itself, so ⌘⇧, on the web.
     event.preventDefault();
@@ -362,6 +364,7 @@ async function refreshAll() {
 }
 
 document.body.classList.toggle("desktop", inDesktop);
+topNav($("topnav"));
 splits(main);
 renderStatusRight();
 emptyEditor(viewerPane);

@@ -48,26 +48,14 @@ export function home(root: HTMLElement) {
   const centrePane = el("section.home-centre");
   const statusPane = el("div.home-status");
   const pendingPane = el("div.home-pending", { hidden: true });
-  const nav = el("nav.home-nav");
-  pendingPane.addEventListener("mouseenter", () => pendingPane.classList.add("open"));
-  pendingPane.addEventListener("mouseleave", () => pendingPane.classList.remove("open"));
-  const navUsage = el("div.nav-usage");
-  const navBell = el("span.nav-bell");
-  clear(root, nav, el("div.home-columns", {}, agentsPane, centrePane, el("aside.home-right", {}, statusPane)), pendingPane);
-
-  /** The bar across the top: where you are, and the way to the other views. */
-  function drawNav() {
-    const tab = (name: Parameters<typeof linkTo>[0], label: string, on: boolean, iconName: Parameters<typeof icon>[0]) =>
-      linkTo(name, el("a.nav-tab", { class: `nav-tab${on ? " on" : ""}` }, icon(iconName, 14), el("span", {}, label)) as HTMLAnchorElement);
-    clear(
-      nav,
-      el("div.nav-brand", {}, icon("bot", 18), el("span", {}, "pai")),
-      el("div.nav-tabs", {}, tab("home", "Chat", centre.kind !== "board", "message"), tab("board", "Board", centre.kind === "board", "board"), tab("editor", "Editor", false, "code"), tab("dashboard", "Dashboard", false, "layout")),
-      el("div.nav-right", {}, navUsage, el("button.nav-round", { title: "what waits on you", onclick: () => pendingPane.scrollIntoView({ behavior: "smooth" }) }, icon("bell", 15), navBell), el("button.nav-round", { title: "settings", onclick: () => navigate("settings") }, icon("settings", 15))),
-    );
-    navBell.textContent = String(needs.length);
-    navBell.hidden = !needs.length;
-  }
+  const setOpen = (open: boolean) => {
+    pendingPane.classList.toggle("open", open);
+    layoutPile();
+  };
+  pendingPane.addEventListener("mouseenter", () => setOpen(true));
+  pendingPane.addEventListener("mouseleave", () => setOpen(false));
+  window.addEventListener("pai:pile", () => setOpen(!pendingPane.classList.contains("open")));
+  clear(root, el("div.home-columns", {}, agentsPane, centrePane, el("aside.home-right", {}, statusPane)), pendingPane);
 
   const bySlug = (slug: string) => agents.find((a) => a.slug === slug);
   const nameOf = (slug: string) => (slug === "user" ? "you" : (bySlug(slug)?.name ?? slug));
@@ -260,46 +248,22 @@ export function home(root: HTMLElement) {
     if (next.kind !== "chat" && mainChat) mainChat.node.remove();
     root.classList.toggle("board-mode", next.kind === "board");
     drawAgents();
-    drawNav();
   }
 
   // ---- the right column: status and what waits -------------------------------------------
 
-  const usageBox = el("section.status-block.usage");
-  const modulesBox = el("section.status-block.modules");
   const routinesBox = el("section.status-block.routines");
   const eventsBox = el("section.status-block.events");
-  clear(statusPane, usageBox, modulesBox, routinesBox, eventsBox);
+  clear(statusPane, routinesBox, eventsBox);
   const block = (title: string, ...body: (Node | undefined | false)[]) => [el("h3.status-title", {}, title), ...body];
-
-  async function drawUsage() {
-    try {
-      const data = await usage();
-      clear(usageBox, ...block("Usage", el("div.usage-row", {}, ...usageStats(data, true))));
-      clear(navUsage, ...usageStats(data).slice(1));
-    } catch {
-      clear(usageBox, ...block("Usage", el("p.hint", {}, "offline")));
-    }
-  }
-
-  const healthOf = (m: ModuleInfo) => {
-    const health = m.status.health as { ok?: boolean; detail?: string } | string | undefined;
-    if (!health) return undefined;
-    if (typeof health === "string") return el("span.dim", {}, health);
-    return el("span.dim", { class: `dim${health.ok ? "" : " off"}`, title: health.detail ?? "" }, health.detail ?? (health.ok ? "ok" : "down"));
+  /** The first few rows, the rest behind "n more". */
+  const SHOW = 5;
+  const capped = (rows: HTMLElement[], key: string) => {
+    if (rows.length <= SHOW || expandedBlocks.has(key)) return rows;
+    const more = el("button.status-more", { onclick: () => (expandedBlocks.add(key), key === "routines" ? void drawRoutines() : drawEvents()) }, `${rows.length - SHOW} more…`);
+    return [...rows.slice(0, SHOW), more];
   };
-
-  async function drawModules() {
-    const [mods, health] = await Promise.all([listModules().catch(() => [] as ModuleInfo[]), status().catch(() => undefined)]);
-    const withUi = mods.filter((m) => typeof m.ui === "string");
-    const links = [
-      linkTo("editor", el("a.status-link", {}, icon("code", 12), el("span", {}, "Editor"), el("span.dim", {}, "files, threads, terminals")) as HTMLAnchorElement),
-      health?.editor.url ? el("a.status-link", { href: health.editor.url, target: "_blank", rel: "noreferrer" }, icon("external", 12), el("span", {}, "VS Code"), el("span.dim", {}, "code-server")) : undefined,
-      ...withUi.map((m) => el("a.status-link", { href: `${baseUrl()}${m.ui}`, target: "_blank", rel: "noreferrer", title: m.description }, icon("zap", 12), el("span", {}, m.title), healthOf(m))),
-      linkTo("dashboard", el("a.status-link", {}, icon("layout", 12), el("span", {}, "Dashboard"), el("span.dim", {}, "modules, context, settings")) as HTMLAnchorElement),
-    ];
-    clear(modulesBox, ...block("Modules", el("div.status-links", {}, ...links)));
-  }
+  const expandedBlocks = new Set<string>();
 
   async function drawRoutines() {
     const routines = await listAutomations().catch(() => [] as Automation[]);
@@ -308,14 +272,14 @@ export function home(root: HTMLElement) {
       .filter((r) => r.lastRun)
       .sort((a, b) => (b.lastRun ?? 0) - (a.lastRun ?? 0))
       .slice(0, 5);
-    const rows = (recent.length ? recent : on.slice(0, 5)).map((r) =>
+    const rows = (recent.length ? recent : on).map((r) =>
       el("div.status-row", { title: `${r.event}${r.filter ? ` · ${r.filter}` : ""} → ${r.action}` }, icon("clock", 11), el("span.ellipsis", {}, r.name), el("span.dim", {}, r.lastRun ? ago(r.lastRun) : "never")),
     );
-    clear(routinesBox, ...block(`Routines`, el("span.dim.status-sub", {}, `${on.length} on · ${routines.length - on.length} off`), ...(rows.length ? rows : [el("p.hint", {}, "No routines.")])));
+    clear(routinesBox, ...block(`Routines`, ...(rows.length ? capped(rows, "routines") : [el("p.hint", {}, "No routines.")])));
   }
 
   function drawEvents() {
-    const events = paiLog.filter((m) => m.kind === "event").slice(-10).reverse();
+    const events = paiLog.filter((m) => m.kind === "event").slice(-30).reverse();
     const rows = events.map((m) => {
       const row = el(
         "button.status-row.event",
@@ -326,13 +290,12 @@ export function home(root: HTMLElement) {
       );
       return row;
     });
-    clear(eventsBox, ...block("Events", ...(rows.length ? rows : [el("p.hint", {}, "Nothing yet.")])));
+    clear(eventsBox, ...block("Events", ...(rows.length ? capped(rows, "events") : [el("p.hint", {}, "Nothing yet.")])));
   }
 
   /** The stack of what waits on the user: a card each, newest on top; a click finds it in the chat. */
   function drawPending() {
-    navBell.textContent = String(needs.length);
-    navBell.hidden = !needs.length;
+    window.dispatchEvent(new CustomEvent("pai:needs", { detail: needs.length }));
     const cards = needs.map((n) => {
       const agentSlug = n.agent ?? PAI;
       const card = el(
@@ -349,7 +312,6 @@ export function home(root: HTMLElement) {
       return card;
     });
     pendingPane.hidden = !needs.length;
-    pendingPane.classList.toggle("many", needs.length > 1);
     clear(
       pendingPane,
       el(
@@ -357,10 +319,42 @@ export function home(root: HTMLElement) {
         {},
         el("h3.status-title", {}, "Waiting on you", el("span.badge.ask", {}, String(needs.length))),
         el("span.grow"),
-        el("button.iconbtn.slim", { title: "fold the pile", onclick: () => pendingPane.classList.remove("open") }, icon("x", 12)),
+        el("button.iconbtn.slim", { title: "fold the pile", onclick: () => setOpen(false) }, icon("x", 12)),
       ),
-      el("div.pending-stack", {}, ...cards),
+      el("div.pending-scroll", {}, el("div.pending-stack", {}, ...cards)),
     );
+    layoutPile();
+  }
+
+  /**
+   * The pile's geometry: every card sits at the bottom and is moved by a transform, so folding
+   * and unfolding is one smooth motion. Folded: the newest in front, two peeking out behind it.
+   * Open: a column, newest at the bottom, the stack as tall as all of them together.
+   */
+  function layoutPile() {
+    const stack = pendingPane.querySelector<HTMLElement>(".pending-stack");
+    if (!stack) return;
+    const cards = [...stack.querySelectorAll<HTMLElement>(".pending-card")];
+    const open = pendingPane.classList.contains("open");
+    const gap = 8;
+    let y = 0;
+    cards.forEach((card, i) => {
+      const h = card.offsetHeight;
+      if (open) {
+        card.style.transform = `translateY(${-y}px) scale(1)`;
+        card.style.opacity = "1";
+        card.style.pointerEvents = "auto";
+        y += h + gap;
+      } else {
+        card.style.transform = `translateY(${-14 * Math.min(i, 2)}px) scale(${1 - 0.05 * Math.min(i, 2)})`;
+        card.style.opacity = i < 3 ? "1" : "0";
+        card.style.pointerEvents = i === 0 ? "auto" : "none";
+      }
+      card.style.zIndex = String(cards.length - i);
+    });
+    const first = cards[0]?.offsetHeight ?? 0;
+    stack.style.height = `${open ? Math.max(0, y - gap) : first + 28}px`;
+    if (!open) pendingPane.querySelector<HTMLElement>(".pending-scroll")?.scrollTo({ top: 0 });
   }
 
   /** Where a need lives: pai's questions and tasks in the main chat, an agent's ask in its thread. */
@@ -390,8 +384,6 @@ export function home(root: HTMLElement) {
     drawAgents();
     drawPending();
     drawEvents();
-    void drawUsage();
-    void drawModules();
     void drawRoutines();
   }
 
@@ -452,10 +444,8 @@ export function home(root: HTMLElement) {
     },
     { replay: false },
   );
-  const usageTimer = setInterval(() => void drawUsage(), 60_000);
-  window.addEventListener("pai:prefs", () => void drawUsage());
+  window.addEventListener("resize", layoutPile);
 
-  drawNav();
   void load().then(() => {
     loaded = true;
     show(centre);
@@ -473,7 +463,6 @@ export function home(root: HTMLElement) {
     focus: () => (centre.kind === "chat" ? mainChat?.focus() : agentChat?.chat.focus()),
     dispose() {
       stop();
-      clearInterval(usageTimer);
       disposeCentre();
       mainChat?.dispose();
     },
