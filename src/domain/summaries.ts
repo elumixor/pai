@@ -10,7 +10,8 @@ import * as messages from "./messages.ts";
 
 const log = logger("tldr");
 const GATEWAY = "https://ai-gateway.vercel.sh/v1/chat/completions";
-const MODEL = "anthropic/claude-haiku-5.5";
+// A model that answers without thinking first: a reasoning one spends the whole budget on its reasoning and returns nothing.
+const MODEL = "google/gemini-2.5-flash-lite";
 /** Shorter than this a message is its own summary. */
 export const SHORT = 400;
 
@@ -42,7 +43,7 @@ async function write(m: messages.Message): Promise<string> {
     headers: { authorization: `Bearer ${config.aiGatewayKey}`, "content-type": "application/json" },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 160,
+      max_tokens: 300,
       messages: [
         {
           role: "system",
