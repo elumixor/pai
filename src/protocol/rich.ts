@@ -61,6 +61,29 @@ export const EVENT_ICONS: Readonly<Record<string, string>> = {
   stopped: "stop.circle",
   "agent.closed": "archivebox",
   "agent.tools_missing": "exclamationmark.triangle",
+  chat: "bubble.left",
+  user: "person",
+  question: "questionmark.circle",
+  /** A turn's thinking and tool calls, folded into one line. */
+  tools: "gearshape",
+};
+
+/** The colour family each kind of row is tinted with, named so every client picks its own shade of the same thing. */
+export type RowTint = "plain" | "mine" | "accent" | "ok" | "warn" | "hot" | "muted";
+export const ROW_TINTS: Readonly<Record<string, RowTint>> = {
+  chat: "plain",
+  user: "mine",
+  delegate: "accent",
+  request: "warn",
+  report: "ok",
+  response: "warn",
+  ask: "warn",
+  question: "warn",
+  answer: "ok",
+  notice: "muted",
+  event: "muted",
+  tools: "muted",
+  error: "hot",
 };
 
 export interface RichUsage {
