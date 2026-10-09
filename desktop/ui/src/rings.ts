@@ -53,3 +53,36 @@ export function usageStats(data: Usage, label = false) {
   else if (data.error) stats.push(el("span.stat.dim", { title: data.error }, "stale"));
   return stats;
 }
+
+/**
+ * Every `title` on the page shows as the same small popover instead of the browser's own
+ * tooltip: the title is lifted into `data-tip` the first time the pointer reaches the element,
+ * so the browser never gets to draw it.
+ */
+let tipTimer: ReturnType<typeof setTimeout> | undefined;
+document.addEventListener("mouseover", (event) => {
+  const target = (event.target as HTMLElement | null)?.closest<HTMLElement>("[title], [data-tip]");
+  if (!target || target.classList.contains("has-tip")) return;
+  if (target.title) {
+    target.dataset.tip = target.title;
+    target.removeAttribute("title");
+  }
+  const text = target.dataset.tip;
+  if (!text) return;
+  clearTimeout(tipTimer);
+  tipTimer = setTimeout(() => {
+    if (!target.matches(":hover")) return;
+    const lines = text.split("\n").map((line, i) => el(i ? "span.dim" : "span", {}, line));
+    showTip(target, lines);
+    const box = target.getBoundingClientRect();
+    // Below the element when there is no room above it.
+    if (box.top - tip.offsetHeight - 8 < 0) tip.style.top = `${box.bottom + 8}px`;
+  }, 350);
+});
+document.addEventListener("mouseout", (event) => {
+  const target = (event.target as HTMLElement | null)?.closest<HTMLElement>("[data-tip]");
+  if (!target) return;
+  clearTimeout(tipTimer);
+  hideTip();
+});
+document.addEventListener("mousedown", hideTip, true);

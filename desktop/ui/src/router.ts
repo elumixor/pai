@@ -7,12 +7,12 @@ import { inDesktop } from "./api.ts";
  * daemon the path is under `/ui/`; the desktop app has no server behind its window, so there
  * the route lives in the hash.
  */
-export type RouteName = "home" | "agents" | "board" | "dashboard" | "modules" | "automations" | "projects" | "context" | "editor" | "settings";
-const NAMES: readonly RouteName[] = ["home", "agents", "board", "dashboard", "modules", "automations", "projects", "context", "editor", "settings"];
+export type RouteName = "home" | "chat" | "agents" | "board" | "dashboard" | "modules" | "automations" | "projects" | "context" | "editor" | "settings";
+const NAMES: readonly RouteName[] = ["home", "chat", "agents", "board", "dashboard", "modules", "automations", "projects", "context", "editor", "settings"];
 
 export interface Route {
   readonly name: RouteName;
-  /** `agents/<slug>` and `board/<slug>` carry the slug. */
+  /** `chat/<slug>` (an agent's thread) and `board/<slug>` carry the slug. */
   readonly param?: string;
 }
 
@@ -23,7 +23,7 @@ const parse = (raw: string): Route => {
   const [first = "", second] = raw.replace(/^[/#]+|\/+$/g, "").split("/");
   // The work view used to be the root; its old address still opens it.
   if (first === "work") return { name: "editor" };
-  if (!(NAMES as readonly string[]).includes(first) || first === "home") return { name: "home" };
+  if (!(NAMES as readonly string[]).includes(first) || first === "home" || (first === "chat" && !second)) return { name: "home" };
   return second ? { name: first as RouteName, param: decodeURIComponent(second) } : { name: first as RouteName };
 };
 

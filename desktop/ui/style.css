@@ -565,10 +565,11 @@ button.party:hover { color: var(--accent); }
 .board-card.status-waiting_user { box-shadow: inset 3px 0 0 var(--accent); }
 
 /* ---- home: the agents, the chat, what is going on ------------------------------------- */
-.home { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(220px, 260px) minmax(360px, 1fr) minmax(260px, 320px); gap: 1px; background: var(--line); }
-.home.board-mode { grid-template-columns: minmax(360px, 1fr) minmax(260px, 320px); }
+.home { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--canvas); }
+.home-columns { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(220px, 260px) minmax(360px, 1fr) minmax(260px, 320px); gap: 1px; background: var(--line); }
+.home.board-mode .home-columns { grid-template-columns: minmax(360px, 1fr) minmax(260px, 320px); }
 .home.board-mode .home-agents { display: none; }
-.home > * { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--panel); }
+.home-columns > * { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--panel); }
 .home-agent-list { flex: 1; overflow-y: auto; min-height: 0; padding: 6px 0; }
 .agent-row.rich { align-items: flex-start; padding-top: 5px; padding-bottom: 5px; }
 .agent-row.rich .dot { margin-top: 5px; }
@@ -594,8 +595,21 @@ button.party:hover { color: var(--accent); }
 button.status-row:hover { background: var(--panel-2); }
 .status-row.event > .icon { color: var(--dim); }
 .status-row.event.error { color: var(--hot); }
-.home-pending { flex: 0 1 auto; max-height: 50%; min-height: 0; min-width: 0; border-top: 1px solid var(--line); padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 6px; }
-.pending-stack { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; min-height: 0; }
+/* What waits on the user: a pile in the corner, the newest card on top and the others peeking out
+   behind it; under the pointer (or the bell) the pile unfolds into a column. */
+.home { position: relative; }
+.home-pending { position: absolute; right: 18px; bottom: 18px; width: 320px; z-index: 20; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 22px; transition: background 0.2s, box-shadow 0.2s; }
+.home-pending.open { background: var(--canvas); box-shadow: var(--soft-shadow); }
+.pending-head { display: flex; align-items: center; gap: 8px; padding: 0 4px; opacity: 0; transition: opacity 0.15s; }
+.home-pending.open .pending-head { opacity: 1; }
+.pending-stack { position: relative; isolation: isolate; display: flex; flex-direction: column; gap: 8px; max-height: 70vh; overflow: visible; }
+.home-pending:not(.open) .pending-stack .pending-card:nth-child(n + 2) { position: absolute; left: 0; right: 0; bottom: 0; height: 100%; pointer-events: none; }
+.home-pending:not(.open) .pending-stack .pending-card:nth-child(n + 2) > * { visibility: hidden; }
+.home-pending:not(.open) .pending-stack .pending-card:nth-child(2) { transform: translateY(-12px) scale(0.95); z-index: -1; background: var(--surface-2); }
+.home-pending:not(.open) .pending-stack .pending-card:nth-child(3) { transform: translateY(-24px) scale(0.9); z-index: -2; background: var(--surface-3); }
+.home-pending:not(.open) .pending-stack .pending-card:nth-child(n + 4) { opacity: 0; z-index: -3; }
+.home-pending.open .pending-stack { overflow-y: auto; padding: 2px; }
+.pending-card { transition: transform 0.22s ease, opacity 0.2s ease; }
 .pending-card { display: flex; flex-direction: column; gap: 3px; width: 100%; min-width: 0; overflow: hidden; flex: 0 0 auto; padding: 7px 9px; border: 1px solid color-mix(in srgb, var(--busy) 45%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--busy) 9%, var(--panel)); color: var(--text); text-align: left; font-size: 12px; }
 .pending-card:hover { border-color: var(--busy); }
 .pending-card.task { border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: color-mix(in srgb, var(--accent) 7%, var(--panel)); }
@@ -741,3 +755,119 @@ button.chip:hover { border-color: var(--accent); color: var(--text); }
 .panel-msg .msg-body { font-size: 12px; }
 .panel-msg b { font-weight: 600; }
 .in-home .statusbar .staff-nav .badge { display: none; }
+
+/* ---- home skin: a light room, not an editor --------------------------------------------
+   The editor keeps its dense chrome; the home view floats white panels on a warm canvas,
+   with the type a size up and the corners soft. Every colour still comes from the theme. */
+:root { --canvas: var(--bg); --surface: var(--panel); --surface-2: var(--panel-2); --surface-3: var(--code-bg); --soft-shadow: 0 1px 2px rgba(0,0,0,0.18), 0 12px 32px rgba(0,0,0,0.22); }
+:root[data-theme="light"] { --canvas: color-mix(in srgb, var(--bg) 70%, #e9ddd3); --surface: #ffffff; --surface-2: color-mix(in srgb, #ffffff 55%, var(--bg)); --surface-3: color-mix(in srgb, #ffffff 30%, var(--bg)); --soft-shadow: 0 1px 2px rgba(60, 40, 30, 0.06), 0 14px 40px rgba(60, 40, 30, 0.08); }
+body.in-home .statusbar { display: none; }
+body.in-home .home { font-size: 14px; padding: 14px 18px 18px; gap: 14px; }
+.home-nav { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; height: 56px; padding: 0 10px 0 22px; border-radius: 999px; background: var(--surface); box-shadow: var(--soft-shadow); flex: 0 0 auto; }
+.nav-brand { display: flex; align-items: center; gap: 9px; font-size: 20px; font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
+.nav-brand .icon { color: var(--accent); }
+.nav-tabs { display: flex; gap: 2px; }
+.nav-tab { display: flex; align-items: center; gap: 7px; padding: 8px 16px; border-radius: 999px; color: var(--dim); font-size: 14px; font-weight: 500; text-decoration: none; transition: background 0.15s, color 0.15s; }
+.nav-tab:hover { color: var(--text); text-decoration: none; background: var(--surface-2); }
+.nav-tab.on { background: var(--text); color: var(--surface); }
+.nav-right { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.nav-usage { display: flex; align-items: center; gap: 10px; padding: 0 12px; font-family: var(--mono); font-size: 11.5px; color: var(--dim); }
+.nav-usage .stat { color: var(--dim); }
+.nav-round { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border: 0; border-radius: 50%; background: var(--surface-2); color: var(--text); }
+.nav-round:hover { background: var(--surface-3); }
+.nav-bell { position: absolute; top: -2px; right: -2px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--busy); color: var(--accent-ink); font-size: 10px; font-weight: 700; line-height: 17px; text-align: center; }
+body.in-home .home-columns { gap: 14px; background: transparent; }
+body.in-home .home-columns > * { border-radius: 22px; background: var(--surface); box-shadow: var(--soft-shadow); overflow: hidden; }
+body.in-home .panel-head { height: 48px; padding: 0 18px; border-bottom: 0; }
+body.in-home .panel-head h2 { font-size: 15px; letter-spacing: -0.01em; }
+body.in-home .panel-head .dim { font-size: 12.5px; }
+body.in-home .home-agent-list { padding: 4px 10px 12px; }
+body.in-home .agent-row.rich { border-radius: 14px; padding-top: 8px; padding-bottom: 8px; font-size: 13.5px; gap: 10px; }
+body.in-home .agent-row.rich .dot { margin-top: 7px; }
+body.in-home .agent-row.on { background: var(--surface-2); }
+body.in-home .agent-row:hover { background: var(--surface-2); }
+body.in-home .agent-doing { font-size: 11.5px; }
+body.in-home .agent-row.rich .label { font-weight: 600; }
+body.in-home .badge { border-color: transparent; background: var(--surface-3); }
+body.in-home .badge.ask { background: var(--busy); color: var(--accent-ink); }
+body.in-home .chat-log { background: var(--surface); padding: 6px 22px 16px; gap: 8px; }
+body.in-home .row { font-size: 14px; line-height: 1.55; border-radius: 18px; }
+body.in-home .row.reply { background: var(--surface-2); border: 0; padding: 12px 16px; max-width: 82%; }
+body.in-home .row.mine { background: var(--text); color: var(--surface); border: 0; padding: 12px 16px; max-width: 72%; }
+body.in-home .row.mine .row-foot, body.in-home .row.mine .dim { color: color-mix(in srgb, var(--surface) 65%, transparent); }
+body.in-home .row.mine a { color: inherit; text-decoration: underline; }
+body.in-home .row.mine .md-inline, body.in-home .row.mine .md-code { background: color-mix(in srgb, var(--surface) 14%, transparent); border-color: transparent; color: inherit; }
+body.in-home .row.card { border: 0; border-left: 0; background: var(--surface-2); padding: 10px 16px; border-radius: 16px; }
+body.in-home .row.card:hover { background: var(--surface-3); }
+body.in-home .row.card .arrow { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; font-size: 12px; background: var(--surface); }
+body.in-home .row.card.tint-accent .arrow { background: var(--accent); color: var(--accent-ink); }
+body.in-home .row.card.tint-ok .arrow { background: var(--idle); color: var(--accent-ink); }
+body.in-home .row.card.tint-warn .arrow { background: var(--warn); color: var(--accent-ink); }
+body.in-home .card-line { font-size: 14px; }
+body.in-home .row.question { border: 0; padding: 12px 16px; background: color-mix(in srgb, var(--busy) 22%, var(--surface)); }
+body.in-home .row.question.answered { background: var(--surface-2); }
+body.in-home .row.event, body.in-home .row.notice { padding: 4px 10px; border-radius: 12px; font-size: 13px; }
+body.in-home .event-line { font-size: 13px; }
+body.in-home .row.notice { background: var(--surface-2); padding: 8px 12px; }
+body.in-home .tools-head { font-size: 12px; padding: 4px 12px; background: var(--surface-2); border: 0; }
+body.in-home .day { font-size: 11px; margin: 14px 0 6px; }
+body.in-home .day::before, body.in-home .day::after { border-color: var(--surface-3); }
+body.in-home .btn { border-radius: 999px; padding: 7px 14px; font-size: 13px; background: var(--surface); border-color: transparent; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+body.in-home .btn:hover { background: var(--text); color: var(--surface); }
+body.in-home .btn.ghost { background: transparent; box-shadow: none; border: 1px solid var(--line-2); }
+body.in-home .chat-compose { border-top: 0; padding: 10px 14px 14px 20px; background: var(--surface); }
+body.in-home .compose-row { align-items: center; padding: 6px 6px 6px 18px; border-radius: 999px; background: var(--surface-2); }
+body.in-home .chat-compose textarea { font-size: 14px; padding: 6px 0; }
+body.in-home .compose-row .iconbtn { width: 34px; height: 34px; border-radius: 50%; background: var(--text); color: var(--surface); }
+body.in-home .compose-foot { padding: 6px 12px 0; font-size: 11px; }
+body.in-home .compose-pin { border-radius: 14px; border: 0; background: color-mix(in srgb, var(--busy) 22%, var(--surface)); padding: 8px 12px; margin-bottom: 6px; }
+body.in-home .mentions { border-radius: 14px; }
+body.in-home .tag { border-color: transparent; background: var(--surface-3); padding: 2px 9px; font-size: 11px; }
+body.in-home .tag.status-working { background: color-mix(in srgb, var(--busy) 25%, transparent); color: var(--text); }
+body.in-home .tag.status-idle { background: color-mix(in srgb, var(--idle) 25%, transparent); color: var(--text); }
+body.in-home .tag.status-waiting { background: color-mix(in srgb, var(--accent) 25%, transparent); color: var(--text); }
+body.in-home .tag.fine { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--text); }
+body.in-home .tag.due, body.in-home .tag.prio-urgent { background: color-mix(in srgb, var(--hot) 22%, transparent); color: var(--text); }
+body.in-home .agent-brief { border-bottom: 0; padding: 0 20px 10px; font-size: 13px; }
+body.in-home .chip { border-radius: 999px; border-color: transparent; background: var(--surface-2); padding: 4px 11px; font-size: 12px; color: var(--text); }
+body.in-home .home-status { padding: 6px 18px 200px; gap: 16px; }
+body.in-home .status-title { font-size: 11px; }
+body.in-home .status-link, body.in-home .status-row { font-size: 13.5px; padding: 6px 10px; margin: 0 -10px; border-radius: 12px; }
+body.in-home .status-link .dim, body.in-home .status-row .dim { font-size: 11.5px; }
+body.in-home .pending-card { border: 0; border-radius: 16px; background: var(--surface); padding: 12px 16px; font-size: 13.5px; box-shadow: var(--soft-shadow); }
+body.in-home .pending-card:hover { box-shadow: 0 0 0 2px var(--busy); }
+body.in-home .pending-card.task { background: var(--surface); }
+body.in-home .pending-card.question .pending-meta > .icon, body.in-home .pending-card.ask .pending-meta > .icon { color: var(--busy); }
+body.in-home .pending-card.task .pending-meta > .icon { color: var(--accent); }
+body.in-home .usage-row .stat .dim { font-size: 11px; }
+/* the board in the room */
+body.in-home .board-view { gap: 14px; background: transparent; }
+body.in-home .board-view > * { border-radius: 22px; background: var(--surface); box-shadow: var(--soft-shadow); }
+body.in-home .board-tree-list { padding: 4px 10px 12px; }
+body.in-home .board-tree .agent-row { border-radius: 12px; padding-top: 7px; padding-bottom: 7px; font-size: 13.5px; }
+body.in-home .board-tree .agent-row.on, body.in-home .board-tree .agent-row:hover { background: var(--surface-2); }
+body.in-home .count { background: var(--surface-3); border-radius: 6px; }
+body.in-home .board-toolbar { height: 60px; padding: 0 20px; border-bottom: 0; gap: 14px; }
+body.in-home .board-toolbar h2 { font-size: 18px; letter-spacing: -0.01em; }
+body.in-home .task-new { border-radius: 999px; border-color: transparent; background: var(--surface-2); padding: 7px 14px; }
+body.in-home .task-new input { font-size: 13.5px; }
+body.in-home .segmented { border-radius: 999px; border: 0; background: var(--surface-2); padding: 3px; }
+body.in-home .seg { border-radius: 999px; font-size: 12.5px; padding: 5px 12px; }
+body.in-home .seg.on { background: var(--text); color: var(--surface); box-shadow: none; }
+body.in-home .board-main .board { padding: 4px 16px 16px; gap: 12px; }
+body.in-home .board-main .board-column { border-radius: 18px; background: var(--surface-2); padding: 10px; }
+body.in-home .board-column .section-title { font-size: 11.5px; margin: 2px 6px 6px; }
+body.in-home .board-card { border: 0; border-radius: 14px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); background: var(--surface); }
+body.in-home .board-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.08); }
+body.in-home .board-card.on { box-shadow: 0 0 0 2px var(--text); }
+body.in-home .board-card .task-title { font-size: 13.5px; font-weight: 600; }
+body.in-home .board-card .next { font-size: 12px; }
+body.in-home .board-card.status-waiting_user { box-shadow: inset 3px 0 0 var(--accent), 0 1px 2px rgba(0,0,0,0.06); }
+body.in-home .board-panel { border-left: 0; }
+body.in-home .panel-field input, body.in-home .panel-field select, body.in-home .panel-field textarea { border-radius: 10px; border-color: transparent; background: var(--surface-2); font-size: 13px; }
+body.in-home .panel-title { font-size: 17px; }
+body.in-home .crumb { font-size: 14px; }
+body.in-home .crumb.on { font-size: 15px; }
+body.in-home .tooltip { font-family: inherit; font-size: 12.5px; border: 0; border-radius: 12px; padding: 8px 12px; background: var(--text); color: var(--surface); box-shadow: var(--soft-shadow); max-width: 320px; }
+body.in-home .tooltip .dim { color: color-mix(in srgb, var(--surface) 65%, transparent); font-size: 11.5px; }
+.tooltip { max-width: 360px; white-space: pre-wrap; overflow-wrap: anywhere; }

@@ -47,8 +47,27 @@ export function home(root: HTMLElement) {
   const agentsPane = el("aside.home-agents");
   const centrePane = el("section.home-centre");
   const statusPane = el("div.home-status");
-  const pendingPane = el("div.home-pending");
-  clear(root, agentsPane, centrePane, el("aside.home-right", {}, statusPane, pendingPane));
+  const pendingPane = el("div.home-pending", { hidden: true });
+  const nav = el("nav.home-nav");
+  pendingPane.addEventListener("mouseenter", () => pendingPane.classList.add("open"));
+  pendingPane.addEventListener("mouseleave", () => pendingPane.classList.remove("open"));
+  const navUsage = el("div.nav-usage");
+  const navBell = el("span.nav-bell");
+  clear(root, nav, el("div.home-columns", {}, agentsPane, centrePane, el("aside.home-right", {}, statusPane)), pendingPane);
+
+  /** The bar across the top: where you are, and the way to the other views. */
+  function drawNav() {
+    const tab = (name: Parameters<typeof linkTo>[0], label: string, on: boolean, iconName: Parameters<typeof icon>[0]) =>
+      linkTo(name, el("a.nav-tab", { class: `nav-tab${on ? " on" : ""}` }, icon(iconName, 14), el("span", {}, label)) as HTMLAnchorElement);
+    clear(
+      nav,
+      el("div.nav-brand", {}, icon("bot", 18), el("span", {}, "pai")),
+      el("div.nav-tabs", {}, tab("home", "Chat", centre.kind !== "board", "message"), tab("board", "Board", centre.kind === "board", "board"), tab("editor", "Editor", false, "code"), tab("dashboard", "Dashboard", false, "layout")),
+      el("div.nav-right", {}, navUsage, el("button.nav-round", { title: "what waits on you", onclick: () => pendingPane.scrollIntoView({ behavior: "smooth" }) }, icon("bell", 15), navBell), el("button.nav-round", { title: "settings", onclick: () => navigate("settings") }, icon("settings", 15))),
+    );
+    navBell.textContent = String(needs.length);
+    navBell.hidden = !needs.length;
+  }
 
   const bySlug = (slug: string) => agents.find((a) => a.slug === slug);
   const nameOf = (slug: string) => (slug === "user" ? "you" : (bySlug(slug)?.name ?? slug));
@@ -58,7 +77,7 @@ export function home(root: HTMLElement) {
     openAgent: (slug: string, at?: number) => {
       if (slug === PAI) return void navigate("home");
       if (at !== undefined) pendingReveal = { messageId: at };
-      navigate({ name: "agents", param: slug });
+      navigate({ name: "chat", param: slug });
       if (pendingReveal && agentChat?.slug === slug) {
         const target = pendingReveal;
         pendingReveal = undefined;
@@ -241,6 +260,7 @@ export function home(root: HTMLElement) {
     if (next.kind !== "chat" && mainChat) mainChat.node.remove();
     root.classList.toggle("board-mode", next.kind === "board");
     drawAgents();
+    drawNav();
   }
 
   // ---- the right column: status and what waits -------------------------------------------
@@ -256,6 +276,7 @@ export function home(root: HTMLElement) {
     try {
       const data = await usage();
       clear(usageBox, ...block("Usage", el("div.usage-row", {}, ...usageStats(data, true))));
+      clear(navUsage, ...usageStats(data).slice(1));
     } catch {
       clear(usageBox, ...block("Usage", el("p.hint", {}, "offline")));
     }
@@ -310,6 +331,8 @@ export function home(root: HTMLElement) {
 
   /** The stack of what waits on the user: a card each, newest on top; a click finds it in the chat. */
   function drawPending() {
+    navBell.textContent = String(needs.length);
+    navBell.hidden = !needs.length;
     const cards = needs.map((n) => {
       const agentSlug = n.agent ?? PAI;
       const card = el(
@@ -325,10 +348,18 @@ export function home(root: HTMLElement) {
       );
       return card;
     });
+    pendingPane.hidden = !needs.length;
+    pendingPane.classList.toggle("many", needs.length > 1);
     clear(
       pendingPane,
-      el("h3.status-title", {}, "Waiting on you", needs.length ? el("span.badge.ask", {}, String(needs.length)) : undefined),
-      el("div.pending-stack", {}, ...(cards.length ? cards : [el("p.hint", {}, "Nothing waits on you.")])),
+      el(
+        "div.pending-head",
+        {},
+        el("h3.status-title", {}, "Waiting on you", el("span.badge.ask", {}, String(needs.length))),
+        el("span.grow"),
+        el("button.iconbtn.slim", { title: "fold the pile", onclick: () => pendingPane.classList.remove("open") }, icon("x", 12)),
+      ),
+      el("div.pending-stack", {}, ...cards),
     );
   }
 
@@ -424,6 +455,7 @@ export function home(root: HTMLElement) {
   const usageTimer = setInterval(() => void drawUsage(), 60_000);
   window.addEventListener("pai:prefs", () => void drawUsage());
 
+  drawNav();
   void load().then(() => {
     loaded = true;
     show(centre);

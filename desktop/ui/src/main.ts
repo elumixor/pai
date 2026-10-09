@@ -93,7 +93,7 @@ function applyRoute(route: Route) {
     showEditor();
     return;
   }
-  if (route.name === "home" || route.name === "board" || (route.name === "agents" && route.param)) {
+  if (route.name === "home" || route.name === "board" || route.name === "chat") {
     showView("home");
     const centre: Centre = route.name === "home" ? { kind: "chat" } : route.name === "board" ? { kind: "board", slug: route.param } : { kind: "agent", slug: route.param! };
     homePage!.show(centre);
