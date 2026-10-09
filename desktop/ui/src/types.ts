@@ -88,6 +88,9 @@ export interface ModuleInfo {
     readonly hint: string;
   };
   readonly live: boolean;
+  /** A module from its own repository with a page of its own: its path under the daemon. */
+  readonly ui?: string;
+  readonly external?: boolean;
 }
 
 export interface Automation {
@@ -213,6 +216,9 @@ export interface LogMessage {
     readonly agent?: string;
     readonly source?: string;
     readonly link?: string;
+    /** On pai's own replies: `user`, `system` or `silent` — what the turn answered. */
+    readonly origin?: string;
+    readonly freeText?: boolean;
   };
   readonly createdAt: number;
 }
@@ -222,12 +228,32 @@ export type TaskStatus = "inbox" | "active" | "waiting_user" | "waiting_other" |
 export interface TaskItem {
   readonly id: number;
   readonly title: string;
+  readonly parentId?: number | null;
   readonly owner: string;
   readonly status: TaskStatus;
   readonly nextAction: string;
   readonly due: string | null;
   readonly source: string | null;
+  readonly notes?: string;
+  readonly createdAt?: number;
   readonly updatedAt?: number;
+}
+
+/** One thing that waits on the user, as `GET /needs` lists them: an agent's ask, a session's question, a task waiting on them. */
+export interface Need {
+  readonly kind: "ask" | "question" | "task";
+  readonly id: string;
+  readonly askId?: number;
+  readonly taskId?: number;
+  readonly session?: string;
+  readonly agent: string | null;
+  readonly from: string;
+  readonly question: string;
+  readonly options: readonly string[];
+  readonly freeText: boolean;
+  readonly priority: string;
+  readonly link?: string;
+  readonly createdAt: number;
 }
 
 export interface Ask {

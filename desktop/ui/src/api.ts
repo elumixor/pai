@@ -1,4 +1,4 @@
-import type { Agent, Ask, Automation, ContextItem, LogMessage, Routine, TaskItem, TaskStatus, Diagnostic, SlashCommand, DiskSession, Entry, ModuleInfo, PaiEvent, ProjectSummary, SessionSummary, Status, TerminalSummary, Usage } from "./types.ts";
+import type { Agent, Ask, Automation, Need, ContextItem, LogMessage, Routine, TaskItem, TaskStatus, Diagnostic, SlashCommand, DiskSession, Entry, ModuleInfo, PaiEvent, ProjectSummary, SessionSummary, Status, TerminalSummary, Usage } from "./types.ts";
 
 /**
  * The daemon, with the app's offline story in one place: every GET is cached, a failed GET
@@ -292,8 +292,17 @@ export const messageAgent = (slug: string, text: string) => send(`/agents/${slug
 export const closeAgent = (slug: string) => send(`/agents/${slug}/close`, {});
 export const taskItems = async () => (await tasks()).items ?? [];
 export const createTask = (input: { title: string; owner?: string; due?: string }) => send("/tasks", input);
-export const updateTask = (id: number, changes: { status?: TaskStatus; title?: string; owner?: string; due?: string | null; nextAction?: string }) => send(`/tasks/${id}`, changes, "PATCH");
+export const updateTask = (id: number, changes: { status?: TaskStatus; title?: string; owner?: string; due?: string | null; nextAction?: string; notes?: string; parentId?: number | null }) => send(`/tasks/${id}`, changes, "PATCH");
 export const asks = () => get<Ask[]>("/asks");
+export const needs = () => get<Need[]>("/needs");
+export const answerNeed = (id: string, text: string) => send("/needs/answer", { id, text });
+export const agent = (slug: string) => get<Agent & { children: Agent[]; tasks: TaskItem[] }>(`/agents/${slug}`);
+export const task = (id: number) => get<TaskItem & { children: TaskItem[] }>(`/tasks/${id}`);
+/** Every task, closed ones included. */
+export const allTasks = async () => (await get<{ items?: TaskItem[] }>("/tasks?all=1")).items ?? [];
+export const pai = () => get<{ session: SessionSummary; thread: number | null; lastRotation: unknown }>("/pai");
+export const sendPai = (text: string) => send("/pai", { text });
+export const answerQuestion = (session: string, text: string) => send("/answer", { id: session, text });
 export const answerAsk = (id: number, text: string) => send(`/asks/${id}/answer`, { text });
 export const routines = () => get<Routine[]>("/routines");
 
