@@ -939,7 +939,12 @@ body.in-home .row.reply.folded .bubble { -webkit-line-clamp: unset; }
 .agent-icon .logo { border-radius: 26%; }
 .agent-row.on .agent-icon { color: var(--text); }
 body.in-home .agent-row.rich { padding-left: calc(10px + var(--depth, 0) * 18px); position: relative; }
-body.in-home .agent-row.rich:not(.depth-0)::before { content: ""; position: absolute; left: calc(10px + (var(--depth, 0) - 1) * 18px + 10px); top: -6px; bottom: 50%; width: 12px; border-left: 1.5px solid color-mix(in srgb, var(--text) 14%, transparent); border-bottom: 1.5px solid color-mix(in srgb, var(--text) 14%, transparent); border-bottom-left-radius: 8px; }
+/* The branch: one unbroken vertical line down the parent's icon, a tick into each child's icon; the last child ends it. */
+body.in-home .agent-row.rich:not(.depth-0)::before { content: ""; position: absolute; left: calc(10px + (var(--depth, 0) - 1) * 18px + 11px); top: 0; bottom: 0; width: 1.5px; background: color-mix(in srgb, var(--text) 14%, transparent); }
+body.in-home .agent-row.rich:not(.depth-0).last::before { bottom: auto; height: 17px; border-bottom-left-radius: 0; }
+body.in-home .agent-row.rich:not(.depth-0)::after { content: ""; position: absolute; left: calc(10px + (var(--depth, 0) - 1) * 18px + 11px); top: 17px; width: 7px; height: 1.5px; background: color-mix(in srgb, var(--text) 14%, transparent); }
+body.in-home .agent-row.rich:not(.depth-0).last::before { height: 17px; }
+body.in-home .home-agent-list { overflow: visible; }
 .spinner { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--text) 20%, transparent); border-top-color: var(--text); animation: spin 0.9s linear infinite; flex: 0 0 auto; }
 .attention { display: inline-flex; color: var(--busy); animation: blink 1.2s ease-in-out infinite; }
 @keyframes blink { 50% { opacity: 0.25; } }

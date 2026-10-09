@@ -112,8 +112,11 @@ export function home(root: HTMLElement) {
   }
 
   function drawAgents() {
-    const rows = ordered().map(({ agent, depth }) => {
+    const list = ordered();
+    const rows = list.map(({ agent, depth }, i) => {
       const status = STATUS[agent.status] ?? STATUS.idle;
+      // The last sibling at its depth ends the branch line.
+      const last = !list.slice(i + 1).some((o) => o.depth === depth) || (list[i + 1]?.depth ?? 0) < depth;
       const open = tasks.filter((t) => t.owner === agent.slug).length;
       const waiting = needs.filter((n) => n.agent === agent.slug || (agent.slug === PAI && n.agent === null)).length;
       const on = agent.slug === selectedSlug() && centre.kind !== "board";
@@ -121,7 +124,7 @@ export function home(root: HTMLElement) {
       return el(
         "button.agent-row.rich",
         {
-          class: `agent-row rich depth-${Math.min(depth, 3)}${on ? " on" : ""}${agent.status === "closed" ? " closed" : ""}`,
+          class: `agent-row rich depth-${Math.min(depth, 3)}${last ? " last" : ""}${on ? " on" : ""}${agent.status === "closed" ? " closed" : ""}`,
           style: `--depth: ${depth}`,
           title: [`${nameOf(agent.slug)} · ${agent.kind}`, status.label + (agent.queued ? ` · ${agent.queued} queued` : ""), agent.model ? modelName(agent.model) : ""].filter(Boolean).join("\n"),
           onclick: () => (agent.slug === PAI ? navigate("home") : ctx.openAgent(agent.slug)),
