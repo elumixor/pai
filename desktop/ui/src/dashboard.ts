@@ -69,7 +69,9 @@ export function dashboard(root: HTMLElement, handlers: DashboardHandlers) {
     el("div.dash-brand", {}, icon("bot", 16), el("span", {}, "pai")),
     ...PAGES.map((p) => linkTo(p.id === "overview" ? "dashboard" : p.id, el("a.dash-link", { "data-page": p.id }, icon(p.icon, 14), el("span", {}, p.label)) as HTMLAnchorElement)),
     el("span.grow"),
-    linkTo("work", el("a.dash-link", {}, icon("code", 14), el("span", {}, "Work")) as HTMLAnchorElement),
+    linkTo("home", el("a.dash-link", {}, icon("message", 14), el("span", {}, "Chat")) as HTMLAnchorElement),
+    linkTo("board", el("a.dash-link", {}, icon("board", 14), el("span", {}, "Board")) as HTMLAnchorElement),
+    linkTo("editor", el("a.dash-link", {}, icon("code", 14), el("span", {}, "Editor")) as HTMLAnchorElement),
   );
   clear(root, nav, body);
 

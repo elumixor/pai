@@ -1,15 +1,16 @@
 import { asks, baseUrl, fileIndex, flush, follow, inDesktop, isOnline, lastError, onConnection, outbox, projects, resolveBase, send, status, usage } from "./api.ts";
 import { dashboard, type Page } from "./dashboard.ts";
-import { ago, clear, el, sheet, until } from "./dom.ts";
+import { clear, el, sheet } from "./dom.ts";
 import "./theme.ts";
 import { editor, emptyEditor } from "./editor.ts";
 import { current as currentRoute, navigate, onRoute, type Route } from "./router.ts";
+import { home as homeView, type Centre } from "./home.ts";
+import { usageStats } from "./rings.ts";
 import { tree, type Tree } from "./files.ts";
 import { icon, type IconName } from "./icons.ts";
 import { palette, type Command } from "./palette.ts";
 import { addProjectDialog, allThreads, projectOf, rail } from "./rail.ts";
 import { DOWNLOAD, settingsView, SHORTCUTS, type SettingsSection } from "./settings.ts";
-import { prefs } from "./prefs.ts";
 import { choose } from "./theme.ts";
 import { THEMES } from "./themes.ts";
 import { composeOf } from "./thread.ts";
@@ -44,16 +45,19 @@ const openFile = (path: string) => {
   save();
   void showCenter(() => editor(viewerPane, path));
 };
-// ---- the two views: work and dashboard ---------------------------------------------------
+// ---- the three views: home (the chat, the board), work (the editor), the dashboard --------
 
 const dashboardRoot = $("dashboard");
+const homeRoot = $("home");
 let dashboardView: ReturnType<typeof dashboard> | undefined;
-let view: "work" | "dashboard" = "work";
-function showView(next: "work" | "dashboard", page: Page = "overview") {
-  view = next;
+let homePage: ReturnType<typeof homeView> | undefined;
+type View = "home" | "work" | "dashboard";
+function showView(next: View, page: Page = "overview") {
   main.hidden = next !== "work";
+  homeRoot.hidden = next !== "home";
   dashboardRoot.hidden = next !== "dashboard";
   document.body.classList.toggle("in-dashboard", next === "dashboard");
+  document.body.classList.toggle("in-home", next === "home");
   if (next === "dashboard") {
     dashboardView ??= dashboard(dashboardRoot, {
       openFile: (path) => {
@@ -61,33 +65,42 @@ function showView(next: "work" | "dashboard", page: Page = "overview") {
         openFile(path);
       },
       selectProject: (slug) => {
-        navigate("work");
+        navigate("editor");
         const project = catalog.find((p) => p.slug === slug);
         if (project) selectProject(project);
       },
     });
     void dashboardView.show(page);
-  } else window.dispatchEvent(new Event("resize"));
+  } else if (next === "home") homePage ??= homeView(homeRoot);
+  else window.dispatchEvent(new Event("resize"));
 }
-const showDashboard = () => navigate(view === "dashboard" ? "work" : "dashboard");
 const showSettings = (section?: SettingsSection) => {
   if (document.querySelector("dialog.settings")) return;
   const { body, close } = sheet("settings");
   settingsView(body, section, () => {
     close();
-    if (currentRoute() === "settings") navigate("work", true);
+    if (currentRoute().name === "settings") history.back();
   });
 };
 const showEditor = () => (state.file ? openFile(state.file) : emptyEditor(viewerPane));
 
-/** Each address is one of the views: the dashboard's pages, the editor in the work view, the settings sheet over it. */
+/** Each address is one of the views: the chat, an agent's thread or the board at home; the dashboard's pages; the editor; the settings sheet over whatever is open. */
 function applyRoute(route: Route) {
-  const pages: Partial<Record<Route, Page>> = { dashboard: "overview", agents: "agents", modules: "modules", automations: "automations", projects: "projects", context: "context" };
-  const page = pages[route];
-  if (page) return showView("dashboard", page);
-  showView("work");
-  if (route === "editor") showEditor();
-  if (route === "settings") showSettings();
+  const pages: Partial<Record<Route["name"], Page>> = { dashboard: "overview", agents: "agents", modules: "modules", automations: "automations", projects: "projects", context: "context" };
+  if (route.name === "settings") return showSettings();
+  if (route.name === "editor") {
+    showView("work");
+    showEditor();
+    return;
+  }
+  if (route.name === "home" || route.name === "board" || (route.name === "agents" && route.param)) {
+    showView("home");
+    const centre: Centre = route.name === "home" ? { kind: "chat" } : route.name === "board" ? { kind: "board", slug: route.param } : { kind: "agent", slug: route.param! };
+    homePage!.show(centre);
+    return;
+  }
+  const page = pages[route.name];
+  if (page) showView("dashboard", page);
 }
 onRoute(applyRoute);
 
@@ -196,42 +209,6 @@ const terminals = dock(dockPane, () => ({ slug: state.project, path: currentProj
 
 // ---- the status bar: connection, cost, the quota rings, and the way to the other views ---
 
-const ring = (window: { name: string; percent: number; resetsAt?: string; length: number }, source?: string) => {
-  const { percent } = window;
-  const r = 5.5;
-  const c = 2 * Math.PI * r;
-  const level = percent >= 90 ? "hot" : percent >= 70 ? "warm" : "cool";
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 14 14");
-  svg.setAttribute("class", `ring ${level}`);
-  svg.innerHTML = `<circle cx="7" cy="7" r="${r}" class="track"/><circle cx="7" cy="7" r="${r}" class="fill" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - Math.min(100, percent) / 100)}" transform="rotate(-90 7 7)"/>`;
-  const stat = el("span.stat.has-tip", {}, svg, el("span", {}, `${percent}%`));
-  stat.addEventListener("mouseenter", () => {
-    const left = window.resetsAt ? Math.max(0, new Date(window.resetsAt).getTime() - Date.now()) / 1000 : 0;
-    const elapsed = window.length ? Math.round(100 - (left / window.length) * 100) : 0;
-    showTip(stat, [
-      el("strong", {}, window.name),
-      el("span", {}, `${percent}% of the limit used`),
-      window.resetsAt ? el("span", {}, `resets in ${until(window.resetsAt)} · ${elapsed}% of the ${window.length >= 86400 ? "week" : "window"} elapsed`) : undefined,
-      source ? el("span.dim", {}, source) : undefined,
-      el("span.dim", {}, "which rings show: settings → usage rings"),
-    ]);
-  });
-  stat.addEventListener("mouseleave", hideTip);
-  return stat;
-};
-
-const tip = el("div.tooltip", { hidden: true });
-document.body.append(tip);
-function showTip(anchor: HTMLElement, lines: (HTMLElement | undefined)[]) {
-  clear(tip, ...lines);
-  tip.removeAttribute("hidden");
-  const box = anchor.getBoundingClientRect();
-  tip.style.left = `${Math.max(8, Math.min(box.left, window.innerWidth - tip.offsetWidth - 8))}px`;
-  tip.style.top = `${box.top - tip.offsetHeight - 8}px`;
-}
-const hideTip = () => tip.setAttribute("hidden", "");
-
 const statusLeft = el("div.status-left");
 const statusRight = el("div.status-right");
 const connection = el("span.conn", { title: "connection" });
@@ -239,19 +216,11 @@ const navButton = (name: IconName, label: string, onclick: () => void) => el("bu
 clear(statusbar, statusLeft, statusRight);
 
 async function refreshUsage() {
-  const stats: HTMLElement[] = [];
+  let stats: HTMLElement[];
   try {
-    const data = await usage();
-    stats.push(el("span.stat", { title: "what the sessions have cost, as the SDK reports it" }, `$${data.costUsd.toFixed(2)}`));
-    const hidden = new Set(prefs().hiddenRings);
-    const source = data.via ? `read on ${data.via} ${data.fetchedAt ? ago(data.fetchedAt) : ""}` : undefined;
-    for (const window of data.windows) if (!hidden.has(window.name)) stats.push(ring(window, source));
-    const session = data.windows.find((w) => w.name === "Session");
-    if (session && !hidden.has("Session")) stats.push(el("span.stat.dim", { title: "time left in the five-hour window" }, until(session.resetsAt)));
-    if (!data.windows.length) stats.push(el("span.stat.dim", { title: data.error ?? "" }, "no quota"));
-    else if (data.error) stats.push(el("span.stat.dim", { title: data.error }, "stale"));
+    stats = usageStats(await usage());
   } catch {
-    stats.push(el("span.stat.dim", {}, "offline"));
+    stats = [el("span.stat.dim", {}, "offline")];
   }
   clear(statusLeft, connection, ...stats);
 }
@@ -261,9 +230,10 @@ function renderStatusRight(editorUrl?: string) {
     statusRight,
     el("span.stat.dim", { title: `daemon at ${baseUrl()}` }, baseUrl().replace(/^https?:\/\//, "")),
     navButton("zap", "Search everything (⌘K)", openPalette),
+    navButton("message", "The chat (⌘1)", () => navigate("home")),
     staffButton,
-    navButton("layout", "Dashboard (⌘2) · Work (⌘1)", showDashboard),
-    navButton("code", "Editor", () => navigate("editor")),
+    navButton("code", "Editor (⌘3)", () => navigate("editor")),
+    navButton("layout", "Dashboard (⌘4)", () => navigate("dashboard")),
     editorUrl ? el("a.iconbtn.slim", { title: "VS Code in the browser", href: editorUrl, target: "_blank", rel: "noreferrer" }, icon("external", 13)) : undefined,
     navButton("settings", "Settings", () => navigate("settings")),
   );
@@ -271,12 +241,12 @@ function renderStatusRight(editorUrl?: string) {
 
 /** The way to the staff, with how many questions the agents are waiting on you for. */
 const asksBadge = el("span.badge.ask", { hidden: true });
-const staffButton = el("button.iconbtn.slim.staff-nav", { title: "Agents (⌘3)", onclick: () => navigate("agents") }, icon("users", 13), asksBadge);
+const staffButton = el("button.iconbtn.slim.staff-nav", { title: "Board (⌘2)", onclick: () => navigate("board") }, icon("board", 13), asksBadge);
 async function refreshAsks() {
   const open = await asks().catch(() => []);
   asksBadge.textContent = String(open.length);
   asksBadge.hidden = !open.length;
-  staffButton.title = open.length ? `Agents (⌘3) · ${open.length} question${open.length === 1 ? "" : "s"} for you` : "Agents (⌘3)";
+  staffButton.title = open.length ? `Board (⌘2) · ${open.length} question${open.length === 1 ? "" : "s"} for you` : "Board (⌘2)";
 }
 
 function unreachable() {
@@ -299,14 +269,15 @@ onConnection((online) => {
 
 async function commands(): Promise<Command[]> {
   const actions: Command[] = [
+    { id: "home", title: "Chat with pai", group: "view", icon: "message", hint: "the main chat", run: () => navigate("home") },
+    { id: "board", title: "Board", group: "view", icon: "board", hint: "the agents' tasks, a kanban per project", run: () => navigate("board") },
     { id: "dashboard", title: "Dashboard", group: "view", icon: "layout", run: () => navigate("dashboard") },
     { id: "agents", title: "Agents", group: "view", icon: "users", hint: "pai's staff, their chats, tasks and asks", run: () => navigate("agents") },
     { id: "modules", title: "Modules", group: "view", icon: "zap", run: () => navigate("modules") },
     { id: "automations", title: "Automations", group: "view", icon: "play", run: () => navigate("automations") },
     { id: "projects", title: "Projects", group: "view", icon: "folder", run: () => navigate("projects") },
     { id: "context", title: "Context", group: "view", icon: "book", run: () => navigate("context") },
-    { id: "work", title: "Work view", group: "view", icon: "code", run: () => navigate("work") },
-    { id: "editor", title: "Editor", group: "view", icon: "code", run: () => navigate("editor") },
+    { id: "editor", title: "Editor", group: "view", icon: "code", hint: "files, threads, terminals", run: () => navigate("editor") },
     { id: "settings", title: "Settings", group: "view", icon: "settings", run: () => navigate("settings") },
     { id: "new-thread", title: `New thread${state.project ? ` in ${state.project}` : ""}`, group: "action", icon: "message", run: () => void newThread(state.project) },
     { id: "new-terminal", title: `New terminal${state.project ? ` in ${state.project}` : ""}`, group: "action", icon: "terminal", run: () => void terminals.open() },
@@ -346,9 +317,9 @@ document.addEventListener("keydown", (event) => {
     // ⌘F: the open file, found in the tree.
     event.preventDefault();
     if (state.file) void fileTree?.reveal(state.file);
-  } else if (meta && (event.key === "1" || event.key === "2" || event.key === "3")) {
+  } else if (meta && (event.key === "1" || event.key === "2" || event.key === "3" || event.key === "4")) {
     event.preventDefault();
-    navigate(event.key === "1" ? "work" : event.key === "2" ? "dashboard" : "agents");
+    navigate(event.key === "1" ? "home" : event.key === "2" ? "board" : event.key === "3" ? "editor" : "dashboard");
   } else if (event.metaKey && event.key === "," && event.shiftKey === !inDesktop) {
     // ⌘, in the app; a browser keeps that one for itself, so ⌘⇧, on the web.
     event.preventDefault();
@@ -356,9 +327,12 @@ document.addEventListener("keydown", (event) => {
   } else if (event.ctrlKey && event.key === "Tab") {
     event.preventDefault();
     cycleThread(event.shiftKey ? -1 : 1);
+  } else if (event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "l" && !homeRoot.hidden) {
+    event.preventDefault();
+    homePage?.focus();
   } else if (event.ctrlKey && !event.metaKey && !event.altKey && FOCUS[event.key.toLowerCase()]) {
     event.preventDefault();
-    navigate("work");
+    navigate("editor");
     FOCUS[event.key.toLowerCase()]!();
   }
 });
@@ -404,8 +378,8 @@ void (async () => {
     /* offline is a normal way to start */
   }
   await refreshAll();
-  if (state.file) openFile(state.file);
   applyRoute(currentRoute());
+  if (state.file && !main.hidden) openFile(state.file);
   for (const slot of ["a", "b"] as const) {
     const remembered = sessions.find((s) => s.sessionId === slotState[slot]());
     if (remembered) openThread(remembered, slot);

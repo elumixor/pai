@@ -16,11 +16,11 @@ const MODES: { value: Mode; label: string; icon: IconName }[] = [
 export const SHORTCUTS: { keys: string; what: string }[] = [
   { keys: "⌘K", what: "search everything: actions, settings, projects, threads, files" },
   { keys: inDesktop ? "⌘," : "⌘⇧,", what: "settings" },
-  { keys: "⌘1 / ⌘2 / ⌘3", what: "work view / dashboard / agents" },
+  { keys: "⌘1 / ⌘2 / ⌘3 / ⌘4", what: "main chat / board / editor / dashboard" },
   { keys: "⌃Tab / ⌃⇧Tab", what: "next / previous thread" },
   { keys: "⌃J", what: "focus the terminal (opens one if none)" },
   { keys: "⌃E", what: "focus the editor" },
-  { keys: "⌃L", what: "focus the thread's message box" },
+  { keys: "⌃L", what: "focus the message box (the chat, or the thread in the editor)" },
   { keys: "⌃B", what: "focus the file tree" },
   { keys: "⌃N", what: "new thread in the selected project" },
   { keys: "⌘S · :w", what: "save the file (it also saves when the editor loses focus)" },

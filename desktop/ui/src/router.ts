@@ -1,34 +1,51 @@
 import { inDesktop } from "./api.ts";
 
 /**
- * Where the client is, as an address: the work view at the root, the dashboard's pages and
- * the editor each at a path of their own, so a page can be linked to and the back button
- * means something. Served by the daemon the path is under `/ui/`; the desktop app has no
- * server behind its window, so there the route lives in the hash.
+ * Where the client is, as an address: the main chat at the root, an agent's thread and the
+ * board under a slug, the dashboard's pages, the editor and the settings each at a path of
+ * their own, so a page can be linked to and the back button means something. Served by the
+ * daemon the path is under `/ui/`; the desktop app has no server behind its window, so there
+ * the route lives in the hash.
  */
-export type Route = "work" | "dashboard" | "agents" | "modules" | "automations" | "projects" | "context" | "editor" | "settings";
-const ROUTES: readonly Route[] = ["work", "dashboard", "agents", "modules", "automations", "projects", "context", "editor", "settings"];
+export type RouteName = "home" | "agents" | "board" | "dashboard" | "modules" | "automations" | "projects" | "context" | "editor" | "settings";
+const NAMES: readonly RouteName[] = ["home", "agents", "board", "dashboard", "modules", "automations", "projects", "context", "editor", "settings"];
+
+export interface Route {
+  readonly name: RouteName;
+  /** `agents/<slug>` and `board/<slug>` carry the slug. */
+  readonly param?: string;
+}
 
 const underServer = location.protocol.startsWith("http") && location.pathname.startsWith("/ui") && !inDesktop;
 const base = underServer ? location.pathname.replace(/^(\/ui).*/, "$1") : "";
 
 const parse = (raw: string): Route => {
-  const name = raw.replace(/^[/#]+|\/+$/g, "").split("/")[0] ?? "";
-  return (ROUTES as readonly string[]).includes(name) && name !== "work" ? (name as Route) : "work";
+  const [first = "", second] = raw.replace(/^[/#]+|\/+$/g, "").split("/");
+  // The work view used to be the root; its old address still opens it.
+  if (first === "work") return { name: "editor" };
+  if (!(NAMES as readonly string[]).includes(first) || first === "home") return { name: "home" };
+  return second ? { name: first as RouteName, param: decodeURIComponent(second) } : { name: first as RouteName };
 };
 
 export const current = (): Route => (underServer ? parse(location.pathname.slice(base.length)) : parse(location.hash));
 
-export const href = (route: Route) => (underServer ? `${base}/${route === "work" ? "" : route}` : `#/${route === "work" ? "" : route}`);
+const pathOf = (route: Route) => (route.name === "home" ? "" : route.param ? `${route.name}/${encodeURIComponent(route.param)}` : route.name);
+export const href = (route: Route | RouteName) => {
+  const r = typeof route === "string" ? { name: route } : route;
+  return underServer ? `${base}/${pathOf(r)}` : `#/${pathOf(r)}`;
+};
+
+const same = (a: Route, b: Route) => a.name === b.name && (a.param ?? "") === (b.param ?? "");
 
 const listeners = new Set<(route: Route) => void>();
 
-export function navigate(route: Route, replace = false) {
-  if (current() === route && !replace) return;
-  const url = href(route);
-  if (underServer) history[replace ? "replaceState" : "pushState"]({ route }, "", url);
+export function navigate(route: Route | RouteName, replace = false) {
+  const next = typeof route === "string" ? { name: route } : route;
+  if (same(current(), next) && !replace) return;
+  const url = href(next);
+  if (underServer) history[replace ? "replaceState" : "pushState"]({ route: next }, "", url);
   else if (location.hash !== url) location.hash = url;
-  for (const listener of listeners) listener(route);
+  for (const listener of listeners) listener(next);
 }
 
 export function onRoute(listener: (route: Route) => void) {
@@ -44,7 +61,7 @@ window.addEventListener("hashchange", () => {
 });
 
 /** An anchor that goes through the router when clicked plainly, and is a real link otherwise. */
-export function linkTo(route: Route, anchor: HTMLAnchorElement) {
+export function linkTo(route: Route | RouteName, anchor: HTMLAnchorElement) {
   anchor.href = href(route);
   anchor.addEventListener("click", (event) => {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
