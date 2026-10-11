@@ -62,6 +62,23 @@ export function toItem(e: PaiEvent): Item {
   }
 }
 
+/**
+ * Whether an item may be handed to an agent at all. A group post reaching an agent has to earn it:
+ * a small model will connect anything to a brief that mentions chats at all — an Ananda Marga
+ * retreat went to Hiring because its brief names Telegram chats — and his groups are mostly
+ * personal, at a few messages an hour. So a chat post is delegated only on a signal that needs no
+ * judgement: he wrote it, he was addressed in it (Telegram's own `mentioned`: an @-mention or a
+ * reply to him), or the agent's own brief names that chat. Everything else stays what it already is,
+ * an event in the log — visible, not delegated, and a misroute then costs nothing.
+ */
+export function delegatable(item: Item, brief: string): boolean {
+  if (item.kind !== "telegram.chat") return true;
+  const p = item.payload as { out?: boolean; mentioned?: boolean; chat?: string };
+  if (p.out || p.mentioned) return true;
+  const chat = (p.chat ?? "").trim();
+  return chat.length > 2 && brief.toLowerCase().includes(chat.toLowerCase());
+}
+
 /** The routines' sink: the item waits for the rest of its burst. */
 export function add(e: PaiEvent, _rule?: Automation) {
   const item = toItem(e);
@@ -104,6 +121,7 @@ export function prompt(items: Item[]) {
     "- wake: the agent that owns this area should act on it now (give its slug and a one-line note).",
     "- tell: the user should know now (a person writing to them personally, something time-sensitive); give a one-line note; urgent only if they have minutes to act.",
     "Prefer ignore and file; wake and tell spend real effort. Never invent agents or tasks.",
+    "A message in a group or channel is almost never anyone's job. Unless the user wrote it himself, was addressed in it, or an agent's brief names that chat, pick ignore or file — waking an agent over group chatter is wrong even when the topic looks related to its work.",
     "An item that starts with \"you\" is the user's own message: he already knows and already decided. Never tell him about it — file it so the task list says what he said, and wake the agent whose open task it settles.",
     "",
     `Agents:\n${staff.map((a) => `- ${a.slug}: ${a.name} — ${a.brief.split("\n")[0]!.slice(0, 160)}`).join("\n")}`,
@@ -182,6 +200,10 @@ export function apply(items: Item[], decisions: Decision[]) {
         const a = agents.get(d.agent);
         if (!a || a.status === "closed" || a.kind === "orchestrator") {
           told.push(`${item.title}${d.note ? ` — ${d.note}` : ""}`);
+          continue;
+        }
+        if (!delegatable(item, a.brief)) {
+          log.info(`not waking ${a.slug}: "${item.title}" is group chatter with no signal`);
           continue;
         }
         agents.message(a.slug, `[new ${item.source}] ${item.title}\n${item.body.slice(0, 3000)}${item.link ? `\n${item.link}` : ""}${d.note ? `\n\ntriage: ${d.note}` : ""}`, { from: `watcher:${item.source}`, kind: "event", taskId: d.task ?? null });
