@@ -4,6 +4,7 @@ import { config } from "../core/config.ts";
 import { cursors, db } from "../core/db.ts";
 import { bus } from "../core/bus.ts";
 import * as messages from "../domain/messages.ts";
+import * as tasks from "../domain/tasks.ts";
 import { put as archive } from "../domain/recall.ts";
 import { logger } from "../core/log.ts";
 import { origin, sign } from "../api/auth.ts";
@@ -12,28 +13,56 @@ import type { Module } from "./types.ts";
 const log = logger("gmail");
 
 /**
- * Read-only Gmail, for as many accounts as the user connects. claude.ai's own Gmail
+ * Gmail for as many accounts as the user connects. claude.ai's own Gmail
  * connector holds one Google account at a time, which isn't enough for three mailboxes, so
- * this does its own OAuth: `/gmail/connect?label=<name>` sends the browser to Google with
- * `gmail.readonly`, and the sign-in callback (`/auth/google/callback`, the one redirect URI
+ * this does its own OAuth: `/gmail/connect?label=<name>` names the address that label already
+ * speaks as, then sends the browser to Google, and the sign-in callback (`/auth/google/callback`, the one redirect URI
  * the OAuth client knows) hands the code to `finishConnect`, which stores the refresh token
- * under that label. Tools then read one named account at a time; a session picks the label
- * from `gmail_list_accounts`.
+ * under that label together with the scopes Google granted. Tools then work one named account at a
+ * time; a session picks the label from `gmail_list_accounts`.
+ *
+ * Mail only: the calendar is Balance's, and no account holds a calendar scope any more.
  */
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
-// Mail only: the calendar is Balance's. An account connected before that change still reads its calendar; a
-// new one does not, and the watcher stops asking after its first refusal. `gmail.send` sends as that account
-// and is a sensitive scope: an account connected before it was asked for cannot send until it is reconnected.
-const SCOPE = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send";
 const CALENDAR_API = "https://www.googleapis.com/calendar/v3";
+
+const GMAIL = "https://www.googleapis.com/auth/gmail.";
+const READ = `${GMAIL}readonly`;
+const SEND = `${GMAIL}send`;
+const MODIFY = `${GMAIL}modify`;
+
+/**
+ * Everything this module will ever ask a mailbox for, asked at the first consent. A grant is frozen
+ * at consent time, so a scope added later cannot be used by an account connected before it: widening
+ * this list means asking the user to reconnect every mailbox, and the mailbox it is asked for while
+ * he is away is the one that fails mid-task. `modify` (marking read, labelling, archiving) is in here
+ * for that reason alone — nothing calls it yet.
+ */
+const REQUESTED = [READ, SEND, MODIFY];
+
+/** What the tools here need. A mailbox short of one of these is a visible need, not a 403 mid-send. */
+const REQUIRED: readonly { readonly scope: string; readonly what: string }[] = [
+  { scope: READ, what: "read mail" },
+  { scope: SEND, what: "send mail" },
+];
+
+/** A broader scope covers a narrower one: Google grants reading through `modify` too. */
+const IMPLIED_BY: Record<string, readonly string[]> = { [READ]: [MODIFY] };
+
+const granted = (scopes: readonly string[], scope: string) => scopes.includes(scope) || (IMPLIED_BY[scope] ?? []).some((s) => scopes.includes(s));
+
+/** What a mailbox cannot do, in the words the user needs to act on it; empty = whole. */
+export const shortfall = (scopes: readonly string[]): string[] => (scopes.length === 0 ? [] : REQUIRED.filter((r) => !granted(scopes, r.scope)).map((r) => r.what));
 
 interface Account {
   readonly label: string;
   readonly email: string;
   readonly refreshToken: string;
+  /** What Google granted, learned at consent and re-read on every token refresh; empty until one happens. */
+  readonly scopes: readonly string[];
 }
 
 interface Headers {
@@ -49,25 +78,40 @@ interface MessagePart {
 
 const configured = () => Boolean(config.google.clientId && config.google.clientSecret);
 
-const toAccount = (row: { label: string; email: string; refresh_token: string }): Account => ({
+interface Row {
+  readonly label: string;
+  readonly email: string;
+  readonly refresh_token: string;
+  readonly scopes: string;
+}
+
+const COLUMNS = "label, email, refresh_token, scopes";
+
+const toAccount = (row: Row): Account => ({
   label: row.label,
   email: row.email,
   refreshToken: row.refresh_token,
+  scopes: row.scopes.split(" ").filter(Boolean),
 });
 
 export function listAccounts(): Account[] {
-  return (db.query("SELECT label, email, refresh_token FROM gmail_accounts ORDER BY label").all() as { label: string; email: string; refresh_token: string }[]).map(toAccount);
+  return (db.query(`SELECT ${COLUMNS} FROM gmail_accounts ORDER BY label`).all() as Row[]).map(toAccount);
 }
 
 function getAccount(label: string): Account | undefined {
-  const row = db.query("SELECT label, email, refresh_token FROM gmail_accounts WHERE label = ?").get(label) as { label: string; email: string; refresh_token: string } | undefined;
+  const row = db.query(`SELECT ${COLUMNS} FROM gmail_accounts WHERE label = ?`).get(label) as Row | undefined;
   return row ? toAccount(row) : undefined;
 }
 
-function saveAccount(label: string, email: string, refreshToken: string) {
+function saveAccount(label: string, email: string, refreshToken: string, scopes: string) {
   db.prepare(
-    "INSERT INTO gmail_accounts (label, email, refresh_token, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(label) DO UPDATE SET email = excluded.email, refresh_token = excluded.refresh_token",
-  ).run(label, email, refreshToken, Date.now());
+    "INSERT INTO gmail_accounts (label, email, refresh_token, scopes, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(label) DO UPDATE SET email = excluded.email, refresh_token = excluded.refresh_token, scopes = excluded.scopes",
+  ).run(label, email, refreshToken, scopes, Date.now());
+}
+
+/** The grant as the token endpoint last reported it: it is Google's answer, so it cannot drift. */
+function saveScopes(label: string, scopes: string) {
+  db.prepare("UPDATE gmail_accounts SET scopes = ? WHERE label = ?").run(scopes, label);
 }
 
 // --- OAuth: one consent per account, landing a refresh token under its label -------------
@@ -83,23 +127,48 @@ const secure = (req: Request) => (req.headers.get("x-forwarded-proto") === "http
 /** The state cookie name and path are the sign-in flow's: the callback that reads them is shared. */
 export const STATE_COOKIE = "pai_oauth";
 
-/** `/gmail/connect?label=x`: sends the browser to Google's consent screen for one more mailbox. */
+/** The mapping as it stands, so a connect page says which address each label speaks as. */
+const mappingHtml = (label: string) => {
+  const rows = listAccounts().map(({ label: l, email }) => `<li>${l === label ? "<b>" : ""}${escapeHtml(l)} → ${escapeHtml(email)}${l === label ? "</b>" : ""}</li>`);
+  return rows.length ? `<p>Connected mailboxes:</p><ul>${rows.join("")}</ul>` : "<p>No mailbox is connected yet.</p>";
+};
+
+/**
+ * `/gmail/connect?label=x`: the mapping first, Google second. The label is what every tool names a
+ * mailbox by, and the consent screen signs in whichever Google account the browser happens to hold —
+ * which is how `atmagaming` came to be a personal address and a company mail went out as him. So the
+ * page says which address this label speaks as before anything is overwritten, and `confirm=1` is the
+ * click that goes on.
+ */
 export function handleConnect(req: Request, url: URL): Response {
   if (!configured()) return respondJson({ error: "google sign-in is not configured (PAI_GOOGLE_CLIENT_ID, PAI_GOOGLE_CLIENT_SECRET)" }, 501);
   const label = (url.searchParams.get("label") ?? "").trim().toLowerCase();
   if (!/^[a-z0-9-]{1,40}$/.test(label)) return respondJson({ error: "pass a short label, e.g. /gmail/connect?label=personal" }, 400);
-  const state = sign({ gmail: label, next: "/ui/", nonce: crypto.randomUUID(), exp: Date.now() + 10 * 60 * 1000 });
+  const existing = getAccount(label);
+  const allow = (url.searchParams.get("allow") ?? "").trim().toLowerCase();
+  if (url.searchParams.get("confirm") !== "1") {
+    const what = existing
+      ? allow && allow !== existing.email
+        ? `You are about to make <b>${escapeHtml(label)}</b> speak as <b>${escapeHtml(allow)}</b> instead of ${escapeHtml(existing.email)}.`
+        : `<b>${escapeHtml(label)}</b> is ${escapeHtml(existing.email)}. Sign in as that account — any other one is refused.`
+      : `<b>${escapeHtml(label)}</b> is new: whichever Google account you sign in as becomes this mailbox.`;
+    const go = `/gmail/connect?label=${encodeURIComponent(label)}&confirm=1${allow ? `&allow=${encodeURIComponent(allow)}` : ""}`;
+    return page(`<h3>Connect a mailbox</h3><p>${what}</p>${mappingHtml(label)}<p><a href="${escapeHtml(go)}">Continue to Google</a></p>`);
+  }
+  const state = sign({ gmail: label, allow: allow || undefined, next: "/ui/", nonce: crypto.randomUUID(), exp: Date.now() + 10 * 60 * 1000 });
   const params = new URLSearchParams({
     client_id: config.google.clientId,
     redirect_uri: callbackUrl(req, url),
     response_type: "code",
-    scope: SCOPE,
+    scope: REQUESTED.join(" "),
     state,
     access_type: "offline",
     // Forces the consent screen every time, which is the only way Google hands back a
     // refresh token on an account that already granted access to this OAuth client.
-    prompt: "consent",
+    // `select_account` with it: the chooser is shown rather than whoever the browser holds.
+    prompt: "consent select_account",
     include_granted_scopes: "true",
+    ...(existing ? { login_hint: allow || existing.email } : {}),
   });
   return new Response(null, {
     status: 302,
@@ -108,7 +177,7 @@ export function handleConnect(req: Request, url: URL): Response {
 }
 
 /** The sign-in callback's second half: a code that came back for a mailbox rather than a login. */
-export async function finishConnect(req: Request, url: URL, label: string): Promise<Response> {
+export async function finishConnect(req: Request, url: URL, label: string, allow?: string): Promise<Response> {
   const code = url.searchParams.get("code");
   const refusal = url.searchParams.get("error");
   if (!code) {
@@ -128,7 +197,7 @@ export async function finishConnect(req: Request, url: URL, label: string): Prom
     log.warn(`token exchange failed: ${tokenResponse.status} ${(await tokenResponse.text()).slice(0, 200)}`);
     return page("Google's token exchange failed. Go back and try connecting again.", 502);
   }
-  const tokens = (await tokenResponse.json()) as { refresh_token?: string; access_token?: string };
+  const tokens = (await tokenResponse.json()) as { refresh_token?: string; access_token?: string; scope?: string };
   if (!tokens.refresh_token || !tokens.access_token)
     return page("Google did not return a refresh token. Revoke pai's access at https://myaccount.google.com/permissions and connect again.", 502);
 
@@ -137,10 +206,31 @@ export async function finishConnect(req: Request, url: URL, label: string): Prom
   const { emailAddress } = (await profile.json()) as { emailAddress?: string };
   if (!emailAddress) return page("Google did not return an email address.", 502);
 
-  saveAccount(label, emailAddress, tokens.refresh_token);
+  // The address a label speaks as is not a detail the browser's signed-in account gets to change by
+  // accident: nothing is stored until the user says, on the retry link, that this is the new address.
+  const existing = getAccount(label);
+  if (existing && existing.email !== emailAddress && allow?.toLowerCase() !== emailAddress.toLowerCase()) {
+    const retry = `/gmail/connect?label=${encodeURIComponent(label)}&allow=${encodeURIComponent(emailAddress)}`;
+    log.warn(`refused to connect ${label} as ${emailAddress}: it is ${existing.email}`);
+    return page(
+      `<h3>Nothing was changed</h3><p><b>${escapeHtml(label)}</b> is ${escapeHtml(existing.email)}, but you consented as <b>${escapeHtml(emailAddress)}</b>. Mail sent as this label would have gone out from the wrong address, so the mailbox is untouched.</p>` +
+        `<p>Sign in as ${escapeHtml(existing.email)} and <a href="/gmail/connect?label=${encodeURIComponent(label)}">connect again</a> — or, if ${escapeHtml(label)} really is ${escapeHtml(emailAddress)} now, <a href="${escapeHtml(retry)}">change it on purpose</a>.</p>`,
+      409,
+    );
+  }
+
+  const scopes = tokens.scope ?? "";
+  saveAccount(label, emailAddress, tokens.refresh_token, scopes);
   accessTokens.delete(label);
-  log.info(`connected ${label} (${emailAddress})`);
-  return page(`Connected <b>${escapeHtml(label)}</b> as ${escapeHtml(emailAddress)}. You can close this tab.`);
+  resolveNeed(label);
+  const missing = shortfall(scopes.split(" ").filter(Boolean));
+  if (missing.length) raiseNeed(label, emailAddress, `cannot ${missing.join(" or ")}`);
+  log.info(`connected ${label} (${emailAddress})${missing.length ? ` — missing: ${missing.join(", ")}` : ""}`);
+  return page(
+    `Connected <b>${escapeHtml(label)}</b> as ${escapeHtml(emailAddress)}.` +
+      (missing.length ? ` Google did not grant permission to ${escapeHtml(missing.join(" or "))} — connect again and leave every box ticked.` : "") +
+      " You can close this tab.",
+  );
 }
 
 export function removeAccount(label: string) {
@@ -152,20 +242,100 @@ export function removeAccount(label: string) {
 
 const accessTokens = new Map<string, { token: string; exp: number }>();
 
-async function accessToken(label: string): Promise<string> {
-  const cached = accessTokens.get(label);
-  if (cached && cached.exp > Date.now() + 5_000) return cached.token;
-  const account = getAccount(label);
-  if (!account) throw new Error(`no gmail account labeled "${label}" — see gmail_list_accounts`);
+/** The refresh token is dead: only the user can fix it, by consenting again. */
+export class GmailAuthError extends Error {
+  constructor(readonly label: string, why: string) {
+    super(`gmail: the Google grant for "${label}" is no longer valid (${why}) — reconnect it at ${connectUrl(label)}`);
+  }
+}
+
+/**
+ * One access token from the refresh token, and the grant Google reports with it. The refresh answer
+ * carries `scope`, so every refresh re-reads what this mailbox may do and the stored copy can never
+ * be a guess. `invalid_grant` is the 7-day expiry of an OAuth app in Testing, a revoked grant or a
+ * password change: it becomes a need the user can act on, not a line in the log.
+ */
+async function refresh(account: Account): Promise<{ token: string; expiresIn: number; scopes: string }> {
   const response = await fetch(TOKEN_URL, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ refresh_token: account.refreshToken, client_id: config.google.clientId, client_secret: config.google.clientSecret, grant_type: "refresh_token" }),
   });
-  if (!response.ok) throw new Error(`gmail: refreshing the token for "${label}" failed — reconnect it at /gmail/connect?label=${label}`);
-  const { access_token, expires_in } = (await response.json()) as { access_token: string; expires_in: number };
-  accessTokens.set(label, { token: access_token, exp: Date.now() + expires_in * 1000 });
-  return access_token;
+  const body = await response.text();
+  if (!response.ok) {
+    const error = (() => {
+      try {
+        return (JSON.parse(body) as { error?: string; error_description?: string }).error ?? `http ${response.status}`;
+      } catch {
+        return `http ${response.status}`;
+      }
+    })();
+    if (error === "invalid_grant") {
+      raiseNeed(account.label, account.email, "its Google grant expired or was revoked");
+      throw new GmailAuthError(account.label, error);
+    }
+    throw new Error(`gmail: refreshing the token for "${account.label}" failed (${error})`);
+  }
+  const { access_token, expires_in, scope } = JSON.parse(body) as { access_token: string; expires_in: number; scope?: string };
+  if (scope !== undefined && scope !== account.scopes.join(" ")) saveScopes(account.label, scope);
+  return { token: access_token, expiresIn: expires_in, scopes: scope ?? account.scopes.join(" ") };
+}
+
+async function accessToken(label: string): Promise<string> {
+  const cached = accessTokens.get(label);
+  if (cached && cached.exp > Date.now() + 5_000) return cached.token;
+  const account = getAccount(label);
+  if (!account) throw new Error(`no gmail account labeled "${label}" — see gmail_list_accounts`);
+  const { token, expiresIn } = await refresh(account);
+  accessTokens.set(label, { token, exp: Date.now() + expiresIn * 1000 });
+  return token;
+}
+
+/**
+ * Every mailbox asked, at start and daily: is its grant still alive, and does it still cover what the
+ * tools need? Both answers come from one refresh call, so this is what turns "the mailbox cannot send"
+ * from a 403 in the middle of a send into a task before anything is drafted.
+ */
+export async function checkAccounts(): Promise<{ label: string; email: string; problem?: string }[]> {
+  const checked = [];
+  for (const account of listAccounts()) {
+    try {
+      const { scopes } = await refresh(account);
+      const missing = shortfall(scopes.split(" ").filter(Boolean));
+      if (missing.length) raiseNeed(account.label, account.email, `cannot ${missing.join(" or ")} — it was connected before pai asked for that permission`);
+      else resolveNeed(account.label);
+      checked.push({ label: account.label, email: account.email, problem: missing.length ? `cannot ${missing.join(" or ")}` : undefined });
+    } catch (err) {
+      checked.push({ label: account.label, email: account.email, problem: (err as Error).message });
+    }
+  }
+  return checked;
+}
+
+// --- needs: a mailbox the user has to reconnect, on his list rather than in the log --------
+
+const needTitle = (label: string) => `Reconnect the "${label}" mailbox`;
+
+const connectUrl = (label: string) => `${config.baseUrl}/gmail/connect?label=${encodeURIComponent(label)}`;
+
+/** One task per mailbox, its reason kept current: raised again every pass, never duplicated. */
+function raiseNeed(label: string, email: string, why: string) {
+  const nextAction = `Open ${connectUrl(label)} and consent as ${email}`;
+  const notes = `${email} ${why}. A Google grant is frozen at consent time, so only reconnecting the mailbox changes it.`;
+  const open = tasks.list({ open: true }).find((t) => t.title === needTitle(label));
+  if (open) {
+    if (open.notes !== notes || open.nextAction !== nextAction) tasks.update(open.id, { notes, nextAction, status: "waiting_user" });
+    return;
+  }
+  const task = tasks.add({ title: needTitle(label), status: "waiting_user", createdBy: "gmail", nextAction, notes });
+  log.warn(`${label}: ${why} — task #${task.id}`);
+  bus.emitEvent("gmail.reconnect", { account: label, email, why, task: task.id, link: connectUrl(label) });
+}
+
+/** The mailbox answers again: its own task closes itself. */
+function resolveNeed(label: string) {
+  const open = tasks.list({ open: true }).find((t) => t.title === needTitle(label));
+  if (open) tasks.update(open.id, { status: "done", nextAction: "" });
 }
 
 async function call<T>(label: string, path: string): Promise<T> {
@@ -178,7 +348,7 @@ async function call<T>(label: string, path: string): Promise<T> {
 /** The scope an account was connected with is fixed; Google answers 403 until the user consents again. */
 export class GmailScopeError extends Error {
   constructor(label: string, what: string) {
-    super(`"${label}" was connected without permission to ${what} — reconnect it at /gmail/connect?label=${label}`);
+    super(`"${label}" was connected without permission to ${what} — reconnect it at ${connectUrl(label)}`);
   }
 }
 
@@ -399,6 +569,12 @@ async function replyContext(label: string, id: string) {
 export async function send(label: string, input: Readonly<SendInput>, by?: string) {
   const account = getAccount(label);
   if (!account) throw new Error(`no gmail account labeled "${label}" — see gmail_list_accounts`);
+  // The grant is known before anything is composed: a mailbox connected without `gmail.send` is told
+  // so here rather than by Google's 403 after the text was written and approved.
+  if (shortfall(account.scopes).includes("send mail")) {
+    raiseNeed(label, account.email, "cannot send mail — it was connected before pai asked for that permission");
+    throw new GmailScopeError(label, "send mail");
+  }
   if (!input.to.trim()) throw new Error("gmail_send needs a recipient");
   if (!input.body.trim()) throw new Error("gmail_send needs a body");
   const reply = input.replyTo ? await replyContext(label, input.replyTo) : undefined;
@@ -551,7 +727,22 @@ export function gmailTools(by?: string) {
   });
 }
 
+/** Once a day is enough for a 7-day expiry, and one refresh call per mailbox costs nothing. */
+const CHECK_EVERY = 24 * 3600_000;
+
 let stopWatch: (() => void) | undefined;
+let stopCheck: (() => void) | undefined;
+
+/** The grant check at start and daily; a failure here is a need, so nothing is thrown away. */
+function startCheck() {
+  const pass = () => void checkAccounts().catch((err: Error) => log.warn(`grant check: ${err.message}`));
+  const first = setTimeout(pass, 10_000);
+  const timer = setInterval(pass, CHECK_EVERY);
+  return () => {
+    clearTimeout(first);
+    clearInterval(timer);
+  };
+}
 
 export const gmailModule: Module = {
   name: "gmail",
@@ -559,24 +750,33 @@ export const gmailModule: Module = {
   description: "Reads one or more Gmail accounts and sends as them, each connected with its own Google consent.",
   kind: "tools",
   enabled: configured,
-  status: () => ({ configured: configured(), accounts: listAccounts().map(({ label, email }) => ({ label, email })) }),
+  status: () => ({
+    configured: configured(),
+    accounts: listAccounts().map(({ label, email, scopes }) => ({ label, email, missing: shortfall(scopes) })),
+  }),
   tools: { server: "gmail", names: ["gmail_list_accounts", "gmail_search", "gmail_read", "gmail_send"], kinds: ["chat"] },
   events: [
     { kind: "gmail.new", description: "a new message in a connected inbox (account, from, subject, snippet, link)" },
     { kind: "calendar.upcoming", description: "a meeting starts within 30 minutes (summary, start, attendees, link)" },
+    { kind: "gmail.reconnect", description: "a mailbox has to be reconnected: its grant expired, was revoked, or never covered what pai needs (account, email, why, link)" },
   ],
   start: () => {
-    if (configured()) stopWatch = startWatch((kind, payload) => bus.emitEvent(kind, payload));
+    if (!configured()) return;
+    stopWatch = startWatch((kind, payload) => bus.emitEvent(kind, payload));
+    stopCheck = startCheck();
   },
-  stop: () => stopWatch?.(),
+  stop: () => {
+    stopWatch?.();
+    stopCheck?.();
+  },
   accounts: {
-    list: () => listAccounts().map(({ label, email }) => ({ label, detail: email })),
+    list: () => listAccounts().map(({ label, email, scopes }) => ({ label, detail: shortfall(scopes).length ? `${email} — cannot ${shortfall(scopes).join(" or ")}` : email })),
     connectPath: "/gmail/connect?label={label}",
     removePath: "/gmail/accounts?label={label}",
     hint: "a short name for the mailbox: personal, work, atma",
   },
   prompt: {
-    text: "Gmail: gmail_list_accounts shows which mailboxes are connected (by label — e.g. personal, work), gmail_search finds messages in one of them with Gmail's search syntax, gmail_read gets a message's text with its links (windowed: when it says truncated, read on with offset), gmail_send sends as that mailbox. Ask which account when it's ambiguous rather than guessing. Sending is irreversible and goes out in the user's name: check_outbound first, then their approval of the final text, and reply with reply_to_message_id so it threads.",
+    text: "Gmail: gmail_list_accounts shows which mailboxes are connected (by label — e.g. personal, work), gmail_search finds messages in one of them with Gmail's search syntax, gmail_read gets a message's text with its links (windowed: when it says truncated, read on with offset), gmail_send sends as that mailbox. Ask which account when it's ambiguous rather than guessing. Sending is irreversible and goes out in the user's name: check_outbound first, then their approval of the final text, and reply with reply_to_message_id so it threads. A mailbox whose Google grant does not cover sending says so before composing and puts a reconnect task on the user's list; that task is his to do and nothing can work around it.",
     kinds: ["chat"],
   },
 };

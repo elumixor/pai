@@ -64,10 +64,10 @@ export async function handleAuth(req: Request, url: URL): Promise<Response | und
   if (path === "/auth/google/callback") {
     const state = url.searchParams.get("state") ?? "";
     const stored = /(?:^|;\s*)pai_oauth=([^;]+)/.exec(req.headers.get("cookie") ?? "")?.[1];
-    const claims = verify<{ next: string; exp: number; gmail?: string }>(state);
+    const claims = verify<{ next: string; exp: number; gmail?: string; allow?: string }>(state);
     if (!claims || stored !== state || claims.exp < Date.now()) return json({ error: "the sign-in attempt expired; start again" }, 400);
     // The same redirect URI serves the Gmail module's consent: one registered URI, two flows.
-    if (claims.gmail) return finishGmail(req, url, claims.gmail);
+    if (claims.gmail) return finishGmail(req, url, claims.gmail, claims.allow);
     const code = url.searchParams.get("code");
     if (!code) return json({ error: url.searchParams.get("error") ?? "google sent no code" }, 400);
     const email = await exchange(code, callbackUrl(req, url));

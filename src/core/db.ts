@@ -238,6 +238,10 @@ if (!automationColumns.includes("agent")) db.exec("ALTER TABLE automations ADD C
 if (!automationColumns.includes("check_rule")) db.exec("ALTER TABLE automations ADD COLUMN check_rule TEXT NOT NULL DEFAULT ''");
 if (!automationColumns.includes("owner")) db.exec("ALTER TABLE automations ADD COLUMN owner TEXT NOT NULL DEFAULT 'user'");
 if (!automationColumns.includes("last_fire")) db.exec("ALTER TABLE automations ADD COLUMN last_fire TEXT NOT NULL DEFAULT ''");
+// What Google actually granted this mailbox, space-separated, as the token endpoint reported it. A
+// grant is frozen at consent, so this is the only way to know a mailbox cannot send before trying.
+if (!(db.query("PRAGMA table_info(gmail_accounts)").all() as { name: string }[]).some((c) => c.name === "scopes"))
+  db.exec("ALTER TABLE gmail_accounts ADD COLUMN scopes TEXT NOT NULL DEFAULT ''");
 
 /** Where a watcher left off. */
 export const cursors = {
