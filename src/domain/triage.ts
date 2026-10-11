@@ -50,7 +50,9 @@ export function toItem(e: PaiEvent): Item {
     case "gmail.new":
       return { source: "mail", kind: e.kind, title: `${p.from ?? "?"} — ${p.subject ?? "(no subject)"}`, body: String(p.snippet ?? ""), link: p.link, payload: p, at: e.ts };
     case "telegram.dm":
-      return { source: "telegram", kind: e.kind, title: `${p.from ?? p.chat ?? "?"} on Telegram`, body: String(p.text ?? ""), link: p.link, payload: p, at: e.ts };
+      return { source: "telegram", kind: e.kind, title: p.out ? `you wrote to ${p.chat ?? "?"} on Telegram` : `${p.from ?? p.chat ?? "?"} on Telegram`, body: String(p.text ?? ""), link: p.link, payload: p, at: e.ts };
+    case "telegram.chat":
+      return { source: "telegram", kind: e.kind, title: p.out ? `you posted in ${p.chat ?? "?"}` : `${p.from ?? "?"} in ${p.chat ?? "?"}`, body: String(p.text ?? ""), link: p.link, payload: p, at: e.ts };
     case "linkedin.message":
       return { source: "linkedin", kind: e.kind, title: `${p.from ?? p.with ?? "?"} on LinkedIn`, body: String(p.text ?? ""), link: p.url, payload: p, at: e.ts };
     case "calendar.upcoming":
@@ -102,6 +104,7 @@ export function prompt(items: Item[]) {
     "- wake: the agent that owns this area should act on it now (give its slug and a one-line note).",
     "- tell: the user should know now (a person writing to them personally, something time-sensitive); give a one-line note; urgent only if they have minutes to act.",
     "Prefer ignore and file; wake and tell spend real effort. Never invent agents or tasks.",
+    "An item that starts with \"you\" is the user's own message: he already knows and already decided. Never tell him about it — file it so the task list says what he said, and wake the agent whose open task it settles.",
     "",
     `Agents:\n${staff.map((a) => `- ${a.slug}: ${a.name} — ${a.brief.split("\n")[0]!.slice(0, 160)}`).join("\n")}`,
     `Open tasks:\n${open.map((t) => `- #${t.id} ${t.title} (owner ${t.owner})`).join("\n") || "none"}`,

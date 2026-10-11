@@ -324,6 +324,7 @@ export function seed() {
   add({ name: "Evening digest", schedule: "30 20 * * *", action: "notify", agent: agents.PAI, owner: "system", template: "{digest}" });
   add({ name: "Inbox", event: "gmail.new", action: "triage", owner: "system", check: { not_muted: true } });
   add({ name: "Telegram messages", event: "telegram.dm", action: "triage", owner: "system", check: { not_muted: true } });
+  add({ name: "Telegram groups", event: "telegram.chat", action: "triage", owner: "system", check: { not_muted: true } });
   add({ name: "LinkedIn messages", event: "linkedin.message", action: "triage", owner: "system", check: { not_muted: true } });
   add({ name: "Meeting prep", event: "calendar.upcoming", action: "triage", owner: "system", check: { outside_attendee: true } });
 }
