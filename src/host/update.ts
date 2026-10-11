@@ -5,6 +5,7 @@ import { config } from "../core/config.ts";
 import { bus } from "../core/bus.ts";
 import { list } from "../domain/sessions.ts";
 import { logger } from "../core/log.ts";
+import { checkRelease } from "./release-check.ts";
 
 const log = logger("update");
 const MENUBAR_LABEL = "dev.elumixor.pai.menubar";
@@ -103,19 +104,31 @@ export async function update(force = false): Promise<UpdateResult> {
   return { ...s, head, updated: true, restarting };
 }
 
-/** Applies new commits on their own, but only while nothing is running that a restart would interrupt. */
+/**
+ * Applies new commits on their own, but only while nothing is running that a restart would
+ * interrupt — and, either way, notices a release that never arrived (`checkRelease`). The notice is
+ * a read, so it runs even while sessions are busy and even with auto-update off: the daemon is the
+ * only observer of a release that outlives the restart the release causes.
+ */
 export function startAutoUpdate() {
-  if (!config.autoUpdate) return undefined;
   const tick = async () => {
     try {
-      if (list().some((s) => s.state === "busy" || s.state === "starting")) return;
       const s = await status();
+      await checkRelease(s, status);
+      if (!config.autoUpdate) return;
+      if (list().some((x) => x.state === "busy" || x.state === "starting")) return;
       if (s.behind === 0 || s.dirty) return;
       await update();
     } catch (err) {
       log.warn(`auto-update: ${(err as Error).message}`);
     }
   };
+  // One early look as well: a daemon that comes back on the wrong version should not wait out a
+  // whole interval to say so.
+  const first = setTimeout(tick, 2 * 60_000);
   const timer = setInterval(tick, config.autoUpdateIntervalMs);
-  return () => clearInterval(timer);
+  return () => {
+    clearTimeout(first);
+    clearInterval(timer);
+  };
 }
