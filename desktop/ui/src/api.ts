@@ -288,6 +288,7 @@ export const threadsIn = (cwd: string) => get<DiskSession[]>(`/threads?cwd=${enc
 export const agents = () => get<Agent[]>("/agents");
 export const messages = (agent: string, options: { before?: number; after?: number; limit?: number } = {}) =>
   get<LogMessage[]>(`/messages?agent=${encodeURIComponent(agent)}&limit=${options.limit ?? 100}${options.before ? `&before=${options.before}` : ""}${options.after ? `&after=${options.after}` : ""}`);
+export const messageHeadline = (id: number) => get<{ headline: string | null; enabled: boolean }>(`/messages/${id}/headline`);
 export const messageTldr = (id: number) => get<{ tldr: string | null; enabled: boolean }>(`/messages/${id}/tldr`);
 export const messageAgent = (slug: string, text: string) => send(`/agents/${slug}/message`, { text });
 export const closeAgent = (slug: string) => send(`/agents/${slug}/close`, {});

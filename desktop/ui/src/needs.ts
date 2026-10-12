@@ -1,45 +1,33 @@
-import { ago, clear, el } from "./dom.ts";
+import { el } from "./dom.ts";
 import { icon } from "./icons.ts";
-import { kindIcon } from "./kinds.ts";
-import { markdown } from "./markdown.ts";
 import type { Need } from "./types.ts";
 
 /**
- * The hand above the box: how many things wait on the user. A click unfolds them as cards,
- * newest first; a card finds its row in the chat.
+ * The hand above the box: how many things wait on the user. A press scrolls the chat to the
+ * next one of them; pressing on cycles through them, oldest first.
  */
-const firstLine = (text: string) => text.replace(/^\[[^\]]+\]\s*/, "").split("\n").find((l) => l.trim()) ?? "";
-
-export function needsButton(options: { readonly nameOf: (need: Need) => string; readonly reveal: (need: Need) => void }) {
+export function needsButton(options: { readonly reveal: (need: Need) => void }) {
   const count = el("span");
-  const list = el("div.needs-list", { hidden: true });
-  const button = el("button.needs-btn", { title: "what waits on you", hidden: true, onclick: () => setOpen(list.hidden) }, icon("hand", 15), count);
-  const setOpen = (open: boolean) => {
-    list.hidden = !open;
-    button.classList.toggle("open", open);
+  let needs: readonly Need[] = [];
+  let cursor = 0;
+  const next = () => {
+    if (!needs.length) return;
+    const need = needs[cursor % needs.length]!;
+    cursor = (cursor + 1) % needs.length;
+    options.reveal(need);
   };
-  document.addEventListener("click", (event) => {
-    if (!list.hidden && !list.contains(event.target as Node) && !button.contains(event.target as Node)) setOpen(false);
-  });
-  window.addEventListener("pai:pile", () => setOpen(list.hidden));
-
-  const card = (n: Need) =>
-    el(
-      "button.need-card",
-      { class: `need-card ${n.kind}${n.priority !== "normal" ? ` prio-${n.priority}` : ""}`, onclick: () => (setOpen(false), options.reveal(n)) },
-      el("span.need-meta", {}, kindIcon(n.kind === "task" ? "notice" : n.kind === "ask" ? "ask" : "question", 10), el("b", {}, options.nameOf(n)), n.taskId ? el("span.tag", {}, `#${n.taskId}`) : undefined, el("span.grow"), el("time", {}, ago(n.createdAt))),
-      el("span.need-text", {}, markdown(firstLine(n.question))),
-      n.options.length ? el("span.need-options.ellipsis", {}, n.options.join(" · ")) : undefined,
-    );
+  const button = el("button.needs-btn", { title: "what waits on you — press to go to the next", hidden: true, onclick: next }, icon("hand", 15), count);
+  window.addEventListener("pai:pile", next);
 
   return {
-    node: el("div.needs", {}, list, button),
-    draw(needs: readonly Need[]) {
+    node: el("div.needs", {}, button),
+    draw(list: readonly Need[]) {
+      // Oldest first, so the cycle walks the chat downwards.
+      needs = [...list].sort((a, b) => a.createdAt - b.createdAt);
+      if (cursor >= needs.length) cursor = 0;
       window.dispatchEvent(new CustomEvent("pai:needs", { detail: needs.length }));
       count.textContent = String(needs.length);
       button.hidden = !needs.length;
-      if (!needs.length) setOpen(false);
-      clear(list, ...needs.map(card));
     },
   };
 }

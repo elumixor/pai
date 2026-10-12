@@ -378,6 +378,8 @@ export async function handle(req: Request): Promise<Response> {
     }
 
     // The gist of one message, written on first request and kept.
+    const headlinePath = /^\/messages\/(\d+)\/headline$/.exec(path);
+    if (headlinePath?.[1]) return json({ headline: (await summaries.headline(Number(headlinePath[1]))) ?? null, enabled: summaries.enabled() });
     const tldrPath = /^\/messages\/(\d+)\/tldr$/.exec(path);
     if (tldrPath?.[1]) return json({ tldr: (await summaries.tldr(Number(tldrPath[1]))) ?? null, enabled: summaries.enabled() });
 

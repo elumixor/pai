@@ -1,4 +1,4 @@
-import { answerAsk, answerQuestion, asks as listAsks, dropAsk, follow, messages as listMessages, messageTldr, needs as listNeeds, transcript, type Transcript, type TranscriptTool } from "./api.ts";
+import { answerAsk, answerQuestion, asks as listAsks, dropAsk, follow, messages as listMessages, messageHeadline, messageTldr, needs as listNeeds, transcript, type Transcript, type TranscriptTool } from "./api.ts";
 import { compose, type Compose, type Prefs } from "./compose.ts";
 import { clear, el } from "./dom.ts";
 import { icon } from "./icons.ts";
@@ -149,8 +149,24 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   const answersByAsk = new Map<number, string>();
   /** The turn in progress: the line that says so, and when it started. */
   let working: { node: HTMLElement; since: number; timer: ReturnType<typeof setInterval> } | undefined;
-  /** Messages whose gist was asked of the daemon once already. */
+  /** Messages whose gist or headline was asked of the daemon once already. */
   const askedTldr = new Set<number>();
+  const askedHeadline = new Set<number>();
+  /** The one line a row shows: the headline when it has one, else the first line while one is written. */
+  function headlineOf(m: LogMessage, fallback = firstLine(m.body)) {
+    const span = el("span.ellipsis.pill-text", {}, ...inline((m.meta.headline as string | undefined) ?? fallback));
+    if (!m.meta.headline && !askedHeadline.has(m.id)) {
+      askedHeadline.add(m.id);
+      void messageHeadline(m.id)
+        .then((r) => {
+          if (!r.headline) return;
+          (m.meta as { headline?: string }).headline = r.headline;
+          if (span.isConnected) span.replaceChildren(...inline(r.headline));
+        })
+        .catch(() => undefined);
+    }
+    return span;
+  }
   /** What the compose box answers instead of sending a message, while a question is pinned to it. */
   let pinnedAnswer: ((text: string) => Promise<void>) | undefined;
 
@@ -265,7 +281,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       },
       down
         ? el("span.pill-line", {}, el("span", {}, m.kind === "delegate" ? "Delegated to" : "Asked"), kindIcon("agent.spawned", 10), statusDot(agent), el("b", {}, nameOf(agent)), target ? el("b", {}, target) : undefined, m.taskId ? el("span.tag", {}, `#${m.taskId}`) : undefined, chevron())
-        : el("span.pill-line", {}, kindIcon("agent.spawned", 10), statusDot(agent), el("b", {}, nameOf(m.from)), el("span", {}, verb), el("span.ellipsis.pill-text", {}, ...inline(firstLine(m.body))), el("span.when", {}, clock(m.createdAt)), m.taskId ? el("span.tag", {}, `#${m.taskId}`) : undefined, chevron()),
+        : el("span.pill-line", {}, kindIcon("agent.spawned", 10), statusDot(agent), headlineOf(m, `${nameOf(m.from)} ${verb}: ${firstLine(m.body)}`), el("span.when", {}, clock(m.createdAt)), m.taskId ? el("span.tag", {}, `#${m.taskId}`) : undefined, chevron()),
       el("div.card-body", {}, markdown(m.body)),
     );
     row.dataset.at = String(m.createdAt);
@@ -278,6 +294,16 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     const open = askId !== undefined && openAsks.has(askId);
     const answer = askId !== undefined ? answersByAsk.get(askId) : undefined;
     const who = options.agent === m.from ? "" : ` · ${nameOf(m.from)}`;
+    if (!open && askId !== undefined) {
+      // Decided: one green line — what was decided — with the question and the answer behind a click.
+      const line = el(
+        "button.row.pill.decision.tint-ok",
+        { "data-message": m.id, "data-ask": askId, "data-task": m.taskId ?? "", "data-at": m.createdAt, onclick: () => line.classList.toggle("open") },
+        el("span.pill-line", {}, kindIcon("answered", 10), headlineOf(m, answer ? `${firstLine(m.body)} — ${answer}` : firstLine(m.body)), el("span.when", {}, clock(m.createdAt)), chevron()),
+        el("div.event-body", {}, markdown(m.body), answer !== undefined ? el("div.q-answer", {}, icon("check", 10), el("span", {}, answer)) : el("span.dim", {}, "answered")),
+      );
+      return line;
+    }
     const row = el(
       "div.row.question.tint-warn",
       { class: `row question tint-warn${open ? " open" : " answered"}`, "data-message": m.id, "data-ask": askId ?? "", "data-task": m.taskId ?? "", "data-at": m.createdAt },
@@ -343,7 +369,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         title: `${firstLine(m.body)}\n${new Date(m.createdAt).toLocaleString()}${m.meta.link ? `\n${m.meta.link}` : ""}`,
         onclick: () => row.classList.toggle("open"),
       },
-      el("span.pill-line", {}, kindIcon(name, 10), el("span.ellipsis.pill-text", {}, ...inline(firstLine(m.body))), el("span.when", {}, clock(m.createdAt)), chevron()),
+      el("span.pill-line", {}, kindIcon(name, 10), headlineOf(m), el("span.when", {}, clock(m.createdAt)), chevron()),
       el("div.event-body", {}, markdown(m.body), m.meta.link ? el("a", { href: m.meta.link, target: "_blank", rel: "noreferrer" }, icon("external", 10), " open") : undefined),
     );
     row.dataset.at = String(m.createdAt);
@@ -354,7 +380,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     const row = el(
       "button.row.notice.pill.tint-muted",
       { "data-message": m.id, "data-at": m.createdAt, onclick: () => row.classList.toggle("open") },
-      el("span.pill-line", {}, kindIcon("notice", 10), el("span.ellipsis.pill-text", {}, firstLine(m.body)), el("span.when", {}, clock(m.createdAt)), chevron()),
+      el("span.pill-line", {}, kindIcon("notice", 10), headlineOf(m), el("span.when", {}, clock(m.createdAt)), chevron()),
       el("div.event-body", {}, markdown(m.body)),
     );
     return row;

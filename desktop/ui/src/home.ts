@@ -59,7 +59,7 @@ export function home(root: HTMLElement) {
 
   // ---- the hand ------------------------------------------------------------------------------
 
-  const hand = needsButton({ nameOf: (n) => (n.agent ? n.from || nameOf(n.agent) : "pai"), reveal });
+  const hand = needsButton({ reveal });
 
   /** Where a need lives: pai's questions and tasks in the main chat, an agent's ask in its thread. */
   function reveal(n: Need) {

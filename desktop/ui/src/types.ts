@@ -227,6 +227,8 @@ export interface LogMessage {
     readonly freeText?: boolean;
     /** A one-line gist of a long message, written by the daemon's summariser. */
     readonly tldr?: string;
+    /** A six-word line for the row, written once by a small model. */
+    readonly headline?: string;
   };
   readonly createdAt: number;
 }
