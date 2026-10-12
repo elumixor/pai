@@ -759,9 +759,9 @@ body.in-home .nav:hover { opacity: 0.85; }
 .chat-title { font: 700 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-30); pointer-events: auto; }
 .chat-title.sub { font-weight: 400; color: var(--ink-20); }
 .crumbs { display: inline-flex; align-items: center; gap: 0; }
-.crumb { padding: 0; border: 0; background: none; font: inherit; color: var(--ink-30); cursor: pointer; transition: color 0.18s ease; }
-button.crumb:hover { color: var(--ink-70); }
-.crumb.here { cursor: default; color: var(--ink-45); }
+.crumb { padding: 0; border: 0; background: none !important; box-shadow: none; font: inherit; color: var(--ink-45); opacity: 0.65; cursor: pointer; transition: opacity 0.18s ease; }
+button.crumb:hover, button.crumb:focus-visible { opacity: 1; background: none; }
+.crumb.here { cursor: default; opacity: 1; }
 .crumb-sep { margin: 0 8px; color: var(--ink-20); font-weight: 400; }
 .chat-daypill { padding: 4px 6px; border-radius: 19px; background: var(--pill-bg); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: color-mix(in srgb, var(--ink) 40%, transparent); opacity: 0; transition: opacity 0.15s; }
 .chat-daypill.shown { opacity: 1; }
