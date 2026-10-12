@@ -720,7 +720,8 @@ body.in-home .nav:hover { opacity: 0.85; }
 .home-side::-webkit-scrollbar { display: none; }
 .home.board-mode .home-side { display: none; }
 .home-centre { position: absolute; inset: 52px 0 0; display: flex; flex-direction: column; align-items: center; min-height: 0; pointer-events: none; }
-.home-centre > * { pointer-events: auto; }
+.home-centre > * { pointer-events: none; }
+.home-centre .chat-view, .home-centre .board-view { pointer-events: auto; }
 .home.board-mode .home-centre { inset: 52px 50px 20px 50px; align-items: stretch; }
 
 /* the tree: a group per top-level project; a row is a spinner (working), a name, a hand with a count */
