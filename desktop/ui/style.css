@@ -843,7 +843,9 @@ time { color: inherit; font: inherit; }
 .row.pill.open .card-body, .row.pill.open .event-body, .row.notice.open .event-body { display: block; }
 .row.pill .event-body a { color: var(--model); }
 .row.group { cursor: default; }
-.row.group .pill-line { cursor: pointer; }
+.row.group .pill-line { cursor: pointer; border: 0; background: none; padding: 0; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink); text-align: left; appearance: none; }
+.row.group .pill-line:hover { opacity: 0.8; }
+.row.group .pill-line:focus-visible { outline: 1px solid var(--ink-30); outline-offset: 3px; border-radius: 4px; }
 .row.group .group-body { display: none; flex-direction: column; gap: 12px; width: 100%; padding: 8px 0 4px 0; }
 .row.group.open .group-body { display: flex; }
 .row.group .group-body .row { padding: 0; }
