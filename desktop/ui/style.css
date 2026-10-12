@@ -647,8 +647,8 @@ body.in-home .board-card.status-waiting_user { box-shadow: inset 3px 0 0 var(--a
 body.in-home .board-panel { border-left: 0; border-radius: 14px; background: var(--surface); box-shadow: var(--soft-shadow); }
 body.in-home .panel-field input, body.in-home .panel-field select, body.in-home .panel-field textarea { border-radius: 9px; border-color: transparent; background: var(--surface-2); font-size: 13px; }
 body.in-home .panel-title { font-size: 17px; }
-body.in-home .crumb { font-size: 14px; }
-body.in-home .crumb.on { font-size: 15px; }
+body.in-home nav.crumbs .crumb { font-size: 14px; }
+body.in-home nav.crumbs .crumb.on { font-size: 15px; }
 
 /* ==== the main view: tokens -----------------------------------------------------------------
    Everything on the canvas is ink at an opacity (the mock is black at 70/45/30/20 %), so one
