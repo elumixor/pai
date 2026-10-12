@@ -934,6 +934,8 @@ time { color: inherit; font: inherit; }
 .ring-mini.warm .disc { color: #623f0b; }
 .ring-mini.hot .disc { color: var(--hot); }
 :root[data-theme="dark"] .ring-mini .disc { color: var(--ink); }
+.ring-mini.none .disc { color: var(--ink-30); }
+.ring-mini.none .disc .track { stroke: var(--ink-20); stroke-dasharray: 2 2; }
 
 /* small menus: the model, the effort */
 .menu { position: fixed; z-index: 40; display: flex; flex-direction: column; gap: 1px; min-width: 150px; padding: 6px; border-radius: 12px; background: var(--surface); box-shadow: var(--soft-shadow); font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-70); }

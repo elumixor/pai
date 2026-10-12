@@ -3,7 +3,7 @@ import { clear, el, modelName } from "./dom.ts";
 import { icon } from "./icons.ts";
 import { menu } from "./menu.ts";
 import { miniRings } from "./rings.ts";
-import type { Effort, SlashCommand } from "./types.ts";
+import type { Effort, SlashCommand, Usage } from "./types.ts";
 
 /** The model and effort a conversation runs with, resolved: what was asked for, else what it runs with anyway. */
 export interface Prefs {
@@ -220,6 +220,7 @@ export function compose(options: ComposeOptions): Compose {
     const result = await options.setPrefs!(changes);
     note.textContent = result.error ?? "";
     drawPrefs();
+    drawRings();
   };
   modelButton.addEventListener("click", () => {
     const current = options.prefs?.()?.model;
@@ -231,10 +232,12 @@ export function compose(options: ComposeOptions): Compose {
   });
   drawPrefs();
   const rings = el("span.rings");
+  let lastUsage: Usage | undefined;
+  const drawRings = () => clear(rings, ...miniRings(lastUsage ?? { windows: [], costUsd: 0, error: "the daemon is not reachable" }, options.prefs?.()?.model));
   const refreshRings = () =>
     usage()
-      .then((data) => clear(rings, ...miniRings(data)))
-      .catch(() => clear(rings));
+      .then((data) => ((lastUsage = data), drawRings()))
+      .catch(() => ((lastUsage = undefined), drawRings()));
   if (!options.mono) {
     void refreshRings();
     setInterval(() => void refreshRings(), 60_000);
@@ -288,6 +291,6 @@ export function compose(options: ComposeOptions): Compose {
       input.placeholder = reason ?? options.placeholder;
     },
     focus: () => input.focus(),
-    refreshPrefs: drawPrefs,
+    refreshPrefs: () => (drawPrefs(), drawRings()),
   };
 }

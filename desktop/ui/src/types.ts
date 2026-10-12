@@ -62,6 +62,8 @@ export interface Usage {
   /** The machine whose login answered, when it was not this one. */
   readonly via?: string;
   readonly error?: string;
+  /** No machine has shared a Claude login the limits can be read with. */
+  readonly needsLogin?: boolean;
 }
 
 export interface ModuleSetting {

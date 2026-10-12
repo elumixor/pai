@@ -1,4 +1,4 @@
-import { ago, clear, el, until } from "./dom.ts";
+import { ago, clear, el, modelName, until } from "./dom.ts";
 import { prefs } from "./prefs.ts";
 import type { Usage, UsageWindow } from "./types.ts";
 
@@ -54,21 +54,31 @@ export function usageStats(data: Usage, label = false) {
   return stats;
 }
 
-/** The small discs in the box's foot: the percent inside a ring, the time to the reset beside it. */
-export function miniRings(data: Usage) {
-  const hidden = new Set(prefs().hiddenRings);
-  return data.windows
-    .filter((w) => !hidden.has(w.name))
-    .map((w) => {
-      const r = 6.5;
-      const c = 2 * Math.PI * r;
-      const level = w.percent >= 90 ? "hot" : w.percent >= 70 ? "warm" : "cool";
-      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      svg.setAttribute("viewBox", "0 0 15 15");
-      svg.innerHTML = `<circle cx="7.5" cy="7.5" r="${r}" class="track"/><circle cx="7.5" cy="7.5" r="${r}" class="fill" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - Math.min(100, w.percent) / 100)}" transform="rotate(-90 7.5 7.5)"/>`;
-      const node = el("span.ring-mini", { class: `ring-mini ${level}`, title: `${w.name}: ${w.percent}% used${w.resetsAt ? ` · resets in ${until(w.resetsAt)}` : ""}` }, el("span.disc", {}, svg, el("span", {}, String(w.percent))), w.resetsAt ? el("span", {}, until(w.resetsAt)) : undefined);
-      return node;
-    });
+/**
+ * The two discs in the box's foot: the session window, and the week — the model's own weekly
+ * limit when the model has one, else the shared one. The percent sits inside the ring, the time
+ * to the reset beside it. Without a reading, two empty discs that say why on hover.
+ */
+export function miniRings(data: Usage, model?: string | null) {
+  const session = data.windows.find((w) => w.name === "Session");
+  const family = model ? modelName(model).split(" ")[0]!.toLowerCase() : "";
+  const week = (family && data.windows.find((w) => w.name.toLowerCase().includes(family))) || data.windows.find((w) => w.name === "Weekly");
+  if (!session && !week) {
+    const why = data.error ?? "no usage reported yet";
+    const hint = data.needsLogin ? " — run `pai cost` on a Mac that is signed in" : "";
+    return [disc(undefined, `Session: unavailable — ${why}${hint}`), disc(undefined, `Weekly: unavailable — ${why}${hint}`)];
+  }
+  return [disc(session, session ? `${session.name}: ${session.percent}% used` : "Session: unavailable"), disc(week, week ? `${week.name}: ${week.percent}% used` : "Weekly: unavailable")];
+}
+
+function disc(w: UsageWindow | undefined, title: string) {
+  const r = 6.5;
+  const c = 2 * Math.PI * r;
+  const level = !w ? "none" : w.percent >= 90 ? "hot" : w.percent >= 70 ? "warm" : "cool";
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 15 15");
+  svg.innerHTML = `<circle cx="7.5" cy="7.5" r="${r}" class="track"/>${w ? `<circle cx="7.5" cy="7.5" r="${r}" class="fill" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - Math.min(100, w.percent) / 100)}" transform="rotate(-90 7.5 7.5)"/>` : ""}`;
+  return el("span.ring-mini", { class: `ring-mini ${level}`, title: w?.resetsAt ? `${title} · resets in ${until(w.resetsAt)}` : title }, el("span.disc", {}, svg, el("span", {}, w ? String(w.percent) : "–")), el("span", {}, w ? until(w.resetsAt) : "n/a"));
 }
 
 /**
