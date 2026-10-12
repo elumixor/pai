@@ -922,12 +922,13 @@ time { color: inherit; font: inherit; }
 .chat-compose .mentions { margin-bottom: 8px; border-radius: 12px; }
 .chat-compose .attachments { margin-bottom: 8px; }
 /* the rings: a percent inside a circle, the time left beside it */
-.rings { display: inline-flex; align-items: center; gap: 6px; opacity: 0.5; }
+.rings { display: inline-flex; align-items: center; gap: 6px; opacity: 0.3; transition: opacity 0.18s ease; }
+.rings:hover { opacity: 0.6; }
 .ring-mini { display: inline-flex; align-items: center; gap: 4px; font: 700 7px/9px var(--font-ui); color: var(--ink); }
 .ring-mini .disc { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 50%; color: #623f0b; font-size: 7px; }
 .ring-mini .disc svg { position: absolute; inset: 0; width: 15px; height: 15px; }
-.ring-mini .disc .track { fill: none; stroke: var(--ink-10); stroke-width: 2; }
-.ring-mini .disc .fill { fill: none; stroke-width: 2; stroke-linecap: round; }
+.ring-mini .disc .track { fill: none; stroke: var(--ink-10); stroke-width: 1.5; }
+.ring-mini .disc .fill { fill: none; stroke-width: 1.5; stroke-linecap: round; opacity: 0.7; }
 .ring-mini.cool .disc .fill { stroke: #00c853; }
 .ring-mini.warm .disc .fill { stroke: #ff9900; }
 .ring-mini.hot .disc .fill { stroke: var(--hot); }
