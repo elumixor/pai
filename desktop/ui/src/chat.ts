@@ -217,9 +217,15 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     node.classList.add("flash");
   };
 
-  /** A reply: the text in full, the time under it on the right. */
+  /** A reply: the text in full; the time rides the end of the last line when it fits, else the next line, right-aligned. */
   function replyRow(m: LogMessage) {
-    return el("div.row.reply", { "data-message": m.id, "data-at": m.createdAt }, el("div.bubble", {}, markdown(m.body)), el("div.row-foot", {}, el("span.grow"), time(m.createdAt)));
+    const bubble = el("div.bubble", {}, markdown(m.body));
+    const last = bubble.lastElementChild;
+    const stamp = time(m.createdAt);
+    stamp.classList.add("inline-time");
+    if (last?.classList.contains("md-p")) last.append(stamp);
+    else bubble.append(el("p.md-p.only-time", {}, stamp));
+    return el("div.row.reply", { "data-message": m.id, "data-at": m.createdAt }, bubble);
   }
 
   /** The user's message: the tinted bubble on the right, folded to three lines when long. */

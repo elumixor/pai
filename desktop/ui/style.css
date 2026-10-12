@@ -815,7 +815,12 @@ time { color: inherit; font: inherit; }
 .row.mine .md-inline { background: color-mix(in srgb, var(--ink) 7%, transparent); }
 
 /* a reply: the receipt — what it did, whom it called, the text, the time */
-.row.reply { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 12px; background: transparent; border: 0; }
+.row.reply { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 12px 12px 4px; background: transparent; border: 0; }
+.row.reply .bubble { width: 100%; }
+.inline-time { float: right; margin: 0 0 0 14px; font: 400 var(--meta)/var(--body-lh) var(--font-ui); color: var(--ink-20); }
+.md-p.only-time { margin: 0; line-height: var(--meta-lh); }
+.md-p.only-time .inline-time { line-height: var(--meta-lh); }
+.md-p::after { content: ""; display: block; clear: both; }
 .row.reply .row-foot { width: 100%; justify-content: flex-end; }
 .row.reply.live .bubble::after { content: "▍"; color: var(--act); animation: pulse 1s ease-in-out infinite; }
 
