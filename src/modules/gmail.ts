@@ -314,6 +314,9 @@ export async function checkAccounts(): Promise<{ label: string; email: string; p
 
 // --- needs: a mailbox the user has to reconnect, on his list rather than in the log --------
 
+/** A decision sits on an area; a mailbox's plumbing is pai's own. */
+const OWNER = "pai-dev";
+
 const needTitle = (label: string) => `Reconnect the "${label}" mailbox`;
 
 const connectUrl = (label: string) => `${config.baseUrl}/gmail/connect?label=${encodeURIComponent(label)}`;
@@ -324,10 +327,10 @@ function raiseNeed(label: string, email: string, why: string) {
   const notes = `${email} ${why}. A Google grant is frozen at consent time, so only reconnecting the mailbox changes it.`;
   const open = tasks.list({ open: true }).find((t) => t.title === needTitle(label));
   if (open) {
-    if (open.notes !== notes || open.nextAction !== nextAction) tasks.update(open.id, { notes, nextAction, status: "waiting_user" });
+    if (open.notes !== notes || open.nextAction !== nextAction || open.owner !== OWNER) tasks.update(open.id, { notes, nextAction, status: "waiting_user", owner: OWNER });
     return;
   }
-  const task = tasks.add({ title: needTitle(label), status: "waiting_user", createdBy: "gmail", nextAction, notes });
+  const task = tasks.add({ title: needTitle(label), status: "waiting_user", owner: OWNER, createdBy: "gmail", nextAction, notes });
   log.warn(`${label}: ${why} — task #${task.id}`);
   bus.emitEvent("gmail.reconnect", { account: label, email, why, task: task.id, link: connectUrl(label) });
 }
