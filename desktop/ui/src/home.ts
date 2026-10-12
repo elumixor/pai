@@ -17,7 +17,6 @@ import type { Agent, AgentStatus, Effort, LogMessage, Need, SessionSummary, Task
 const PAI = "pai";
 const STATUS: Record<AgentStatus, string> = { working: "working", waiting: "waiting on you", queued: "queued", idle: "idle", closed: "closed" };
 const KIND_ORDER: Record<Agent["kind"], number> = { orchestrator: 0, standing: 1, service: 2, sub: 3 };
-const money = (usd: number) => `$${usd.toFixed(usd >= 10 ? 0 : 2)}`;
 /** What a session thinks at when nothing was asked for: Claude Code's own default. */
 const DEFAULT_EFFORT: Effort = "high";
 
@@ -180,18 +179,15 @@ export function home(root: HTMLElement) {
     thread.slot.append(hand.node);
     clear(centrePane, thread.node);
     const draw = (agent: Agent) => {
-      const crumbs = lineage(agent.slug).map((a) => a.name);
-      thread.setHead(
-        crumbs.join(" › ") || agent.name,
-        el(
-          "span.tags",
-          {},
-          el("span", { class: `tag status-${agent.status}` }, STATUS[agent.status] ?? "idle"),
-          el("span.tag", {}, agent.kind),
-          agent.model ? el("span.tag", {}, modelName(agent.model)) : undefined,
-          el("span.tag", { title: "turns today · what it has cost" }, `${agent.turnsToday} turns · ${money(agent.costUsd)}`),
-        ),
-      );
+      // General › parent › … › this agent: every step before the last takes you back there.
+      const chain = lineage(agent.slug);
+      const crumbs = el("span.crumbs", {}, el("button.crumb", { onclick: () => navigate("home") }, "General"));
+      for (const a of chain) {
+        crumbs.append(el("span.crumb-sep", {}, "›"));
+        crumbs.append(a.slug === agent.slug ? el("span.crumb.here", {}, a.name) : el("button.crumb", { onclick: () => ctx.openAgent(a.slug) }, a.name));
+      }
+      if (!chain.length) crumbs.append(el("span.crumb-sep", {}, "›"), el("span.crumb.here", {}, agent.name));
+      thread.setHead(crumbs);
       if (agent.status === "closed") thread.node.querySelector<HTMLTextAreaElement>("textarea")?.setAttribute("disabled", "");
     };
     if (existing) draw(existing);

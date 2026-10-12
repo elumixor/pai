@@ -425,7 +425,6 @@ function run(a: Agent, text: string, requestId?: number) {
   const today = day();
   db.prepare("UPDATE agents SET turns_today = CASE WHEN turns_day = ? THEN turns_today + 1 ELSE 1 END, turns_day = ? WHERE slug = ?").run(today, today, a.slug);
   setStatus(a.slug, "working");
-  if (a.status !== "working") messages.event(a.slug, "agent.woken", `${a.name} woke: ${text.replace(/^\[[^\]]+\]\s*/, "").replace(/\s+/g, " ").slice(0, 80)}`);
   s.send(text, { origin: "system" });
   clearTimeout(turnTimers.get(a.slug));
   turnTimers.set(

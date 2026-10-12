@@ -7,6 +7,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as agents from "./agents.ts";
 import * as asks from "./asks.ts";
+import * as gate from "./gate.ts";
 import * as journal from "./journal.ts";
 import * as messages from "./messages.ts";
 import * as requests from "./requests.ts";
@@ -155,7 +156,7 @@ export function rotate(reason: string): Promise<void> {
  * and the clock rotates it daily. Agents' reports reach it through `agents.linkPai`.
  */
 export function start() {
-  agents.linkPai({ note, turn: system });
+  agents.linkPai({ note, turn: (text) => void gate.screen(text, { turn: system, note }) });
   requests.linkPai(system, silent);
   requests.wire();
   asks.link({
@@ -167,8 +168,10 @@ export function start() {
   });
   const handler = (e: PaiEvent) => {
     if (e.kind !== "session.turn_end" || !isMain(e.sessionId)) return;
+    gate.turnTaken();
     const text = String(e.payload.text ?? "").trim();
-    if (text && e.payload.origin !== "silent") messages.log({ from: agents.PAI, to: "user", kind: "chat", body: text, meta: { origin: String(e.payload.origin ?? "user") } });
+    // "No response needed." on a system turn is pai obeying the prompt out loud: not a message.
+    if (text && e.payload.origin !== "silent" && !(e.payload.origin === "system" && gate.boilerplate(text))) messages.log({ from: agents.PAI, to: "user", kind: "chat", body: text, meta: { origin: String(e.payload.origin ?? "user") } });
     void sessions
       .find(e.sessionId!)
       ?.contextUsage()

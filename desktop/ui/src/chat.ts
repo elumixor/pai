@@ -64,7 +64,7 @@ export interface Chat {
   /** Where the host puts what sits above the box: the hand with what waits. */
   readonly slot: HTMLElement;
   /** The title over the column and, under it, a line of tags. */
-  readonly setHead: (title: string, sub?: HTMLElement) => void;
+  readonly setHead: (title: string | HTMLElement, sub?: HTMLElement) => void;
   readonly refreshPrefs: () => void;
 }
 
@@ -228,13 +228,21 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     return el("div.row.reply", { "data-message": m.id, "data-at": m.createdAt }, bubble);
   }
 
-  /** The user's message: the tinted bubble on the right, folded to three lines when long. */
+  /**
+   * The user's message: the tinted bubble on the right, folded to three lines when long. In an agent's chat
+   * its parent's words (a delegation) are the same bubble, with who sent it in small bold over the text.
+   */
   function mineRow(m: LogMessage) {
     const from = m.from === "user" ? undefined : nameOf(m.from);
     const long = m.body.length > MINE_FOLD_CHARS || m.body.split("\n").length > 3;
-    const row = el("div.row.mine", { class: `row mine${long ? " folded" : ""}`, "data-message": m.id, "data-at": m.createdAt }, el("div.bubble", {}, markdown(m.body)));
+    const row = el(
+      "div.row.mine",
+      { class: `row mine${long ? " folded" : ""}`, "data-message": m.id, "data-task": m.taskId ?? "", "data-at": m.createdAt },
+      from ? el("div.row-from", {}, el("b", {}, from), m.taskId ? el("span.tag", {}, `#${m.taskId}`) : undefined) : undefined,
+      el("div.bubble", {}, markdown(m.body)),
+    );
     const toggle = long ? el("button.more", { onclick: () => (row.classList.toggle("folded"), (toggle!.textContent = row.classList.contains("folded") ? "Show more" : "Show less")) }, "Show more") : undefined;
-    row.append(el("div.row-foot", {}, toggle, from ? el("span", {}, from) : undefined, el("span.grow"), time(m.createdAt)));
+    row.append(el("div.row-foot", {}, toggle, el("span.grow"), time(m.createdAt)));
     return row;
   }
 
@@ -384,6 +392,8 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       case "chat":
         return mine(m) ? mineRow(m) : replyRow(m);
       case "delegate":
+        // Handed to this agent by its parent: reads as the message it is, not a card about one.
+        return mine(m) && m.to === options.agent ? mineRow(m) : card(m);
       case "report":
       case "request":
       case "response":
@@ -863,7 +873,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     refreshPrefs: () => box.refreshPrefs(),
     slot,
     setHead(text, extra) {
-      title.textContent = text;
+      clear(title, text);
       sub.hidden = !extra;
       clear(sub, extra);
     },
