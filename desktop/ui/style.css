@@ -757,7 +757,7 @@ body.in-home .nav:hover { opacity: 0.85; }
 .chat-daypill { padding: 4px 6px; border-radius: 19px; background: var(--pill-bg); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: color-mix(in srgb, var(--ink) 40%, transparent); opacity: 0; transition: opacity 0.15s; }
 .chat-daypill.shown { opacity: 1; }
 .chat-fade { position: absolute; top: 0; left: 0; right: 0; height: 170px; z-index: 3; pointer-events: none; background: linear-gradient(180deg, var(--canvas) 17.31%, color-mix(in srgb, var(--canvas) 75%, transparent) 45.67%, transparent 100%); }
-.chat-fade.bottom { top: auto; bottom: -20px; height: 200px; background: linear-gradient(0deg, var(--canvas) 30%, color-mix(in srgb, var(--canvas) 75%, transparent) 60%, transparent 100%); }
+.chat-fade.bottom { top: auto; bottom: -20px; height: 200px; background: linear-gradient(0deg, color-mix(in srgb, var(--canvas) 55%, transparent) 0%, color-mix(in srgb, var(--canvas) 35%, transparent) 50%, transparent 100%); }
 .chat { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; align-items: center; }
 body.in-home .chat { max-width: none; margin: 0; }
 .chat-more { align-self: center; margin: 0; padding: 0; border: 0; background: none; box-shadow: none; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-30); }
