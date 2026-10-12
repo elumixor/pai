@@ -71,6 +71,9 @@ export function home(root: HTMLElement) {
   /** Where a need lives: pai's questions and tasks in the main chat, an agent's ask in its thread. */
   function reveal(n: Need) {
     const target: RevealTarget = n.kind === "ask" ? { askId: n.askId } : n.kind === "task" ? { taskId: n.taskId } : { question: true };
+    // Whatever chat is open shows the row itself when it has it: no jump to another thread.
+    if (centre.kind === "chat" && mainChat?.reveal(target)) return;
+    if (centre.kind === "agent" && agentChat?.chat.reveal(target)) return;
     const inMain = n.agent === null || n.agent === PAI;
     if (inMain) {
       if (centre.kind !== "chat") navigate("home");

@@ -757,7 +757,7 @@ body.in-home .nav:hover { opacity: 0.85; }
 .chat-daypill { padding: 4px 6px; border-radius: 19px; background: var(--pill-bg); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: color-mix(in srgb, var(--ink) 40%, transparent); opacity: 0; transition: opacity 0.15s; }
 .chat-daypill.shown { opacity: 1; }
 .chat-fade { position: absolute; top: 0; left: 0; right: 0; height: 170px; z-index: 3; pointer-events: none; background: linear-gradient(180deg, var(--canvas) 17.31%, color-mix(in srgb, var(--canvas) 75%, transparent) 45.67%, transparent 100%); }
-.chat-fade.bottom { top: auto; bottom: 0; height: 190px; background: linear-gradient(0deg, var(--canvas) 30%, color-mix(in srgb, var(--canvas) 75%, transparent) 60%, transparent 100%); }
+.chat-fade.bottom { top: auto; bottom: -20px; height: 200px; background: linear-gradient(0deg, var(--canvas) 30%, color-mix(in srgb, var(--canvas) 75%, transparent) 60%, transparent 100%); }
 .chat { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; align-items: center; }
 body.in-home .chat { max-width: none; margin: 0; }
 .chat-more { align-self: center; margin: 0; padding: 0; border: 0; background: none; box-shadow: none; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-30); }
@@ -765,7 +765,7 @@ body.in-home .btn.chat-more { background: none; box-shadow: none; padding: 0; co
 body.in-home .btn.chat-more:hover { color: var(--ink-70); }
 .row.question.answered .q-body { color: var(--ink-45); opacity: 1; }
 .row.question.answered .q-crumb { color: var(--ink-30); opacity: 1; }
-.chat-log { position: absolute; inset: 0; overflow-y: auto; min-height: 0; padding: 120px 0 190px; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; background: transparent; }
+.chat-log { position: absolute; inset: 0 0 -20px; overflow-y: auto; min-height: 0; padding: 120px 0 150px; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; background: transparent; }
 .chat-log::-webkit-scrollbar { display: none; }
 .chat-log > .hint { align-self: center; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-30); }
 .day { align-self: center; margin: 4px 0; padding: 4px 6px; border-radius: 19px; background: var(--pill-bg); font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: color-mix(in srgb, var(--ink) 40%, transparent); text-transform: none; letter-spacing: 0; }
@@ -903,7 +903,11 @@ time { color: inherit; font: inherit; }
 
 /* the hand: what waits on you, and the list that unfolds above it */
 .chat-foot { position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; padding-bottom: 67px; }
-.needs { position: relative; align-self: flex-end; }
+.needs { position: relative; }
+.chat-foot-side { display: flex; align-items: center; justify-content: flex-end; gap: 8px; width: 100%; }
+.to-bottom { display: inline-flex; align-items: center; justify-content: center; width: 27px; height: 27px; border: 0; border-radius: 50%; background: var(--surface); box-shadow: var(--card-shadow); color: var(--ink-45); cursor: pointer; transition: opacity 0.18s ease, color 0.18s ease; }
+.to-bottom .icon { transform: rotate(90deg); }
+.to-bottom:hover { color: var(--ink); }
 .needs-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border: 0; border-radius: 52px; background: var(--act); opacity: 0.7; box-shadow: var(--card-shadow); color: #fff; font: 700 12.5px/15px var(--font-ui); cursor: pointer; }
 .needs-btn:hover, .needs-btn.open { opacity: 0.9; }
 .needs-btn .icon { width: 15px; height: 15px; }

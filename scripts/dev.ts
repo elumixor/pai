@@ -8,7 +8,7 @@
  * `--no-open` leaves the browser alone; `--port <n>` picks the port.
  */
 import { watch } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { config } from "../src/core/config.ts";
@@ -26,7 +26,13 @@ async function rebuild() {
   if (building) return building;
   building = buildUi()
     .then(() => {
-      for (const controller of reloaders) controller.enqueue("data: reload\n\n");
+      for (const controller of reloaders) {
+        try {
+          controller.enqueue("data: reload\n\n");
+        } catch {
+          reloaders.delete(controller); // the tab closed without cancelling
+        }
+      }
       console.log(`${new Date().toLocaleTimeString()} rebuilt`);
     })
     .catch((err: Error) => console.error(err.message))
@@ -46,16 +52,28 @@ async function configured() {
 
 await buildUi();
 
-for (const target of ["src", "index.html", "style.css", "pai-icon.png"]) {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  watch(join(ui, target), { recursive: true }, () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => void rebuild(), 80);
-  });
-}
+let timer: ReturnType<typeof setTimeout> | undefined;
+const changed = () => {
+  clearTimeout(timer);
+  timer = setTimeout(() => void rebuild(), 80);
+};
+for (const target of ["src", "index.html", "style.css", "pai-icon.png"]) watch(join(ui, target), { recursive: true }, changed);
+// fs.watch on macOS goes quiet after a while (a replaced inode, a long-lived process): a cheap mtime sweep catches what it misses.
+let newest = 0;
+const sweep = async () => {
+  let latest = 0;
+  for (const file of ["index.html", "style.css", ...(await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: join(ui, "src") }))).map((f) => join("src", f))])
+    latest = Math.max(latest, (await stat(join(ui, file))).mtimeMs);
+  if (newest && latest > newest) changed();
+  newest = latest;
+};
+await sweep();
+setInterval(() => void sweep(), 1000);
 
 const server = Bun.serve({
   port,
+  // The reload stream stays open as long as the tab does.
+  idleTimeout: 0,
   async fetch(req) {
     const { pathname } = new URL(req.url);
     if (pathname === "/__reload")

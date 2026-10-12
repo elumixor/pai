@@ -819,7 +819,9 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   log.addEventListener("scroll", showDay, { passive: true });
 
   const slot = el("div.chat-slot");
-  const node = el("section.chat", {}, el("div.chat-view", {}, head, log, el("div.chat-fade"), el("div.chat-fade.bottom"), el("div.chat-foot", {}, slot, box.node)));
+  const toBottom = el("button.to-bottom", { title: "to the latest", hidden: true, onclick: () => log.scrollTo({ top: log.scrollHeight, behavior: "smooth" }) }, icon("chevron", 13));
+  log.addEventListener("scroll", () => (toBottom.hidden = nearBottom()), { passive: true });
+  const node = el("section.chat", {}, el("div.chat-view", {}, head, log, el("div.chat-fade"), el("div.chat-fade.bottom"), el("div.chat-foot", {}, el("div.chat-foot-side", {}, toBottom, slot), box.node)));
 
   void load().then(async () => {
     if (liveSession) followLive(liveSession);
