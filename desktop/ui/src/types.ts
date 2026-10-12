@@ -17,6 +17,9 @@ export interface SessionSummary {
   readonly costUsd?: number;
   /** The model that answered last, as the API names it. */
   readonly model?: string | null;
+  /** The model and effort asked for, when they were. */
+  readonly modelPref?: string | null;
+  readonly effort?: Effort | null;
   readonly lastActivity?: number | string;
 }
 
@@ -171,6 +174,9 @@ export interface PaiEvent {
 }
 
 // ---- the staff: pai, its agents, the message log between them, tasks, asks, routines -----
+
+/** How hard a session thinks; the SDK's levels. */
+export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 
 export type AgentKind = "orchestrator" | "standing" | "sub" | "service";
 export type AgentStatus = "idle" | "queued" | "working" | "waiting" | "closed";

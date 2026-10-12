@@ -115,7 +115,7 @@ export const THEMES: readonly Theme[] = [
     "pai-light",
     "pai Light",
     "light",
-    { bg: "#f3f4f8", panel: "#ffffff", panel2: "#f7f8fb", line: "#e4e7ee", line2: "#d3d8e3", text: "#1d2230", dim: "#6b7382", accent: "#4a5bd6", accentInk: "#ffffff", busy: "#c98a1c", idle: "#2f9e57", warn: "#d9781a", hot: "#d9433f", codeBg: "#fbfbfd", selection: "#d4dafc" },
+    { bg: "#ebe6e1", panel: "#ffffff", panel2: "#f4efea", line: "#dfdad5", line2: "#cfc9c3", text: "#000000", dim: "#6b6763", accent: "#cb5800", accentInk: "#ffffff", busy: "#ff9100", idle: "#086c0b", warn: "#cb5800", hot: "#c8102e", codeBg: "#f7f3ef", selection: "#f4dcc4" },
     { comment: "#8a919e", keyword: "#a626a4", string: "#50a14f", number: "#986801", function: "#4078f2", variable: "#e45649", type: "#c18401", property: "#e45649", operator: "#0184bc", punctuation: "#383a42", tag: "#e45649", attribute: "#986801", constant: "#986801", heading: "#e45649", link: "#4078f2", invalid: "#e45649" },
     ["#383a42", "#e45649", "#50a14f", "#c18401", "#4078f2", "#a626a4", "#0184bc", "#a0a1a7", "#4f525e", "#e45649", "#50a14f", "#c18401", "#4078f2", "#a626a4", "#0184bc", "#fafafa"],
   ),

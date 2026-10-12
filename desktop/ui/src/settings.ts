@@ -1,4 +1,6 @@
 import { baseUrl, inDesktop, setBaseUrl, setToken, token, usage } from "./api.ts";
+import type { DashboardHandlers, Page, PageRenderer } from "./dashboard.ts";
+import { dashboardPages } from "./dashboard.ts";
 import { clear, el } from "./dom.ts";
 import { icon, type IconName } from "./icons.ts";
 import { prefs, setPrefs } from "./prefs.ts";
@@ -31,13 +33,22 @@ export const SHORTCUTS: { keys: string; what: string }[] = [
   { keys: "@", what: "in a message: mention a file of the project" },
 ];
 
-export type SettingsSection = "appearance" | "usage" | "shortcuts" | "connection";
+export type SettingsSection = "appearance" | "usage" | "shortcuts" | "connection" | Page;
 const SECTIONS: { id: SettingsSection; label: string; icon: IconName }[] = [
   { id: "appearance", label: "Appearance", icon: "sun" },
   { id: "usage", label: "Usage rings", icon: "zap" },
   { id: "shortcuts", label: "Shortcuts", icon: "key" },
   { id: "connection", label: "Connection", icon: "link" },
 ];
+/** What the dashboard used to be: pages about the daemon itself, each a section here. */
+const PAGES: { id: Page; label: string; icon: IconName }[] = [
+  { id: "modules", label: "Modules", icon: "zap" },
+  { id: "automations", label: "Routines", icon: "clock" },
+  { id: "projects", label: "Projects", icon: "folder" },
+  { id: "context", label: "Context", icon: "book" },
+  { id: "agents", label: "Agents", icon: "users" },
+];
+const isPage = (section: SettingsSection): section is Page => PAGES.some((p) => p.id === section);
 
 /** A theme as a tile: its chrome and a few syntax colours, so the choice is visible before it is made. */
 function swatch(theme: Theme, selected: boolean, onpick: () => void) {
@@ -68,8 +79,10 @@ interface Row {
  * where the daemon is. Sections on the left, a search that filters every row, the rows on
  * the right. Everything about the daemon itself lives in the dashboard's modules.
  */
-export function settingsView(pane: HTMLElement, initial: SettingsSection = "appearance", close?: () => void) {
+export function settingsView(pane: HTMLElement, initial: SettingsSection = "appearance", close?: () => void, handlers?: DashboardHandlers) {
   const rows: Row[] = [];
+  const pages: Partial<Record<Page, PageRenderer>> = handlers ? dashboardPages(handlers) : {};
+  let disposePage: () => void = () => {};
   const row = (section: SettingsSection, name: IconName, title: string, hint: string | undefined, control: HTMLElement, keywords = "", stack = false) => {
     const node = el(
       "div.setting",
@@ -148,7 +161,25 @@ export function settingsView(pane: HTMLElement, initial: SettingsSection = "appe
   const render = () => {
     const q = search.value.trim().toLowerCase();
     for (const link of nav.querySelectorAll<HTMLElement>(".dash-link")) link.classList.toggle("on", !q && link.dataset.section === section);
+    disposePage();
+    disposePage = () => {};
     clear(body);
+    body.classList.toggle("page", !q && isPage(section));
+    if (!q && isPage(section)) {
+      const page = pages[section];
+      const inner = el("div.dash-body");
+      body.append(inner);
+      if (!page) return void inner.append(el("p.hint", {}, "not available here"));
+      const draw = () => {
+        disposePage();
+        clear(inner, el("p.hint", {}, "…"));
+        page(inner, draw)
+          .then((dispose) => (disposePage = dispose ?? (() => {})))
+          .catch((err: Error) => clear(inner, el("div.notice", {}, el("p", {}, `Cannot reach ${baseUrl()}.`), el("p.dim", {}, err.message))));
+      };
+      draw();
+      return;
+    }
     const visible = rows.filter((r) => (q ? r.keywords.includes(q) : r.section === section));
     let last: SettingsSection | undefined;
     for (const r of visible) {
@@ -159,7 +190,8 @@ export function settingsView(pane: HTMLElement, initial: SettingsSection = "appe
     if (!visible.length) body.append(el("p.hint", {}, "nothing matches"));
   };
   search.addEventListener("input", render);
-  clear(nav, ...SECTIONS.map((s) => el("button.dash-link", { "data-section": s.id, onclick: () => ((section = s.id), (search.value = ""), render()) }, icon(s.icon, 14), el("span", {}, s.label))));
+  const navLink = (s: { id: SettingsSection; label: string; icon: IconName }) => el("button.dash-link", { "data-section": s.id, onclick: () => ((section = s.id), (search.value = ""), render()) }, icon(s.icon, 14), el("span", {}, s.label));
+  clear(nav, ...SECTIONS.map(navLink), el("h3.section-title", {}, "pai"), ...PAGES.map(navLink));
   clear(
     pane,
     el(
@@ -176,4 +208,5 @@ export function settingsView(pane: HTMLElement, initial: SettingsSection = "appe
   );
   render();
   search.focus();
+  return () => disposePage();
 }

@@ -1,4 +1,4 @@
-import type { Agent, Ask, Automation, Need, ContextItem, LogMessage, Routine, TaskItem, TaskStatus, Diagnostic, SlashCommand, DiskSession, Entry, ModuleInfo, PaiEvent, ProjectSummary, SessionSummary, Status, TerminalSummary, Usage } from "./types.ts";
+import type { Effort, Agent, Ask, Automation, Need, ContextItem, LogMessage, Routine, TaskItem, TaskStatus, Diagnostic, SlashCommand, DiskSession, Entry, ModuleInfo, PaiEvent, ProjectSummary, SessionSummary, Status, TerminalSummary, Usage } from "./types.ts";
 
 /**
  * The daemon, with the app's offline story in one place: every GET is cached, a failed GET
@@ -296,6 +296,8 @@ export const createTask = (input: { title: string; owner?: string; due?: string 
 export const updateTask = (id: number, changes: { status?: TaskStatus; title?: string; owner?: string; due?: string | null; nextAction?: string; notes?: string; parentId?: number | null }) => send(`/tasks/${id}`, changes, "PATCH");
 export const asks = () => get<Ask[]>("/asks");
 export const needs = () => get<Need[]>("/needs");
+export const reconfigure = (id: string, changes: { model?: string | null; effort?: Effort | null }) => send("/reconfigure", { id, ...changes });
+export const dropAsk = (id: number) => send(`/asks/${id}/drop`, {});
 export const answerNeed = (id: string, text: string) => send("/needs/answer", { id, text });
 export const agent = (slug: string) => get<Agent & { children: Agent[]; tasks: TaskItem[] }>(`/agents/${slug}`);
 export const task = (id: number) => get<TaskItem & { children: TaskItem[] }>(`/tasks/${id}`);

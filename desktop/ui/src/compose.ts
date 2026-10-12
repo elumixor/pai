@@ -1,7 +1,23 @@
-import { commands as listCommands, fileIndex } from "./api.ts";
-import { clear, el } from "./dom.ts";
+import { commands as listCommands, fileIndex, usage } from "./api.ts";
+import { clear, el, modelName } from "./dom.ts";
 import { icon } from "./icons.ts";
-import type { SlashCommand } from "./types.ts";
+import { menu } from "./menu.ts";
+import { miniRings } from "./rings.ts";
+import type { Effort, SlashCommand } from "./types.ts";
+
+/** The model and effort a conversation runs with; null means the daemon's default. */
+export interface Prefs {
+  readonly model?: string | null;
+  readonly effort?: Effort | null;
+}
+const MODELS: readonly { value: string | null; label: string }[] = [
+  { value: null, label: "default" },
+  { value: "opus", label: "Opus" },
+  { value: "sonnet", label: "Sonnet" },
+  { value: "haiku", label: "Haiku" },
+];
+const EFFORTS: readonly { value: Effort | null; label: string }[] = [{ value: null, label: "default" }, ...(["low", "medium", "high", "xhigh", "max"] as const).map((value) => ({ value, label: value }))];
+const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 export interface Attachment {
   readonly media_type: string;
@@ -32,6 +48,9 @@ export interface ComposeOptions {
   readonly foot?: () => string;
   /** The terminal look (`❯`, monospace) or the chat look. */
   readonly mono?: boolean;
+  /** The chat look's foot: the model and the effort, changeable when `setPrefs` is given, and the quota rings. */
+  readonly prefs?: () => Prefs | undefined;
+  readonly setPrefs?: (changes: Prefs) => Promise<{ error?: string }>;
 }
 
 export interface Compose {
@@ -42,6 +61,8 @@ export interface Compose {
   pin(content: HTMLElement | undefined, onDismiss?: () => void): void;
   disable(reason?: string): void;
   focus(): void;
+  /** The model or effort changed elsewhere: the foot follows. */
+  refreshPrefs(): void;
 }
 
 /**
@@ -176,15 +197,70 @@ export function compose(options: ComposeOptions): Compose {
     }
   });
 
-  const foot = el("span.dim", {}, options.foot?.() ?? "");
+  // The foot: attach, the model, the effort, the rings; the note; enter.
+  const picker = el("input", { type: "file", accept: "image/*", multiple: true, hidden: true }) as HTMLInputElement;
+  picker.addEventListener("change", async () => {
+    for (const file of picker.files ?? []) attachments.push(await readImage(file));
+    picker.value = "";
+    drawChips();
+  });
+  const modelButton = el("button.compose-tool.model", { title: "the model this conversation runs with" }) as HTMLButtonElement;
+  const effortButton = el("button.compose-tool.effort", { title: "how hard it thinks" }) as HTMLButtonElement;
+  const drawPrefs = () => {
+    const prefs = options.prefs?.();
+    modelButton.hidden = !prefs;
+    effortButton.hidden = !prefs;
+    if (!prefs) return;
+    modelButton.textContent = prefs.model ? capital(modelName(prefs.model)) : "default model";
+    effortButton.textContent = prefs.effort ?? "default effort";
+    modelButton.disabled = effortButton.disabled = !options.setPrefs;
+  };
+  const choose = async (changes: Prefs) => {
+    const result = await options.setPrefs!(changes);
+    note.textContent = result.error ?? "";
+    drawPrefs();
+  };
+  modelButton.addEventListener("click", () => {
+    const current = options.prefs?.()?.model ?? null;
+    menu(modelButton, MODELS.map((m) => ({ label: m.label, on: (current ? modelName(current).split(" ")[0] : null) === (m.value ?? null), pick: () => void choose({ model: m.value }) })));
+  });
+  effortButton.addEventListener("click", () => {
+    const current = options.prefs?.()?.effort ?? null;
+    menu(effortButton, EFFORTS.map((e) => ({ label: e.label, on: current === e.value, pick: () => void choose({ effort: e.value }) })));
+  });
+  drawPrefs();
+  const rings = el("span.rings");
+  const refreshRings = () =>
+    usage()
+      .then((data) => clear(rings, ...miniRings(data)))
+      .catch(() => clear(rings));
+  if (!options.mono) {
+    void refreshRings();
+    setInterval(() => void refreshRings(), 60_000);
+    window.addEventListener("pai:prefs", () => void refreshRings());
+  }
+  const foot = options.mono
+    ? el("div.compose-foot", {}, el("span.dim", {}, options.foot?.() ?? ""), el("span.grow"), note, el("span.dim", {}, "enter to send · shift+enter newline"))
+    : el(
+        "div.compose-foot",
+        {},
+        el("button.compose-tool", { title: "attach an image (or paste one)", onclick: () => picker.click() }, icon("paperclip", 15)),
+        modelButton,
+        effortButton,
+        rings,
+        el("span.grow"),
+        note,
+        el("button.iconbtn.compose-send", { title: "send (enter)", onclick: () => void submit() }, icon("enter", 15)),
+      );
   const node = el(
     "footer.compose",
     { class: `compose ${options.mono ? "tui-compose" : "chat-compose"}` },
     pinned,
     mentions,
     chips,
-    el("div.compose-row", {}, options.mono ? el("span.prompt-char", {}, "❯") : undefined, input, options.mono ? undefined : el("button.iconbtn", { title: "send (enter)", onclick: () => void submit() }, icon("send", 14))),
-    el("div.compose-foot", {}, foot, el("span.grow"), note, el("span.dim", {}, "enter to send · shift+enter newline")),
+    picker,
+    el("div.compose-row", {}, options.mono ? el("span.prompt-char", {}, "❯") : undefined, input),
+    foot,
   );
 
   return {
@@ -211,5 +287,6 @@ export function compose(options: ComposeOptions): Compose {
       input.placeholder = reason ?? options.placeholder;
     },
     focus: () => input.focus(),
+    refreshPrefs: drawPrefs,
   };
 }

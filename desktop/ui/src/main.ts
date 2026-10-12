@@ -1,11 +1,10 @@
 import { asks, baseUrl, fileIndex, flush, follow, inDesktop, isOnline, lastError, onConnection, outbox, projects, resolveBase, send, status, usage } from "./api.ts";
-import { dashboard, type Page } from "./dashboard.ts";
 import { clear, el, sheet } from "./dom.ts";
 import "./theme.ts";
 import { editor, emptyEditor } from "./editor.ts";
 import { current as currentRoute, navigate, onRoute, type Route } from "./router.ts";
 import { home as homeView, type Centre } from "./home.ts";
-import { topNav } from "./nav.ts";
+import { nav } from "./nav.ts";
 import { usageStats } from "./rings.ts";
 import { tree, type Tree } from "./files.ts";
 import { icon, type IconName } from "./icons.ts";
@@ -46,21 +45,31 @@ const openFile = (path: string) => {
   save();
   void showCenter(() => editor(viewerPane, path));
 };
-// ---- the three views: home (the chat, the board), work (the editor), the dashboard --------
+// ---- the two views: home (the chat, the board) and work (the editor); settings over either ---
 
-const dashboardRoot = $("dashboard");
 const homeRoot = $("home");
-let dashboardView: ReturnType<typeof dashboard> | undefined;
 let homePage: ReturnType<typeof homeView> | undefined;
-type View = "home" | "work" | "dashboard";
-function showView(next: View, page: Page = "overview") {
+type View = "home" | "work";
+function showView(next: View) {
   main.hidden = next !== "work";
   homeRoot.hidden = next !== "home";
-  dashboardRoot.hidden = next !== "dashboard";
-  document.body.classList.toggle("in-dashboard", next === "dashboard");
   document.body.classList.toggle("in-home", next === "home");
-  if (next === "dashboard") {
-    dashboardView ??= dashboard(dashboardRoot, {
+  if (next === "home") homePage ??= homeView(homeRoot);
+  else window.dispatchEvent(new Event("resize"));
+}
+const SETTINGS_ROUTES: readonly Route["name"][] = ["settings", "agents", "modules", "automations", "projects", "context"];
+const showSettings = (section?: SettingsSection) => {
+  if (document.querySelector("dialog.settings")) return;
+  const { body, close } = sheet("settings");
+  const dispose = settingsView(
+    body,
+    section,
+    () => {
+      dispose();
+      close();
+      if (SETTINGS_ROUTES.includes(currentRoute().name)) history.back();
+    },
+    {
       openFile: (path) => {
         navigate("editor");
         openFile(path);
@@ -70,27 +79,20 @@ function showView(next: View, page: Page = "overview") {
         const project = catalog.find((p) => p.slug === slug);
         if (project) selectProject(project);
       },
-    });
-    void dashboardView.show(page);
-  } else if (next === "home") homePage ??= homeView(homeRoot);
-  else window.dispatchEvent(new Event("resize"));
-}
-const showSettings = (section?: SettingsSection) => {
-  if (document.querySelector("dialog.settings")) return;
-  const { body, close } = sheet("settings");
-  settingsView(body, section, () => {
-    close();
-    if (currentRoute().name === "settings") history.back();
-  });
+    },
+  );
 };
 const showEditor = () => (state.file ? openFile(state.file) : emptyEditor(viewerPane));
 
-/** Each address is one of the views: the chat, an agent's thread or the board at home; the dashboard's pages; the editor; the settings sheet over whatever is open. */
+/** Each address is one of the views: the chat, an agent's thread or the board at home; the editor; the settings sheet (and its pages about the daemon) over whatever is open. */
 function applyRoute(route: Route) {
-  const pages: Partial<Record<Route["name"], Page>> = { agents: "agents", modules: "modules", automations: "automations", projects: "projects", context: "context" };
   // The dashboard's overview is gone: the chat is the front page now.
   if (route.name === "dashboard") return navigate("home", true);
   if (route.name === "settings") return showSettings();
+  if (route.name === "agents" || route.name === "modules" || route.name === "automations" || route.name === "projects" || route.name === "context") {
+    if (homeRoot.hidden && main.hidden) showView("home");
+    return showSettings(route.name);
+  }
   if (route.name === "editor") {
     showView("work");
     showEditor();
@@ -100,10 +102,7 @@ function applyRoute(route: Route) {
     showView("home");
     const centre: Centre = route.name === "home" ? { kind: "chat" } : route.name === "board" ? { kind: "board", slug: route.param } : { kind: "agent", slug: route.param! };
     homePage!.show(centre);
-    return;
   }
-  const page = pages[route.name];
-  if (page) showView("dashboard", page);
 }
 onRoute(applyRoute);
 
@@ -364,7 +363,7 @@ async function refreshAll() {
 }
 
 document.body.classList.toggle("desktop", inDesktop);
-topNav($("topnav"));
+nav($("nav"));
 splits(main);
 renderStatusRight();
 emptyEditor(viewerPane);

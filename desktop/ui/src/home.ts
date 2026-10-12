@@ -1,34 +1,22 @@
-import {
-  agent as fetchAgent, agents as listAgents, automations as listAutomations, baseUrl, follow, messageAgent, messages as listMessages, modules as listModules, needs as listNeeds, pai as paiStatus,
-  sendPai, status, taskItems, usage,
-} from "./api.ts";
+import { agent as fetchAgent, agents as listAgents, follow, messageAgent, needs as listNeeds, pai as paiStatus, reconfigure, sendPai, taskItems } from "./api.ts";
 import { board, type Board } from "./board.ts";
 import { chat, type Chat, type RevealTarget } from "./chat.ts";
-import { ago, clear, el, modelName } from "./dom.ts";
-import { icon, logo } from "./icons.ts";
-import { agentIcon, kindIcon } from "./kinds.ts";
-import { inline, markdown } from "./markdown.ts";
-import { linkTo, navigate } from "./router.ts";
-import { usageStats } from "./rings.ts";
-import type { Agent, AgentStatus, Automation, LogMessage, ModuleInfo, Need, TaskItem } from "./types.ts";
+import { clear, el, modelName } from "./dom.ts";
+import { needsButton } from "./needs.ts";
+import { projectTree, type TreeRow } from "./ptree.ts";
+import { navigate } from "./router.ts";
+import type { Agent, AgentStatus, Effort, LogMessage, Need, SessionSummary, TaskItem } from "./types.ts";
 
 /**
- * The landing view: the agents on the left, the main chat with pai in the centre (or an
- * agent's thread, or the board), and on the right what is going on — usage, modules,
- * routines, the last events — with what waits on the user stacked at the bottom.
+ * The main view: the projects on the left (each one an agent, nested as the agents are), the
+ * chat in the middle — pai's own, an agent's thread, or the board — and above the box the hand
+ * with what waits on the user. Nothing else: usage sits in the box, the rest is in settings.
  */
 
 const PAI = "pai";
-const STATUS: Record<AgentStatus, { dot: string; label: string }> = {
-  working: { dot: "busy", label: "working" },
-  waiting: { dot: "waiting", label: "waiting on you" },
-  queued: { dot: "queued", label: "queued" },
-  idle: { dot: "idle", label: "idle" },
-  closed: { dot: "dead", label: "closed" },
-};
+const STATUS: Record<AgentStatus, string> = { working: "working", waiting: "waiting on you", queued: "queued", idle: "idle", closed: "closed" };
 const KIND_ORDER: Record<Agent["kind"], number> = { orchestrator: 0, standing: 1, service: 2, sub: 3 };
 const money = (usd: number) => `$${usd.toFixed(usd >= 10 ? 0 : 2)}`;
-const firstLine = (text: string) => text.replace(/^\[[^\]]+\]\s*/, "").split("\n").find((l) => l.trim()) ?? "";
 
 export type Centre = { kind: "chat" } | { kind: "agent"; slug: string } | { kind: "board"; slug?: string };
 
@@ -36,29 +24,22 @@ export function home(root: HTMLElement) {
   let agents: Agent[] = [];
   let tasks: TaskItem[] = [];
   let needs: Need[] = [];
-  let paiLog: LogMessage[] = [];
+  /** pai's live session as last seen: its id, model and effort. */
+  let paiSession: SessionSummary | undefined;
   let centre: Centre = { kind: "chat" };
   let mainChat: Chat | undefined;
   let agentChat: { slug: string; chat: Chat } | undefined;
   let theBoard: Board | undefined;
-  let showClosed = false;
   let loaded = false;
+  /** A row to scroll to once the thread that holds it has loaded. */
+  let pendingReveal: RevealTarget | undefined;
 
-  const agentsPane = el("aside.home-agents");
+  const sidePane = el("aside.home-side");
   const centrePane = el("section.home-centre");
-  const statusPane = el("div.home-status");
-  const pendingPane = el("div.home-pending", { hidden: true });
-  const setOpen = (open: boolean) => {
-    pendingPane.classList.toggle("open", open);
-    layoutPile();
-  };
-  pendingPane.addEventListener("mouseenter", () => setOpen(true));
-  pendingPane.addEventListener("mouseleave", () => setOpen(false));
-  window.addEventListener("pai:pile", () => setOpen(!pendingPane.classList.contains("open")));
-  clear(root, el("div.home-columns", {}, agentsPane, centrePane, el("aside.home-right", {}, statusPane)), pendingPane);
+  clear(root, sidePane, centrePane);
 
   const bySlug = (slug: string) => agents.find((a) => a.slug === slug);
-  const nameOf = (slug: string) => (slug === "user" ? "you" : slug === PAI ? "Orchestrator" : (bySlug(slug)?.name ?? slug));
+  const nameOf = (slug: string) => (slug === "user" ? "you" : slug === PAI ? "General" : (bySlug(slug)?.name ?? slug));
 
   const ctx = {
     agents: () => agents,
@@ -74,100 +55,87 @@ export function home(root: HTMLElement) {
     },
     openBoard: (slug: string) => navigate(slug === PAI ? "board" : { name: "board", param: slug }),
   };
-  /** A row to scroll to once the thread that holds it has loaded. */
-  let pendingReveal: RevealTarget | undefined;
 
-  // ---- the agents column -----------------------------------------------------------------
+  // ---- the hand ------------------------------------------------------------------------------
 
-  function ordered() {
-    const known = new Set(agents.map((a) => a.slug));
-    const children = new Map<string | null, Agent[]>();
-    for (const a of agents) {
-      const parent = a.parent && known.has(a.parent) ? a.parent : null;
-      children.set(parent, [...(children.get(parent) ?? []), a]);
+  const hand = needsButton({ nameOf: (n) => (n.agent ? n.from || nameOf(n.agent) : "pai"), reveal });
+
+  /** Where a need lives: pai's questions and tasks in the main chat, an agent's ask in its thread. */
+  function reveal(n: Need) {
+    const target: RevealTarget = n.kind === "ask" ? { askId: n.askId } : n.kind === "task" ? { taskId: n.taskId } : { question: true };
+    const inMain = n.agent === null || n.agent === PAI;
+    if (inMain) {
+      if (centre.kind !== "chat") navigate("home");
+      if (!mainChat?.reveal(target) && n.kind === "task" && n.taskId) navigate({ name: "board", param: n.agent ?? PAI });
+      return;
     }
-    const out: { agent: Agent; depth: number }[] = [];
+    if (agentChat?.slug === n.agent && agentChat.chat.reveal(target)) return;
+    pendingReveal = target;
+    ctx.openAgent(n.agent!);
+  }
+
+  // ---- the tree ------------------------------------------------------------------------------
+
+  const selectedSlug = () => (centre.kind === "agent" ? centre.slug : centre.kind === "board" ? (centre.slug ?? PAI) : PAI);
+  /** Standing and service agents are projects; a sub-agent is a job inside one and folds into its nearest shown ancestor. */
+  const shown = (a: Agent) => a.slug !== PAI && a.kind !== "sub" && (a.status !== "closed" || a.slug === selectedSlug());
+
+  function treeRows(): TreeRow[] {
+    const known = new Map(agents.map((a) => [a.slug, a]));
+    const anchor = (a: Agent): string | null => {
+      for (let p = a.parent ? known.get(a.parent) : undefined; p; p = p.parent ? known.get(p.parent) : undefined) if (shown(p)) return p.slug;
+      return null;
+    };
+    const children = new Map<string | null, Agent[]>();
+    const folded = new Map<string, Agent[]>();
+    for (const a of agents) {
+      if (shown(a)) children.set(anchor(a), [...(children.get(anchor(a)) ?? []), a]);
+      else if (a.kind === "sub" && a.status !== "closed") {
+        const into = anchor(a);
+        if (into) folded.set(into, [...(folded.get(into) ?? []), a]);
+      }
+    }
+    const waitingOn = (slug: string) => needs.filter((n) => n.agent === slug).length;
+    const out: TreeRow[] = [];
     const walk = (parent: string | null, depth: number) => {
-      const list = (children.get(parent) ?? []).sort((x, y) => Number(x.status === "closed") - Number(y.status === "closed") || KIND_ORDER[x.kind] - KIND_ORDER[y.kind] || x.name.localeCompare(y.name));
-      for (const agent of list) {
-        const shown = showClosed || agent.status !== "closed" || agent.slug === selectedSlug();
-        if (shown) out.push({ agent, depth });
-        walk(agent.slug, shown ? depth + 1 : depth);
+      const list = (children.get(parent) ?? []).sort((x, y) => KIND_ORDER[x.kind] - KIND_ORDER[y.kind] || x.name.localeCompare(y.name));
+      for (const a of list) {
+        const subs = folded.get(a.slug) ?? [];
+        const working = a.status === "working" || subs.some((s) => s.status === "working");
+        const waiting = waitingOn(a.slug) + subs.reduce((n, s) => n + waitingOn(s.slug), 0);
+        const open = tasks.filter((t) => t.owner === a.slug).length;
+        out.push({
+          id: a.slug,
+          label: a.name,
+          depth,
+          working,
+          waiting,
+          on: a.slug === selectedSlug() && centre.kind !== "board",
+          group: depth === 0,
+          title: [`${a.name} · ${a.kind}`, STATUS[a.status] + (a.queued ? ` · ${a.queued} queued` : ""), open ? `${open} open task${open === 1 ? "" : "s"}` : "", a.model ? modelName(a.model) : ""].filter(Boolean).join("\n"),
+        });
+        walk(a.slug, depth + 1);
       }
     };
     walk(null, 0);
     return out;
   }
 
-  const selectedSlug = () => (centre.kind === "agent" ? centre.slug : centre.kind === "board" ? (centre.slug ?? PAI) : PAI);
+  const drawTree = () => projectTree(sidePane, treeRows(), (slug) => ctx.openAgent(slug));
 
-  /** One line of what an agent is at: the latest word between it and pai, else its task in hand. */
-  function doing(agent: Agent) {
-    for (let i = paiLog.length - 1; i >= 0; i -= 1) {
-      const m = paiLog[i]!;
-      if ((m.kind === "delegate" && m.to === agent.slug) || (m.kind === "report" && m.from === agent.slug)) return `${m.kind === "delegate" ? "→" : "←"} ${firstLine(m.body)}`;
-    }
-    const task = tasks.find((t) => t.owner === agent.slug && t.status === "active") ?? tasks.find((t) => t.owner === agent.slug);
-    return task ? task.title : agent.brief ? firstLine(agent.brief) : "";
-  }
+  // ---- the centre ----------------------------------------------------------------------------
 
-  function drawAgents() {
-    const list = ordered();
-    const rows = list.map(({ agent, depth }, i) => {
-      const status = STATUS[agent.status] ?? STATUS.idle;
-      // The last sibling at its depth ends the branch line.
-      const last = !list.slice(i + 1).some((o) => o.depth === depth) || (list[i + 1]?.depth ?? 0) < depth;
-      const open = tasks.filter((t) => t.owner === agent.slug).length;
-      const waiting = needs.filter((n) => n.agent === agent.slug || (agent.slug === PAI && n.agent === null)).length;
-      const on = agent.slug === selectedSlug() && centre.kind !== "board";
-      const attention = waiting > 0 || agent.status === "waiting";
-      return el(
-        "button.agent-row.rich",
-        {
-          class: `agent-row rich depth-${Math.min(depth, 3)}${last ? " last" : ""}${on ? " on" : ""}${agent.status === "closed" ? " closed" : ""}`,
-          style: `--depth: ${depth}`,
-          title: [`${nameOf(agent.slug)} · ${agent.kind}`, status.label + (agent.queued ? ` · ${agent.queued} queued` : ""), agent.model ? modelName(agent.model) : ""].filter(Boolean).join("\n"),
-          onclick: () => (agent.slug === PAI ? navigate("home") : ctx.openAgent(agent.slug)),
-        },
-        el("span.agent-icon", {}, agent.slug === PAI ? logo(18) : agentIcon(agent, 14)),
-        el(
-          "span.agent-text",
-          {},
-          el(
-            "span.agent-name",
-            {},
-            el("span.label", {}, nameOf(agent.slug)),
-            agent.status === "working" ? el("span.spinner", { title: "working now" }) : undefined,
-            attention ? el("span.attention", { title: waiting ? `${waiting} waiting on you` : "waiting on you" }, icon("hand", 12)) : undefined,
-            open ? el("span.badge", { title: `${open} open task${open === 1 ? "" : "s"}` }, String(open)) : undefined,
-          ),
-          el("span.dim.ellipsis.agent-doing", {}, ...inline(doing(agent) || status.label)),
-        ),
-      );
-    });
-    clear(
-      agentsPane,
-      el(
-        "header.panel-head",
-        {},
-        icon("users", 13),
-        el("h2", {}, "Agents"),
-        el("span.grow"),
-        linkTo("context", el("a.iconbtn.slim", { title: "skills, tools, connectors, instructions" }, icon("book", 12)) as HTMLAnchorElement),
-        linkTo("board", el("a.iconbtn.slim", { title: "the board", class: `iconbtn slim${centre.kind === "board" ? " on" : ""}` }, icon("board", 12)) as HTMLAnchorElement),
-        el("button.iconbtn.slim", { title: "show closed agents", class: `iconbtn slim${showClosed ? " on" : ""}`, onclick: () => ((showClosed = !showClosed), drawAgents()) }, icon("power", 12)),
-      ),
-      el("div.home-agent-list", {}, ...(rows.length ? rows : [el("p.hint", {}, "No agents yet.")])),
-    );
-  }
-
-  // ---- the centre ------------------------------------------------------------------------
-
-  function liveSession() {
-    return paiStatus()
-      .then((p) => p.session?.sessionId)
+  const liveSession = () =>
+    paiStatus()
+      .then((p) => ((paiSession = p.session), mainChat?.refreshPrefs(), p.session?.sessionId))
       .catch(() => undefined);
-  }
+  const paiPrefs = () => (paiSession ? { model: paiSession.modelPref ?? paiSession.model, effort: paiSession.effort } : undefined);
+  const setPaiPrefs = async (changes: { model?: string | null; effort?: Effort | null }) => {
+    if (!paiSession) return { error: "no session yet" };
+    const result = await reconfigure(paiSession.sessionId, changes);
+    if (!result.error) paiSession = { ...paiSession, modelPref: changes.model === undefined ? paiSession.modelPref : changes.model, effort: changes.effort === undefined ? paiSession.effort : changes.effort };
+    return { error: result.error };
+  };
 
   function disposeCentre() {
     agentChat?.chat.dispose();
@@ -177,50 +145,36 @@ export function home(root: HTMLElement) {
   }
 
   function showMain() {
-    mainChat ??= chat({ agent: PAI, parent: "user", live: liveSession, send: (text) => sendPai(text), placeholder: "Message pai…" }, ctx);
-    clear(
-      centrePane,
-      el("header.panel-head", {}, logo(18), el("h2", {}, "Orchestrator"), el("span.dim", {}, "pai's one chat"), el("span.grow"), mainChat.toolsToggle),
-      mainChat.node,
-    );
+    mainChat ??= chat({ agent: PAI, parent: "user", title: "General", live: liveSession, prefs: paiPrefs, setPrefs: setPaiPrefs, send: (text) => sendPai(text), placeholder: "Message pai…" }, ctx);
+    mainChat.slot.append(hand.node);
+    clear(centrePane, mainChat.node);
     mainChat.focus();
   }
 
+  const lineage = (slug: string) => {
+    const chain: Agent[] = [];
+    for (let a = bySlug(slug); a && a.slug !== PAI && !chain.includes(a); a = a.parent ? bySlug(a.parent) : undefined) chain.unshift(a);
+    return chain;
+  };
+
   async function showAgent(slug: string) {
     const existing = bySlug(slug);
-    const head = el("header.panel-head.agent-head");
-    const brief = el("div.agent-brief", { hidden: true });
-    const thread = chat({ agent: slug, parent: existing?.parent ?? PAI, send: (text) => messageAgent(slug, text), placeholder: `Message ${existing?.name ?? slug}…` }, ctx);
+    const thread = chat({ agent: slug, parent: existing?.parent ?? PAI, title: existing?.name ?? slug, prefs: () => (bySlug(slug)?.model ? { model: bySlug(slug)!.model } : undefined), send: (text) => messageAgent(slug, text), placeholder: `Message ${existing?.name ?? slug}…` }, ctx);
     agentChat = { slug, chat: thread };
-    clear(centrePane, head, brief, thread.node);
+    thread.slot.append(hand.node);
+    clear(centrePane, thread.node);
     const draw = (agent: Agent) => {
-      const status = STATUS[agent.status] ?? STATUS.idle;
-      const crumbs = (agent.breadcrumb ?? agent.name).split(" › ");
-      const chain = [PAI, ...lineage(agent.slug).map((a) => a.slug)];
-      clear(
-        head,
-        icon("user", 13),
+      const crumbs = lineage(agent.slug).map((a) => a.name);
+      thread.setHead(
+        crumbs.join(" › ") || agent.name,
         el(
-          "nav.crumbs",
+          "span.tags",
           {},
-          ...crumbs.flatMap((name, i) => [
-            i ? el("span.crumb-sep", {}, "›") : undefined,
-            el("button.crumb", { class: `crumb${i === crumbs.length - 1 ? " on" : ""}`, onclick: () => (i === 0 ? navigate("home") : ctx.openAgent(chain[i] ?? agent.slug)) }, name),
-          ]),
+          el("span", { class: `tag status-${agent.status}` }, STATUS[agent.status] ?? "idle"),
+          el("span.tag", {}, agent.kind),
+          agent.model ? el("span.tag", {}, modelName(agent.model)) : undefined,
+          el("span.tag", { title: "turns today · what it has cost" }, `${agent.turnsToday} turns · ${money(agent.costUsd)}`),
         ),
-        el("span.tag", { class: `tag status-${agent.status}` }, status.label),
-        el("span.tag", {}, agent.kind),
-        agent.model ? el("span.tag.model", {}, modelName(agent.model)) : undefined,
-        el("span.grow"),
-        el("span.dim", { title: "turns today · what it has cost" }, `${agent.turnsToday} turns · ${money(agent.costUsd)}`),
-        thread.toolsToggle,
-      );
-      const own = tasks.filter((t) => t.owner === agent.slug);
-      brief.hidden = !agent.brief && !own.length;
-      clear(
-        brief,
-        agent.brief ? el("p.staff-brief-text", { title: agent.brief, onclick: (e: Event) => (e.currentTarget as HTMLElement).classList.toggle("open") }, agent.brief) : undefined,
-        own.length ? el("div.chips", {}, ...own.map((t) => el("button.chip", { title: `${t.status} · open on the board`, onclick: () => ctx.openBoard(agent.slug) }, icon("board", 10), t.title))) : undefined,
       );
       if (agent.status === "closed") thread.node.querySelector<HTMLTextAreaElement>("textarea")?.setAttribute("disabled", "");
     };
@@ -234,12 +188,6 @@ export function home(root: HTMLElement) {
       setTimeout(() => thread.reveal(target), 400);
     }
   }
-
-  const lineage = (slug: string) => {
-    const chain: Agent[] = [];
-    for (let a = bySlug(slug); a && a.slug !== PAI && !chain.includes(a); a = a.parent ? bySlug(a.parent) : undefined) chain.unshift(a);
-    return chain;
-  };
 
   function showBoard(slug?: string) {
     theBoard = board(slug, { agents: () => agents, openAgent: ctx.openAgent, onSelect: (s) => navigate(s === PAI ? "board" : { name: "board", param: s }, true) });
@@ -259,144 +207,21 @@ export function home(root: HTMLElement) {
     }
     if (next.kind !== "chat" && mainChat) mainChat.node.remove();
     root.classList.toggle("board-mode", next.kind === "board");
-    drawAgents();
+    drawTree();
   }
 
-  // ---- the right column: status and what waits -------------------------------------------
-
-  const routinesBox = el("section.status-block.routines");
-  const eventsBox = el("section.status-block.events");
-  clear(statusPane, routinesBox, eventsBox);
-  const block = (title: string, ...body: (Node | undefined | false)[]) => [el("h3.status-title", {}, title), ...body];
-  /** The first few rows, the rest behind "n more". */
-  const SHOW = 5;
-  const capped = (rows: HTMLElement[], key: string) => {
-    if (rows.length <= SHOW || expandedBlocks.has(key)) return rows;
-    const more = el("button.status-more", { onclick: () => (expandedBlocks.add(key), key === "routines" ? void drawRoutines() : drawEvents()) }, `${rows.length - SHOW} more…`);
-    return [...rows.slice(0, SHOW), more];
-  };
-  const expandedBlocks = new Set<string>();
-
-  async function drawRoutines() {
-    const routines = await listAutomations().catch(() => [] as Automation[]);
-    const on = routines.filter((r) => r.enabled);
-    const recent = on
-      .filter((r) => r.lastRun)
-      .sort((a, b) => (b.lastRun ?? 0) - (a.lastRun ?? 0))
-      .slice(0, 5);
-    const rows = (recent.length ? recent : on).map((r) =>
-      el("div.status-row", { title: `${r.event}${r.filter ? ` · ${r.filter}` : ""} → ${r.action}` }, icon("clock", 11), el("span.ellipsis", {}, r.name), el("span.dim", {}, r.lastRun ? ago(r.lastRun) : "never")),
-    );
-    clear(routinesBox, ...block(`Routines`, ...(rows.length ? capped(rows, "routines") : [el("p.hint", {}, "No routines.")])));
-  }
-
-  function drawEvents() {
-    const events = paiLog.filter((m) => m.kind === "event").slice(-30).reverse();
-    const rows = events.map((m) => {
-      const row = el(
-        "button.status-row.event",
-        { class: `status-row event${m.meta.event === "error" ? " error" : ""}`, title: m.body, onclick: () => mainChat?.reveal({ messageId: m.id }) || navigate("home") },
-        kindIcon(m.meta.event ?? "event", 11),
-        el("span.ellipsis", {}, firstLine(m.body)),
-        el("span.dim", {}, ago(m.createdAt)),
-      );
-      return row;
-    });
-    clear(eventsBox, ...block("Events", ...(rows.length ? capped(rows, "events") : [el("p.hint", {}, "Nothing yet.")])));
-  }
-
-  /** The stack of what waits on the user: a card each, newest on top; a click finds it in the chat. */
-  function drawPending() {
-    window.dispatchEvent(new CustomEvent("pai:needs", { detail: needs.length }));
-    const cards = needs.map((n) => {
-      const agentSlug = n.agent ?? PAI;
-      const card = el(
-        "button.pending-card",
-        {
-          class: `pending-card ${n.kind}${n.priority !== "normal" ? ` prio-${n.priority}` : ""}`,
-          title: "find it in the chat",
-          onclick: () => reveal(n),
-        },
-        el("span.pending-meta", {}, kindIcon(n.kind === "task" ? "notice" : n.kind === "ask" ? "ask" : "question", 11), el("b", {}, n.agent ? n.from || nameOf(agentSlug) : "pai"), n.taskId ? el("span.tag", {}, `#${n.taskId}`) : undefined, el("span.grow"), el("span.dim", {}, ago(n.createdAt))),
-        el("span.pending-text", {}, markdown(firstLine(n.question))),
-        n.options.length ? el("span.dim.ellipsis", {}, n.options.join(" · ")) : undefined,
-      );
-      return card;
-    });
-    pendingPane.hidden = !needs.length;
-    clear(
-      pendingPane,
-      el(
-        "div.pending-head",
-        {},
-        el("h3.status-title", {}, "Waiting on you", el("span.badge.ask", {}, String(needs.length))),
-        el("span.grow"),
-        el("button.iconbtn.slim", { title: "fold the pile", onclick: () => setOpen(false) }, icon("x", 12)),
-      ),
-      el("div.pending-scroll", {}, el("div.pending-stack", {}, ...cards)),
-    );
-    layoutPile();
-  }
-
-  /**
-   * The pile's geometry: every card sits at the bottom and is moved by a transform, so folding
-   * and unfolding is one smooth motion. Folded: the newest in front, two peeking out behind it.
-   * Open: a column, newest at the bottom, the stack as tall as all of them together.
-   */
-  function layoutPile() {
-    const stack = pendingPane.querySelector<HTMLElement>(".pending-stack");
-    if (!stack) return;
-    const cards = [...stack.querySelectorAll<HTMLElement>(".pending-card")];
-    const open = pendingPane.classList.contains("open");
-    const gap = 8;
-    let y = 0;
-    cards.forEach((card, i) => {
-      const h = card.offsetHeight;
-      if (open) {
-        card.style.transform = `translateY(${-y}px) scale(1)`;
-        card.style.opacity = "1";
-        card.style.pointerEvents = "auto";
-        y += h + gap;
-      } else {
-        card.style.transform = `translateY(${-14 * Math.min(i, 2)}px) scale(${1 - 0.05 * Math.min(i, 2)})`;
-        card.style.opacity = i < 3 ? "1" : "0";
-        card.style.pointerEvents = i === 0 ? "auto" : "none";
-      }
-      card.style.zIndex = String(cards.length - i);
-    });
-    const first = cards[0]?.offsetHeight ?? 0;
-    stack.style.height = `${open ? Math.max(0, y - gap) : first + 28}px`;
-    if (!open) pendingPane.querySelector<HTMLElement>(".pending-scroll")?.scrollTo({ top: 0 });
-  }
-
-  /** Where a need lives: pai's questions and tasks in the main chat, an agent's ask in its thread. */
-  function reveal(n: Need) {
-    const target: RevealTarget = n.kind === "ask" ? { askId: n.askId } : n.kind === "task" ? { taskId: n.taskId } : { question: true };
-    const inMain = n.agent === null || n.agent === PAI;
-    if (inMain) {
-      if (centre.kind !== "chat") navigate("home");
-      if (!mainChat?.reveal(target) && n.kind === "task" && n.taskId) navigate({ name: "board", param: n.agent ?? PAI });
-      return;
-    }
-    if (agentChat?.slug === n.agent && agentChat.chat.reveal(target)) return;
-    pendingReveal = target;
-    ctx.openAgent(n.agent!);
-  }
-
-  // ---- loading and following --------------------------------------------------------------
+  // ---- loading and following -----------------------------------------------------------------
 
   async function refreshNeeds() {
     needs = await listNeeds().catch(() => needs);
-    drawPending();
-    drawAgents();
+    hand.draw(needs);
+    drawTree();
   }
 
   async function load() {
-    [agents, tasks, needs, paiLog] = await Promise.all([listAgents().catch(() => [] as Agent[]), taskItems().catch(() => [] as TaskItem[]), listNeeds().catch(() => [] as Need[]), listMessages(PAI, { limit: 200 }).catch(() => [] as LogMessage[])]);
-    drawAgents();
-    drawPending();
-    drawEvents();
-    void drawRoutines();
+    [agents, tasks, needs] = await Promise.all([listAgents().catch(() => [] as Agent[]), taskItems().catch(() => [] as TaskItem[]), listNeeds().catch(() => [] as Need[])]);
+    drawTree();
+    hand.draw(needs);
   }
 
   const stop = follow(
@@ -406,12 +231,6 @@ export function home(root: HTMLElement) {
       switch (event.kind) {
         case "message.new": {
           const m = payload as unknown as LogMessage;
-          if (m.from === PAI || m.to === PAI || m.meta.agent === PAI) {
-            paiLog.push(m);
-            if (paiLog.length > 400) paiLog = paiLog.slice(-300);
-            if (m.kind === "event") drawEvents();
-            if (m.kind === "delegate" || m.kind === "report") drawAgents();
-          }
           if (m.kind === "ask" || m.kind === "answer") void refreshNeeds();
           break;
         }
@@ -419,10 +238,10 @@ export function home(root: HTMLElement) {
         case "agent.created": {
           const changed = payload as unknown as Agent;
           const index = agents.findIndex((a) => a.slug === changed.slug);
-          if (index < 0) void listAgents().then((all) => ((agents = all), drawAgents(), mainChat?.refreshAgents(), theBoard?.refreshAgents()));
+          if (index < 0) void listAgents().then((all) => ((agents = all), drawTree(), mainChat?.refreshAgents(), theBoard?.refreshAgents()));
           else {
             agents[index] = { ...agents[index]!, ...changed };
-            drawAgents();
+            drawTree();
             mainChat?.refreshAgents();
             agentChat?.chat.refreshAgents();
             theBoard?.refreshAgents();
@@ -438,7 +257,7 @@ export function home(root: HTMLElement) {
             if (open) tasks[index] = { ...tasks[index]!, ...t };
             else tasks.splice(index, 1);
           } else if (open) tasks.push(t);
-          drawAgents();
+          drawTree();
           if (t.status === "waiting_user" || (payload as { previous?: string }).previous === "waiting_user") void refreshNeeds();
           break;
         }
@@ -448,15 +267,10 @@ export function home(root: HTMLElement) {
         case "ask.answered":
           void refreshNeeds();
           break;
-        case "automation.fired":
-        case "routine.fired":
-          void drawRoutines();
-          break;
       }
     },
     { replay: false },
   );
-  window.addEventListener("resize", layoutPile);
 
   void load().then(() => {
     loaded = true;
@@ -471,7 +285,7 @@ export function home(root: HTMLElement) {
       }
       show(next);
     },
-    /** The main chat's box, for keyboard focus. */
+    /** The open chat's box, for keyboard focus. */
     focus: () => (centre.kind === "chat" ? mainChat?.focus() : agentChat?.chat.focus()),
     dispose() {
       stop();

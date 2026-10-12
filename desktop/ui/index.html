@@ -5,11 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>pai</title>
     <link rel="icon" type="image/png" href="./pai-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" />
     <link rel="stylesheet" href="./xterm.css" />
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <nav id="topnav" class="topnav"></nav>
+    <nav id="nav" class="nav"></nav>
     <section id="home" class="home" hidden></section>
     <main id="main" hidden>
       <aside id="files" class="col col-files"></aside>
@@ -28,7 +30,6 @@
       <div class="handle v" data-resize="--w-rail" data-edge="end"></div>
       <aside id="rail" class="col col-rail"></aside>
     </main>
-    <section id="dashboard" class="dashboard" hidden></section>
     <footer id="statusbar" class="statusbar"></footer>
     <script type="module" src="./main.js"></script>
   </body>

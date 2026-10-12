@@ -1,6 +1,6 @@
-import { answerAsk, answerQuestion, asks as listAsks, follow, messages as listMessages, messageTldr, needs as listNeeds, transcript, type Transcript, type TranscriptTool } from "./api.ts";
-import { compose, type Compose } from "./compose.ts";
-import { ago, clear, el } from "./dom.ts";
+import { answerAsk, answerQuestion, asks as listAsks, dropAsk, follow, messages as listMessages, messageTldr, needs as listNeeds, transcript, type Transcript, type TranscriptTool } from "./api.ts";
+import { compose, type Compose, type Prefs } from "./compose.ts";
+import { clear, el } from "./dom.ts";
 import { icon } from "./icons.ts";
 import { kindIcon, kindTint } from "./kinds.ts";
 import { inline, markdown } from "./markdown.ts";
@@ -17,9 +17,10 @@ import type { Agent, AgentStatus, LogMessage, Need, Question } from "./types.ts"
 
 const PAGE = 100;
 const PAI = "pai";
-const TOOLS_OPEN_KEY = "pai.chat.tools";
 /** A reply longer than this is folded unless it is the latest one. */
 const FOLD_LINES = 6;
+/** A message of the user's longer than this folds to three lines with "Show more". */
+const MINE_FOLD_CHARS = 240;
 
 export interface ChatContext {
   readonly agents: () => readonly Agent[];
@@ -32,11 +33,16 @@ export interface ChatOptions {
   readonly agent: string;
   /** The side the other party of the log sits on: the user for pai, the parent for an agent. */
   readonly parent: string;
+  /** What the column is headed with: "General" for pai, the agent's name for a thread. */
+  readonly title: string;
   /** The live session, when there is one: its stream and its transcript's tool calls. */
   readonly live?: () => Promise<string | undefined>;
   readonly send: (text: string, images: { media_type: string; data: string }[]) => Promise<{ error?: string; queued?: boolean; data?: unknown }>;
   readonly placeholder: string;
   readonly projectPath?: () => string | undefined;
+  /** The model and effort shown in the box's foot, and how to change them. */
+  readonly prefs?: () => Prefs | undefined;
+  readonly setPrefs?: (changes: Prefs) => Promise<{ error?: string }>;
 }
 
 export interface RevealTarget {
@@ -54,8 +60,11 @@ export interface Chat {
   readonly focus: () => void;
   /** The agents changed: the dots on the delegation cards follow. */
   readonly refreshAgents: () => void;
-  /** The switch for whether tool calls open by default, for the host's header. */
-  readonly toolsToggle: HTMLElement;
+  /** Where the host puts what sits above the box: the hand with what waits. */
+  readonly slot: HTMLElement;
+  /** The title over the column and, under it, a line of tags. */
+  readonly setHead: (title: string, sub?: HTMLElement) => void;
+  readonly refreshPrefs: () => void;
 }
 
 /** One turn's thinking and tool calls, from the transcript or the stream. */
@@ -100,13 +109,30 @@ const dayLabel = (at: number) => {
   if (day.toDateString() === today.toDateString()) return "Today";
   const yesterday = new Date(today.getTime() - 86_400_000);
   if (day.toDateString() === yesterday.toDateString()) return "Yesterday";
-  return day.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", ...(day.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}) });
+  return day.toLocaleDateString(undefined, { day: "numeric", month: "long", ...(day.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}) });
 };
 const firstLine = (text: string) => text.replace(/^\[[^\]]+\]\s*/, "").split("\n").find((l) => l.trim()) ?? "";
 /** The gist of a long reply: the server's summary, else its first paragraph. */
 const summaryOf = (m: LogMessage) => (m.meta.tldr as string | undefined) ?? m.body.replace(/^\[[^\]]+\]\s*/, "").split(/\n\s*\n/).find((p) => p.trim()) ?? m.body;
 const duration = (ms: number) => (ms < 60_000 ? `${Math.max(1, Math.round(ms / 1000))}s` : `${Math.round(ms / 60_000)} min`);
-const time = (at: number) => el("time", { title: new Date(at).toLocaleString() }, ago(at));
+const clock = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+const time = (at: number) => el("time", { title: new Date(at).toLocaleString() }, clock(at));
+const chevron = () => icon("chevron", 9);
+/** "Created a file, ran 5 commands" — what a turn's tool calls amount to, by family. */
+function describeTools(tools: readonly TranscriptTool[]) {
+  const families: Record<string, [string, string]> = { Write: ["created a file", "created %n files"], Edit: ["edited a file", "edited %n files"], Bash: ["ran a command", "ran %n commands"], Read: ["read a file", "read %n files"], Grep: ["searched", "searched %n times"], Glob: ["searched", "searched %n times"], WebSearch: ["searched the web", "searched the web %n times"], WebFetch: ["fetched a page", "fetched %n pages"], Agent: ["delegated once", "delegated %n times"] };
+  const counts = new Map<string, number>();
+  for (const t of tools) {
+    const family = families[t.name] ? t.name : "other";
+    counts.set(family, (counts.get(family) ?? 0) + 1);
+  }
+  const parts = [...counts].map(([family, n]) => {
+    const [one, many] = families[family] ?? ["used a tool", "%n tool calls"];
+    return n === 1 ? one : many.replace("%n", String(n));
+  });
+  const text = parts.join(", ");
+  return text ? text[0]!.toUpperCase() + text.slice(1) : "";
+}
 
 export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   const log = el("div.chat-log");
@@ -121,7 +147,8 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   const liveTools = new Map<string, HTMLElement>();
   const openAsks = new Set<number>();
   const answersByAsk = new Map<number, string>();
-  let toolsOpen = localStorage.getItem(TOOLS_OPEN_KEY) === "open";
+  /** The turn in progress: the line that says so, and when it started. */
+  let working: { node: HTMLElement; since: number; timer: ReturnType<typeof setInterval> } | undefined;
   /** Messages whose gist was asked of the daemon once already. */
   const askedTldr = new Set<number>();
   /** What the compose box answers instead of sending a message, while a question is pinned to it. */
@@ -137,7 +164,8 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     placeholder: options.placeholder,
     projectPath: options.projectPath,
     session: () => liveSession,
-    foot: () => (options.agent === PAI ? "pai" : nameOf(options.agent)),
+    prefs: options.prefs,
+    setPrefs: options.setPrefs,
     submit: async (text, images) => {
       if (pinnedAnswer && text) {
         const answer = pinnedAnswer;
@@ -146,7 +174,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         return answer(text);
       }
       log.querySelector(":scope > .hint")?.remove();
-      const pending = el("div.row.mine.pending", { "data-text": text }, el("div.bubble", {}, markdown(text || "(image)")), el("div.row-foot", {}, el("span.dim", {}, "sending…")));
+      const pending = el("div.row.mine.pending", { "data-text": text }, el("div.bubble", {}, markdown(text || "(image)")), el("div.row-foot", {}, el("span.grow"), el("span", {}, "sending…")));
       log.append(pending);
       scroll();
       const result = await options.send(text, images);
@@ -156,7 +184,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       } else if (result.queued) box.note.textContent = "queued — sent when the daemon answers";
       else {
         box.note.textContent = "";
-        pending.querySelector(".row-foot .dim")!.textContent = "sent";
+        pending.querySelector(".row-foot span:last-child")!.textContent = "sent";
         const row = result.data as LogMessage | undefined;
         if (row && typeof row.id === "number" && row.kind) append(row);
       }
@@ -192,17 +220,21 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         })
         .catch(() => undefined);
     }
-    const row = el("div.row.reply", { class: `row reply${folded ? " folded" : ""}`, "data-message": m.id }, gist, body);
-    if (long) {
-      const toggle = el("button.more", { onclick: () => (row.classList.toggle("folded"), (toggle.textContent = row.classList.contains("folded") ? "details" : "less")) }, folded ? "details" : "less");
-      row.append(el("div.row-foot", {}, toggle, el("span.grow"), m.meta.origin && m.meta.origin !== "user" ? el("span.dim", { title: "answered a system turn, not you" }, m.meta.origin) : undefined, time(m.createdAt)));
-    } else row.append(el("div.row-foot", {}, m.meta.origin && m.meta.origin !== "user" ? el("span.dim", { title: "answered a system turn, not you" }, m.meta.origin) : undefined, el("span.grow"), time(m.createdAt)));
+    const row = el("div.row.reply", { class: `row reply${folded ? " folded" : ""}`, "data-message": m.id, "data-at": m.createdAt }, gist, body);
+    const origin = m.meta.origin && m.meta.origin !== "user" ? el("span", { title: "answered a system turn, not you" }, m.meta.origin) : undefined;
+    const toggle = long ? el("button.more", { onclick: () => (row.classList.toggle("folded"), (toggle!.textContent = row.classList.contains("folded") ? "Show more" : "Show less")) }, folded ? "Show more" : "Show less") : undefined;
+    row.append(el("div.row-foot", {}, toggle, origin, el("span.grow"), time(m.createdAt)));
     return row;
   }
 
+  /** The user's message: the tinted bubble on the right, folded to three lines when long. */
   function mineRow(m: LogMessage) {
     const from = m.from === "user" ? undefined : nameOf(m.from);
-    return el("div.row.mine", { "data-message": m.id }, el("div.bubble", {}, markdown(m.body)), el("div.row-foot", {}, from ? el("span.dim", {}, from) : undefined, el("span.grow"), time(m.createdAt)));
+    const long = m.body.length > MINE_FOLD_CHARS || m.body.split("\n").length > 3;
+    const row = el("div.row.mine", { class: `row mine${long ? " folded" : ""}`, "data-message": m.id, "data-at": m.createdAt }, el("div.bubble", {}, markdown(m.body)));
+    const toggle = long ? el("button.more", { onclick: () => (row.classList.toggle("folded"), (toggle!.textContent = row.classList.contains("folded") ? "Show more" : "Show less")) }, "Show more") : undefined;
+    row.append(el("div.row-foot", {}, toggle, from ? el("span", {}, from) : undefined, el("span.grow"), time(m.createdAt)));
+    return row;
   }
 
   /** What the agent is at, beside its name: a spinner while it works, a hand while it waits on the user, nothing otherwise. */
@@ -219,7 +251,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   function card(m: LogMessage) {
     const down = m.kind === "delegate" || m.kind === "request";
     const agent = m.kind === "delegate" ? m.to : m.kind === "report" ? m.from : down ? m.from : m.to;
-    const verb = { delegate: "called", report: "reported", request: "asked for", response: "answered" }[m.kind as "delegate" | "report" | "request" | "response"];
+    const verb = { delegate: "called", report: "completed", request: "asked for", response: "answered" }[m.kind as "delegate" | "report" | "request" | "response"];
     const target = m.to !== options.agent && m.to !== options.parent && m.to !== "user" ? nameOf(m.to) : "";
     const openable = Boolean(bySlug(agent)) && agent !== options.agent;
     const row = el(
@@ -231,9 +263,12 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         title: `${m.body.slice(0, 600)}${m.body.length > 600 ? "…" : ""}\n${new Date(m.createdAt).toLocaleString()}${openable ? ` · click opens ${nameOf(agent)}` : ""}`,
         onclick: () => (openable ? ctx.openAgent(agent, m.id) : row.classList.toggle("open")),
       },
-      el("span.pill-line", {}, el("span.arrow", {}, down ? "→" : "←"), statusDot(agent), el("b", {}, nameOf(m.from)), el("span.dim", {}, verb), target ? el("b", {}, target) : undefined, el("span.sep", {}, "·"), el("span.ellipsis.pill-text", {}, ...inline(firstLine(m.body))), m.taskId ? el("span.tag", {}, `#${m.taskId}`) : undefined),
+      down
+        ? el("span.pill-line", {}, el("span", {}, m.kind === "delegate" ? "Delegated to" : "Asked"), kindIcon("agent.spawned", 10), statusDot(agent), el("b", {}, nameOf(agent)), target ? el("b", {}, target) : undefined, m.taskId ? el("span.tag", {}, `#${m.taskId}`) : undefined, chevron())
+        : el("span.pill-line", {}, kindIcon("agent.spawned", 10), statusDot(agent), el("b", {}, nameOf(m.from)), el("span", {}, verb), el("span.ellipsis.pill-text", {}, ...inline(firstLine(m.body))), el("span.when", {}, clock(m.createdAt)), m.taskId ? el("span.tag", {}, `#${m.taskId}`) : undefined, chevron()),
       el("div.card-body", {}, markdown(m.body)),
     );
+    row.dataset.at = String(m.createdAt);
     return row;
   }
 
@@ -242,13 +277,15 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     const askId = m.meta.askId;
     const open = askId !== undefined && openAsks.has(askId);
     const answer = askId !== undefined ? answersByAsk.get(askId) : undefined;
+    const who = options.agent === m.from ? "" : ` · ${nameOf(m.from)}`;
     const row = el(
       "div.row.question.tint-warn",
-      { class: `row question tint-warn${open ? " open" : " answered"}`, "data-message": m.id, "data-ask": askId ?? "", "data-task": m.taskId ?? "" },
-      el("div.q-meta", {}, kindIcon("ask", 11), el("b", {}, nameOf(m.from)), el("span.dim", {}, "asks"), m.meta.priority && m.meta.priority !== "normal" ? el("span.tag", { class: `tag prio-${m.meta.priority}` }, m.meta.priority) : undefined, el("span.grow"), time(m.createdAt)),
-      m.meta.breadcrumb ? el("div.dim.q-crumb", {}, m.meta.breadcrumb) : undefined,
+      { class: `row question tint-warn${open ? " open" : " answered"}`, "data-message": m.id, "data-ask": askId ?? "", "data-task": m.taskId ?? "", "data-at": m.createdAt },
+      el("div.q-meta", {}, kindIcon("approval", 10), el("b", {}, open ? "Action needed" : "Decision made"), el("span", {}, who), m.meta.priority && m.meta.priority !== "normal" ? el("span.tag", { class: `tag prio-${m.meta.priority}` }, m.meta.priority) : undefined),
+      m.meta.breadcrumb ? el("div.q-crumb", {}, m.meta.breadcrumb) : undefined,
       el("div.q-body", {}, markdown(m.body)),
     );
+    let foot: HTMLElement | undefined;
     if (open && askId !== undefined) {
       const options = m.meta.options ?? [];
       const reply = async (text: string) => {
@@ -256,28 +293,36 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         if (result.error) box.note.textContent = result.error;
         else settleAsk(askId, text);
       };
-      row.append(answerButtons(options, m.meta.freeText !== false || !options.length, reply, m.body));
-    } else if (answer !== undefined) row.append(el("div.q-answer", {}, icon("check", 11), el("span", {}, answer)));
-    else if (askId !== undefined) row.append(el("div.q-answer.dim", {}, "answered"));
+      const drop = async () => {
+        const result = await dropAsk(askId);
+        if (result.error) box.note.textContent = result.error;
+        else settleAsk(askId);
+      };
+      foot = answerButtons(options, m.meta.freeText !== false || !options.length, reply, m.body, drop);
+    } else if (answer !== undefined) foot = el("div.q-answer", {}, icon("check", 10), el("span", {}, answer));
+    else if (askId !== undefined) foot = el("div.q-answer.dim", {}, "answered");
+    row.append(el("div.q-foot", {}, foot ?? el("span"), time(m.createdAt)));
     return row;
   }
 
-  /** The buttons an answer offers; one confirm button for a question with a single option; the box for words. */
-  function answerButtons(options: readonly string[], freeText: boolean, reply: (text: string) => Promise<void>, question: string) {
-    const buttons = options.map((option) => el("button.btn", { onclick: () => void reply(option) }, option));
+  /** The pills an answer offers; a bubble for an answer in words, a bin to drop the question. */
+  function answerButtons(options: readonly string[], freeText: boolean, reply: (text: string) => Promise<void>, question: string, drop?: () => Promise<void>) {
+    const buttons = options.map((option) => el("button.opt", { onclick: () => void reply(option) }, option));
     const typed = freeText
       ? el(
-          "button.btn.ghost",
+          "button.opt.icon-only",
           {
+            title: options.length ? "answer in words" : "answer",
             onclick: () => {
               pinnedAnswer = reply;
-              box.pin(el("span.ellipsis", {}, icon("help", 11), " ", firstLine(question)), () => (pinnedAnswer = undefined));
+              box.pin(el("span.ellipsis", {}, icon("help", 10), " ", firstLine(question)), () => (pinnedAnswer = undefined));
             },
           },
-          options.length ? "answer in words…" : "answer…",
+          icon("message", 15),
         )
       : undefined;
-    return el("div.q-options", {}, ...buttons, typed);
+    const bin = drop ? el("button.opt.icon-only.faint", { title: "drop this question", onclick: () => void drop() }, icon("trash", 15)) : undefined;
+    return el("div.q-options", {}, ...buttons, typed, bin);
   }
 
   function settleAsk(askId: number, answer?: string) {
@@ -298,24 +343,29 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         title: `${firstLine(m.body)}\n${new Date(m.createdAt).toLocaleString()}${m.meta.link ? `\n${m.meta.link}` : ""}`,
         onclick: () => row.classList.toggle("open"),
       },
-      el("span.pill-line", {}, kindIcon(name, 11), el("span.ellipsis.pill-text", {}, ...inline(firstLine(m.body)))),
-      el("div.event-body", {}, markdown(m.body), m.meta.link ? el("a", { href: m.meta.link, target: "_blank", rel: "noreferrer" }, icon("external", 11), " open") : undefined),
+      el("span.pill-line", {}, kindIcon(name, 10), el("span.ellipsis.pill-text", {}, ...inline(firstLine(m.body))), el("span.when", {}, clock(m.createdAt)), chevron()),
+      el("div.event-body", {}, markdown(m.body), m.meta.link ? el("a", { href: m.meta.link, target: "_blank", rel: "noreferrer" }, icon("external", 10), " open") : undefined),
     );
+    row.dataset.at = String(m.createdAt);
     return row;
   }
 
   function noticeRow(m: LogMessage) {
     const row = el(
-      "button.row.notice.tint-muted",
-      { "data-message": m.id, onclick: () => row.classList.toggle("open") },
-      el("span.event-line", {}, kindIcon("notice", 11), el("span.ellipsis", {}, firstLine(m.body)), time(m.createdAt)),
+      "button.row.notice.pill.tint-muted",
+      { "data-message": m.id, "data-at": m.createdAt, onclick: () => row.classList.toggle("open") },
+      el("span.pill-line", {}, kindIcon("notice", 10), el("span.ellipsis.pill-text", {}, firstLine(m.body)), el("span.when", {}, clock(m.createdAt)), chevron()),
       el("div.event-body", {}, markdown(m.body)),
     );
     return row;
   }
 
   function answerRow(m: LogMessage) {
-    return el("div.row.answer.tint-ok", { "data-message": m.id }, el("span.event-line", {}, kindIcon("answered", 11), el("span.ellipsis", { title: m.body }, `${nameOf(m.from)} answered: ${m.body}`), time(m.createdAt)));
+    return el(
+      "div.row.answer.pill.tint-ok",
+      { "data-message": m.id, "data-at": m.createdAt },
+      el("span.pill-line", {}, kindIcon("answered", 10), el("span.ellipsis.pill-text", { title: m.body }, `${nameOf(m.from)} answered: ${m.body}`), el("span.when", {}, clock(m.createdAt))),
+    );
   }
 
   function renderMessage(m: LogMessage, latest: boolean): HTMLElement {
@@ -340,15 +390,14 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
 
   /** `⚙ 7 tool calls · 2 min`, the calls under it when opened. */
   function renderTools(group: ToolGroup): HTMLElement {
-    const n = group.tools.length;
-    const what = [n ? `${n} tool call${n === 1 ? "" : "s"}` : "", group.thinking && !n ? "thinking" : ""].filter(Boolean).join(" · ") || "working";
+    const what = describeTools(group.tools) || (group.thinking ? "Thought it over" : "Working");
     const span = group.end > group.at ? duration(group.end - group.at) : "";
     const head = el(
       "button.tools-head",
       { onclick: () => ((group.open = !group.open), redraw(group)) },
-      kindIcon("tools", 11),
-      el("span", {}, `${what}${span ? ` · ${span}` : ""}`),
-      icon("chevron", 10),
+      group.live ? kindIcon("tools", 10) : undefined,
+      el("span", {}, `${what}${span && group.live ? ` · ${span}` : ""}`),
+      chevron(),
     );
     const body = el("div.tools-body.tui");
     if (group.open) {
@@ -359,18 +408,18 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         body.append(line);
       }
     }
-    return el("div.row.tools.tint-muted", { class: `row tools tint-muted${group.live ? " live" : ""}${group.open ? " open" : ""}` }, head, body);
+    return el("div.row.tools.tint-muted", { class: `row tools tint-muted${group.live ? " live" : ""}${group.open ? " open" : ""}`, "data-at": group.at }, head, body);
   }
 
   /** A question the session asked: one block per question, the answered ones ticked, the next one with its buttons. */
   function renderQuestion(q: LiveQuestion): HTMLElement {
     const index = q.answers.findIndex((a) => a === undefined || a === "");
     const open = index >= 0 && index < q.questions.length;
-    const row = el("div.row.question.tint-warn", { class: `row question tint-warn${open ? " open" : " answered"}`, "data-question": q.id });
+    const row = el("div.row.question.tint-warn", { class: `row question tint-warn${open ? " open" : " answered"}`, "data-question": q.id, "data-at": q.at });
     q.questions.forEach((question, i) => {
       const answered = q.answers[i];
-      const block = el("div.q-block", {}, el("div.q-meta", {}, kindIcon("question", 11), el("b", {}, question.header || "question"), el("span.grow"), i === 0 ? time(q.at) : undefined), el("div.q-body", {}, markdown(question.question)));
-      if (answered) block.append(el("div.q-answer", {}, icon("check", 11), el("span", {}, answered)));
+      const block = el("div.q-block", {}, el("div.q-meta", {}, kindIcon("approval", 10), el("b", {}, open ? "Action needed" : "Decision made"), question.header ? el("span", {}, `· ${question.header}`) : undefined), el("div.q-body", {}, markdown(question.question)));
+      if (answered) block.append(el("div.q-foot", {}, el("div.q-answer", {}, icon("check", 10), el("span", {}, answered)), i === 0 ? time(q.at) : undefined));
       else if (i === index) {
         const reply = async (text: string) => {
           const result = await answerQuestion(q.session, text);
@@ -380,8 +429,8 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
             redraw(q);
           }
         };
-        block.append(answerButtons(question.options.map((o) => o.label), true, reply, question.question));
-      }
+        block.append(el("div.q-foot", {}, answerButtons(question.options.map((o) => o.label), true, reply, question.question), i === 0 ? time(q.at) : undefined));
+      } else if (i === 0) block.append(el("div.q-foot", {}, el("span"), time(q.at)));
       row.append(block);
     });
     return row;
@@ -423,6 +472,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     const earlier = more ? el("button.btn.chat-more", { onclick: () => void loadEarlier() }, "Load earlier") : undefined;
     clear(log, earlier, ...nodes, ...(items.length ? [] : [el("p.hint", {}, loading ? "…" : "Nothing said here yet.")]));
     if (liveText) log.append(liveText);
+    if (working) log.append(working.node);
   }
 
   /** A row that arrived now goes last; the reply before it loses its "latest" status and folds. */
@@ -433,8 +483,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     const previous = items[items.length - 2];
     if (previous && dayOf(previous.at) !== dayOf(item.at)) log.append(el("div.day", {}, el("span", {}, dayLabel(item.at))));
     item.node = render(item);
-    if (liveText?.isConnected) log.insertBefore(item.node, liveText);
-    else log.append(item.node);
+    log.insertBefore(item.node, liveText?.isConnected ? liveText : (working?.node ?? null));
     if (item.kind === "message" && item.m.kind === "chat" && !mine(item.m) && previous?.kind === "message" && previous.m.kind === "chat" && !mine(previous.m)) redraw(previous);
     if (stick) scroll();
   }
@@ -467,7 +516,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       }
       if (entry.role !== "assistant" || (!entry.tools?.length && !entry.thinking)) continue;
       if (!current) {
-        current = { kind: "tools", key: `t${at}`, at, end: at, thinking: "", tools: [], live: false, open: toolsOpen, node: undefined as unknown as HTMLElement };
+        current = { kind: "tools", key: `t${at}`, at, end: at, thinking: "", tools: [], live: false, open: false, node: undefined as unknown as HTMLElement };
         groups.push(current);
       }
       current.end = Math.max(current.end, at);
@@ -588,11 +637,12 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       (event) => {
         const payload = event.payload as { text?: string; summary?: string; name?: string; id?: string; parent?: string; result?: string; questions?: Question[]; answers?: Record<string, string> };
         const stick = nearBottom();
+        if (event.kind === "session.delta" || event.kind === "session.tool") startWorking(event.ts);
         switch (event.kind) {
           case "session.delta":
             if (!liveText) {
               liveText = el("div.row.reply.live", {}, el("div.bubble"));
-              log.append(liveText);
+              log.insertBefore(liveText, working?.node ?? null);
             }
             liveRaw = payload.text ?? "";
             liveText.querySelector(".bubble")!.replaceChildren(markdown(liveRaw));
@@ -600,7 +650,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
           case "session.tool": {
             if (!liveGroup) {
               // What streamed before the first call was the model thinking aloud, not the reply.
-              liveGroup = { kind: "tools", key: `t${event.ts}`, at: event.ts, end: event.ts, thinking: liveText ? liveRaw : "", tools: [], live: true, open: toolsOpen, node: undefined as unknown as HTMLElement };
+              liveGroup = { kind: "tools", key: `t${event.ts}`, at: event.ts, end: event.ts, thinking: liveText ? liveRaw : "", tools: [], live: true, open: false, node: undefined as unknown as HTMLElement };
               liveText?.remove();
               liveText = undefined;
               liveRaw = "";
@@ -644,9 +694,11 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
               liveGroup = undefined;
             }
             liveText?.classList.remove("live");
+            stopWorking();
             break;
           case "session.exit":
             liveGroup = undefined;
+            stopWorking();
             break;
           default:
             return;
@@ -661,26 +713,42 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     for (const live of log.querySelectorAll<HTMLElement>(".live[data-agent]")) live.replaceWith(statusDot(live.dataset.agent ?? ""));
   }
 
-  const toolsToggle = el(
-    "button.iconbtn.slim",
-    {
-      title: "show the tool calls by default",
-      class: `iconbtn slim${toolsOpen ? " on" : ""}`,
-      onclick: () => {
-        toolsOpen = !toolsOpen;
-        localStorage.setItem(TOOLS_OPEN_KEY, toolsOpen ? "open" : "closed");
-        toolsToggle.classList.toggle("on", toolsOpen);
-        for (const item of items)
-          if (item.kind === "tools") {
-            item.open = toolsOpen;
-            redraw(item);
-          }
-      },
-    },
-    icon("gear", 12),
-  );
+  /** "Working on it… 13s" under the last row while a turn runs. */
+  function startWorking(since: number) {
+    if (working) return;
+    const elapsed = el("span.elapsed", {}, duration(Date.now() - since));
+    const node = el("div.row.working", {}, el("span.spinner"), el("b", {}, "Working on it…"), elapsed);
+    const timer = setInterval(() => (elapsed.textContent = duration(Date.now() - since)), 1000);
+    working = { node, since, timer };
+    log.append(node);
+  }
+  function stopWorking() {
+    if (!working) return;
+    clearInterval(working.timer);
+    working.node.remove();
+    working = undefined;
+  }
 
-  const node = el("section.chat", {}, log, box.node);
+  // ---- the head: the title, and the day of the row at the top of the view -------------------
+
+  const title = el("span.chat-title", {}, options.title);
+  const sub = el("span.chat-title.sub", { hidden: true });
+  const dayPill = el("span.chat-daypill");
+  const head = el("div.chat-head", {}, title, sub, dayPill);
+  let dayTimer: ReturnType<typeof setTimeout> | undefined;
+  const showDay = () => {
+    const top = log.getBoundingClientRect().top + 60;
+    const first = [...log.querySelectorAll<HTMLElement>("[data-at]")].find((row) => row.getBoundingClientRect().bottom > top);
+    if (!first) return (dayPill.classList.remove("shown"), undefined);
+    dayPill.textContent = dayLabel(Number(first.dataset.at));
+    dayPill.classList.add("shown");
+    clearTimeout(dayTimer);
+    dayTimer = setTimeout(() => dayPill.classList.remove("shown"), 1500);
+  };
+  log.addEventListener("scroll", showDay, { passive: true });
+
+  const slot = el("div.chat-slot");
+  const node = el("section.chat", {}, el("div.chat-view", {}, head, el("div.chat-fade"), log, el("div.chat-foot", {}, slot, box.node)));
 
   void load().then(async () => {
     if (liveSession) followLive(liveSession);
@@ -691,6 +759,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     dispose: () => {
       stopLog();
       stopLive?.();
+      stopWorking();
     },
     reveal(target) {
       const selector = target.messageId !== undefined ? `[data-message="${target.messageId}"]` : target.askId !== undefined ? `[data-ask="${target.askId}"]` : target.taskId !== undefined ? `[data-task="${target.taskId}"]` : target.question ? ".row.question.open" : "";
@@ -701,6 +770,12 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     },
     focus: () => box.focus(),
     refreshAgents,
-    toolsToggle,
+    refreshPrefs: () => box.refreshPrefs(),
+    slot,
+    setHead(text, extra) {
+      title.textContent = text;
+      sub.hidden = !extra;
+      clear(sub, extra);
+    },
   };
 }
