@@ -768,6 +768,17 @@ body.in-home .btn.chat-more:hover { color: var(--ink-70); }
 .day { align-self: center; margin: 4px 0; padding: 4px 6px; border-radius: 19px; background: var(--pill-bg); font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: color-mix(in srgb, var(--ink) 40%, transparent); text-transform: none; letter-spacing: 0; }
 .day::before, .day::after { display: none; }
 
+/* every hover is the same quiet move: a little more ink, eased */
+.pill-line, .tools-head, .meta-line, .more, .nav-item, .opt, .needs-btn, .compose-tool, .compose-send, .ptree-row .label, .ptree-hand, .q-meta, .day, .chat-more, .need-card, .menu-row, .row.mine, .row.reply .row-foot, .row.working { transition: opacity 0.18s ease, background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease; }
+.row.reply .row-foot { opacity: 0.6; }
+.row.reply:hover .row-foot { opacity: 1; }
+.row.mine:hover { background: color-mix(in srgb, var(--mine-bg) 100%, var(--ink) 4%); }
+.row.question .q-meta, .row.question .q-crumb { transition: opacity 0.18s ease; }
+.row.question:hover .q-meta, .row.question:hover .q-crumb { opacity: 0.8; }
+.ptree-hand { transition: opacity 0.18s ease; }
+.ptree-row:hover .ptree-hand { opacity: 0.9; }
+.day:hover { color: var(--ink-70); }
+
 /* rows */
 .row { position: relative; width: 100%; max-width: 100%; border-radius: 0; font: 400 var(--body)/var(--body-lh) var(--font-body); color: var(--ink-70); }
 .row.flash { animation: flash 1.6s ease-out; }
@@ -808,7 +819,8 @@ time { color: inherit; font: inherit; }
 /* one-liners: an event, a report, a delegation, a tool group — icon, text, time, chevron */
 .row.pill, .row.event, .row.card, .row.notice, .row.answer, .row.tools { display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 0 12px; border: 0; background: none; text-align: left; cursor: pointer; }
 .pill-line { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; padding: 0; border-radius: 0; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink); opacity: 0.45; }
-.row.pill:hover .pill-line, .row.tools:hover .tools-head { opacity: 0.75; background: none; }
+.row.pill:hover .pill-line, .row.tools .tools-head:hover { opacity: 0.8; background: none; }
+.row.card.tint-ok:hover .pill-line, .row.tint-ok:hover .pill-line, .row.pill.tint-hot:hover .pill-line { opacity: 1; }
 .pill-line .icon { width: 10px; height: 10px; }
 .pill-line .icon-chevron { width: 9px; height: 9px; margin-left: 4px; }
 .pill-line .pill-text { max-width: 56ch; color: inherit; }
@@ -821,9 +833,9 @@ time { color: inherit; font: inherit; }
 .row.card.tint-ok .pill-line, .row.answer .pill-line, .row.tint-ok .pill-line { color: var(--ok); opacity: 0.85; }
 .row.pill.tint-hot .pill-line { color: var(--hot); opacity: 0.85; }
 .row.card.delegate .pill-line { opacity: 0.3; }
-.row.card.delegate:hover .pill-line { opacity: 0.6; }
+.row.card.delegate:hover .pill-line { opacity: 0.7; }
 .row.notice .pill-line { opacity: 0.6; }
-.row.tools .tools-head { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; border-radius: 0; background: none; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink); opacity: 0.3; }
+.row.tools .tools-head { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; border-radius: 0; background: none; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink); opacity: 0.3; }
 .row.tools .tools-head .icon { width: 10px; height: 10px; }
 .row.tools .tools-head .icon-chevron { width: 9px; height: 9px; transition: transform 0.12s; }
 .row.tools.open .tools-head .icon-chevron { transform: rotate(90deg); }
