@@ -66,6 +66,15 @@ export interface Usage {
   readonly needsLogin?: boolean;
 }
 
+/** One Mac's file sync against the box, as its menu bar app last reported it (`GET /sync`). */
+export interface SyncReport {
+  readonly machine: string;
+  readonly state: "synced" | "syncing" | "conflicts" | "paused" | "connecting" | "off";
+  readonly conflicts: number;
+  readonly text: string;
+  readonly at: string;
+}
+
 export interface ModuleSetting {
   readonly key: string;
   readonly label: string;

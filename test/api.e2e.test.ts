@@ -92,6 +92,14 @@ describe("api", () => {
     expect(Array.isArray(await res.json())).toBe(true);
   });
 
+  it("keeps what each Mac says about its file sync", async () => {
+    expect((await post("/sync", { machine: "Mac", state: "nonsense" })).status).toBe(400);
+    expect((await post("/sync", { machine: "Mac", state: "conflicts", conflicts: 2, text: "files: 2 conflicts" })).status).toBe(200);
+    expect((await post("/sync", { machine: "Mac", state: "synced", conflicts: 0, text: "files in sync" })).status).toBe(200);
+    const reports = (await (await get("/sync")).json()) as { machine: string; state: string }[];
+    expect(reports).toEqual([expect.objectContaining({ machine: "Mac", state: "synced" })]);
+  });
+
   it("reads and writes the editable settings", async () => {
     const before = (await (await get("/settings")).json()) as {
       editable: string[];

@@ -109,16 +109,20 @@ func syncSessions() -> [SyncSession]? {
     return (try? JSONDecoder().decode([SyncSession].self, from: data[start...])) ?? []
 }
 
-/// One line for the menu: "files in sync", "files syncing", "files: 3 conflicts", "files paused".
-func syncSummary(_ sessions: [SyncSession]?) -> String {
-    guard let sessions else { return "files: mutagen not installed (pai files)" }
-    if sessions.isEmpty { return "files: not set up (pai files)" }
+/// Where this Mac's files stand against the box, as one word the box keeps (`POST /sync`) and the app draws.
+struct SyncReport: Encodable { let machine: String; let state: String; let conflicts: Int; let text: String }
+
+func syncReport(_ sessions: [SyncSession]?) -> SyncReport {
+    let machine = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
+    let report = { (state: String, conflicts: Int, text: String) in SyncReport(machine: machine, state: state, conflicts: conflicts, text: text) }
+    guard let sessions else { return report("off", 0, "files: mutagen not installed (pai files)") }
+    if sessions.isEmpty { return report("off", 0, "files: not set up (pai files)") }
     let conflicts = sessions.reduce(0) { $0 + ($1.conflicts?.count ?? 0) }
-    if conflicts > 0 { return "files: \(conflicts) conflict\(conflicts == 1 ? "" : "s") (pai files diff)" }
-    if sessions.allSatisfy({ $0.paused }) { return "files paused (pai files on)" }
-    if sessions.contains(where: { !$0.alpha.connected || !$0.beta.connected }) { return "files: connecting to the box" }
-    if sessions.allSatisfy({ $0.status == "watching" }) { return "files in sync" }
-    return "files syncing"
+    if conflicts > 0 { return report("conflicts", conflicts, "files: \(conflicts) conflict\(conflicts == 1 ? "" : "s") (pai files diff)") }
+    if sessions.allSatisfy({ $0.paused }) { return report("paused", 0, "files paused (pai files on)") }
+    if sessions.contains(where: { !$0.alpha.connected || !$0.beta.connected }) { return report("connecting", 0, "files: connecting to the box") }
+    if sessions.allSatisfy({ $0.status == "watching" }) { return report("synced", 0, "files in sync") }
+    return report("syncing", 0, "files syncing")
 }
 
 /// The box's own reading of the limits (`/usage`), for a Mac without a Claude login.
@@ -238,6 +242,7 @@ final class App: NSObject, NSApplicationDelegate {
     var usageStale: Bool { usageFetchedAt.map { Date().timeIntervalSince($0) > 10 * 60 } ?? true }
     var claudeToken: String?
     var files = "files: …"
+    var reportedAt = Date.distantPast
 
     func applicationDidFinishLaunching(_ n: Notification) {
         item.menu = menu
@@ -253,9 +258,12 @@ final class App: NSObject, NSApplicationDelegate {
 
     func pollFiles() {
         DispatchQueue.global(qos: .utility).async {
-            let summary = syncSummary(syncSessions())
+            let report = syncReport(syncSessions())
             DispatchQueue.main.async {
-                if summary != self.files { self.files = summary; self.render() }
+                let changed = report.text != self.files
+                if changed { self.files = report.text; self.render() }
+                // The box hears it on every change and once a minute, so a silent Mac reads as asleep there.
+                if changed || Date().timeIntervalSince(self.reportedAt) > 60 { self.reportedAt = Date(); self.post("/sync", report) }
             }
         }
     }
@@ -301,6 +309,16 @@ final class App: NSObject, NSApplicationDelegate {
             let value = data.flatMap { try? JSONDecoder().decode(T.self, from: $0) }
             DispatchQueue.main.async { done(value) }
         }.resume()
+    }
+
+    func post<T: Encodable>(_ path: String, _ body: T) {
+        var req = URLRequest(url: URL(string: base + path)!)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 5
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if !token.isEmpty { req.setValue("Bearer " + token, forHTTPHeaderField: "Authorization") }
+        req.httpBody = try? JSONEncoder().encode(body)
+        URLSession.shared.dataTask(with: req).resume()
     }
 
     func poll() {

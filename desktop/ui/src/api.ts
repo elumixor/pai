@@ -1,4 +1,4 @@
-import type { Effort, Agent, Ask, Automation, Need, ContextItem, LogMessage, Routine, TaskItem, TaskStatus, Diagnostic, SlashCommand, DiskSession, Entry, ModuleInfo, PaiEvent, ProjectSummary, SessionSummary, Status, TerminalSummary, Usage } from "./types.ts";
+import type { Effort, Agent, Ask, Automation, Need, ContextItem, LogMessage, Routine, TaskItem, TaskStatus, Diagnostic, SlashCommand, DiskSession, Entry, ModuleInfo, PaiEvent, ProjectSummary, SessionSummary, Status, SyncReport, TerminalSummary, Usage } from "./types.ts";
 
 /**
  * The daemon, with the app's offline story in one place: every GET is cached, a failed GET
@@ -251,6 +251,7 @@ export const status = () => get<Status>("/health");
 export const settings = () => get<Settings>("/settings");
 export const terminals = () => get<TerminalSummary[]>("/terminals");
 export const usage = () => get<Usage>("/usage");
+export const syncReports = () => get<SyncReport[]>("/sync");
 export const commands = (session: string) => get<SlashCommand[]>(`/commands?session=${session}`);
 export const diagnostics = (path: string, fresh = false) => get<{ project?: string; items: Diagnostic[] }>(`/diagnostics?path=${encodeURIComponent(path)}${fresh ? "&fresh=1" : ""}`);
 export const modules = () => get<ModuleInfo[]>("/modules");

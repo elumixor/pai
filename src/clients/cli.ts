@@ -239,6 +239,9 @@ async function userCommand() {
           }
           const settled = take ? await f.resolve(take) : [];
           await f.flush();
+          // A first sync with its conflicts settled becomes an ordinary one now rather than on the next command.
+          const promoted = await f.ensureSessions();
+          if (promoted.length) console.error(`first sync done: ${promoted.join(", ")} now settle on their own`);
           await refresh();
           out({ settled, folders: current }, () => [...(settled.length ? [`settled ${settled.length} in favour of ${take === "local" ? "this machine" : "the box"}:`, ...settled.map((x) => `  ${x}`), ""] : []), filesLines(current!)].join("\n"));
           break;

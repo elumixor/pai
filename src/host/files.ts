@@ -4,6 +4,11 @@
  * changed on both sides since they last agreed is settled on its own in this machine's favour
  * (`two-way-resolved`); `sync --remote` takes the box's side of anything still listed.
  *
+ * Except on a machine's first sync: there the two sides never agreed, and this machine winning
+ * would put a fresh Mac's defaults (its `~/.claude/settings.json`, a stale clone) over the box
+ * and every other Mac. So a first session is `two-way-safe` — differences stay conflicts until
+ * settled (`pai files pull` takes the box's) — and becomes `two-way-resolved` once none is left.
+ *
  * `.git` never travels: two machines running git on one shared `.git` corrupt it (loose refs
  * from one side overwrite the other's). Each side owns its clone; the working trees are what
  * is shared. `~/dev/.pai-remotes.json`, written here, tells the box where each repository's
@@ -143,7 +148,11 @@ const box = (): Remote => {
   return r;
 };
 
-/** The two sessions, created if missing or defined differently than the running one. Idempotent. */
+/**
+ * The two sessions, created if missing or defined differently than the running one, and a
+ * first sync's `two-way-safe` session made `two-way-resolved` once it has no conflicts left.
+ * Idempotent.
+ */
 export async function ensureSessions() {
   const r = box();
   const have = new Map((await sessions()).map((s) => [s.name, s]));
@@ -151,19 +160,30 @@ export async function ensureSessions() {
   await writeRemotes();
   for (const folder of FOLDERS) {
     const running = have.get(folder.name);
-    if (running && running.labels?.version === String(folder.version)) continue;
+    const first = running ? running.labels?.mode === "safe" : true;
+    if (running && running.labels?.version === String(folder.version) && !(first && settled(running))) continue;
     await ensureAccess();
     if (running) await mutagen("sync", "terminate", folder.name);
+    const mode = first && !(running && settled(running)) ? "safe" : "resolved";
     const ignores = folder.ignores.flatMap((i) => ["--ignore", i]);
-    await mutagen("sync", "create", "--name", folder.name, "--label", `version=${folder.version}`, "--mode", "two-way-resolved", "--ignore-vcs", ...ignores, folder.local, `${r.target}:~/${folder.remote}`);
-    created.push(folder.name);
+    await mutagen("sync", "create", "--name", folder.name, "--label", `version=${folder.version}`, "--label", `mode=${mode}`, "--mode", `two-way-${mode}`, "--ignore-vcs", ...ignores, folder.local, `${r.target}:~/${folder.remote}`);
+    created.push(mode === "safe" ? `${folder.name} (first sync: differences wait as conflicts, \`pai files pull\` takes the box's)` : folder.name);
   }
   return created;
 }
 
-/** Every repository under `devRoot` with its origin and branch, for the box. */
+/** Both sides agree: a cycle has finished, nothing is in conflict and nothing is moving. */
+const settled = (s: RawSession) => s.status === "watching" && (s.successfulCycles ?? 0) > 0 && !s.conflicts?.length;
+
+/**
+ * Every repository under `devRoot` with its origin and branch, for the box. The file is synced,
+ * so another Mac's entries are kept while their folder exists: a Mac without a clone of some
+ * repository does not take it off the box's list.
+ */
 export async function writeRemotes() {
-  const entries: Record<string, RemoteEntry> = {};
+  const file = join(config.devRoot, REMOTES_FILE);
+  const known = (await Bun.file(file).json().catch(() => ({}))) as Record<string, RemoteEntry>;
+  const entries: Record<string, RemoteEntry> = Object.fromEntries(Object.entries(known).filter(([name]) => existsSync(join(config.devRoot, name))));
   for (const name of readdirSync(config.devRoot)) {
     const dir = join(config.devRoot, name);
     const cfg = join(dir, ".git", "config");
@@ -173,7 +193,7 @@ export async function writeRemotes() {
     const head = readFileSync(join(dir, ".git", "HEAD"), "utf8").trim();
     entries[name] = { url, branch: head.startsWith("ref: refs/heads/") ? head.slice("ref: refs/heads/".length) : "main" };
   }
-  await Bun.write(join(config.devRoot, REMOTES_FILE), JSON.stringify(entries, null, 2));
+  await Bun.write(file, JSON.stringify(entries, null, 2));
   return entries;
 }
 

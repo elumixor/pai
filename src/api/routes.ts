@@ -28,6 +28,7 @@ import * as summaries from "../domain/summaries.ts";
 import * as recall from "../domain/recall.ts";
 import * as requests from "../domain/requests.ts";
 import * as tasks from "../domain/tasks.ts";
+import * as sync from "../domain/sync.ts";
 
 const log = logger("api");
 
@@ -169,6 +170,17 @@ export async function handle(req: Request): Promise<Response> {
 
     // The subscription's limits and what the sessions have cost, for the clients' status line.
     if (path === "/usage") return json({ ...(await usage()), needsLogin: needsLogin() });
+
+    // Each Mac's file sync against this box, as its menu bar app reports it.
+    if (path === "/sync" && req.method === "POST") {
+      try {
+        sync.record(await body<Record<string, unknown>>(req));
+        return json({ ok: true });
+      } catch (err) {
+        return json({ error: (err as Error).message }, 400);
+      }
+    }
+    if (path === "/sync") return json(sync.list());
 
     // A laptop's Claude Code login for this machine: the limits and `claude` here use it from now on.
     if (path === "/usage/credentials" && req.method === "POST") {

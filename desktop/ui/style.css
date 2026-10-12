@@ -713,6 +713,11 @@ body.in-home .nav:hover { opacity: 0.85; }
 .nav-item.on { background: color-mix(in srgb, var(--ink) 15%, transparent); }
 .nav-item .nav-count { position: absolute; top: -4px; right: -6px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 999px; background: var(--hand); color: #fff; font: 700 9px/14px var(--font-ui); text-align: center; }
 .nav-item { position: relative; }
+.nav-sync { width: 7px; height: 7px; margin-left: -8px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 30%, transparent); }
+.nav-sync[data-state="synced"] { background: var(--ok); }
+.nav-sync[data-state="syncing"] { background: var(--busy); animation: nav-sync-pulse 1.4s ease-in-out infinite; }
+.nav-sync[data-state="conflicts"] { background: var(--hot); }
+@keyframes nav-sync-pulse { 50% { opacity: 0.35; } }
 
 /* ---- home: the project tree, the chat, what waits ------------------------------------- */
 .home { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; font-family: var(--font-body); }
