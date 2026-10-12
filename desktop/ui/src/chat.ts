@@ -252,7 +252,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     const down = m.kind === "delegate" || m.kind === "request";
     const agent = m.kind === "delegate" ? m.to : m.kind === "report" ? m.from : down ? m.from : m.to;
     const verb = { delegate: "called", report: "completed", request: "asked for", response: "answered" }[m.kind as "delegate" | "report" | "request" | "response"];
-    const target = m.to !== options.agent && m.to !== options.parent && m.to !== "user" ? nameOf(m.to) : "";
+    const target = m.to !== options.agent && m.to !== options.parent && m.to !== "user" && m.to !== agent ? nameOf(m.to) : "";
     const openable = Boolean(bySlug(agent)) && agent !== options.agent;
     const row = el(
       "button.row.card.pill",

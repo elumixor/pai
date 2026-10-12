@@ -748,18 +748,23 @@ body.in-home .nav:hover { opacity: 0.85; }
 .peek-needs .peek-more { color: var(--act); opacity: 0.5; }
 
 /* the chat column */
-.chat-view { position: relative; width: var(--chat-w); max-width: calc(100% - 100px); flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.chat-view { position: relative; width: var(--chat-w); max-width: calc(100% - 100px); flex: 1; min-height: 0; height: 100%; display: flex; flex-direction: column; }
 .chat-head { position: absolute; top: -23px; left: 0; right: 0; z-index: 4; display: flex; flex-direction: column; align-items: center; gap: 9px; pointer-events: none; }
 .chat-title { font: 700 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-30); pointer-events: auto; }
 .chat-title.sub { font-weight: 400; color: var(--ink-20); }
 .chat-daypill { padding: 4px 6px; border-radius: 19px; background: var(--pill-bg); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: color-mix(in srgb, var(--ink) 40%, transparent); opacity: 0; transition: opacity 0.15s; }
 .chat-daypill.shown { opacity: 1; }
 .chat-fade { position: absolute; top: 0; left: 0; right: 0; height: 170px; z-index: 3; pointer-events: none; background: linear-gradient(180deg, var(--canvas) 17.31%, color-mix(in srgb, var(--canvas) 75%, transparent) 45.67%, transparent 100%); }
+.chat { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; align-items: center; }
 body.in-home .chat { max-width: none; margin: 0; }
+.chat-more { align-self: center; margin: 0; padding: 0; border: 0; background: none; box-shadow: none; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-30); }
+body.in-home .btn.chat-more { background: none; box-shadow: none; padding: 0; color: var(--ink-30); }
+body.in-home .btn.chat-more:hover { color: var(--ink-70); }
+.row.question.answered .q-body { color: var(--ink-45); opacity: 1; }
+.row.question.answered .q-crumb { color: var(--ink-30); opacity: 1; }
 .chat-log { flex: 1; overflow-y: auto; min-height: 0; padding: 120px 0 24px; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; background: transparent; }
 .chat-log::-webkit-scrollbar { display: none; }
 .chat-log > .hint { align-self: center; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-30); }
-.chat-more { align-self: center; }
 .day { align-self: center; margin: 4px 0; padding: 4px 6px; border-radius: 19px; background: var(--pill-bg); font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: color-mix(in srgb, var(--ink) 40%, transparent); text-transform: none; letter-spacing: 0; }
 .day::before, .day::after { display: none; }
 
