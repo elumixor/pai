@@ -1,3 +1,4 @@
+import { bus } from "../core/bus.ts";
 import { config } from "../core/config.ts";
 import { logger } from "../core/log.ts";
 import * as asks from "./asks.ts";
@@ -19,6 +20,10 @@ export const SHORT = 400;
 const inFlight = new Map<string, Promise<string | undefined>>();
 /** Shorter than this a message is its own headline. */
 const HEADLINE_SHORT = 40;
+/** The kinds that show as one line and so get a headline; the rest are read in full. */
+const HEADLINED = new Set(["event", "report", "request", "response", "ask", "notice"]);
+/** How many recent rows a starting daemon headlines. */
+const BACKFILL = 100;
 
 export const enabled = () => Boolean(config.aiGatewayKey);
 
@@ -61,7 +66,7 @@ function once(key: string, work: () => Promise<string>) {
 async function writeHeadline(m: messages.Message, answer?: string): Promise<string> {
   const who = m.from.replace(/^(watcher|routine):/, "");
   const text = await complete(
-    "You write one headline for a row in a personal assistant's activity log: at most six words, no period, no quotes. Name the people and things, drop the rest. Examples: 'Dmytro asks for work', 'Dmytro connects on Telegram', 'Daily follow-up', 'Approved draft to Dmytro', 'ATMA completed Hiring Developer'. A report from an agent starts with the agent's name. An answered question is headlined by what was decided.",
+    "You write one headline for a row in a personal assistant's activity log: three to five words, no period, no quotes, no markdown. Name the person or thing and what happened, drop everything else. Examples: 'Dmytro asks for work', 'Dmytro connects on Telegram', 'Daily follow-up', 'Approved draft to Dmytro', 'ATMA completed Hiring Developer', 'No November HN thread'. A report from an agent starts with the agent's name. An answered question is headlined by what was decided. A message the user sent is 'You wrote to <name>'.",
     `kind: ${m.kind}${m.meta.event ? ` (${m.meta.event})` : ""}
 from: ${who}
 
@@ -70,7 +75,7 @@ ${m.body.slice(0, 4_000)}${answer ? `
 answer: ${answer}` : ""}`,
     40,
   );
-  const line = text.replace(/^["'“”]+|["'“”.]+$/g, "").split("\n")[0]!.trim();
+  const line = text.replace(/\*\*|__/g, "").replace(/^["'“”]+|["'“”.]+$/g, "").split("\n")[0]!.trim().split(/\s+/).slice(0, 7).join(" ");
   messages.patchMeta(m.id, { headline: line });
   return line;
 }
@@ -97,4 +102,43 @@ async function complete(system: string, user: string, maxTokens: number): Promis
   const text = data.choices?.[0]?.message?.content?.trim();
   if (!text) throw new Error("gateway answered without text");
   return text;
+}
+
+/**
+ * Headlines are written as rows land, and the last hundred are caught up when the daemon
+ * starts, so a chat rarely has to ask for one. One at a time: the gateway is cheap, a burst
+ * at start is not. Returns a way to stop.
+ */
+export function start() {
+  if (!enabled()) return () => {};
+  const queue: number[] = [];
+  let draining = false;
+  const drain = async () => {
+    if (draining) return;
+    draining = true;
+    try {
+      for (let id = queue.shift(); id !== undefined; id = queue.shift()) await headline(id);
+    } finally {
+      draining = false;
+    }
+  };
+  const wants = (m: { kind: string; meta: Record<string, unknown> }) => HEADLINED.has(m.kind) && typeof m.meta.headline !== "string";
+  const handler = (e: { kind: string; payload: Record<string, unknown> }) => {
+    if (e.kind !== "message.new") return;
+    const m = e.payload as unknown as messages.Message;
+    if (!wants(m)) return;
+    queue.push(m.id);
+    void drain();
+  };
+  bus.on("event", handler);
+  const catchUp = setTimeout(() => {
+    const recent = messages.list({ limit: BACKFILL * 3 }).filter(wants).slice(0, BACKFILL);
+    queue.push(...recent.map((m) => m.id));
+    if (recent.length) log.info(`headlining ${recent.length} recent rows`);
+    void drain();
+  }, 15_000);
+  return () => {
+    clearTimeout(catchUp);
+    bus.off("event", handler);
+  };
 }

@@ -20,6 +20,7 @@ import * as automations from "./domain/automations.ts";
 import * as triage from "./domain/triage.ts";
 import * as briefs from "./domain/briefs.ts";
 import * as recall from "./domain/recall.ts";
+import * as summaries from "./domain/summaries.ts";
 import { flush as flushNotices } from "./domain/asks.ts";
 
 const log = logger("daemon");
@@ -50,6 +51,7 @@ await external.startAll();
 // After the modules: the chat has to be listening when the threads held in terminals are announced.
 const stopMirror = startMirror();
 const stopRecall = recall.start();
+const stopSummaries = summaries.start();
 // Notices and asks held through quiet hours go out when they end.
 const noticeTimer = setInterval(flushNotices, 60 * 1000);
 
@@ -64,6 +66,7 @@ function shutdown(signal: string) {
   clearInterval(reaper);
   clearInterval(noticeTimer);
   stopRecall();
+  stopSummaries();
   stopMain();
   stopAgents();
   stopAutoUpdate?.();
