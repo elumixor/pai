@@ -65,22 +65,14 @@ export function home(root: HTMLElement) {
 
   // ---- the hand ------------------------------------------------------------------------------
 
-  const hand = needsButton({
-    reveal,
-    answered: () => void refreshNeeds(),
-    openBoard: (n) => {
-      navigate({ name: "board", param: n.agent ?? PAI });
-      if (n.taskId !== undefined) theBoard?.openTask(n.taskId);
-    },
-  });
+  const hand = needsButton({ reveal });
 
-  /** A need's row in the chat (an agent's thread first while it is open), or, with no row to land on, the need itself as a card above the hand. */
+  /** A need's row: in an agent's thread while that one is open, else in the main chat, where every ask to the user lands whoever asked. */
   async function reveal(n: Need) {
     const target: RevealTarget = n.kind === "ask" ? { askId: n.askId } : n.kind === "task" ? { taskId: n.taskId } : { question: true };
     if (centre.kind === "agent" && agentChat?.slug === n.agent && (await agentChat.chat.reveal(target))) return;
     if (centre.kind !== "chat") navigate("home");
-    if (mainChat && (await mainChat.reveal(target))) return;
-    hand.show(n);
+    await mainChat?.reveal(target);
   }
 
   // ---- the tree ------------------------------------------------------------------------------

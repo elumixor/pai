@@ -422,7 +422,8 @@ export async function handle(req: Request): Promise<Response> {
       // A need sits on its area: the agent that asked, or for pai's own asks the owner of the task it is about.
       const area = (slug: string | undefined) => (slug && slug !== agents.PAI ? slug : null);
       const open = asks.open();
-      const fromAsks = open.map((a) => ({
+      // An ask held for quiet hours has no row in the chat yet, so it is not a need yet either.
+      const fromAsks = open.filter((a) => a.delivered).map((a) => ({
         kind: "ask" as const,
         id: `ask:${a.id}`,
         askId: a.id,

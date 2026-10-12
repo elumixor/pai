@@ -245,6 +245,29 @@ describe("asks and notices", () => {
     expect(tasks.get(t.id)!.status).toBe("active");
   });
 
+  it("gives every task waiting on the user an ask of its own, with its row in the chat", () => {
+    const before = tasks.add({ title: "Publish the OAuth client", owner: "hiring", status: "waiting_user" });
+    const unwire = asks.wireTasks();
+    const cardOf = (id: number) => asks.open().find((a) => a.taskId === id);
+    // What waited before the wiring is covered too.
+    expect(cardOf(before.id)?.options).toEqual(["Done", "Drop"]);
+    expect(messages.list({ kinds: ["ask"] }).some((m) => m.taskId === before.id)).toBe(true);
+    asks.answer(cardOf(before.id)!.id, "Done");
+    expect(tasks.get(before.id)!.status).toBe("done");
+
+    const later = tasks.add({ title: "Reconnect the mailbox", owner: "hiring" });
+    expect(cardOf(later.id)).toBeUndefined();
+    tasks.update(later.id, { status: "waiting_user", nextAction: "Open the link" });
+    expect(cardOf(later.id)!.question).toContain("Open the link");
+    // A real question about the task takes the card's place rather than being swallowed as a repeat.
+    const real = asks.ask({ agent: "pai", question: "Which mailbox first?", options: ["Work", "Personal"], blocking: false, fallback: "Work", taskId: later.id });
+    expect(asks.open().filter((a) => a.taskId === later.id).map((a) => a.id)).toEqual([real.id]);
+    // The task stops waiting: whatever asked about it goes.
+    tasks.update(later.id, { status: "active" });
+    expect(cardOf(later.id)).toBeUndefined();
+    unwire();
+  });
+
   it("only notes a non-blocking ask's answer when it matches the fallback", () => {
     const a = asks.ask({ agent: "hiring", question: "Archive newsletters?", options: ["Yes", "No"], blocking: false, fallback: "Yes" });
     const sent = sessionOf("hiring").sent.length;

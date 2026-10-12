@@ -18,7 +18,6 @@ import type { Agent, AgentStatus, LogMessage, Need, Question } from "./types.ts"
 
 const PAGE = 100;
 /** How far back `reveal` pages for a row that is not loaded yet. */
-const REVEAL_PAGES = 20;
 const PAI = "pai";
 /** A message of the user's longer than this folds to three lines with "Show more". */
 const MINE_FOLD_CHARS = 240;
@@ -858,7 +857,8 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       if (!selector) return false;
       const find = () => [...log.querySelectorAll<HTMLElement>(selector)].pop();
       let found = find();
-      for (let pages = 0; !found && more && pages < REVEAL_PAGES; pages += 1) {
+      // As far back as it takes: a need always has its row, however old.
+      while (!found && more) {
         await loadEarlier();
         found = find();
       }

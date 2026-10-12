@@ -937,15 +937,6 @@ time { color: inherit; font: inherit; }
 .needs-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border: 0; border-radius: 52px; background: var(--act); opacity: 0.7; box-shadow: var(--card-shadow); color: #fff; font: 700 12.5px/15px var(--font-ui); cursor: pointer; }
 .needs-btn:hover, .needs-btn.open { opacity: 0.9; }
 .needs-btn .icon { width: 15px; height: 15px; }
-.need-card.row.question { position: absolute; right: 0; bottom: calc(100% + 10px); width: min(420px, calc(100vw - 32px)); gap: 10px; padding: 14px 16px; border-radius: 14px; background: var(--surface); box-shadow: var(--soft-shadow); }
-.need-card[hidden] { display: none; }
-.need-card .q-meta { width: 100%; }
-.need-card .grow { flex: 1; }
-.need-close { display: inline-flex; padding: 2px; border: 0; background: transparent; color: inherit; cursor: pointer; }
-.need-card a.opt { display: inline-flex; align-items: center; gap: 4px; text-decoration: none; }
-.need-input { width: 100%; padding: 7px 11px; border: 0; border-radius: 9px; background: var(--surface-2); color: var(--ink); font: 400 13px/17px var(--font-ui); outline: none; }
-.need-note:empty { display: none; }
-.need-note { color: var(--busy); font: 400 var(--meta)/var(--meta-lh) var(--font-ui); }
 
 /* the box */
 .chat-compose { width: 100%; flex-direction: column; align-items: stretch; gap: 0; padding: 12px 10px 12px 19px; border: 0; border-radius: 19px; background: var(--surface); box-shadow: var(--card-shadow); }

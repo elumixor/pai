@@ -166,6 +166,7 @@ export function start() {
     deliver: (slug, text, opts) => (slug === agents.PAI ? system(text) : agents.deliver(slug, text, opts)),
     note: (slug, text) => (slug === agents.PAI ? note(text) : agents.noteTo(slug, text)),
   });
+  const unwireTasks = asks.wireTasks();
   const handler = (e: PaiEvent) => {
     if (e.kind !== "session.turn_end" || !isMain(e.sessionId)) return;
     gate.turnTaken();
@@ -187,6 +188,7 @@ export function start() {
   }, 60_000);
   return () => {
     bus.off("event", handler);
+    unwireTasks();
     clearInterval(clock);
     clearTimeout(profile);
   };

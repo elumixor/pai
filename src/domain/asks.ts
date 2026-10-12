@@ -119,8 +119,10 @@ function similar(a: string, b: string) {
 }
 
 /** The open ask this one would repeat: one on the same task, or the same agent's same question. */
-export function pending(input: Pick<AskInput, "agent" | "question" | "taskId">): Ask | undefined {
-  return open().find((a) => (input.taskId && a.taskId === input.taskId) || (a.agent === input.agent && similar(a.question, input.question)));
+export function pending(input: Pick<AskInput, "agent" | "question" | "taskId" | "fallback">): Ask | undefined {
+  // A task's own Done / Drop card gives way to a real question about the task: it is not a repeat of it.
+  const mine = input.fallback === TASK_FALLBACK;
+  return open().find((a) => (mine || !isTaskAsk(a)) && ((input.taskId && a.taskId === input.taskId) || (a.agent === input.agent && similar(a.question, input.question))));
 }
 
 /** Asks the user once: a question already waiting on them is returned instead of asked again. */
@@ -128,6 +130,7 @@ export function ask(input: AskInput): Ask {
   if (!input.question?.trim()) throw new AskError("an ask needs a question");
   const already = pending(input);
   if (already) return already;
+  const card = input.taskId && input.fallback !== TASK_FALLBACK ? open().find((x) => x.taskId === input.taskId && isTaskAsk(x)) : undefined;
   const blocking = input.blocking ?? true;
   if (!blocking && !input.fallback?.trim()) throw new AskError("a non-blocking ask says what the agent does meanwhile (fallback)");
   const priority = shifted(input.priority ?? "normal", agents.priority(input.agent));
@@ -140,6 +143,7 @@ export function ask(input: AskInput): Ask {
   if (priority === "urgent" || !quiet()) deliverAsk(a);
   const created = getAsk(a.id)!;
   bus.emitEvent("ask.created", created as unknown as Record<string, unknown>);
+  if (card) drop(card.id);
   return created;
 }
 
@@ -166,9 +170,18 @@ export function answer(id: number, text: string, via = "user"): Ask {
   if (!a.freeText && a.options.length && !a.options.some((o) => o.toLowerCase() === reply.toLowerCase()))
     throw new AskError(`ask #${id} takes one of: ${a.options.join(", ")}`);
   db.prepare("UPDATE asks SET status = 'answered', answer = ?, answered_at = ? WHERE id = ?").run(reply, now(), id);
+  messages.log({ from: "user", to: a.agent, kind: "answer", body: reply, taskId: a.taskId, meta: { askId: id, via, event: "answered", agent: a.agent } });
+  const closing = isTaskAsk(a) && a.taskId ? ({ done: "done", drop: "dropped" } as const)[reply.toLowerCase() as "done" | "drop"] : undefined;
+  if (closing) {
+    // A task's card answered Done or Drop: the task closes, its owner hears it without a turn.
+    tasks.update(a.taskId!, { status: closing });
+    agents.note(a.agent, `[the user marked task #${a.taskId} "${tasks.get(a.taskId!)?.title}" ${closing}]`);
+    const answered = getAsk(id)!;
+    bus.emitEvent("ask.answered", answered as unknown as Record<string, unknown>);
+    return answered;
+  }
   // Answered, the decision is no longer the user's: its task goes back to whoever owns it.
   if (a.taskId && tasks.get(a.taskId)?.status === "waiting_user") tasks.update(a.taskId, { status: "active" });
-  messages.log({ from: "user", to: a.agent, kind: "answer", body: reply, taskId: a.taskId, meta: { askId: id, via, event: "answered", agent: a.agent } });
   const text_ = `[answer to your question #${id}: "${a.question}"] ${reply}`;
   if (!a.blocking && a.fallback && a.fallback.trim().toLowerCase() === reply.toLowerCase()) agents.note(a.agent, text_);
   else agents.deliver(a.agent, text_, { askId: id, taskId: a.taskId });
@@ -181,6 +194,35 @@ export function drop(id: number): boolean {
   const changed = db.prepare("UPDATE asks SET status = 'dropped', answered_at = ? WHERE id = ? AND status = 'open'").run(now(), id).changes > 0;
   if (changed) bus.emitEvent("ask.answered", getAsk(id) as unknown as Record<string, unknown>);
   return changed;
+}
+
+// ---- tasks waiting on the user ----------------------------------------------
+
+/** What marks the Done / Drop card a waiting task gets, as against a question asked about it. */
+const TASK_FALLBACK = "the task stays on the list";
+const isTaskAsk = (a: Ask) => a.fallback === TASK_FALLBACK;
+
+/**
+ * A task waiting on the user is a decision like any other: an ask with its own row in the chat,
+ * answered Done, Drop or in words. Nothing waits on the user without a row to answer it on.
+ */
+export function askForTask(t: tasks.Task) {
+  if (t.status !== "waiting_user" || open().some((a) => a.taskId === t.id)) return;
+  ask({ agent: t.owner, question: t.nextAction ? `${t.title}\n\n${t.nextAction}` : t.title, options: ["Done", "Drop"], blocking: false, fallback: TASK_FALLBACK, taskId: t.id });
+}
+
+/** Keeps a card on every waiting task: one when it starts waiting, none once it stops. Covers what waited before this ran. */
+export function wireTasks() {
+  for (const t of tasks.list({ status: "waiting_user" })) askForTask(t);
+  const handler = (e: { kind: string; payload: Record<string, unknown> }) => {
+    if (e.kind !== "task.added" && e.kind !== "task.updated") return;
+    const t = tasks.get(Number(e.payload.id));
+    if (!t) return;
+    if (t.status === "waiting_user") askForTask(t);
+    else if (e.payload.previous === "waiting_user") for (const a of open().filter((x) => x.taskId === t.id)) drop(a.id);
+  };
+  bus.on("event", handler);
+  return () => void bus.off("event", handler);
 }
 
 /** The ask a message (by its log row id) delivered, for answering by reply. */
