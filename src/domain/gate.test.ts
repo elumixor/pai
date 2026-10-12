@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as gate from "./gate.ts";
 
+const nothing = (p: number) => ({ nothing: p, act: 1 - p, user: 0 });
+
 describe("gate", () => {
   const turns: string[] = [];
   const notes: string[] = [];
@@ -11,15 +13,21 @@ describe("gate", () => {
     gate.turnTaken();
   });
 
-  it("turns when the odds reach the threshold, notes below it", async () => {
-    gate.setJudge(async () => ({ act: false, odds: 0.1, reason: "done" }));
+  it("splits a batch into its reports and drops the trailing instruction", () => {
+    const batch = "[Hiring] Posted.\n\n[pai dev] Released as v1.\nMore lines.\n\n[Handle this yourself: the next step…]";
+    expect(gate.split(batch)).toEqual(["[Hiring] Posted.", "[pai dev] Released as v1.\nMore lines."]);
+    expect(gate.split("plain text")).toEqual(["plain text"]);
+  });
+
+  it("defers only when every report is nothing to do, else turns", async () => {
+    gate.setJudge(async (r) => r.map(() => nothing(0.94)));
     await gate.screen("[Hiring] Posted.", sinks);
     expect(turns).toEqual([]);
     expect(notes).toEqual(["[Hiring] Posted."]);
     expect(gate.pending()).toBe(1);
-    gate.setJudge(async () => ({ act: true, odds: 0.6, reason: "blocked" }));
-    await gate.screen("[Hiring] Cannot log in.", sinks);
-    expect(turns).toEqual(["[Hiring] Cannot log in."]);
+    gate.setJudge(async () => [nothing(0.94), nothing(0.3)]);
+    await gate.screen("[Hiring] Posted.\n\n[pai dev] Cannot log in.", sinks);
+    expect(turns.length).toBe(1);
   });
 
   it("fails open", async () => {
@@ -32,7 +40,7 @@ describe("gate", () => {
   });
 
   it("a turn clears what was deferred", async () => {
-    gate.setJudge(async () => ({ act: false, odds: 0, reason: "" }));
+    gate.setJudge(async (r) => r.map(() => nothing(1)));
     await gate.screen("a", sinks);
     gate.turnTaken();
     expect(gate.pending()).toBe(0);

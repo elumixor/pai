@@ -1,4 +1,3 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "../core/config.ts";
 import { logger } from "../core/log.ts";
 
@@ -6,62 +5,69 @@ const log = logger("gate");
 
 /**
  * A report from an agent used to cost pai a full turn even when all it had to say was "no response
- * needed": every turn runs the big model over pai's whole context. A small model now reads the batch
- * first and says how likely it is that pai has to act — hand the next step to an agent, close a task,
- * ask the user. Below the threshold the batch is injected into pai's context instead (no model call;
- * pai still sees it on its next turn), and a nudge after a while makes sure nothing deferred is lost.
- * The gate fails open: an error means a turn, as before.
+ * needed": every turn runs the big model over pai's whole context. A decision model (Jev, a System
+ * One model: one forward pass, typed answers with probabilities, no text) now reads each report in
+ * the batch first and says what it needs from the orchestrator — nothing, an action, or the user.
+ * A batch whose every report is "nothing" with high probability is injected into pai's context
+ * instead (no model call; pai still sees it on its next turn), and a nudge after a while makes sure
+ * nothing deferred is lost. The gate fails open: no key, an error, or a doubt means a turn, as before.
+ *
+ * Reached through the Vercel AI Gateway's TypeSafe-compatible endpoint (`AI_GATEWAY_API_KEY`), so
+ * no TypeSafe account is needed; ~$0.00002 and ~350ms a call.
  */
 
-/** Act once the small model puts the odds of pai having to do something at this or above. */
-export const THRESHOLD = 0.2;
+/** A report is deferred only when the model puts "nothing to do" at this or above (acts from 20% on). */
+export const NOTHING_AT = 0.8;
 /** Deferred reports earn pai one turn after this long without one, so nothing waits past it. */
 export const NUDGE_MS = 30 * 60_000;
+const ENDPOINT = "https://ai-gateway.vercel.sh/typesafe/v1/systemone";
 
+/** What one report needs from the orchestrator, as the model's probabilities. */
+export interface Need {
+  readonly nothing: number;
+  readonly act: number;
+  readonly user: number;
+}
 export interface Verdict {
   readonly act: boolean;
-  readonly odds: number;
+  readonly needs: Need[];
   readonly reason: string;
 }
 
-const SCHEMA = {
-  type: "object",
-  properties: {
-    odds: { type: "number", minimum: 0, maximum: 1, description: "probability that the orchestrator must do something now" },
-    reason: { type: "string" },
+const QUESTION = {
+  type: "choice",
+  instructions: "What does this report need from the orchestrator next?",
+  criteria: {
+    nothing: "Nothing: the work is finished or the status changes nothing; the orchestrator only needs to know",
+    act: "The orchestrator acts: hands an agent the next step, fixes a misroute, unblocks a failure, raises a budget, closes or updates a task",
+    user: "A question or decision that only the user can answer",
   },
-  required: ["odds", "reason"],
 };
 
-const PROMPT = `You screen reports that an assistant's staff (agents) send to it. The assistant is an orchestrator: it acts when a report needs a next step handed to an agent, a task closed or updated, a question put to the user, a failure handled, or a request answered. It need not act when the report is purely informational: work finished with nothing further, a status that changes nothing, an acknowledgement, an agent saying it is waiting on the user.
+/** The reports in a batch: each starts with `[Agent name]` on its own paragraph. */
+export function split(batch: string): string[] {
+  const body = batch.replace(/\n\n\[Handle this yourself:[^]*$/, "");
+  const parts = body.split(/\n\n(?=\[[^\]\n]+\] )/).map((p) => p.trim()).filter(Boolean);
+  return parts.length ? parts : [body.trim()];
+}
 
-Give the probability (0..1) that the orchestrator must do something now in response to the batch below, and a short reason. Anything that reads as a question to the orchestrator, an error, a blocked agent, a spent budget, or an unfinished job is at least 0.5.
-
-Batch:
-`;
-
-/** One small-model turn, no tools, structured output. Replaced in tests. */
-let judge: (text: string) => Promise<Verdict> = async (text) => {
-  const q = query({
-    prompt: PROMPT + text.slice(0, 12_000),
-    options: {
-      model: config.models.triage,
-      maxTurns: 2,
-      tools: [],
-      settingSources: [],
-      persistSession: false,
-      outputFormat: { type: "json_schema", schema: SCHEMA },
-      env: Object.fromEntries(Object.entries(process.env).filter(([k, v]) => v !== undefined && k !== "CLAUDE_CODE_OAUTH_TOKEN")) as Record<string, string>,
-    },
+/** One decision-model call for the whole batch: a question per report, answered in parallel. Replaced in tests. */
+let judge: (reports: string[]) => Promise<Need[]> = async (reports) => {
+  if (!config.aiGatewayKey) throw new Error("no AI_GATEWAY_API_KEY");
+  const state = Object.fromEntries(reports.map((r, i) => [`r${i}`, r.slice(0, 6000)]));
+  const questions = Object.fromEntries(reports.map((_, i) => [`r${i}`, { ...QUESTION, instructions: `What does \`r${i}\` need from the orchestrator next?` }]));
+  const res = await fetch(ENDPOINT, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${config.aiGatewayKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: config.models.gate, state, questions }),
+    signal: AbortSignal.timeout(15_000),
   });
-  for await (const m of q) {
-    if (m.type !== "result") continue;
-    if (m.subtype !== "success") throw new Error(m.subtype);
-    const out = (m.structured_output ?? JSON.parse(m.result)) as { odds?: number; reason?: string };
-    const odds = Math.max(0, Math.min(1, Number(out.odds ?? 1)));
-    return { act: odds >= THRESHOLD, odds, reason: out.reason ?? "" };
-  }
-  throw new Error("no result");
+  if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 200)}`);
+  const out = (await res.json()) as { answers: Record<string, { probabilities?: Record<string, number> }> };
+  return reports.map((_, i) => {
+    const p = out.answers[`r${i}`]?.probabilities ?? {};
+    return { nothing: p.nothing ?? 0, act: p.act ?? 1, user: p.user ?? 0 };
+  });
 };
 export function setJudge(fn: typeof judge) {
   judge = fn;
@@ -89,28 +95,34 @@ export function turnTaken() {
   nudge = undefined;
 }
 
+const pct = (n: number) => `${Math.round(n * 100)}%`;
+
 /** Screens a batch of reports and sends it the cheaper way it can go. */
 export async function screen(text: string, sinks: Sinks): Promise<Verdict> {
-  let verdict: Verdict;
+  const reports = split(text);
+  let needs: Need[];
   try {
-    verdict = await judge(text);
+    needs = await judge(reports);
   } catch (err) {
     log.warn(`gate failed, turning: ${(err as Error).message}`);
-    verdict = { act: true, odds: 1, reason: "gate failed" };
-  }
-  if (verdict.act) {
-    log.info(`turn (${Math.round(verdict.odds * 100)}%): ${verdict.reason}`);
     sinks.turn(text);
-    return verdict;
+    return { act: true, needs: [], reason: "gate failed" };
   }
-  log.info(`deferred (${Math.round(verdict.odds * 100)}%): ${verdict.reason}`);
+  const summary = needs.map((n, i) => `${reports[i]!.slice(0, 40).replace(/\s+/g, " ")}… nothing ${pct(n.nothing)} act ${pct(n.act)} user ${pct(n.user)}`).join(" | ");
+  const act = needs.some((n) => n.nothing < NOTHING_AT);
+  if (act) {
+    log.info(`turn: ${summary}`);
+    sinks.turn(text);
+    return { act, needs, reason: summary };
+  }
+  log.info(`deferred: ${summary}`);
   deferred += 1;
   sinks.note(text);
   nudge ??= setTimeout(() => {
     nudge = undefined;
     if (deferred) sinks.turn(NUDGE);
   }, NUDGE_MS);
-  return verdict;
+  return { act, needs, reason: summary };
 }
 
 /** Whether a reply is only the boilerplate pai says when it has nothing to say; the chat log skips it. */

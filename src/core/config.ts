@@ -124,6 +124,8 @@ export const config = {
     task: setting("PAI_TASK_MODEL") ?? "sonnet",
     /** The cheap pass that routes batches of incoming events (watchers → triage). */
     triage: setting("PAI_TRIAGE_MODEL") ?? "haiku",
+    /** The decision model (System One, over the Vercel AI Gateway) that screens agents' reports before they cost pai a turn. */
+    gate: setting("PAI_GATE_MODEL") ?? "typesafe-ai/jev",
   },
 
   /** The user's time zone: schedules, quiet hours, the journal's dates and the 04:00 rotation are read in it. */
