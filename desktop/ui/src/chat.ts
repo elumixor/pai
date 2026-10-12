@@ -741,7 +741,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   log.addEventListener("scroll", showDay, { passive: true });
 
   const slot = el("div.chat-slot");
-  const node = el("section.chat", {}, el("div.chat-view", {}, head, el("div.chat-fade"), log, el("div.chat-foot", {}, slot, box.node)));
+  const node = el("section.chat", {}, el("div.chat-view", {}, head, log, el("div.chat-fade"), el("div.chat-fade.bottom"), el("div.chat-foot", {}, slot, box.node)));
 
   void load().then(async () => {
     if (liveSession) followLive(liveSession);
