@@ -1,4 +1,4 @@
-import type { Effort, Agent, Ask, Automation, Need, ContextItem, LogMessage, Routine, TaskItem, TaskStatus, Diagnostic, SlashCommand, DiskSession, Entry, ModuleInfo, PaiEvent, ProjectSummary, SessionSummary, Status, SyncReport, TerminalSummary, Usage } from "./types.ts";
+import type { Effort, Agent, AgentInstructions, Ask, Automation, Need, ContextItem, LogMessage, Routine, TaskItem, TaskStatus, Diagnostic, SlashCommand, DiskSession, Entry, ModuleInfo, PaiEvent, ProjectSummary, SessionSummary, Status, SyncReport, TerminalSummary, Usage } from "./types.ts";
 
 /**
  * The daemon, with the app's offline story in one place: every GET is cached, a failed GET
@@ -287,11 +287,14 @@ export const threadsIn = (cwd: string) => get<DiskSession[]>(`/threads?cwd=${enc
 // ---- the staff: pai and its agents, the message log, tasks, asks, routines ----------------
 
 export const agents = () => get<Agent[]>("/agents");
-export const messages = (agent: string, options: { before?: number; after?: number; limit?: number } = {}) =>
-  get<LogMessage[]>(`/messages?agent=${encodeURIComponent(agent)}&limit=${options.limit ?? 100}${options.before ? `&before=${options.before}` : ""}${options.after ? `&after=${options.after}` : ""}`);
+/** One agent's chat, or with `task` that task's thread whoever wrote in it. */
+export const messages = (agent: string, options: { before?: number; after?: number; limit?: number; task?: number } = {}) =>
+  get<LogMessage[]>(`/messages?${options.task ? `task=${options.task}` : `agent=${encodeURIComponent(agent)}`}&limit=${options.limit ?? 100}${options.before ? `&before=${options.before}` : ""}${options.after ? `&after=${options.after}` : ""}`);
 export const messageHeadline = (id: number) => get<{ headline: string | null; enabled: boolean }>(`/messages/${id}/headline`);
 export const messageTldr = (id: number) => get<{ tldr: string | null; enabled: boolean }>(`/messages/${id}/tldr`);
-export const messageAgent = (slug: string, text: string) => send(`/agents/${slug}/message`, { text });
+export const messageAgent = (slug: string, text: string, taskId?: number) => send(`/agents/${slug}/message`, { text, taskId });
+/** What an agent is told: its own files and the instructions appended to Claude Code's. */
+export const agentInstructions = (slug: string) => get<AgentInstructions>(`/agents/${slug}/instructions`);
 export const closeAgent = (slug: string) => send(`/agents/${slug}/close`, {});
 export const taskItems = async () => (await tasks()).items ?? [];
 export const createTask = (input: { title: string; owner?: string; due?: string }) => send("/tasks", input);

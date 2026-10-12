@@ -212,6 +212,29 @@ export interface Agent {
   readonly queued?: number;
   /** Capabilities it was given that no MCP server here provides: tools it will not have. */
   readonly unresolvedTools?: readonly string[];
+  readonly effort?: Effort | null;
+  readonly project?: string | null;
+  readonly budget?: { readonly turnsPerDay: number; readonly turnMinutes: number };
+  readonly createdAt?: number;
+  readonly closedAt?: number | null;
+  /** Plain threads it started (pai's: terminals and chats too), live or active within a week. */
+  readonly threads?: readonly AgentThread[];
+}
+
+export interface AgentThread {
+  readonly sessionId: string;
+  readonly shortId: string;
+  readonly title: string;
+  readonly project: string | null;
+  readonly state: string;
+  readonly lastActivity: number;
+}
+
+/** `GET /agents/<slug>/instructions`: its own files (CLAUDE.md and what that imports) and what is appended to Claude Code's prompt. */
+export interface AgentInstructions {
+  readonly folder: string;
+  readonly files: readonly { readonly name: string; readonly text: string }[];
+  readonly system: string;
 }
 
 export type MessageKind = "chat" | "delegate" | "report" | "request" | "response" | "ask" | "answer" | "notice" | "event";

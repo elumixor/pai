@@ -361,17 +361,17 @@ export async function handle(req: Request): Promise<Response> {
       }
     }
     if (path === "/agents") return json(agents.tree(tasks.openCounts()));
-    const agentPath = /^\/agents\/([a-z0-9-]+)(?:\/(message|close|stop))?$/.exec(path);
+    const agentPath = /^\/agents\/([a-z0-9-]+)(?:\/(message|close|stop|instructions))?$/.exec(path);
     if (agentPath?.[1]) {
       const slug = agentPath[1];
       const a = agents.get(slug);
       if (!a) return json({ error: "no such agent" }, 404);
       try {
         if (agentPath[2] === "message" && req.method === "POST") {
-          const { text } = await body<{ text: string }>(req);
+          const { text, taskId } = await body<{ text: string; taskId?: number }>(req);
           if (!text?.trim()) return json({ error: "text required" }, 400);
           if (slug === agents.PAI) return json({ session: main.send(text).shortId });
-          return json(agents.fromUser(slug, text));
+          return json(agents.fromUser(slug, text, taskId));
         }
         // Stopping pai is stopping its one session; an agent stops with everything below it.
         if (agentPath[2] === "stop" && req.method === "POST") {
@@ -381,6 +381,7 @@ export async function handle(req: Request): Promise<Response> {
           }
           return json({ stopped: await agents.stop(slug) });
         }
+        if (agentPath[2] === "instructions") return json(agents.instructionsOf(a));
         if (agentPath[2] === "close" && req.method === "POST") return json(agents.close(slug, (await body<{ summary?: string }>(req).catch(() => ({}) as { summary?: string })).summary ?? ""));
         if (req.method === "PATCH") return json(agents.configure(slug, await body<Parameters<typeof agents.configure>[1]>(req)));
       } catch (err) {
@@ -398,7 +399,7 @@ export async function handle(req: Request): Promise<Response> {
     // The message log: one agent's chat (`agent`), paged back with `before`, caught up with `after`.
     if (path === "/messages") {
       const num = (k: string) => (url.searchParams.get(k) ? Number(url.searchParams.get(k)) : undefined);
-      return json(messages.list({ agent: url.searchParams.get("agent") ?? undefined, before: num("before"), after: num("after"), limit: num("limit") }));
+      return json(messages.list({ agent: url.searchParams.get("agent") ?? undefined, task: num("task"), before: num("before"), after: num("after"), limit: num("limit") }));
     }
 
     // A message to pai, the one chat; `wait` holds the response until pai has answered.

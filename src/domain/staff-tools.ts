@@ -250,7 +250,7 @@ export function staffTools(me: string | undefined) {
       tool(
         "message_agent",
         isPai ? "Hand work or a follow-up to an agent. It wakes with this as its next turn and reports back." : "Send one of your sub-agents a follow-up.",
-        { agent: z.string(), text: z.string(), task_id: z.number().optional() },
+        { agent: z.string(), text: z.string(), task_id: z.number().optional().describe("the task this is about: the message and the report go into that task's thread") },
         guard((a: { agent: string; text: string; task_id?: number }) => {
           const target = mine(self, a.agent);
           agents.message(target.slug, a.text, { from: self, kind: "delegate", taskId: a.task_id });

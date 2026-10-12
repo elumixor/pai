@@ -743,6 +743,47 @@ body.in-home .nav:hover { opacity: 0.85; }
 .ptree-hand { display: inline-flex; align-items: center; gap: 2px; color: var(--hand); opacity: 0.45; font: 400 9px/10px var(--font-ui); }
 .ptree-hand .icon { width: 10px; height: 10px; }
 .ptree-empty { opacity: 0.3; }
+/* the two sections on the left: the projects, then the threads (General › agent › … › its tasks and threads) */
+.side-head { padding: 4px 0 2px; font: 700 9.5px/12px var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-20); }
+.side-list + .side-head { margin-top: 14px; }
+.side-list { display: flex; flex-direction: column; }
+.ptree-name > .icon { flex: 0 0 auto; width: 10px; height: 10px; opacity: 0.3; }
+.ptree-row:hover .ptree-name > .icon, .ptree-row.on .ptree-name > .icon { opacity: 0.6; }
+.ptree-row.faint .label { opacity: 0.18; }
+.ptree-fold { display: inline-flex; padding: 2px; margin-left: -2px; opacity: 0; color: var(--ink); transition: opacity 0.18s ease, transform 0.18s ease; }
+.ptree-fold .icon { width: 8px; height: 8px; }
+.ptree-fold.closed { opacity: 0.3; transform: rotate(-90deg); }
+.ptree-row:hover .ptree-fold { opacity: 0.45; }
+
+/* the right: the agent the open chat is with, and what it is told */
+.home-info { position: absolute; top: 102px; right: 50px; width: 250px; bottom: 20px; z-index: 2; overflow-y: auto; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-45); }
+.home-info::-webkit-scrollbar { display: none; }
+.home.board-mode .home-info { display: none; }
+@media (max-width: 1240px) { .home-info { display: none; } }
+.info { display: flex; flex-direction: column; gap: 7px; }
+.info-title { display: flex; align-items: center; gap: 6px; font-weight: 700; color: var(--ink-70); }
+.info-title .icon { flex: 0 0 auto; opacity: 0.5; }
+.info-link { padding: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; text-decoration: underline; text-decoration-color: var(--ink-20); text-underline-offset: 2px; }
+.info-fact { display: flex; gap: 8px; min-width: 0; }
+.info-key { flex: 0 0 52px; color: var(--ink-30); }
+.info-val { min-width: 0; overflow-wrap: anywhere; color: var(--ink-45); }
+.info-val a { color: inherit; }
+.info-text { color: var(--ink-45); overflow-wrap: anywhere; }
+.info-text > :first-child { margin-top: 0; }
+.info-text > :last-child { margin-bottom: 0; }
+.info-sep { height: 1px; margin: 6px 0; background: var(--ink-10); }
+.info-head { font: 700 9.5px/12px var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-20); }
+.info-files { display: flex; flex-direction: column; gap: 6px; }
+.info-doc > summary { cursor: pointer; color: var(--ink-45); list-style: none; display: flex; align-items: center; gap: 5px; }
+.info-doc > summary::-webkit-details-marker { display: none; }
+.info-doc > summary::before { content: "›"; display: inline-block; width: 8px; color: var(--ink-30); transition: transform 0.18s ease; }
+.info-doc[open] > summary::before { transform: rotate(90deg); }
+.info-doc > summary:hover { color: var(--ink-70); }
+.info-doc-body { margin: 6px 0 4px 13px; overflow-wrap: anywhere; }
+.info-doc-body .md-p, .info-doc-body p { margin: 0 0 6px; }
+.info-doc-body .md-h, .info-text .md-h { margin: 8px 0 4px; font-size: 11.5px; line-height: 15px; color: var(--ink-70); }
+.info-pre { margin: 0; white-space: pre-wrap; font: 400 10px/13px var(--mono); color: var(--ink-45); }
+.info-dim { margin: 0; color: var(--ink-20); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* the card a long hover over a project opens */
 .peek { position: fixed; z-index: 40; width: 385px; max-width: 60vw; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 12px; background: color-mix(in srgb, var(--ink) 3%, var(--canvas)); box-shadow: var(--soft-shadow), 0 0 0 1px var(--ink-10); font: 400 13px/18px var(--font-ui); color: var(--ink-70); pointer-events: none; letter-spacing: -0.005em; }

@@ -115,6 +115,8 @@ export interface ListOptions {
   after?: number;
   limit?: number;
   kinds?: MessageKind[];
+  /** One task's thread: every row about it, whoever wrote it. */
+  task?: number;
 }
 
 export function list(opts: ListOptions = {}): Message[] {
@@ -127,6 +129,10 @@ export function list(opts: ListOptions = {}): Message[] {
   } else if (opts.agent) {
     where.push("(sender = ? OR recipient = ? OR json_extract(meta, '$.agent') = ?)");
     args.push(opts.agent, opts.agent, opts.agent);
+  }
+  if (opts.task) {
+    where.push("task_id = ?");
+    args.push(opts.task);
   }
   if (opts.before) {
     where.push("id < ?");

@@ -96,11 +96,15 @@ function applyRoute(route: Route) {
   if (route.name === "editor") {
     showView("work");
     showEditor();
+    // `editor/<session>`: that thread, in the first pane unless it is open already.
+    const session = route.param ? sessions.find((s) => s.sessionId === route.param || s.shortId === route.param) : undefined;
+    if (session && state.threadA !== session.sessionId && state.threadB !== session.sessionId) openThread(session, "a");
     return;
   }
-  if (route.name === "home" || route.name === "board" || route.name === "chat") {
+  if (route.name === "home" || route.name === "board" || route.name === "chat" || route.name === "task") {
     showView("home");
-    const centre: Centre = route.name === "home" ? { kind: "chat" } : route.name === "board" ? { kind: "board", slug: route.param } : { kind: "agent", slug: route.param! };
+    const centre: Centre =
+      route.name === "home" ? { kind: "chat" } : route.name === "board" ? { kind: "board", slug: route.param } : route.name === "task" ? { kind: "task", id: Number(route.param) } : { kind: "agent", slug: route.param! };
     homePage!.show(centre);
   }
 }

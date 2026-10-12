@@ -147,6 +147,15 @@ describe("agents", () => {
     expect(messages.list({ agent: "hiring", kinds: ["report"] }).at(-1)!.to).toBe("pai");
   });
 
+  it("puts a task's delegation and the report it brings into that task's thread", () => {
+    const task = tasks.add({ title: "Hire a 2D artist", owner: "hiring" });
+    agents.message("hiring", "Shortlist three.", { from: "pai", kind: "delegate", taskId: task.id });
+    finish("hiring", "Shortlisted Ana, Bo and Cy.");
+    agents.flushReports();
+    expect(messages.list({ task: task.id }).map((m) => m.kind)).toEqual(["delegate", "report"]);
+    expect(agents.instructionsOf(agents.get("hiring")!).files.map((f) => f.name)).toEqual(["CLAUDE.md", "STATE.md"]);
+  });
+
   it("gathers reports that land together into one turn for pai", () => {
     agents.message("hiring", "How many applicants?", { from: "pai", kind: "delegate" });
     finish("hiring", "Five.");

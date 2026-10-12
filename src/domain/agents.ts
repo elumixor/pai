@@ -9,7 +9,7 @@ import { narrowed, unresolved } from "./capabilities.ts";
 import { get as getProject } from "./catalog.ts";
 import * as journal from "./journal.ts";
 import * as messages from "./messages.ts";
-import { agentInstructions } from "./prompts.ts";
+import { agentInstructions, instructionsFor } from "./prompts.ts";
 import type { AgentSetup, Effort, Session } from "./session.ts";
 import * as sessions from "./sessions.ts";
 
@@ -296,6 +296,14 @@ export function setupOf(a: Agent): AgentSetup {
 }
 
 
+/** What an agent is told, as the client shows it: its own files (CLAUDE.md and what it imports) and the instructions appended to Claude Code's. */
+export function instructionsOf(a: Agent) {
+  const own = readIf(join(a.folder, "CLAUDE.md"));
+  const imports = [...own.matchAll(/^@(\S+\.md)\s*$/gm)].map((m) => m[1]!);
+  const files = [{ name: "CLAUDE.md", text: own }, ...imports.map((name) => ({ name, text: readIf(join(a.folder, name)) }))].filter((f) => f.text.trim());
+  return { folder: a.folder, files, system: instructionsFor(isCoding(a) ? "code" : "chat", a.project ?? undefined, setupOf(a)) };
+}
+
 const readIf = (path: string) => (existsSync(path) ? readFileSync(path, "utf8") : "");
 const workdir = (a: Agent) => (a.project ? (getProject(a.project)?.path ?? a.folder) : a.folder);
 const isCoding = (a: Agent) => Boolean(a.project && getProject(a.project)?.kind === "repo");
@@ -347,6 +355,7 @@ interface Pending {
   slug: string;
   text: string;
   requestId?: number;
+  taskId?: number | null;
 }
 
 const QUEUE_KEY = "agent_queue";
@@ -361,9 +370,10 @@ const saveQueue = () => kv.set(QUEUE_KEY, JSON.stringify(queue));
 
 /**
  * The turns each agent has been sent and not finished, oldest first, with the request a turn
- * answers (0 for none): a session queues turns, so the head is the one whose end comes next.
+ * answers (0 for none) and the task it is about: a session queues turns, so the head is the one
+ * whose end comes next. The task's thread gets the turn's report.
  */
-const answering = new Map<string, number[]>();
+const answering = new Map<string, { requestId: number; taskId: number | null }[]>();
 const turnTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /** What each process had cost at its last turn end; the SDK reports a running total. */
 const booked = new Map<string, number>();
@@ -394,11 +404,11 @@ export function message(slug: string, text: string, opts: MessageOptions): messa
   if (a.kind === "orchestrator") throw new AgentError("pai is reached through main.ts");
   const row = opts.logged ? undefined : messages.log({ from: opts.from, to: slug, kind: opts.kind ?? "chat", body: text, taskId: opts.taskId, meta: { ...opts.meta, requestId: opts.requestId } });
   const prefix = opts.from === "user" ? "[the user, writing to you directly]" : opts.from === PAI ? "[pai]" : `[${get(opts.from)?.name ?? opts.from}]`;
-  wake(slug, `${prefix} ${text}${opts.taskId ? `\n\n(task #${opts.taskId})` : ""}`, opts.requestId);
+  wake(slug, `${prefix} ${text}${opts.taskId ? `\n\n(task #${opts.taskId})` : ""}`, opts.requestId, opts.taskId);
   return row;
 }
 
-function wake(slug: string, text: string, requestId?: number) {
+function wake(slug: string, text: string, requestId?: number, taskId?: number | null) {
   const a = get(slug)!;
   if (a.turnsToday >= a.budget.turnsPerDay) {
     messages.event(slug, "error", `${a.name} hit its budget of ${a.budget.turnsPerDay} turns today; not woken`, { to: a.parent ?? PAI });
@@ -410,18 +420,18 @@ function wake(slug: string, text: string, requestId?: number) {
   const alreadyWorking = a.status === "working" && s && s.state === "busy";
   const weight = isCoding(a) ? 2 : 1;
   if (!alreadyWorking && load() + weight > config.maxWorkingAgents) {
-    queue.push({ slug, text, requestId });
+    queue.push({ slug, text, requestId, taskId });
     saveQueue();
     setStatus(slug, "queued");
     log.info(`${slug} queued (${load()} working)`);
     return;
   }
-  run(a, text, requestId);
+  run(a, text, requestId, taskId);
 }
 
-function run(a: Agent, text: string, requestId?: number) {
+function run(a: Agent, text: string, requestId?: number, taskId?: number | null) {
   const s = ensureSession(a);
-  answering.set(a.slug, [...(answering.get(a.slug) ?? []), requestId ?? 0]);
+  answering.set(a.slug, [...(answering.get(a.slug) ?? []), { requestId: requestId ?? 0, taskId: taskId ?? null }]);
   const today = day();
   db.prepare("UPDATE agents SET turns_today = CASE WHEN turns_day = ? THEN turns_today + 1 ELSE 1 END, turns_day = ? WHERE slug = ?").run(today, today, a.slug);
   setStatus(a.slug, "working");
@@ -450,7 +460,7 @@ function drain() {
     if (load() + (isCoding(a) ? 2 : 1) > config.maxWorkingAgents) break;
     queue.shift();
     saveQueue();
-    run(a, next.text, next.requestId);
+    run(a, next.text, next.requestId, next.taskId);
   }
   saveQueue();
 }
@@ -460,7 +470,7 @@ export function deliver(slug: string, text: string, opts: { taskId?: number | nu
   const a = get(slug);
   if (!a || a.status === "closed") return;
   if (a.status === "waiting") setStatus(slug, "idle");
-  wake(slug, `${text}${opts.taskId ? `\n\n(task #${opts.taskId})` : ""}`);
+  wake(slug, `${text}${opts.taskId ? `\n\n(task #${opts.taskId})` : ""}`, undefined, opts.taskId);
 }
 
 /** Context for an agent's next turn without one now; an agent with no live process gets a turn instead. */
@@ -473,10 +483,10 @@ export function noteTo(slug: string, text: string) {
 }
 
 /** The user wrote in an agent's own chat: that is a message to the agent, and pai gets a line about it. */
-export function fromUser(slug: string, text: string) {
+export function fromUser(slug: string, text: string, taskId?: number | null) {
   const a = get(slug);
   if (!a) throw new AgentError(`no agent ${slug}`);
-  const row = message(slug, text, { from: "user", kind: "chat" });
+  const row = message(slug, text, { from: "user", kind: "chat", taskId });
   notePai(`[the user stepped into ${breadcrumb(slug)}'s chat] ${text.replace(/\s+/g, " ").slice(0, 200)}`);
   return row;
 }
@@ -549,7 +559,7 @@ function turnEnded(a: Agent, payload: Record<string, unknown>) {
 
   // A turn that answered a request has its text as the response.
   const pending = answering.get(a.slug) ?? [];
-  const requestId = pending.shift() ?? 0;
+  const { requestId, taskId } = pending.shift() ?? { requestId: 0, taskId: null };
   if (requestId) onAnswered(requestId, a.slug, text);
   const ids = requestId ? [requestId] : [];
 
@@ -566,12 +576,12 @@ function turnEnded(a: Agent, payload: Record<string, unknown>) {
       const closed = close(a.slug, report.split("\n")[0]!.slice(0, 200));
       if (closed.folder !== a.folder) report = report.replaceAll(a.folder, closed.folder);
     }
-    messages.log({ from: a.slug, to: a.parent ?? PAI, kind: "report", body: report, meta: { agent: a.slug } });
+    messages.log({ from: a.slug, to: a.parent ?? PAI, kind: "report", body: report, taskId, meta: { agent: a.slug } });
     if (a.parent === PAI || !a.parent) {
       toPai(`[${a.name} reported]\n${report}`);
     } else {
       const parent = get(a.parent);
-      if (parent && parent.status !== "closed") message(parent.slug, `${a.name} reported:\n${report}`, { from: a.slug, kind: "report", meta: { agent: a.slug } });
+      if (parent && parent.status !== "closed") message(parent.slug, `${a.name} reported:\n${report}`, { from: a.slug, kind: "report", taskId, meta: { agent: a.slug } });
     }
   }
   drain();

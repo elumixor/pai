@@ -31,6 +31,8 @@ export interface ChatContext {
 export interface ChatOptions {
   /** Whose log: `pai` for the main chat, an agent's slug for its thread. */
   readonly agent: string;
+  /** A task's thread inside the agent's: only the rows about that task. */
+  readonly task?: number;
   /** The side the other party of the log sits on: the user for pai, the parent for an agent. */
   readonly parent: string;
   /** What the column is headed with: "General" for pai, the agent's name for a thread. */
@@ -394,8 +396,10 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         // Handed to this agent by its parent: reads as the message it is, not a card about one.
         return mine(m) && m.to === options.agent ? mineRow(m) : card(m);
       case "report":
-      case "request":
       case "response":
+        // In its own chat what an agent hands back is its reply, drawn as the orchestrator's are.
+        return m.from === options.agent ? replyRow(m) : card(m);
+      case "request":
         return card(m);
       case "ask":
         return askRow(m);
@@ -623,7 +627,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   // ---- loading and following -------------------------------------------------------------
 
   async function load() {
-    const [page, open, needs] = await Promise.all([listMessages(options.agent, { limit: PAGE }), listAsks().catch(() => []), listNeeds().catch(() => [])]);
+    const [page, open, needs] = await Promise.all([listMessages(options.agent, { limit: PAGE, task: options.task }), listAsks().catch(() => []), listNeeds().catch(() => [])]);
     for (const a of open) openAsks.add(a.id);
     for (const m of page) {
       seen.add(m.id);
@@ -633,7 +637,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     more = page.length >= PAGE;
     liveSession = await options.live?.();
     if (liveSession) await loadTools(liveSession);
-    items.push(...addQuestions(needs));
+    if (options.task === undefined) items.push(...addQuestions(needs));
     loading = false;
     drawAll();
     scroll();
@@ -656,7 +660,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   async function loadEarlier() {
     const first = items.find((i): i is Row => i.kind === "message");
     if (!first) return;
-    const older = await listMessages(options.agent, { before: first.m.id, limit: PAGE }).catch(() => []);
+    const older = await listMessages(options.agent, { before: first.m.id, limit: PAGE, task: options.task }).catch(() => []);
     const fresh = older.filter((m) => !seen.has(m.id));
     for (const m of fresh) {
       seen.add(m.id);
@@ -669,7 +673,8 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   }
 
   // pai's chat also holds every question put to the user and every answer, whoever asked.
-  const concerns = (m: LogMessage) => m.from === options.agent || m.to === options.agent || m.meta.agent === options.agent || (options.agent === PAI && (m.kind === "ask" || m.kind === "answer") && (m.to === "user" || m.from === "user"));
+  const concerns = (m: LogMessage) =>
+    options.task !== undefined ? m.taskId === options.task : m.from === options.agent || m.to === options.agent || m.meta.agent === options.agent || (options.agent === PAI && (m.kind === "ask" || m.kind === "answer") && (m.to === "user" || m.from === "user"));
 
   const stopLog = follow(
     undefined,
@@ -691,7 +696,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
           break;
         // A question in a session this chat does not stream (an agent's, or one pai asked before a rotation).
         case "session.question":
-          if (event.sessionId !== liveSession)
+          if (event.sessionId !== liveSession && options.task === undefined)
             void listNeeds().then((needs) => {
               const stick = nearBottom();
               for (const q of addQuestions(needs)) place(q);
