@@ -476,7 +476,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         { onclick: () => row.classList.toggle("open") },
         eventIcon(first),
         el("span.pill-text", {}, `${rows.length} ${typeLabel(eventType(first))}`),
-        el("span.when", {}, `${clock(first.createdAt)}–${clock(last.createdAt)}`),
+        el("span.when", {}, clock(last.createdAt)),
         chevron(),
       ),
       body,
