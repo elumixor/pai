@@ -2,6 +2,7 @@ import { answerAsk, answerQuestion, asks as listAsks, dropAsk, follow, messages 
 import { compose, type Compose, type Prefs } from "./compose.ts";
 import { clear, el } from "./dom.ts";
 import { icon } from "./icons.ts";
+import { EVENT_ICONS } from "../../../src/protocol/rich.ts";
 import { kindIcon, kindTint } from "./kinds.ts";
 import { inline, markdown } from "./markdown.ts";
 import { resultLine, toolLine } from "./thread.ts";
@@ -345,7 +346,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         title: `${firstLine(m.body)}\n${new Date(m.createdAt).toLocaleString()}${m.meta.link ? `\n${m.meta.link}` : ""}`,
         onclick: () => row.classList.toggle("open"),
       },
-      el("span.pill-line", {}, kindIcon(name, 10), headlineOf(m), el("span.when", {}, clock(m.createdAt)), chevron()),
+      el("span.pill-line", {}, eventIcon(m), headlineOf(m), el("span.when", {}, clock(m.createdAt)), chevron()),
       el("div.event-body", {}, markdown(m.body), m.meta.link ? el("a", { href: m.meta.link, target: "_blank", rel: "noreferrer" }, icon("external", 10), " open") : undefined),
     );
     row.dataset.at = String(m.createdAt);
@@ -450,19 +451,86 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     item.node = fresh;
   }
 
-  /** Everything, in order, a day separator where the day changes. */
+  // ---- runs of events: Telegram, Email, Telegram, Email between two replies become "2 Telegram", "2 Email" ----
+
+  const isEvent = (item: Item): item is Row => item.kind === "message" && item.m.kind === "event";
+  /** What an event is of: its source when it has one (telegram, gmail), else its event name. */
+  const eventType = (m: LogMessage) => ((m.meta as { source?: string }).source ?? m.meta.event ?? "event").toLowerCase();
+  const TYPE_LABEL: Record<string, string> = { telegram: "Telegram", gmail: "Email", mail: "Email", linkedin: "LinkedIn", "routine.fired": "routines", "calendar.upcoming": "calendar events", "item.arrived": "items" };
+  const typeLabel = (type: string) => TYPE_LABEL[type] ?? type.replace(/^item\./, "");
+  /** The icon by where it came from when the source has one (Telegram, LinkedIn), else by the event. */
+  const eventIcon = (m: LogMessage) => kindIcon(`item.${eventType(m)}` in EVENT_ICONS ? `item.${eventType(m)}` : (m.meta.event ?? "event"), 10);
+
+  /** One row standing for several events of a type; a click unfolds them. */
+  function groupRow(rows: readonly Row[]) {
+    const first = rows[0]!.m;
+    const last = rows[rows.length - 1]!.m;
+    const body = el("div.event-body.group-body");
+    const row = el(
+      "div.row.pill.event.group.tint-muted",
+      { "data-at": first.createdAt },
+      el(
+        "button.pill-line",
+        { onclick: () => row.classList.toggle("open") },
+        eventIcon(first),
+        el("span.pill-text", {}, `${rows.length} ${typeLabel(eventType(first))}`),
+        el("span.when", {}, `${clock(first.createdAt)}–${clock(last.createdAt)}`),
+        chevron(),
+      ),
+      body,
+    );
+    for (const r of rows) {
+      r.node = render(r);
+      body.append(r.node);
+    }
+    return row;
+  }
+
+  /** A run of consecutive events, as nodes: a type that occurs more than once in it is one group row at its first position. */
+  function renderRun(run: readonly Row[]): HTMLElement[] {
+    const byType = new Map<string, Row[]>();
+    for (const r of run) byType.set(eventType(r.m), [...(byType.get(eventType(r.m)) ?? []), r]);
+    const nodes: HTMLElement[] = [];
+    const done = new Set<string>();
+    for (const r of run) {
+      const type = eventType(r.m);
+      const group = byType.get(type)!;
+      if (group.length < 2) {
+        r.node = render(r);
+        nodes.push(r.node);
+      } else if (!done.has(type)) {
+        done.add(type);
+        nodes.push(groupRow(group));
+      }
+    }
+    return nodes;
+  }
+
+  /** Everything, in order, a day separator where the day changes, runs of events compacted. */
   function drawAll() {
     items.sort((a, b) => a.at - b.at);
     const nodes: HTMLElement[] = [];
     let day = "";
+    let run: Row[] = [];
+    const flush = () => {
+      if (run.length) nodes.push(...renderRun(run));
+      run = [];
+    };
     for (const item of items) {
       if (dayOf(item.at) !== day) {
+        flush();
         day = dayOf(item.at);
         nodes.push(el("div.day", {}, el("span", {}, dayLabel(item.at))));
       }
+      if (isEvent(item)) {
+        run.push(item);
+        continue;
+      }
+      flush();
       item.node = render(item);
       nodes.push(item.node);
     }
+    flush();
     const earlier = more ? el("button.btn.chat-more", { onclick: () => void loadEarlier() }, "Load earlier") : undefined;
     clear(log, earlier, ...nodes, ...(items.length ? [] : [el("p.hint", {}, loading ? "…" : "Nothing said here yet.")]));
     if (liveText) log.append(liveText);
@@ -475,9 +543,19 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     const stick = nearBottom();
     log.querySelector(":scope > .hint")?.remove();
     const previous = items[items.length - 2];
-    if (previous && dayOf(previous.at) !== dayOf(item.at)) log.append(el("div.day", {}, el("span", {}, dayLabel(item.at))));
-    item.node = render(item);
-    log.insertBefore(item.node, liveText?.isConnected ? liveText : (working?.node ?? null));
+    const newDay = Boolean(previous && dayOf(previous.at) !== dayOf(item.at));
+    if (newDay) log.append(el("div.day", {}, el("span", {}, dayLabel(item.at))));
+    const before = liveText?.isConnected ? liveText : (working?.node ?? null);
+    if (isEvent(item) && !newDay) {
+      // The event joins the run before it: the run is drawn again in place.
+      const run: Row[] = [];
+      for (let i = items.length - 1; i >= 0 && isEvent(items[i]!) && dayOf(items[i]!.at) === dayOf(item.at); i -= 1) run.unshift(items[i] as Row);
+      for (const node of log.querySelectorAll<HTMLElement>(":scope > .row.event, :scope > .row.group")) if (run.some((r) => r.node === node || node.contains(r.node))) node.remove();
+      for (const node of renderRun(run)) log.insertBefore(node, before);
+    } else {
+      item.node = render(item);
+      log.insertBefore(item.node, before);
+    }
     if (stick) scroll();
   }
 

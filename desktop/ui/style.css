@@ -842,6 +842,11 @@ time { color: inherit; font: inherit; }
 .row.pill .card-body, .row.pill .event-body, .row.notice .event-body { display: none; padding: 6px 0 4px 16px; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-45); }
 .row.pill.open .card-body, .row.pill.open .event-body, .row.notice.open .event-body { display: block; }
 .row.pill .event-body a { color: var(--model); }
+.row.group { cursor: default; }
+.row.group .pill-line { cursor: pointer; }
+.row.group .group-body { display: none; flex-direction: column; gap: 12px; width: 100%; padding: 8px 0 4px 0; }
+.row.group.open .group-body { display: flex; }
+.row.group .group-body .row { padding: 0; }
 .row.decision .event-body { color: var(--ink-70); font: 400 var(--body)/var(--body-lh) var(--font-body); display: none; flex-direction: column; gap: 8px; }
 .row.decision.open .event-body { display: flex; }
 .row.card.tint-ok .pill-line, .row.answer .pill-line, .row.tint-ok .pill-line { color: var(--ok); opacity: 0.85; }
