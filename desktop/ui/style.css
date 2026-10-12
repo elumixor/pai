@@ -773,8 +773,6 @@ body.in-home .btn.chat-more:hover { color: var(--ink-70); }
 
 /* every hover is the same quiet move: a little more ink, eased */
 .pill-line, .tools-head, .meta-line, .more, .nav-item, .opt, .needs-btn, .compose-tool, .compose-send, .ptree-row .label, .ptree-hand, .q-meta, .day, .chat-more, .menu-row, .row.mine, .row.reply .row-foot, .row.working { transition: opacity 0.18s ease, background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease; }
-.row.reply .row-foot { opacity: 0.6; }
-.row.reply:hover .row-foot { opacity: 1; }
 .row.mine:hover { background: color-mix(in srgb, var(--mine-bg) 100%, var(--ink) 4%); }
 .row.question .q-meta, .row.question .q-crumb { transition: opacity 0.18s ease; }
 .row.question:hover .q-meta, .row.question:hover .q-crumb { opacity: 0.8; }
