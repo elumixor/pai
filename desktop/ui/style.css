@@ -902,7 +902,7 @@ time { color: inherit; font: inherit; }
 .row.working b { font-weight: 400; }
 
 /* the hand: what waits on you, and the list that unfolds above it */
-.chat-foot { position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; padding-bottom: 67px; }
+.chat-foot { position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; padding-bottom: 28px; }
 .needs { position: relative; }
 .chat-foot-side { display: flex; align-items: center; justify-content: flex-end; gap: 8px; width: 100%; }
 .to-bottom { display: inline-flex; align-items: center; justify-content: center; width: 27px; height: 27px; border: 0; border-radius: 50%; background: var(--surface); box-shadow: var(--card-shadow); color: var(--ink-45); cursor: pointer; transition: opacity 0.18s ease, color 0.18s ease; }
