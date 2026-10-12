@@ -758,8 +758,8 @@ body.in-home .nav:hover { opacity: 0.85; }
 .chat-head { position: absolute; top: -23px; left: 0; right: 0; z-index: 4; display: flex; flex-direction: column; align-items: center; gap: 9px; pointer-events: none; }
 .chat-title { font: 700 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-30); pointer-events: auto; }
 .chat-title.sub { font-weight: 400; color: var(--ink-20); }
-.crumbs { display: inline-flex; align-items: center; gap: 0; }
-.crumb { padding: 0; border: 0; background: none !important; box-shadow: none; font: inherit; color: var(--ink-45); opacity: 0.65; cursor: pointer; transition: opacity 0.18s ease; }
+.crumbs { display: inline-flex; align-items: center; gap: 0; font: 700 var(--meta)/var(--meta-lh) var(--font-ui); }
+.crumb { margin: 0; padding: 0; border: 0; background: none !important; box-shadow: none; font: 700 var(--meta)/var(--meta-lh) var(--font-ui); line-height: var(--meta-lh); color: var(--ink-45); opacity: 0.65; cursor: pointer; transition: opacity 0.18s ease; }
 button.crumb:hover, button.crumb:focus-visible { opacity: 1; background: none; }
 .crumb.here { cursor: default; opacity: 1; }
 .crumb-sep { margin: 0 8px; color: var(--ink-20); font-weight: 400; }
