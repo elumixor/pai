@@ -374,7 +374,7 @@ export async function handle(req: Request): Promise<Response> {
       } catch (err) {
         return json({ error: (err as Error).message }, 400);
       }
-      return json({ ...a, breadcrumb: agents.breadcrumb(slug), children: agents.list({ parent: slug }), tasks: tasks.list({ owner: slug }) });
+      return json({ ...a, breadcrumb: agents.breadcrumb(slug), children: agents.list({ parent: slug }), tasks: tasks.list({ owner: slug, open: false }) });
     }
 
     // The gist of one message, written on first request and kept.

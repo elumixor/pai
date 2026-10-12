@@ -18,18 +18,18 @@ export interface TreeRow {
   readonly group: boolean;
 }
 
-export function projectTree(root: HTMLElement, rows: readonly TreeRow[], onOpen: (id: string) => void, empty = "No projects yet.") {
+export function projectTree(root: HTMLElement, rows: readonly TreeRow[], onOpen: (id: string) => void, arm?: (row: HTMLElement, id: string) => void, empty = "No projects yet.") {
   const groups: HTMLElement[] = [];
   for (const row of rows) {
     if (row.group || !groups.length) groups.push(el("div.ptree-group"));
-    groups[groups.length - 1]!.append(
-      el(
-        "button.ptree-row",
-        { class: `ptree-row${row.on ? " on" : ""}`, style: `--depth: ${row.depth}`, title: row.title, onclick: () => onOpen(row.id) },
-        el("span.ptree-name", {}, row.working ? el("span.spinner", { title: "working now" }) : undefined, el("span.label", {}, row.label)),
-        row.waiting ? el("span.ptree-hand", { title: `${row.waiting} waiting on you` }, icon("hand", 10), el("span", {}, String(row.waiting))) : undefined,
-      ),
+    const node = el(
+      "button.ptree-row",
+      { class: `ptree-row${row.on ? " on" : ""}`, style: `--depth: ${row.depth}`, title: arm ? undefined : row.title, onclick: () => onOpen(row.id) },
+      el("span.ptree-name", {}, row.working ? el("span.spinner") : undefined, el("span.label", {}, row.label)),
+      row.waiting ? el("span.ptree-hand", {}, icon("hand", 10), el("span", {}, String(row.waiting))) : undefined,
     );
+    arm?.(node, row.id);
+    groups[groups.length - 1]!.append(node);
   }
   clear(root, ...(groups.length ? groups : [el("p.ptree-empty", {}, empty)]));
 }

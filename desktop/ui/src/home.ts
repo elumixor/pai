@@ -3,6 +3,7 @@ import { board, type Board } from "./board.ts";
 import { chat, type Chat, type RevealTarget } from "./chat.ts";
 import { clear, el, modelName } from "./dom.ts";
 import { needsButton } from "./needs.ts";
+import { projectPeek } from "./peek.ts";
 import { projectTree, type TreeRow } from "./ptree.ts";
 import { navigate } from "./router.ts";
 import type { Agent, AgentStatus, Effort, LogMessage, Need, SessionSummary, TaskItem } from "./types.ts";
@@ -121,7 +122,20 @@ export function home(root: HTMLElement) {
     return out;
   }
 
-  const drawTree = () => projectTree(sidePane, treeRows(), (slug) => ctx.openAgent(slug));
+  /** The decisions a project holds: its own and those of the sub-agents folded into it. */
+  const needsOf = (slug: string) => {
+    const known = new Map(agents.map((a) => [a.slug, a]));
+    const under = (s: string): boolean => {
+      for (let a = known.get(s); a; a = a.parent ? known.get(a.parent) : undefined) {
+        if (a.slug === slug) return true;
+        if (a.slug !== s && shown(a)) return false;
+      }
+      return false;
+    };
+    return needs.filter((n) => n.agent && under(n.agent));
+  };
+  const peek = projectPeek({ needsOf });
+  const drawTree = () => projectTree(sidePane, treeRows(), (slug) => ctx.openAgent(slug), peek.attach);
 
   // ---- the centre ----------------------------------------------------------------------------
 
