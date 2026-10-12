@@ -832,12 +832,12 @@ time { color: inherit; font: inherit; }
 
 /* one-liners: an event, a report, a delegation, a tool group — icon, text, time, chevron */
 .row.pill, .row.event, .row.card, .row.notice, .row.answer, .row.tools { display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 0 12px; border: 0; background: none; text-align: left; cursor: pointer; }
-.pill-line { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; padding: 0; border-radius: 0; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink); opacity: 0.45; }
+.pill-line { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; width: fit-content; padding: 0; border-radius: 0; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink); opacity: 0.45; }
 .row.pill:hover .pill-line, .row.tools .tools-head:hover { opacity: 0.8; background: none; }
 .row.card.tint-ok:hover .pill-line, .row.tint-ok:hover .pill-line, .row.pill.tint-hot:hover .pill-line { opacity: 1; }
 .pill-line .icon { width: 10px; height: 10px; }
 .pill-line .icon-chevron { width: 9px; height: 9px; margin-left: 4px; }
-.pill-line .pill-text { max-width: 44ch; color: inherit; }
+.pill-line .pill-text { flex: 0 1 auto; min-width: 0; color: inherit; }
 .pill-line b { color: inherit; font-weight: 400; white-space: nowrap; }
 .pill-line .when { white-space: nowrap; }
 .row.pill.open .pill-line .pill-text { max-width: none; white-space: normal; }
