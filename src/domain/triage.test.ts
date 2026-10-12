@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { delegatable, toItem } from "./triage.ts";
+import { delegatable, noteWith, toItem } from "./triage.ts";
 
 const event = (kind: string, payload: Record<string, unknown>) => ({ kind, payload, ts: 1_760_000_000_000 });
 
@@ -41,8 +41,56 @@ describe("what may reach an agent", () => {
     expect(delegatable(chat({ from: "Dan", chat: "", text: "when?" }), brief)).toBe(false);
   });
 
-  test("everything that is not group chatter is untouched", () => {
-    expect(delegatable(toItem(event("telegram.dm", { from: "Anna", text: "hi" })), brief)).toBe(true);
+  test("everything that is not his own message or group chatter is untouched", () => {
     expect(delegatable(toItem(event("gmail.new", { from: "a@b.c", subject: "x" })), "")).toBe(true);
+  });
+});
+
+describe("a DM he wrote himself", () => {
+  const brief = "Hiring for ATMA Gaming: screen candidates, talk to QA_Mary about the test plan.";
+  // The real rows behind this: event #21760 (incoming, Iron Ann) and the one that woke pai-dev as
+  // task #39 (outgoing, blank name before pai-telegram bc48e15).
+  const incoming = toItem(event("telegram.dm", { from: "Iron Ann", chat: "Iron Ann", chatKind: "dm", out: false, mentioned: false, text: "Поезд аж в 4" }));
+  const mine = (chat: string) => toItem(event("telegram.dm", { from: "me", chat, chatKind: "dm", out: true, mentioned: false, text: "Привет) https://t.me/QA_Mary" }));
+
+  test("a person writing to him still routes", () => {
+    expect(delegatable(incoming, brief)).toBe(true);
+    expect(delegatable(incoming, "nothing about this person")).toBe(true);
+  });
+
+  test("what he wrote is an event and nothing more", () => {
+    expect(delegatable(mine("Iron Ann"), brief)).toBe(false);
+    // The blank name the old module produced must not match a brief either.
+    expect(delegatable(mine(""), brief)).toBe(false);
+  });
+
+  test("unless an agent's brief names that person", () => {
+    expect(delegatable(mine("QA_Mary"), brief)).toBe(true);
+  });
+});
+
+describe("a filed task's notes stay readable", () => {
+  const body = "Намаскар, а у нас есть какой-нибудь зум аккаунт который мы можем использовать? В 17:15 по средам";
+  const line = (day: string, what = "you wrote to Iron Ann on Telegram") => `2026-10-${day} ${what}`;
+
+  test("the same event again updates its line instead of adding another", () => {
+    const once = noteWith(body, line("11"));
+    const twice = noteWith(once, line("12"));
+    expect(twice.split("\n")).toEqual([body, line("12")]);
+  });
+
+  test("different events keep their own lines, newest last", () => {
+    const notes = noteWith(noteWith(body, line("11", "A")), line("12", "B"));
+    expect(notes.split("\n")).toEqual([body, line("11", "A"), line("12", "B")]);
+  });
+
+  test("the log is bounded, and the body it was created with survives", () => {
+    let notes = body;
+    for (let i = 1; i <= 15; i++) notes = noteWith(notes, line("12", `item ${i}`));
+    const lines = notes.split("\n");
+    expect(lines[0]).toBe(body);
+    expect(lines).toHaveLength(11);
+    expect(lines.at(-1)).toContain("item 15");
+    expect(notes).not.toContain("item 4");
   });
 });

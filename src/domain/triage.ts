@@ -65,7 +65,8 @@ export function toItem(e: PaiEvent): Item {
 }
 
 /**
- * Whether an item may be handed to an agent at all. A group post reaching an agent has to earn it:
+ * Whether an item may be handed to an agent at all. Anything he wrote, and any group post, has to
+ * earn it:
  * a small model will connect anything to a brief that mentions chats at all — an Ananda Marga
  * retreat went to Hiring because its brief names Telegram chats — and his groups are mostly
  * personal, at a few messages an hour. So a chat post is delegated only on a signal that needs no
@@ -74,11 +75,36 @@ export function toItem(e: PaiEvent): Item {
  * an event in the log — visible, not delegated, and a misroute then costs nothing.
  */
 export function delegatable(item: Item, brief: string): boolean {
-  if (item.kind !== "telegram.chat") return true;
   const p = item.payload as { out?: boolean; mentioned?: boolean; chat?: string };
-  if (p.out || p.mentioned) return true;
-  const chat = (p.chat ?? "").trim();
-  return chat.length > 2 && brief.toLowerCase().includes(chat.toLowerCase());
+  if (item.kind === "telegram.chat") return p.out || p.mentioned ? true : named(brief, p.chat);
+  // A message he wrote is not a request to anyone: his own DM is an event in the log and nothing
+  // more. Incoming DMs are a person writing to him, and those still route.
+  if (item.kind === "telegram.dm" && p.out) return named(brief, p.chat);
+  return true;
+}
+
+/** Whether a brief names this chat or person. A short or missing name must not match everything. */
+const named = (brief: string, chat: string | undefined) => {
+  const name = (chat ?? "").trim();
+  return name.length > 2 && brief.toLowerCase().includes(name.toLowerCase());
+};
+
+/** How many of the dated lines a filed task's notes keep; older ones fall off the end. */
+const KEPT_LINES = 10;
+const DATED = /^\d{4}-\d{2}-\d{2} /;
+
+/**
+ * A line for the event just filed under an existing task. The same thing happening again updates its
+ * line instead of adding another: task #39's notes had grown to a dozen identical
+ * "you wrote to … on Telegram" lines, which buried the one real question in it. The body the task was
+ * created with is left alone; only the dated log is deduplicated and bounded.
+ */
+export function noteWith(notes: string, line: string, keep = KEPT_LINES): string {
+  const what = (l: string) => l.replace(DATED, "");
+  const lines = notes.split("\n").filter((l) => !(DATED.test(l) && what(l) === what(line)));
+  const body = lines.filter((l) => !DATED.test(l));
+  const log = [...lines.filter((l) => DATED.test(l)), line].slice(-keep);
+  return [...body, ...log].join("\n").trim();
 }
 
 /** The routines' sink: the item waits for the rest of its burst. */
@@ -203,7 +229,8 @@ export function apply(items: Item[], decisions: Decision[]) {
     try {
       if (d.action === "ignore") continue;
       if (d.action === "file") {
-        if (d.task && tasks.get(d.task)) tasks.update(d.task, { notes: `${tasks.get(d.task)!.notes}\n${new Date(item.at).toISOString().slice(0, 10)} ${item.title}${item.link ? ` ${item.link}` : ""}`.trim() });
+        if (d.task && tasks.get(d.task))
+          tasks.update(d.task, { notes: noteWith(tasks.get(d.task)!.notes, `${new Date(item.at).toISOString().slice(0, 10)} ${item.title}${item.link ? ` ${item.link}` : ""}`) });
         else tasks.add({ title: d.title || item.title, owner: d.owner && agents.get(d.owner) ? d.owner : agents.PAI, source: item.link, notes: item.body.slice(0, 1000), createdBy: "event" });
       } else if (d.action === "wake") {
         const a = agents.get(d.agent);
