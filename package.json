@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p desktop/ui",
     "test": "bun run scripts/test.ts",
     "editor": "bun run scripts/editor.ts",
-    "postinstall": "chmod +x node_modules/node-pty/prebuilds/*/spawn-helper 2>/dev/null || true",
+    "postinstall": "chmod +x node_modules/node-pty/prebuilds/*/spawn-helper 2>/dev/null || true; node -e \"require('node-pty')\" 2>/dev/null || (cd node_modules/node-pty && npx --yes node-gyp rebuild >/dev/null 2>&1) || true",
     "desktop": "bun run scripts/desktop.ts",
     "desktop:build": "bun run scripts/desktop.ts --build",
     "build:ui": "bun -e 'const {buildUi} = await import(\"./scripts/desktop.ts\"); await buildUi(); console.log(\"built desktop/ui/dist\")'",
