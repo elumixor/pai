@@ -11,6 +11,9 @@ web/.vercel
 web/.svelte-kit
 workspace/*
 !workspace/CLAUDE.md
+!workspace/.claude/
+workspace/.claude/*
+!workspace/.claude/skills/
 scripts/pai
 menubar/pai-menubar
 

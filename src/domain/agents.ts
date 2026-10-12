@@ -251,11 +251,18 @@ function roleFile(name: string, brief: string) {
 }
 
 /** Changes what an agent runs with; its session restarts on the next message. */
-export function configure(slug: string, changes: { brief?: string; tools?: string[] | null; model?: string | null; effort?: Effort | null; budget?: Partial<Budget>; priority?: number; name?: string }) {
+export function configure(slug: string, changes: { brief?: string; tools?: string[] | null; model?: string | null; effort?: Effort | null; budget?: Partial<Budget>; priority?: number; name?: string; parent?: string }) {
   const a = get(slug);
   if (!a || a.kind === "orchestrator") throw new AgentError(`no agent ${slug}`);
   const fields: Record<string, string | number | null> = {};
   if (changes.name) fields.name = changes.name;
+  if (changes.parent) {
+    // Moving an agent under another: the new parent must exist, be open, and not sit below this one.
+    const parent = get(changes.parent);
+    if (!parent || parent.status === "closed") throw new AgentError(`no parent ${changes.parent}`);
+    if (parent.slug === slug || lineage(parent.slug).some((p) => p.slug === slug)) throw new AgentError(`${changes.parent} is under ${slug}`);
+    fields.parent = parent.slug;
+  }
   if (changes.brief) {
     fields.brief = changes.brief;
     writeFileSync(join(a.folder, "CLAUDE.md"), roleFile(changes.name ?? a.name, changes.brief));
