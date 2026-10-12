@@ -834,38 +834,38 @@ time { color: inherit; font: inherit; }
 
 /* one-liners: an event, a report, a delegation, a tool group — icon, text, time, chevron */
 .row.pill, .row.event, .row.card, .row.notice, .row.answer, .row.tools { display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 0 12px; border: 0; background: none; text-align: left; cursor: pointer; }
-.pill-line { display: flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; width: 100%; padding: 0; border-radius: 0; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink); opacity: 0.45; }
-.row.pill:hover .pill-line, .row.tools .tools-head:hover { opacity: 0.8; background: none; }
-.row.card.tint-ok:hover .pill-line, .row.tint-ok:hover .pill-line, .row.pill.tint-hot:hover .pill-line { opacity: 1; }
+.pill-line { display: flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; width: 100%; padding: 0; border-radius: 0; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-45); }
+.row.pill:hover .pill-line, .row.tools .tools-head:hover { color: color-mix(in srgb, var(--ink) 80%, transparent); background: none; }
+.row.card.tint-ok:hover .pill-line, .row.tint-ok:hover .pill-line { color: var(--ok); }
+.row.pill.tint-hot:hover .pill-line { color: var(--hot); }
 .pill-line .icon { width: 10px; height: 10px; }
 .pill-line .icon-chevron { width: 9px; height: 9px; margin-left: 4px; }
 .pill-line .pill-text { flex: 0 1 auto; min-width: 0; color: inherit; }
 .pill-line b { color: inherit; font-weight: 400; white-space: nowrap; }
-.pill-line .when { white-space: nowrap; order: 9; margin-left: auto; padding-left: 12px; color: var(--ink); opacity: 0.6; }
-.row.tint-ok .pill-line .when, .row.card.tint-ok .pill-line .when, .row.answer .pill-line .when { color: var(--ink); }
+.pill-line .when { white-space: nowrap; order: 9; margin-left: auto; padding-left: 12px; color: var(--ink-20) !important; }
 .row.pill.open .pill-line .pill-text { max-width: none; white-space: normal; }
 .row.pill .card-body, .row.pill .event-body, .row.notice .event-body { display: none; padding: 6px 0 4px 16px; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-45); }
 .row.pill.open .card-body, .row.pill.open .event-body, .row.notice.open .event-body { display: block; }
 .row.pill .event-body a { color: var(--model); }
 .row.group { cursor: default; }
-.row.group .pill-line { cursor: pointer; border: 0; background: none; padding: 0; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink); text-align: left; appearance: none; width: 100%; }
-.row.group .pill-line:hover { opacity: 0.8; }
+.row.group .pill-line { cursor: pointer; border: 0; background: none; padding: 0; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-45); text-align: left; appearance: none; width: 100%; }
+.row.group .pill-line:hover { color: color-mix(in srgb, var(--ink) 80%, transparent); }
 .row.group .pill-line:focus-visible { outline: 1px solid var(--ink-30); outline-offset: 3px; border-radius: 4px; }
 .row.group .group-body { display: none; flex-direction: column; gap: 12px; width: 100%; padding: 8px 0 4px 0; }
 .row.group.open .group-body { display: flex; }
 .row.group .group-body .row { padding: 0; }
 .row.decision .event-body { color: var(--ink-70); font: 400 var(--body)/var(--body-lh) var(--font-body); display: none; flex-direction: column; gap: 8px; }
 .row.decision.open .event-body { display: flex; }
-.row.card.tint-ok .pill-line, .row.answer .pill-line, .row.tint-ok .pill-line { color: var(--ok); opacity: 0.85; }
-.row.pill.tint-hot .pill-line { color: var(--hot); opacity: 0.85; }
-.row.card.delegate .pill-line { opacity: 0.3; }
-.row.card.delegate:hover .pill-line { opacity: 0.7; }
-.row.notice .pill-line { opacity: 0.6; }
-.row.tools .tools-head { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; border-radius: 0; background: none; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink); opacity: 0.3; }
+.row.card.tint-ok .pill-line, .row.answer .pill-line, .row.tint-ok .pill-line { color: color-mix(in srgb, var(--ok) 85%, transparent); }
+.row.pill.tint-hot .pill-line { color: color-mix(in srgb, var(--hot) 85%, transparent); }
+.row.card.delegate .pill-line { color: var(--ink-30); }
+.row.card.delegate:hover .pill-line { color: var(--ink-70); }
+.row.notice .pill-line { color: color-mix(in srgb, var(--ink) 60%, transparent); }
+.row.tools .tools-head { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; border-radius: 0; background: none; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-30); }
 .row.tools .tools-head .icon { width: 10px; height: 10px; }
 .row.tools .tools-head .icon-chevron { width: 9px; height: 9px; transition: transform 0.12s; }
 .row.tools.open .tools-head .icon-chevron { transform: rotate(90deg); }
-.row.tools.live .tools-head { opacity: 0.6; }
+.row.tools.live .tools-head { color: color-mix(in srgb, var(--ink) 60%, transparent); }
 .row.tools.live .tools-head > .icon-gear { color: var(--act); animation: spin 2s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .tools-body { display: none; }
