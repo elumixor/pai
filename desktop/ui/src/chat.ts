@@ -1,4 +1,4 @@
-import { answerAsk, answerQuestion, asks as listAsks, dropAsk, follow, messages as listMessages, messageHeadline, messageTldr, needs as listNeeds, transcript, type Transcript, type TranscriptTool } from "./api.ts";
+import { answerAsk, answerQuestion, asks as listAsks, dropAsk, follow, messages as listMessages, messageHeadline, needs as listNeeds, transcript, type Transcript, type TranscriptTool } from "./api.ts";
 import { compose, type Compose, type Prefs } from "./compose.ts";
 import { clear, el } from "./dom.ts";
 import { icon } from "./icons.ts";
@@ -17,8 +17,6 @@ import type { Agent, AgentStatus, LogMessage, Need, Question } from "./types.ts"
 
 const PAGE = 100;
 const PAI = "pai";
-/** A reply longer than this is folded unless it is the latest one. */
-const FOLD_LINES = 6;
 /** A message of the user's longer than this folds to three lines with "Show more". */
 const MINE_FOLD_CHARS = 240;
 
@@ -112,10 +110,8 @@ const dayLabel = (at: number) => {
   return day.toLocaleDateString(undefined, { day: "numeric", month: "long", ...(day.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}) });
 };
 const firstLine = (text: string) => text.replace(/^\[[^\]]+\]\s*/, "").split("\n").find((l) => l.trim()) ?? "";
-/** The gist of a long reply: the server's summary, else its first paragraph. */
-const summaryOf = (m: LogMessage) => (m.meta.tldr as string | undefined) ?? m.body.replace(/^\[[^\]]+\]\s*/, "").split(/\n\s*\n/).find((p) => p.trim()) ?? m.body;
 const duration = (ms: number) => (ms < 60_000 ? `${Math.max(1, Math.round(ms / 1000))}s` : `${Math.round(ms / 60_000)} min`);
-const clock = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+const clock = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
 const time = (at: number) => el("time", { title: new Date(at).toLocaleString() }, clock(at));
 const chevron = () => icon("chevron", 9);
 /** "Created a file, ran 5 commands" — what a turn's tool calls amount to, by family. */
@@ -149,8 +145,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   const answersByAsk = new Map<number, string>();
   /** The turn in progress: the line that says so, and when it started. */
   let working: { node: HTMLElement; since: number; timer: ReturnType<typeof setInterval> } | undefined;
-  /** Messages whose gist or headline was asked of the daemon once already. */
-  const askedTldr = new Set<number>();
+  /** Messages whose headline was asked of the daemon once already. */
   const askedHeadline = new Set<number>();
   /** The one line a row shows: the headline when it has one, else the first line while one is written. */
   function headlineOf(m: LogMessage, fallback = firstLine(m.body)) {
@@ -219,28 +214,9 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     node.classList.add("flash");
   };
 
-  /** A reply: left, markdown, folded past a few lines unless it is the latest. */
-  function replyRow(m: LogMessage, latest: boolean) {
-    const body = el("div.bubble", {}, markdown(m.body));
-    const long = m.body.split("\n").length > FOLD_LINES || m.body.length > 700;
-    const folded = long && !latest;
-    // Folded: the gist — the server's tl;dr when it has one, else the first paragraph while one is written.
-    const gist = long ? el("div.bubble.gist", {}, markdown(summaryOf(m))) : undefined;
-    if (gist && folded && !m.meta.tldr && !askedTldr.has(m.id)) {
-      askedTldr.add(m.id);
-      void messageTldr(m.id)
-        .then((r) => {
-          if (!r.tldr) return;
-          (m.meta as { tldr?: string }).tldr = r.tldr;
-          if (gist.isConnected) gist.replaceChildren(markdown(r.tldr));
-        })
-        .catch(() => undefined);
-    }
-    const row = el("div.row.reply", { class: `row reply${folded ? " folded" : ""}`, "data-message": m.id, "data-at": m.createdAt }, gist, body);
-    const origin = m.meta.origin && m.meta.origin !== "user" ? el("span", { title: "answered a system turn, not you" }, m.meta.origin) : undefined;
-    const toggle = long ? el("button.more", { onclick: () => (row.classList.toggle("folded"), (toggle!.textContent = row.classList.contains("folded") ? "Show more" : "Show less")) }, folded ? "Show more" : "Show less") : undefined;
-    row.append(el("div.row-foot", {}, toggle, origin, el("span.grow"), time(m.createdAt)));
-    return row;
+  /** A reply: the text in full, the time under it on the right. */
+  function replyRow(m: LogMessage) {
+    return el("div.row.reply", { "data-message": m.id, "data-at": m.createdAt }, el("div.bubble", {}, markdown(m.body)), el("div.row-foot", {}, el("span.grow"), time(m.createdAt)));
   }
 
   /** The user's message: the tinted bubble on the right, folded to three lines when long. */
@@ -394,10 +370,10 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     );
   }
 
-  function renderMessage(m: LogMessage, latest: boolean): HTMLElement {
+  function renderMessage(m: LogMessage): HTMLElement {
     switch (m.kind) {
       case "chat":
-        return mine(m) ? mineRow(m) : replyRow(m, latest);
+        return mine(m) ? mineRow(m) : replyRow(m);
       case "delegate":
       case "report":
       case "request":
@@ -462,18 +438,10 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     return row;
   }
 
-  const latestReply = () => {
-    for (let i = items.length - 1; i >= 0; i -= 1) {
-      const item = items[i]!;
-      if (item.kind === "message" && item.m.kind === "chat" && !mine(item.m)) return item.m.id;
-    }
-    return undefined;
-  };
-
   function render(item: Item): HTMLElement {
     if (item.kind === "tools") return renderTools(item);
     if (item.kind === "question") return renderQuestion(item);
-    return renderMessage(item.m, item.m.id === latestReply());
+    return renderMessage(item.m);
   }
 
   function redraw(item: Item) {
@@ -501,7 +469,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     if (working) log.append(working.node);
   }
 
-  /** A row that arrived now goes last; the reply before it loses its "latest" status and folds. */
+  /** A row that arrived now goes last, before the streaming reply and the working line. */
   function place(item: Item) {
     items.push(item);
     const stick = nearBottom();
@@ -510,7 +478,6 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     if (previous && dayOf(previous.at) !== dayOf(item.at)) log.append(el("div.day", {}, el("span", {}, dayLabel(item.at))));
     item.node = render(item);
     log.insertBefore(item.node, liveText?.isConnected ? liveText : (working?.node ?? null));
-    if (item.kind === "message" && item.m.kind === "chat" && !mine(item.m) && previous?.kind === "message" && previous.m.kind === "chat" && !mine(previous.m)) redraw(previous);
     if (stick) scroll();
   }
 

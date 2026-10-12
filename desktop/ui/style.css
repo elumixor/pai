@@ -681,8 +681,8 @@ body.in-home .crumb.on { font-size: 15px; }
   --meta: 11px;
   --meta-lh: 14px;
   --body: 15px;
-  --body-lh: 17.5px;
-  --chat-w: 600px;
+  --body-lh: 22px;
+  --chat-w: clamp(600px, 46vw, 900px);
 }
 :root[data-theme="light"] {
   --canvas: #ebe6e1;
@@ -719,7 +719,8 @@ body.in-home .nav:hover { opacity: 0.85; }
 .home-side { position: absolute; top: 102px; left: 50px; width: 230px; bottom: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 7px; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); }
 .home-side::-webkit-scrollbar { display: none; }
 .home.board-mode .home-side { display: none; }
-.home-centre { position: absolute; inset: 52px 0 0; display: flex; flex-direction: column; align-items: center; min-height: 0; }
+.home-centre { position: absolute; inset: 52px 0 0; display: flex; flex-direction: column; align-items: center; min-height: 0; pointer-events: none; }
+.home-centre > * { pointer-events: auto; }
 .home.board-mode .home-centre { inset: 52px 50px 20px 50px; align-items: stretch; }
 
 /* the tree: a group per top-level project; a row is a spinner (working), a name, a hand with a count */
@@ -792,17 +793,26 @@ body.in-home .btn.chat-more:hover { color: var(--ink-70); }
 .row-foot .grow { flex: 1; }
 time { color: inherit; font: inherit; }
 .bubble { min-width: 0; overflow-wrap: anywhere; }
-.bubble .md-p { margin: 0 0 6px; }
-.bubble .md-p:last-child { margin: 0; }
+.bubble .md-p, .event-body .md-p, .q-body .md-p { margin: 0 0 10px; }
+.bubble > :last-child, .event-body > :last-child, .q-body > :last-child { margin-bottom: 0; }
+.bubble .md-h { margin: 14px 0 6px; font-size: 1em; font-weight: 700; color: var(--ink); opacity: 0.85; letter-spacing: -0.005em; }
+.bubble h2.md-h { font-size: 1.1em; }
+.bubble .md-h:first-child { margin-top: 0; }
+.bubble .md-list { margin: 0 0 10px; padding-left: 22px; }
+.bubble .md-list li { margin: 3px 0; padding-left: 2px; }
+.bubble .md-list li::marker { color: var(--ink-30); }
+.bubble strong { font-weight: 700; color: var(--ink); opacity: 0.85; }
+.bubble em { font-style: italic; }
+.bubble a { color: var(--model); text-decoration: none; }
+.bubble a:hover { text-decoration: underline; }
+.bubble .md-inline, .q-body .md-inline { padding: 1px 5px; border-radius: 5px; background: var(--ink-10); border: 0; font-family: var(--mono); font-size: 0.86em; color: var(--ink); opacity: 0.85; }
+.bubble .md-code { margin: 10px 0; padding: 10px 12px; border-radius: 10px; background: var(--surface); border: 0; font-size: 12.5px; line-height: 1.5; color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink-10); }
+.row.mine .md-code { background: color-mix(in srgb, var(--ink) 5%, transparent); }
+.row.mine .md-inline { background: color-mix(in srgb, var(--ink) 7%, transparent); }
 
 /* a reply: the receipt — what it did, whom it called, the text, the time */
 .row.reply { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 12px; background: transparent; border: 0; }
-.row.reply .bubble.gist { display: none; }
-.row.reply.folded .bubble.gist { display: block; }
-.row.reply.folded .bubble:not(.gist) { display: none; }
 .row.reply .row-foot { width: 100%; justify-content: flex-end; }
-.row.reply .more { padding: 0; border: 0; background: none; color: var(--ink-20); font: 700 var(--meta)/var(--meta-lh) var(--font-ui); cursor: pointer; }
-.row.reply .more:hover { color: var(--ink-45); }
 .row.reply.live .bubble::after { content: "▍"; color: var(--act); animation: pulse 1s ease-in-out infinite; }
 
 /* mine: the tinted bubble on the right, folded past three lines */

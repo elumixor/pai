@@ -1,4 +1,4 @@
-import { agent as fetchAgent, agents as listAgents, follow, messageAgent, needs as listNeeds, pai as paiStatus, reconfigure, sendPai, taskItems } from "./api.ts";
+import { agent as fetchAgent, agents as listAgents, follow, messageAgent, needs as listNeeds, pai as paiStatus, reconfigure, sendPai, status, taskItems } from "./api.ts";
 import { board, type Board } from "./board.ts";
 import { chat, type Chat, type RevealTarget } from "./chat.ts";
 import { clear, el, modelName } from "./dom.ts";
@@ -18,6 +18,8 @@ const PAI = "pai";
 const STATUS: Record<AgentStatus, string> = { working: "working", waiting: "waiting on you", queued: "queued", idle: "idle", closed: "closed" };
 const KIND_ORDER: Record<Agent["kind"], number> = { orchestrator: 0, standing: 1, service: 2, sub: 3 };
 const money = (usd: number) => `$${usd.toFixed(usd >= 10 ? 0 : 2)}`;
+/** What a session thinks at when nothing was asked for: Claude Code's own default. */
+const DEFAULT_EFFORT: Effort = "high";
 
 export type Centre = { kind: "chat" } | { kind: "agent"; slug: string } | { kind: "board"; slug?: string };
 
@@ -27,6 +29,11 @@ export function home(root: HTMLElement) {
   let needs: Need[] = [];
   /** pai's live session as last seen: its id, model and effort. */
   let paiSession: SessionSummary | undefined;
+  /** The daemon's model for the main chat, for when the session has not answered yet. */
+  let mainModel: string | undefined;
+  void status()
+    .then((h) => ((mainModel = h.settings.models.main), mainChat?.refreshPrefs()))
+    .catch(() => undefined);
   let centre: Centre = { kind: "chat" };
   let mainChat: Chat | undefined;
   let agentChat: { slug: string; chat: Chat } | undefined;
@@ -143,7 +150,7 @@ export function home(root: HTMLElement) {
     paiStatus()
       .then((p) => ((paiSession = p.session), mainChat?.refreshPrefs(), p.session?.sessionId))
       .catch(() => undefined);
-  const paiPrefs = () => (paiSession ? { model: paiSession.modelPref ?? paiSession.model, effort: paiSession.effort } : undefined);
+  const paiPrefs = () => (paiSession ? { model: paiSession.modelPref ?? paiSession.model ?? mainModel, effort: paiSession.effort ?? DEFAULT_EFFORT } : undefined);
   const setPaiPrefs = async (changes: { model?: string | null; effort?: Effort | null }) => {
     if (!paiSession) return { error: "no session yet" };
     const result = await reconfigure(paiSession.sessionId, changes);
@@ -173,7 +180,7 @@ export function home(root: HTMLElement) {
 
   async function showAgent(slug: string) {
     const existing = bySlug(slug);
-    const thread = chat({ agent: slug, parent: existing?.parent ?? PAI, title: existing?.name ?? slug, prefs: () => (bySlug(slug)?.model ? { model: bySlug(slug)!.model } : undefined), send: (text) => messageAgent(slug, text), placeholder: `Message ${existing?.name ?? slug}…` }, ctx);
+    const thread = chat({ agent: slug, parent: existing?.parent ?? PAI, title: existing?.name ?? slug, prefs: () => (bySlug(slug)?.model ? { model: bySlug(slug)!.model, effort: DEFAULT_EFFORT } : undefined), send: (text) => messageAgent(slug, text), placeholder: `Message ${existing?.name ?? slug}…` }, ctx);
     agentChat = { slug, chat: thread };
     thread.slot.append(hand.node);
     clear(centrePane, thread.node);

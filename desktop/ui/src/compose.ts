@@ -5,18 +5,17 @@ import { menu } from "./menu.ts";
 import { miniRings } from "./rings.ts";
 import type { Effort, SlashCommand } from "./types.ts";
 
-/** The model and effort a conversation runs with; null means the daemon's default. */
+/** The model and effort a conversation runs with, resolved: what was asked for, else what it runs with anyway. */
 export interface Prefs {
   readonly model?: string | null;
   readonly effort?: Effort | null;
 }
-const MODELS: readonly { value: string | null; label: string }[] = [
-  { value: null, label: "default" },
+const MODELS: readonly { value: string; label: string }[] = [
   { value: "opus", label: "Opus" },
   { value: "sonnet", label: "Sonnet" },
   { value: "haiku", label: "Haiku" },
 ];
-const EFFORTS: readonly { value: Effort | null; label: string }[] = [{ value: null, label: "default" }, ...(["low", "medium", "high", "xhigh", "max"] as const).map((value) => ({ value, label: value }))];
+const EFFORTS: readonly Effort[] = ["low", "medium", "high", "xhigh", "max"];
 const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 export interface Attachment {
@@ -211,8 +210,10 @@ export function compose(options: ComposeOptions): Compose {
     modelButton.hidden = !prefs;
     effortButton.hidden = !prefs;
     if (!prefs) return;
-    modelButton.textContent = prefs.model ? capital(modelName(prefs.model)) : "default model";
-    effortButton.textContent = prefs.effort ?? "default effort";
+    modelButton.hidden = !prefs.model;
+    effortButton.hidden = !prefs.effort;
+    modelButton.textContent = prefs.model ? capital(modelName(prefs.model)) : "";
+    effortButton.textContent = prefs.effort ?? "";
     modelButton.disabled = effortButton.disabled = !options.setPrefs;
   };
   const choose = async (changes: Prefs) => {
@@ -221,12 +222,12 @@ export function compose(options: ComposeOptions): Compose {
     drawPrefs();
   };
   modelButton.addEventListener("click", () => {
-    const current = options.prefs?.()?.model ?? null;
-    menu(modelButton, MODELS.map((m) => ({ label: m.label, on: (current ? modelName(current).split(" ")[0] : null) === (m.value ?? null), pick: () => void choose({ model: m.value }) })));
+    const current = options.prefs?.()?.model;
+    menu(modelButton, MODELS.map((m) => ({ label: m.label, on: Boolean(current) && modelName(current).split(" ")[0] === m.value, pick: () => void choose({ model: m.value }) })));
   });
   effortButton.addEventListener("click", () => {
-    const current = options.prefs?.()?.effort ?? null;
-    menu(effortButton, EFFORTS.map((e) => ({ label: e.label, on: current === e.value, pick: () => void choose({ effort: e.value }) })));
+    const current = options.prefs?.()?.effort;
+    menu(effortButton, EFFORTS.map((e) => ({ label: e, on: current === e, pick: () => void choose({ effort: e }) })));
   });
   drawPrefs();
   const rings = el("span.rings");
