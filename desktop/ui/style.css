@@ -765,7 +765,7 @@ body.in-home .btn.chat-more { background: none; box-shadow: none; padding: 0; co
 body.in-home .btn.chat-more:hover { color: var(--ink-70); }
 .row.question.answered .q-body { color: var(--ink-45); opacity: 1; }
 .row.question.answered .q-crumb { color: var(--ink-30); opacity: 1; }
-.chat-log { position: absolute; inset: 0 0 -20px; overflow-y: auto; min-height: 0; padding: 120px 0 150px; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; background: transparent; }
+.chat-log { position: absolute; inset: 0 0 -20px; overflow-y: auto; min-height: 0; padding: 120px 0 240px; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; background: transparent; }
 .chat-log::-webkit-scrollbar { display: none; }
 .chat-log > .hint { align-self: center; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-30); }
 .day { align-self: center; margin: 4px 0; padding: 4px 6px; border-radius: 19px; background: var(--pill-bg); font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: color-mix(in srgb, var(--ink) 40%, transparent); text-transform: none; letter-spacing: 0; }
