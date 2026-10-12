@@ -414,6 +414,7 @@ export async function handle(req: Request): Promise<Response> {
         kind: "ask" as const,
         id: `ask:${a.id}`,
         askId: a.id,
+        taskId: a.taskId ?? undefined,
         agent: area(a.agent === agents.PAI && a.taskId ? tasks.get(a.taskId)?.owner : a.agent),
         from: agents.get(a.agent)?.name ?? a.agent,
         question: a.question,

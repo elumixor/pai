@@ -72,8 +72,11 @@ export function home(root: HTMLElement) {
     const target: RevealTarget = n.kind === "ask" ? { askId: n.askId } : n.kind === "task" ? { taskId: n.taskId } : { question: true };
     if (centre.kind === "agent" && agentChat?.slug === n.agent && (await agentChat.chat.reveal(target))) return;
     if (centre.kind !== "chat") navigate("home");
-    if (!mainChat) return;
-    if (!(await mainChat.reveal(target))) hand.miss();
+    if (!mainChat || (await mainChat.reveal(target))) return;
+    // No row in the chat (a task nobody wrote about, or an ask past the pages it loads): the task itself, on its area's board.
+    if (n.taskId === undefined) return hand.miss();
+    navigate({ name: "board", param: n.agent ?? PAI });
+    theBoard?.openTask(n.taskId);
   }
 
   // ---- the tree ------------------------------------------------------------------------------

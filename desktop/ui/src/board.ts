@@ -38,6 +38,8 @@ export interface Board {
   readonly dispose: () => void;
   readonly select: (slug: string) => void;
   readonly refreshAgents: () => void;
+  /** One task in full, in the side panel. */
+  readonly openTask: (id: number) => void;
 }
 
 const firstUrl = (...texts: (string | null | undefined)[]) => texts.map((t) => /https?:\/\/[^\s<>)]+/.exec(t ?? "")?.[0]).find(Boolean);
@@ -372,5 +374,6 @@ export function board(initial: string | undefined, ctx: BoardContext): Board {
     refreshAgents: () => {
       drawTree();
     },
+    openTask: (id) => void openPanel(id),
   };
 }
