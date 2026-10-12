@@ -92,11 +92,11 @@ export function inline(text: string): (Node | string)[] {
     if (at > last) parts.push(text.slice(last, at));
     const [whole, code, bold, italic, link, url] = match;
     if (code) parts.push(el("code.md-inline", {}, code.slice(1, -1)));
-    else if (bold) parts.push(el("strong", {}, bold.slice(2, -2)));
-    else if (italic) parts.push(el("em", {}, italic.slice(1, -1)));
+    else if (bold) parts.push(el("strong", {}, ...inline(bold.slice(2, -2))));
+    else if (italic) parts.push(el("em", {}, ...inline(italic.slice(1, -1))));
     else if (link) {
       const [, label = "", href = ""] = /\[([^\]]+)\]\(([^)]+)\)/.exec(link) ?? [];
-      parts.push(el("a", { href, target: "_blank", rel: "noreferrer" }, label));
+      parts.push(el("a", { href, target: "_blank", rel: "noreferrer" }, ...inline(label)));
     } else if (url) parts.push(el("a", { href: url, target: "_blank", rel: "noreferrer" }, url));
     last = at + whole.length;
   }
