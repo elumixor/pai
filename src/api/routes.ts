@@ -407,11 +407,14 @@ export async function handle(req: Request): Promise<Response> {
     // Everything that waits on the user, newest first, in one shape: the agents' asks and the questions sessions
     // have open (pai's AskUserQuestion). A phone answers either with one tap: `asks/<id>/answer` or `/answer`.
     if (path === "/needs") {
-      const fromAsks = asks.open().map((a) => ({
+      // A need sits on its area: the agent that asked, or for pai's own asks the owner of the task it is about.
+      const area = (slug: string | undefined) => (slug && slug !== agents.PAI ? slug : null);
+      const open = asks.open();
+      const fromAsks = open.map((a) => ({
         kind: "ask" as const,
         id: `ask:${a.id}`,
         askId: a.id,
-        agent: a.agent,
+        agent: area(a.agent === agents.PAI && a.taskId ? tasks.get(a.taskId)?.owner : a.agent),
         from: agents.get(a.agent)?.name ?? a.agent,
         question: a.question,
         options: a.options,
@@ -442,11 +445,13 @@ export async function handle(req: Request): Promise<Response> {
         }];
       });
       // A task waiting on the user is a decision too: done, dropped, or a word to whoever owns it.
-      const fromTasks = tasks.list({ status: "waiting_user" }).map((t) => ({
+      // A task with an open ask on it is that ask's card already.
+      const asked = new Set(open.map((a) => a.taskId));
+      const fromTasks = tasks.list({ status: "waiting_user" }).filter((t) => !asked.has(t.id)).map((t) => ({
         kind: "task" as const,
         id: `task:${t.id}`,
         taskId: t.id,
-        agent: t.owner === agents.PAI ? null : t.owner,
+        agent: area(t.owner),
         from: agents.get(t.owner)?.name ?? t.owner,
         question: t.nextAction ? `${t.title}\n${t.nextAction}` : t.title,
         options: ["Done", "Drop"],

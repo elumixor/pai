@@ -235,6 +235,16 @@ describe("asks and notices", () => {
     expect(asks.open().some((x) => x.id === a.id)).toBe(false);
   });
 
+  it("does not ask again what already waits on the user, and an answer hands the task back", () => {
+    const t = tasks.add({ title: "LFS quota full", owner: "hiring", status: "waiting_user" });
+    const a = asks.ask({ agent: "pai", question: "LFS quota is full. Fix it how?", blocking: false, fallback: "wait", taskId: t.id });
+    expect(asks.ask({ agent: "pai", question: "Buy a data pack?", blocking: false, fallback: "wait", taskId: t.id }).id).toBe(a.id);
+    expect(asks.ask({ agent: "pai", question: "The LFS quota is full: fix it how?", blocking: false, fallback: "wait" }).id).toBe(a.id);
+    expect(asks.ask({ agent: "pai", question: "Push Atma's commits?", blocking: false, fallback: "wait" }).id).not.toBe(a.id);
+    asks.answer(a.id, "prune");
+    expect(tasks.get(t.id)!.status).toBe("active");
+  });
+
   it("only notes a non-blocking ask's answer when it matches the fallback", () => {
     const a = asks.ask({ agent: "hiring", question: "Archive newsletters?", options: ["Yes", "No"], blocking: false, fallback: "Yes" });
     const sent = sessionOf("hiring").sent.length;

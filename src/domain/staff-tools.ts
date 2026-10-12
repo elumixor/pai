@@ -65,6 +65,22 @@ function mine(me: string, slug: string) {
   return a;
 }
 
+/**
+ * Whatever waits on the user belongs to an area: its card sits on that agent in the tree. pai
+ * itself has no row there, so a decision it keeps for itself would be one no area shows.
+ */
+function inArea(owner: string) {
+  if (owner === agents.PAI) throw new Error("a task waiting on the user belongs to an area: owner = that area's agent (list_agents; create one if none fits), never pai");
+  if (!agents.get(owner)) throw new Error(`no agent ${owner}`);
+}
+
+/** The task a decision of pai's hangs on, checked to exist and to belong to an area. */
+function areaOwned(taskId: number) {
+  const t = tasks.get(taskId);
+  if (!t) throw new Error(`no task #${taskId}`);
+  inArea(t.owner);
+}
+
 export function staffTools(me: string | undefined) {
   const role = roleOf(me);
   const self = me ?? agents.PAI;
@@ -86,9 +102,10 @@ export function staffTools(me: string | undefined) {
         source: z.string().optional().describe("a Notion page, GitHub issue or email thread link"),
         notes: z.string().optional(),
       },
-      guard((a: { title: string; owner?: string; parent_id?: number; status?: tasks.TaskStatus; next_action?: string; due?: string; source?: string; notes?: string }) =>
-        tasks.add({ title: a.title, owner: a.owner ?? self, parentId: a.parent_id, status: a.status, nextAction: a.next_action, due: a.due, source: a.source, notes: a.notes, createdBy: me ?? "thread" }),
-      ),
+      guard((a: { title: string; owner?: string; parent_id?: number; status?: tasks.TaskStatus; next_action?: string; due?: string; source?: string; notes?: string }) => {
+        if (a.status === "waiting_user") inArea(a.owner ?? self);
+        return tasks.add({ title: a.title, owner: a.owner ?? self, parentId: a.parent_id, status: a.status, nextAction: a.next_action, due: a.due, source: a.source, notes: a.notes, createdBy: me ?? "thread" });
+      }),
     ),
     tool(
       "task_update",
@@ -108,6 +125,7 @@ export function staffTools(me: string | undefined) {
         const t = tasks.get(a.id);
         if (!t) throw new Error(`no task #${a.id}`);
         if (!isPai && role !== "thread" && t.owner !== self && !agents.list({ parent: self }).some((c) => c.slug === t.owner)) throw new Error(`task #${a.id} belongs to ${t.owner}`);
+        if ((a.status ?? t.status) === "waiting_user" && (a.status || a.owner)) inArea(a.owner ?? t.owner);
         return tasks.update(a.id, { title: a.title, status: a.status, nextAction: a.next_action, due: a.due, owner: a.owner, source: a.source, notes: a.notes, parentId: a.parent_id });
       }),
     ),
@@ -147,7 +165,7 @@ export function staffTools(me: string | undefined) {
   out.push(
     tool(
       "ask_user",
-      "Ask the user a question; it reaches them through pai's chat (and their phone and watch) as a card with your name, answered with one tap. The question is one short line; options are two to four short choices — Yes / No, or A / B / C with the choice in each label, your recommendation first; they can still type an answer. blocking: you are parked until they answer and the answer arrives as a new message. Non-blocking: give a fallback you go on with now; you hear back only if they answer differently.",
+      `Ask the user a question; it reaches them through pai's chat (and their phone and watch) as a card with your name, answered with one tap. The question is one short line; options are two to four short choices — Yes / No, or A / B / C with the choice in each label, your recommendation first; they can still type an answer. blocking: you are parked until they answer and the answer arrives as a new message. Non-blocking: give a fallback you go on with now; you hear back only if they answer differently. A decision already waiting on them (open_asks, task_list status waiting_user) is not asked again: the call returns the open one.${isPai ? " Yours always names task_id: the task the decision is about, owned by the area's agent (task_add it first if there is none) — that is where the card shows." : ""}`,
       {
         question: z.string(),
         options: z.array(z.string().max(40)).max(4).optional(),
@@ -156,11 +174,14 @@ export function staffTools(me: string | undefined) {
         blocking: z.boolean().optional().describe("default true"),
         fallback: z.string().optional().describe("what you do meanwhile, for a non-blocking ask"),
         context: z.string().optional().describe("where it comes from, shown after your name: 'Candidate replies'"),
-        task_id: z.number().optional(),
+        task_id: isPai ? z.number() : z.number().optional(),
       },
       guard((a: { question: string; options?: string[]; allow_free_text?: boolean; priority?: asks.Priority; blocking?: boolean; fallback?: string; context?: string; task_id?: number }) => {
+        if (isPai) areaOwned(a.task_id!);
+        const already = asks.pending({ agent: self, question: a.question, taskId: a.task_id });
+        if (already) return { ask: already.id, duplicate: true, note: `Already waiting on the user as ask #${already.id} ("${already.question}"); not asked again.` };
         const asked = asks.ask({ agent: self, question: a.question, options: a.options, freeText: a.allow_free_text, priority: a.priority, blocking: a.blocking, fallback: a.fallback, context: a.context, taskId: a.task_id });
-        if (a.task_id && asked.blocking) tasks.update(a.task_id, { status: "waiting_user" });
+        if (a.task_id && (asked.blocking || isPai)) tasks.update(a.task_id, { status: "waiting_user" });
         return { ask: asked.id, delivered: asked.delivered, note: asked.blocking ? "End your turn now; the answer comes as a new message." : `Go on with: ${asked.fallback}` };
       }),
     ),

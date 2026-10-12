@@ -3,6 +3,7 @@ import { db, now } from "../core/db.ts";
 import { logger } from "../core/log.ts";
 import { quiet, stamp } from "../core/time.ts";
 import * as messages from "./messages.ts";
+import * as tasks from "./tasks.ts";
 
 const log = logger("asks");
 
@@ -108,8 +109,25 @@ export interface AskInput {
 
 export class AskError extends Error {}
 
+const words = (text: string) => new Set(text.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? []);
+
+/** Mostly the same words: the same question asked again in other phrasing. */
+function similar(a: string, b: string) {
+  const [x, y] = [words(a), words(b)];
+  const shared = [...x].filter((w) => y.has(w)).length;
+  return shared / (x.size + y.size - shared || 1) >= 0.6;
+}
+
+/** The open ask this one would repeat: one on the same task, or the same agent's same question. */
+export function pending(input: Pick<AskInput, "agent" | "question" | "taskId">): Ask | undefined {
+  return open().find((a) => (input.taskId && a.taskId === input.taskId) || (a.agent === input.agent && similar(a.question, input.question)));
+}
+
+/** Asks the user once: a question already waiting on them is returned instead of asked again. */
 export function ask(input: AskInput): Ask {
   if (!input.question?.trim()) throw new AskError("an ask needs a question");
+  const already = pending(input);
+  if (already) return already;
   const blocking = input.blocking ?? true;
   if (!blocking && !input.fallback?.trim()) throw new AskError("a non-blocking ask says what the agent does meanwhile (fallback)");
   const priority = shifted(input.priority ?? "normal", agents.priority(input.agent));
@@ -148,6 +166,8 @@ export function answer(id: number, text: string, via = "user"): Ask {
   if (!a.freeText && a.options.length && !a.options.some((o) => o.toLowerCase() === reply.toLowerCase()))
     throw new AskError(`ask #${id} takes one of: ${a.options.join(", ")}`);
   db.prepare("UPDATE asks SET status = 'answered', answer = ?, answered_at = ? WHERE id = ?").run(reply, now(), id);
+  // Answered, the decision is no longer the user's: its task goes back to whoever owns it.
+  if (a.taskId && tasks.get(a.taskId)?.status === "waiting_user") tasks.update(a.taskId, { status: "active" });
   messages.log({ from: "user", to: a.agent, kind: "answer", body: reply, taskId: a.taskId, meta: { askId: id, via, event: "answered", agent: a.agent } });
   const text_ = `[answer to your question #${id}: "${a.question}"] ${reply}`;
   if (!a.blocking && a.fallback && a.fallback.trim().toLowerCase() === reply.toLowerCase()) agents.note(a.agent, text_);
