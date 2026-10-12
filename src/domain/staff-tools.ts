@@ -7,6 +7,7 @@ import * as automations from "./automations.ts";
 import * as capabilities from "./capabilities.ts";
 import * as messages from "./messages.ts";
 import * as recall from "./recall.ts";
+import { repeatOf } from "./repeats.ts";
 import * as requests from "./requests.ts";
 import * as settings from "./settings.ts";
 import * as tasks from "./tasks.ts";
@@ -176,10 +177,13 @@ export function staffTools(me: string | undefined) {
         context: z.string().optional().describe("where it comes from, shown after your name: 'Candidate replies'"),
         task_id: isPai ? z.number() : z.number().optional(),
       },
-      guard((a: { question: string; options?: string[]; allow_free_text?: boolean; priority?: asks.Priority; blocking?: boolean; fallback?: string; context?: string; task_id?: number }) => {
+      guard(async (a: { question: string; options?: string[]; allow_free_text?: boolean; priority?: asks.Priority; blocking?: boolean; fallback?: string; context?: string; task_id?: number }) => {
         if (isPai) areaOwned(a.task_id!);
         const already = asks.pending({ agent: self, question: a.question, taskId: a.task_id });
         if (already) return { ask: already.id, duplicate: true, note: `Already waiting on the user as ask #${already.id} ("${already.question}"); not asked again.` };
+        const repeat = await repeatOf(a.question, a.task_id);
+        if (repeat?.kind === "ask") return { ask: repeat.ask.id, duplicate: true, note: `The same decision already waits on the user as ask #${repeat.ask.id} ("${repeat.ask.question}"); not asked again.` };
+        if (repeat?.kind === "task") return { task: repeat.task.id, duplicate: true, note: `The same decision already waits on the user as task #${repeat.task.id} ("${repeat.task.title}"); not asked again. To put options on it, ask again with task_id ${repeat.task.id}.` };
         const asked = asks.ask({ agent: self, question: a.question, options: a.options, freeText: a.allow_free_text, priority: a.priority, blocking: a.blocking, fallback: a.fallback, context: a.context, taskId: a.task_id });
         if (a.task_id && (asked.blocking || isPai)) tasks.update(a.task_id, { status: "waiting_user" });
         return { ask: asked.id, delivered: asked.delivered, note: asked.blocking ? "End your turn now; the answer comes as a new message." : `Go on with: ${asked.fallback}` };
