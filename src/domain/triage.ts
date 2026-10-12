@@ -5,6 +5,8 @@ import { db, now } from "../core/db.ts";
 import { logger } from "../core/log.ts";
 import * as agents from "./agents.ts";
 import * as asks from "./asks.ts";
+import * as jev from "./decide.ts";
+import * as jevTriage from "./triage-jev.ts";
 import type { Automation } from "./automations.ts";
 import * as messages from "./messages.ts";
 import * as tasks from "./tasks.ts";
@@ -160,8 +162,15 @@ const SCHEMA = {
   required: ["decisions"],
 };
 
-/** One small-model turn, no tools, structured output. */
+/** The decision model when there is a key for it; else (or when it fails) one small-model turn, no tools, structured output. */
 async function decide(items: Item[]): Promise<Decision[]> {
+  if (jev.enabled()) {
+    try {
+      return await jevTriage.decideItems(items);
+    } catch (err) {
+      log.warn(`decision model failed, using ${config.models.triage}: ${(err as Error).message}`);
+    }
+  }
   const q = query({
     prompt: prompt(items),
     options: {

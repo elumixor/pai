@@ -1,5 +1,5 @@
-import { config } from "../core/config.ts";
 import { logger } from "../core/log.ts";
+import * as decide from "./decide.ts";
 
 const log = logger("gate");
 
@@ -20,7 +20,6 @@ const log = logger("gate");
 export const NOTHING_AT = 0.8;
 /** Deferred reports earn pai one turn after this long without one, so nothing waits past it. */
 export const NUDGE_MS = 30 * 60_000;
-const ENDPOINT = "https://ai-gateway.vercel.sh/typesafe/v1/systemone";
 
 /** What one report needs from the orchestrator, as the model's probabilities. */
 export interface Need {
@@ -34,7 +33,7 @@ export interface Verdict {
   readonly reason: string;
 }
 
-const QUESTION = {
+const QUESTION: decide.Choice = {
   type: "choice",
   instructions: "What does this report need from the orchestrator next?",
   criteria: {
@@ -53,19 +52,11 @@ export function split(batch: string): string[] {
 
 /** One decision-model call for the whole batch: a question per report, answered in parallel. Replaced in tests. */
 let judge: (reports: string[]) => Promise<Need[]> = async (reports) => {
-  if (!config.aiGatewayKey) throw new Error("no AI_GATEWAY_API_KEY");
   const state = Object.fromEntries(reports.map((r, i) => [`r${i}`, r.slice(0, 6000)]));
   const questions = Object.fromEntries(reports.map((_, i) => [`r${i}`, { ...QUESTION, instructions: `What does \`r${i}\` need from the orchestrator next?` }]));
-  const res = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${config.aiGatewayKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: config.models.gate, state, questions }),
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 200)}`);
-  const out = (await res.json()) as { answers: Record<string, { probabilities?: Record<string, number> }> };
+  const answers = await decide.ask(state, questions);
   return reports.map((_, i) => {
-    const p = out.answers[`r${i}`]?.probabilities ?? {};
+    const p = answers[`r${i}`]?.probabilities ?? {};
     return { nothing: p.nothing ?? 0, act: p.act ?? 1, user: p.user ?? 0 };
   });
 };
