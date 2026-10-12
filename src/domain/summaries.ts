@@ -1,6 +1,7 @@
 import { bus } from "../core/bus.ts";
 import { config } from "../core/config.ts";
 import { logger } from "../core/log.ts";
+import * as agents from "./agents.ts";
 import * as asks from "./asks.ts";
 import * as messages from "./messages.ts";
 
@@ -64,15 +65,11 @@ function once(key: string, work: () => Promise<string>) {
 }
 
 async function writeHeadline(m: messages.Message, answer?: string): Promise<string> {
-  const who = m.from.replace(/^(watcher|routine):/, "");
+  const agent = agents.get(m.from)?.name ?? agents.get(m.to)?.name;
+  const source = typeof m.meta.source === "string" ? m.meta.source : m.from.startsWith("watcher:") ? m.from.slice(8) : m.from.startsWith("routine:") ? "routine" : undefined;
   const text = await complete(
-    "You write one headline for a row in a personal assistant's activity log: three to five words, no period, no quotes, no markdown. Name the person or thing and what happened, drop everything else. Examples: 'Dmytro asks for work', 'Dmytro connects on Telegram', 'Daily follow-up', 'Approved draft to Dmytro', 'ATMA completed Hiring Developer', 'No November HN thread'. A report from an agent starts with the agent's name. An answered question is headlined by what was decided. A message the user sent is 'You wrote to <name>'.",
-    `kind: ${m.kind}${m.meta.event ? ` (${m.meta.event})` : ""}
-from: ${who}
-
-${m.body.slice(0, 4_000)}${answer ? `
-
-answer: ${answer}` : ""}`,
+    "You write one headline for a row in a personal assistant's activity log: three to six words, no period, no quotes, no markdown. Say who and what happened, and always where it came from: an email says 'emails' or 'by email', Telegram says 'on Telegram', LinkedIn says 'on LinkedIn', a routine is named by its name, a report or a request from an agent starts with the agent's name. Examples: 'Dmytro emails asking for work', 'Dmytro connects on Telegram', 'Daily follow-up ran', 'Approved draft to Dmytro', 'ATMA completed Hiring Developer', 'You wrote to Mama on Telegram'. An answered question is headlined by what was decided.",
+    `kind: ${m.kind}${m.meta.event ? ` (${m.meta.event})` : ""}${source ? `\nsource: ${source}` : ""}${agent ? `\nagent: ${agent}` : ""}\n\n${m.body.slice(0, 4_000)}${answer ? `\n\nanswer: ${answer}` : ""}`,
     40,
   );
   const line = text.replace(/\*\*|__/g, "").replace(/^["'“”]+|["'“”.]+$/g, "").split("\n")[0]!.trim().split(/\s+/).slice(0, 7).join(" ");

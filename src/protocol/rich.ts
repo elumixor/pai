@@ -49,7 +49,7 @@ export const EVENT_ICONS: Readonly<Record<string, string>> = {
   "agent.woken": "bolt",
   "routine.fired": "clock.arrow.circlepath",
   "item.arrived": "envelope",
-  "item.telegram": "bubble.left",
+  "item.telegram": "paperplane",
   "item.linkedin": "bubble.left",
   "calendar.upcoming": "calendar",
   ask: "questionmark.bubble",

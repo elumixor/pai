@@ -259,8 +259,8 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         onclick: () => (openable ? ctx.openAgent(agent, m.id) : row.classList.toggle("open")),
       },
       down
-        ? el("span.pill-line", {}, el("span", {}, m.kind === "delegate" ? "Delegated to" : "Asked"), kindIcon("agent.spawned", 10), statusDot(agent), el("b", {}, nameOf(agent)), target ? el("b", {}, target) : undefined, m.taskId ? el("span.tag", {}, `#${m.taskId}`) : undefined, chevron())
-        : el("span.pill-line", {}, kindIcon("agent.spawned", 10), statusDot(agent), headlineOf(m, `${nameOf(m.from)} ${verb}: ${firstLine(m.body)}`), el("span.when", {}, clock(m.createdAt)), m.taskId ? el("span.tag", {}, `#${m.taskId}`) : undefined, chevron()),
+        ? el("span.pill-line", {}, el("span", {}, m.kind === "delegate" ? "Delegated to" : "Asked"), icon("rocket", 10), statusDot(agent), el("b", {}, nameOf(agent)), target ? el("b", {}, target) : undefined, m.taskId ? el("span.tag", {}, `#${m.taskId}`) : undefined, chevron())
+        : el("span.pill-line", {}, icon("rocket", 10), statusDot(agent), headlineOf(m, `${nameOf(m.from)} ${verb}: ${firstLine(m.body)}`), el("span.when", {}, clock(m.createdAt)), m.taskId ? el("span.tag", {}, `#${m.taskId}`) : undefined, chevron()),
       el("div.card-body", {}, markdown(m.body)),
     );
     row.dataset.at = String(m.createdAt);
