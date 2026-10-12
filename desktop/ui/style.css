@@ -736,16 +736,16 @@ body.in-home .nav:hover { opacity: 0.85; }
 .ptree-empty { opacity: 0.3; }
 
 /* the card a long hover over a project opens */
-.peek { position: fixed; z-index: 40; width: 385px; max-width: 60vw; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 12px; background: color-mix(in srgb, var(--ink) 3%, var(--canvas)); box-shadow: var(--soft-shadow), 0 0 0 1px var(--ink-10); font: 400 var(--body)/var(--body-lh) var(--font-body); color: var(--ink-70); pointer-events: none; }
-.peek-head { display: flex; align-items: center; gap: 16px; }
+.peek { position: fixed; z-index: 40; width: 385px; max-width: 60vw; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 12px; background: color-mix(in srgb, var(--ink) 3%, var(--canvas)); box-shadow: var(--soft-shadow), 0 0 0 1px var(--ink-10); font: 400 13px/18px var(--font-ui); color: var(--ink-70); pointer-events: none; letter-spacing: -0.005em; }
+.peek-head { display: flex; align-items: center; gap: 14px; font-size: 13px; }
 .peek-count { color: var(--ink-45); }
 .peek-count b { color: var(--ink-70); font-weight: 700; }
-.peek-tasks, .peek-needs { display: flex; flex-direction: column; gap: 9px; padding-top: 10px; border-top: 1px solid var(--ink-10); }
+.peek-tasks, .peek-needs { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid var(--ink-10); }
 .peek-task { display: flex; align-items: center; gap: 9px; min-width: 0; color: var(--ink-45); }
 .peek-task.active { color: var(--ink-70); }
-.peek-task .icon { width: 15px; height: 15px; flex: 0 0 auto; }
-.peek-task .spinner { width: 13px; height: 13px; margin: 0 1px; }
-.peek-more { font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-30); }
+.peek-task .icon { width: 14px; height: 14px; flex: 0 0 auto; opacity: 0.7; }
+.peek-task .spinner { width: 11px; height: 11px; margin: 0 1.5px; border-width: 1.5px; }
+.peek-more { font: 400 10.5px/13px var(--font-ui); color: var(--ink-30); }
 .peek-need { color: var(--act); }
 .peek-needs .peek-more { color: var(--act); opacity: 0.5; }
 
