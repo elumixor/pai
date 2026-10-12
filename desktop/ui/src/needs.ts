@@ -17,10 +17,17 @@ export function needsButton(options: { readonly reveal: (need: Need) => void }) 
     options.reveal(need);
   };
   const button = el("button.needs-btn", { title: "what waits on you — press to go to the next", hidden: true, onclick: next }, icon("hand", 15), count);
+  /** The row is nowhere in the chat (a task with no message yet): the hand shakes instead of jumping elsewhere. */
+  const miss = () => {
+    button.classList.remove("miss");
+    void button.offsetWidth;
+    button.classList.add("miss");
+  };
   window.addEventListener("pai:pile", next);
 
   return {
     node: el("div.needs", {}, button),
+    miss,
     draw(list: readonly Need[]) {
       // Oldest first, so the cycle walks the chat downwards.
       needs = [...list].sort((a, b) => a.createdAt - b.createdAt);

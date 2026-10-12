@@ -1,6 +1,9 @@
 import { bus } from "../core/bus.ts";
 import { db, now } from "../core/db.ts";
 
+/** The orchestrator's slug; its chat is the user's one chat. */
+const PAI = "pai";
+
 /**
  * The message log: every word that passes between the user, pai, its agents, routines and
  * watchers, one row each. An agent's chat in any client is this table filtered to that agent;
@@ -117,7 +120,11 @@ export interface ListOptions {
 export function list(opts: ListOptions = {}): Message[] {
   const where: string[] = [];
   const args: (string | number)[] = [];
-  if (opts.agent) {
+  if (opts.agent === PAI) {
+    // pai's chat is the user's one chat: every question put to the user, whoever asked it, and every answer, is in it.
+    where.push("(sender = ? OR recipient = ? OR json_extract(meta, '$.agent') = ? OR (kind IN ('ask', 'answer') AND (recipient = 'user' OR sender = 'user')))");
+    args.push(opts.agent, opts.agent, opts.agent);
+  } else if (opts.agent) {
     where.push("(sender = ? OR recipient = ? OR json_extract(meta, '$.agent') = ?)");
     args.push(opts.agent, opts.agent, opts.agent);
   }

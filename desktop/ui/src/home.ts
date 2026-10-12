@@ -58,7 +58,7 @@ export function home(root: HTMLElement) {
       if (pendingReveal && agentChat?.slug === slug) {
         const target = pendingReveal;
         pendingReveal = undefined;
-        agentChat.chat.reveal(target);
+        void agentChat.chat.reveal(target);
       }
     },
     openBoard: (slug: string) => navigate(slug === PAI ? "board" : { name: "board", param: slug }),
@@ -68,21 +68,13 @@ export function home(root: HTMLElement) {
 
   const hand = needsButton({ reveal });
 
-  /** Where a need lives: pai's questions and tasks in the main chat, an agent's ask in its thread. */
-  function reveal(n: Need) {
+  /** Every need has its row in the main chat (asks to the user land there whoever asked); an agent's thread is tried first only while it is open. */
+  async function reveal(n: Need) {
     const target: RevealTarget = n.kind === "ask" ? { askId: n.askId } : n.kind === "task" ? { taskId: n.taskId } : { question: true };
-    // Whatever chat is open shows the row itself when it has it: no jump to another thread.
-    if (centre.kind === "chat" && mainChat?.reveal(target)) return;
-    if (centre.kind === "agent" && agentChat?.chat.reveal(target)) return;
-    const inMain = n.agent === null || n.agent === PAI;
-    if (inMain) {
-      if (centre.kind !== "chat") navigate("home");
-      if (!mainChat?.reveal(target) && n.kind === "task" && n.taskId) navigate({ name: "board", param: n.agent ?? PAI });
-      return;
-    }
-    if (agentChat?.slug === n.agent && agentChat.chat.reveal(target)) return;
-    pendingReveal = target;
-    ctx.openAgent(n.agent!);
+    if (centre.kind === "agent" && agentChat?.slug === n.agent && (await agentChat.chat.reveal(target))) return;
+    if (centre.kind !== "chat") navigate("home");
+    if (!mainChat) return;
+    if (!(await mainChat.reveal(target))) hand.miss();
   }
 
   // ---- the tree ------------------------------------------------------------------------------
@@ -209,7 +201,7 @@ export function home(root: HTMLElement) {
     if (pendingReveal) {
       const target = pendingReveal;
       pendingReveal = undefined;
-      setTimeout(() => thread.reveal(target), 400);
+      setTimeout(() => void thread.reveal(target), 400);
     }
   }
 

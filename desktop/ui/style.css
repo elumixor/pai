@@ -913,6 +913,8 @@ time { color: inherit; font: inherit; }
 .needs-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border: 0; border-radius: 52px; background: var(--act); opacity: 0.7; box-shadow: var(--card-shadow); color: #fff; font: 700 12.5px/15px var(--font-ui); cursor: pointer; }
 .needs-btn:hover, .needs-btn.open { opacity: 0.9; }
 .needs-btn .icon { width: 15px; height: 15px; }
+.needs-btn.miss { animation: shake 0.4s ease; }
+@keyframes shake { 20% { transform: translateX(-4px); } 40% { transform: translateX(4px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(3px); } }
 
 /* the box */
 .chat-compose { width: 100%; flex-direction: column; align-items: stretch; gap: 0; padding: 12px 10px 12px 19px; border: 0; border-radius: 19px; background: var(--surface); box-shadow: var(--card-shadow); }

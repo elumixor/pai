@@ -17,6 +17,8 @@ import type { Agent, AgentStatus, LogMessage, Need, Question } from "./types.ts"
  */
 
 const PAGE = 100;
+/** How far back `reveal` pages for a row that is not loaded yet. */
+const REVEAL_PAGES = 20;
 const PAI = "pai";
 /** A message of the user's longer than this folds to three lines with "Show more". */
 const MINE_FOLD_CHARS = 240;
@@ -54,8 +56,8 @@ export interface RevealTarget {
 export interface Chat {
   readonly node: HTMLElement;
   readonly dispose: () => void;
-  /** Scrolls to a row and flashes it; false when the row is not in this chat. */
-  readonly reveal: (target: RevealTarget) => boolean;
+  /** Scrolls to a row and flashes it, paging back through the log until it is there; false when this chat does not hold it. */
+  readonly reveal: (target: RevealTarget) => Promise<boolean>;
   readonly focus: () => void;
   /** The agents changed: the dots on the delegation cards follow. */
   readonly refreshAgents: () => void;
@@ -651,7 +653,8 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     log.scrollTop = log.scrollHeight - fromBottom;
   }
 
-  const concerns = (m: LogMessage) => m.from === options.agent || m.to === options.agent || m.meta.agent === options.agent;
+  // pai's chat also holds every question put to the user and every answer, whoever asked.
+  const concerns = (m: LogMessage) => m.from === options.agent || m.to === options.agent || m.meta.agent === options.agent || (options.agent === PAI && (m.kind === "ask" || m.kind === "answer") && (m.to === "user" || m.from === "user"));
 
   const stopLog = follow(
     undefined,
@@ -834,10 +837,18 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       stopLive?.();
       stopWorking();
     },
-    reveal(target) {
+    async reveal(target) {
       const selector = target.messageId !== undefined ? `[data-message="${target.messageId}"]` : target.askId !== undefined ? `[data-ask="${target.askId}"]` : target.taskId !== undefined ? `[data-task="${target.taskId}"]` : target.question ? ".row.question.open" : "";
-      const found = selector ? [...log.querySelectorAll<HTMLElement>(selector)].pop() : undefined;
+      if (!selector) return false;
+      const find = () => [...log.querySelectorAll<HTMLElement>(selector)].pop();
+      let found = find();
+      for (let pages = 0; !found && more && pages < REVEAL_PAGES; pages += 1) {
+        await loadEarlier();
+        found = find();
+      }
       if (!found) return false;
+      // A row folded into a group of events opens its group first.
+      found.closest(".row.group")?.classList.add("open");
       flash(found);
       return true;
     },
