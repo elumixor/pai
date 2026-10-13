@@ -149,7 +149,13 @@ export function home(root: HTMLElement) {
     };
     return needs.filter((n) => n.agent && under(n.agent));
   };
-  const peek = projectPeek({ needsOf });
+  const peek = projectPeek({
+    needsOf,
+    working: (slug) => bySlug(slug)?.status === "working",
+    openTask: (id) => ctx.openTask(id),
+    reveal: (need) => void reveal(need),
+    answered: () => void refreshNeeds(),
+  });
 
   // ---- the threads: General › agent › … › agent, each with its tasks and the threads it started ----
 
@@ -248,6 +254,7 @@ export function home(root: HTMLElement) {
 
   const drawTree = () => {
     projectTree(projectsList, treeRows(), (slug) => ctx.openAgent(slug), peek.attach);
+    peek.redraw();
     projectTree(threadsList, threadRows(), openThreadRow, undefined, "No threads yet.", toggleFold);
   };
 

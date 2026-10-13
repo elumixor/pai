@@ -786,18 +786,44 @@ body.in-home .nav:hover { opacity: 0.85; }
 .info-dim { margin: 0; color: var(--ink-20); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* the card a long hover over a project opens */
-.peek { position: fixed; z-index: 40; width: 385px; max-width: 60vw; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 12px; background: color-mix(in srgb, var(--ink) 3%, var(--canvas)); box-shadow: var(--soft-shadow), 0 0 0 1px var(--ink-10); font: 400 13px/18px var(--font-ui); color: var(--ink-70); pointer-events: none; letter-spacing: -0.005em; }
+.peek { position: fixed; z-index: 40; width: 385px; max-width: 60vw; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 12px; background: color-mix(in srgb, var(--ink) 3%, var(--canvas)); box-shadow: var(--soft-shadow), 0 0 0 1px var(--ink-10); font: 400 13px/18px var(--font-ui); color: var(--ink-70); letter-spacing: -0.005em; }
 .peek-head { display: flex; align-items: center; gap: 14px; font-size: 13px; }
 .peek-count { color: var(--ink-45); }
 .peek-count b { color: var(--ink-70); font-weight: 700; }
-.peek-tasks, .peek-needs { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid var(--ink-10); }
-.peek-task { display: flex; align-items: center; gap: 9px; min-width: 0; color: var(--ink-45); }
-.peek-task.active { color: var(--ink-70); }
-.peek-task .icon { width: 14px; height: 14px; flex: 0 0 auto; opacity: 0.7; }
+.peek-count.hand, .peek-count.hand b { color: var(--hand); }
+/* both lists scroll: a project with many tasks keeps its decisions in reach */
+.peek-tasks, .peek-needs { display: flex; flex-direction: column; gap: 2px; margin: 0 -8px; padding: 8px 0 0; border-top: 1px solid var(--ink-10); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.peek-tasks { max-height: 186px; }
+.peek-needs { max-height: 156px; }
+.peek-task, .peek-need { display: flex; flex: 0 0 auto; align-items: center; gap: 9px; min-width: 0; padding: 4px 8px; border: 0; border-radius: 7px; background: none; color: var(--ink-45); font: inherit; text-align: left; cursor: pointer; transition: background-color 0.12s ease, color 0.12s ease; }
+.peek-task:hover, .peek-need:hover, .peek-need.on { background: color-mix(in srgb, var(--ink) 5%, transparent); }
+.peek-task.active, .peek-task:hover { color: var(--ink-70); }
+.peek-task.running { color: var(--ink); }
+.peek-task .icon { width: 14px; height: 14px; flex: 0 0 auto; opacity: 0.55; }
 .peek-task .spinner { width: 11px; height: 11px; margin: 0 1.5px; border-width: 1.5px; }
-.peek-more { font: 400 10.5px/13px var(--font-ui); color: var(--ink-30); }
 .peek-need { color: var(--act); }
-.peek-needs .peek-more { color: var(--act); opacity: 0.5; }
+.peek-need > .icon:first-child { width: 14px; height: 14px; flex: 0 0 auto; color: var(--hand); }
+.peek-need > .ellipsis { flex: 1 1 auto; }
+.peek-need > .icon:last-child { width: 8px; height: 8px; flex: 0 0 auto; transform: rotate(-90deg); opacity: 0.35; transition: opacity 0.12s ease; }
+.peek-need:hover > .icon:last-child, .peek-need.on > .icon:last-child { opacity: 0.8; }
+.peek-need-count { flex: 0 0 auto; padding: 0 5px; border-radius: 999px; background: color-mix(in srgb, var(--hand) 18%, transparent); font: 700 10px/15px var(--font-ui); }
+/* the second card: what one decision asks, answerable in place */
+.peek-fly { width: 340px; max-height: min(440px, calc(100vh - 16px)); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; gap: 0; padding: 4px 16px; }
+.peek-q { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; }
+.peek-q + .peek-q { border-top: 1px solid var(--ink-10); }
+.peek-q-meta { display: flex; align-items: center; gap: 6px; font: 400 11px/14px var(--font-ui); color: var(--ink-45); }
+.peek-q-meta .icon { width: 11px; height: 11px; color: var(--hand); }
+.peek-q-meta b { color: var(--ink-70); font-weight: 600; }
+.peek-q-title { color: var(--ink); font-weight: 600; }
+.peek-q-body { color: var(--ink-70); font-size: 12.5px; line-height: 17px; overflow-wrap: anywhere; }
+.peek-input { width: 100%; padding: 6px 10px; border: 1px solid var(--ink-10); border-radius: 8px; background: var(--canvas); color: var(--ink); font: inherit; font-size: 12.5px; outline: none; }
+.peek-input:focus { border-color: var(--ink-20); }
+.peek-q-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 16px; }
+.peek-q-note { color: var(--act); font-size: 11px; }
+.peek-q-open { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; padding: 0; border: 0; background: none; color: var(--ink-45); font: 400 11px/14px var(--font-ui); cursor: pointer; }
+.peek-q-open:hover { color: var(--ink); }
+.peek-q-open .icon { width: 7px; height: 7px; transform: rotate(-90deg); }
+.peek-q .q-answer { display: flex; align-items: center; gap: 6px; color: var(--ink-45); }
 
 /* the chat column */
 .chat-view { position: relative; width: var(--chat-w); max-width: calc(100% - 100px); flex: 1; min-height: 0; height: 100%; display: flex; flex-direction: column; }
