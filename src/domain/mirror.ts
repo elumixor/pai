@@ -86,10 +86,10 @@ export class TerminalThread {
 
   persist() {
     db.prepare(
-      `INSERT INTO sessions (session_id, short_id, kind, title, cwd, project, thread_id, card_id, state, started_at, last_activity, turns)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO sessions (session_id, short_id, kind, title, cwd, project, thread_id, card_id, state, started_at, last_activity, turns, origin)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'terminal')
        ON CONFLICT(session_id) DO UPDATE SET title=excluded.title, thread_id=excluded.thread_id, card_id=excluded.card_id,
-         state=excluded.state, last_activity=excluded.last_activity, turns=excluded.turns`,
+         state=excluded.state, last_activity=excluded.last_activity, turns=excluded.turns, origin=COALESCE(sessions.origin, excluded.origin)`,
     ).run(this.id, this.shortId, this.kind, this.title, this.cwd, this.project ?? null, this.threadId, this.cardId, this.state, now(), now(), this.turns);
     sessions.terminalStates.set(this.id, this.state);
   }

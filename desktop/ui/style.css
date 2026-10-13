@@ -743,17 +743,35 @@ body.in-home .nav:hover { opacity: 0.85; }
 .ptree-hand { display: inline-flex; align-items: center; gap: 2px; color: var(--hand); opacity: 0.45; font: 400 9px/10px var(--font-ui); }
 .ptree-hand .icon { width: 10px; height: 10px; }
 .ptree-empty { opacity: 0.3; }
-/* the two sections on the left: the projects, then the threads (General › agent › … › its tasks and threads) */
-.side-head { padding: 4px 0 2px; font: 700 9.5px/12px var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-20); }
-.side-list + .side-head { margin-top: 14px; }
+/* the two sections on the left, no headings, just room between them: General and the projects, then the threads */
 .side-list { display: flex; flex-direction: column; }
-.ptree-name > .icon { flex: 0 0 auto; width: 10px; height: 10px; opacity: 0.3; }
-.ptree-row:hover .ptree-name > .icon, .ptree-row.on .ptree-name > .icon { opacity: 0.6; }
-.ptree-row.faint .label { opacity: 0.18; }
-.ptree-fold { display: inline-flex; padding: 2px; margin-left: -2px; opacity: 0; color: var(--ink); transition: opacity 0.18s ease, transform 0.18s ease; }
-.ptree-fold .icon { width: 8px; height: 8px; }
-.ptree-fold.closed { opacity: 0.3; transform: rotate(-90deg); }
-.ptree-row:hover .ptree-fold { opacity: 0.45; }
+.side-list + .side-list { margin-top: 34px; }
+.side-list.threads { gap: 14px; }
+
+/* a thread: its title, and under it where it belongs and when it last moved */
+.thread-row { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 0; border: 0; background: none; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+.thread-title { display: flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; }
+.thread-title .label { min-width: 0; opacity: 0.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity 0.12s; }
+.thread-title > .icon { flex: 0 0 auto; width: 10px; height: 10px; opacity: 0.25; }
+.thread-title .spinner { flex: 0 0 auto; width: 10px; height: 10px; border-width: 1px; opacity: 0.45; }
+.thread-title .ptree-hand { flex: 0 0 auto; }
+.thread-meta { display: flex; gap: 6px; min-width: 0; padding-left: 15px; font-size: 0.86em; color: var(--ink-20); }
+.thread-meta .ellipsis { min-width: 0; }
+.thread-when { flex: 0 0 auto; }
+.thread-meta .ellipsis:not(:empty) + .thread-when::before { content: "·"; margin-right: 6px; }
+.thread-row:hover .label, .thread-row.on .label { opacity: 0.7; }
+.thread-row:hover .thread-title > .icon, .thread-row.on .thread-title > .icon { opacity: 0.55; }
+.thread-row:hover .thread-meta, .thread-row.on .thread-meta { color: var(--ink-30); }
+.thread-row.faint .label { opacity: 0.18; }
+
+/* pai's box with "New thread" on: the chat behind it is gone at once, the box starts a thread of its own */
+.home-centre.detached .chat-log > *, .home-centre.detached .chat-slot { visibility: hidden; }
+.compose-tool.detach { gap: 6px; }
+.compose-tool.detach .switch { position: relative; width: 20px; height: 11px; border-radius: 999px; background: var(--ink-20); transition: background-color 0.18s ease; }
+.compose-tool.detach .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 7px; height: 7px; border-radius: 50%; background: var(--canvas); transition: transform 0.18s ease; }
+.compose-tool.detach.on { opacity: 0.9; }
+.compose-tool.detach.on .switch { background: var(--ink); }
+.compose-tool.detach.on .switch::after { transform: translateX(9px); }
 
 /* the right: the agent the open chat is with, and what it is told */
 .home-info { position: absolute; top: 102px; right: 50px; width: 250px; bottom: 20px; z-index: 2; overflow-y: auto; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-45); }

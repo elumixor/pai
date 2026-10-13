@@ -9,6 +9,7 @@ import { installCredentials, needsLogin, usage } from "../domain/usage.ts";
 import { diagnostics } from "../domain/diagnostics.ts";
 import { recentEvents, waitFor } from "../core/bus.ts";
 import * as sessions from "../domain/sessions.ts";
+import * as mirror from "../domain/mirror.ts";
 import * as channels from "../domain/channels.ts";
 import * as terminals from "../domain/terminals.ts";
 import { status as updateStatus, update } from "../host/update.ts";
@@ -195,7 +196,7 @@ export async function handle(req: Request): Promise<Response> {
     // A turn in a conversation: a new one, or `id` for an existing one. The same path as a Telegram message.
     if (path === "/chat" && req.method === "POST") {
       const { text, id, title } = await body<{ text: string; id?: string; title?: string }>(req);
-      const m = id ? resolveLive(id) : sessions.spawnTask({ title: title ?? "" });
+      const m = id ? resolveLive(id) : sessions.spawnTask({ title: title ?? "", origin: "cli" });
       if (!m) return json({ error: "no such session" }, 404);
       const done = waitFor("session.turn_end", m.id, TURN_TIMEOUT);
       m.send(text);
@@ -204,14 +205,20 @@ export async function handle(req: Request): Promise<Response> {
     }
 
     if (path === "/task" && req.method === "POST") {
-      const { title, text, project, model, effort } = await body<{ title: string; text: string; project?: string; model?: string | null; effort?: "low" | "medium" | "high" | "xhigh" | "max" | null }>(req);
-      const s = sessions.spawnTask({ title, project, model, effort });
-      if (text) s.send(text);
+      const { title, text, project, model, effort, origin, images } = await body<{ title: string; text: string; project?: string; model?: string | null; effort?: "low" | "medium" | "high" | "xhigh" | "max" | null; origin?: "general" | "cli"; images?: { media_type: string; data: string }[] }>(req);
+      const s = sessions.spawnTask({ title: title ?? "", project, model, effort, origin: origin === "general" ? "general" : project ? "builder" : "cli" });
+      if (text || images?.length) s.send(text ?? "", { images });
       return json(s.summary());
     }
 
     if (path === "/send" && req.method === "POST") {
       const { id, text, wait, cwd, title, images } = await body<{ id: string; text: string; wait?: boolean; cwd?: string; title?: string; images?: { media_type: string; data: string }[] }>(req);
+      // A conversation a terminal holds goes into that terminal while its channel is connected; the mirror resumes it here otherwise.
+      const held = !sessions.find(id) ? mirror.find(id) : undefined;
+      if (held && !wait) {
+        held.send(text, { images });
+        return json(held.summary());
+      }
       const s = resolveLive(id) ?? (cwd ? sessions.adopt(id, cwd, title ?? "") : undefined);
       if (!s) return json({ error: "no such session" }, 404);
       const done = wait ? waitFor("session.turn_end", s.id, TURN_TIMEOUT) : undefined;

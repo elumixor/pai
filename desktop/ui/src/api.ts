@@ -282,6 +282,10 @@ export const fileIndex = (path: string) => get<string[]>(`/files/index?path=${en
 export const file = (path: string) => get<{ path: string; text: string; truncated?: boolean }>(`/file?path=${encodeURIComponent(path)}`);
 export const transcript = (session: string, cwd?: string, limit = 300) =>
   get<Transcript[]>(`/transcript?session=${session}&limit=${limit}${cwd ? `&cwd=${encodeURIComponent(cwd)}` : ""}`);
+/** A new plain thread, on its own: no agent, no project; its first message goes with it. */
+export const startThread = (text: string, images: { media_type: string; data: string }[] = []) => send("/task", { title: "", text, images, origin: "general" });
+/** A turn in a plain thread, a terminal's included (into the terminal while its channel is connected). */
+export const sendThread = (id: string, text: string, images: { media_type: string; data: string }[] = []) => send("/send", { id, text, images });
 export const threadsIn = (cwd: string) => get<DiskSession[]>(`/threads?cwd=${encodeURIComponent(cwd)}`);
 
 // ---- the staff: pai and its agents, the message log, tasks, asks, routines ----------------

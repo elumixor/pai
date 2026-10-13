@@ -4,6 +4,7 @@ import { logger } from "../core/log.ts";
 import * as agents from "./agents.ts";
 import * as asks from "./asks.ts";
 import * as messages from "./messages.ts";
+import * as sessions from "./sessions.ts";
 
 /**
  * The gist of a long message, in a sentence or two, so a chat can show what a reply or a
@@ -77,6 +78,18 @@ async function writeHeadline(m: messages.Message, answer?: string): Promise<stri
   return line;
 }
 
+/** A thread's name from its first message: three to six words, the way a person would title the conversation. */
+async function writeTitle(sessionId: string, text: string) {
+  const title = await complete(
+    "You name a conversation with an assistant from its first message: three to six words, sentence case, no period, no quotes, no markdown. Name the subject, not the request's grammar. Examples: 'Flight options to Lisbon', 'Fix flaky login test', 'Birthday gift for Mama'.",
+    text.slice(0, 4_000),
+    30,
+  );
+  const line = title.replace(/\*\*|__/g, "").replace(/^["'“”]+|["'“”.]+$/g, "").split("\n")[0]!.trim().split(/\s+/).slice(0, 8).join(" ");
+  if (line) sessions.find(sessionId)?.retitle(line);
+  return line;
+}
+
 async function write(m: messages.Message): Promise<string> {
   const text = await complete(
     "You write the gist of a message from a personal assistant to its user. One or two sentences, up to three when the message holds several decisions. Keep names, numbers, dates and what is asked of the user. Markdown inline marks are fine; no preamble, no quotes, no bullet list.",
@@ -120,7 +133,12 @@ export function start() {
     }
   };
   const wants = (m: { kind: string; meta: Record<string, unknown> }) => HEADLINED.has(m.kind) && typeof m.meta.headline !== "string";
-  const handler = (e: { kind: string; payload: Record<string, unknown> }) => {
+  const handler = (e: { kind: string; payload: Record<string, unknown>; sessionId?: string }) => {
+    if (e.kind === "session.untitled" && e.sessionId && typeof e.payload.text === "string") {
+      const id = e.sessionId;
+      void once(`title:${id}`, () => writeTitle(id, e.payload.text as string));
+      return;
+    }
     if (e.kind !== "message.new") return;
     const m = e.payload as unknown as messages.Message;
     if (!wants(m)) return;

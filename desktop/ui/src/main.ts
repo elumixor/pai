@@ -101,10 +101,18 @@ function applyRoute(route: Route) {
     if (session && state.threadA !== session.sessionId && state.threadB !== session.sessionId) openThread(session, "a");
     return;
   }
-  if (route.name === "home" || route.name === "board" || route.name === "chat" || route.name === "task") {
+  if (route.name === "home" || route.name === "board" || route.name === "chat" || route.name === "task" || route.name === "thread") {
     showView("home");
     const centre: Centre =
-      route.name === "home" ? { kind: "chat" } : route.name === "board" ? { kind: "board", slug: route.param } : route.name === "task" ? { kind: "task", id: Number(route.param) } : { kind: "agent", slug: route.param! };
+      route.name === "home"
+        ? { kind: "chat" }
+        : route.name === "board"
+          ? { kind: "board", slug: route.param }
+          : route.name === "task"
+            ? { kind: "task", id: Number(route.param) }
+            : route.name === "thread"
+              ? { kind: "thread", id: route.param! }
+              : { kind: "agent", slug: route.param! };
     homePage!.show(centre);
   }
 }

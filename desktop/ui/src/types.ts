@@ -226,8 +226,18 @@ export interface AgentThread {
   readonly shortId: string;
   readonly title: string;
   readonly project: string | null;
+  readonly cwd?: string | null;
+  readonly kind?: string;
   readonly state: string;
+  readonly startedAt?: number;
   readonly lastActivity: number;
+  readonly costUsd?: number;
+  readonly turns?: number;
+  readonly model?: string | null;
+  readonly modelPref?: string | null;
+  readonly effort?: Effort | null;
+  /** Where it was started: `agent` (by the agent it is listed under), `general` (the client's detached box), `cli`, `terminal`, `phone`, `builder`, `routine`. */
+  readonly origin?: string;
 }
 
 /** `GET /agents/<slug>/instructions`: its own files (CLAUDE.md and what that imports) and what is appended to Claude Code's prompt. */

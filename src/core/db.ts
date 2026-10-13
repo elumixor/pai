@@ -231,6 +231,12 @@ if (!sessionColumns.includes("model_pref")) db.exec("ALTER TABLE sessions ADD CO
 if (!sessionColumns.includes("effort")) db.exec("ALTER TABLE sessions ADD COLUMN effort TEXT");
 // The agent a session works for (pai itself, or one of its staff); null for plain threads.
 if (!sessionColumns.includes("agent")) db.exec("ALTER TABLE sessions ADD COLUMN agent TEXT");
+// Where a thread was started: general (the client, detached), cli, terminal, phone, builder, routine; null = not recorded.
+if (!sessionColumns.includes("origin")) {
+  db.exec("ALTER TABLE sessions ADD COLUMN origin TEXT");
+  // A row no process of ours ever ran (no model answered, nothing spent, nobody started it) is a terminal's, followed by the mirror.
+  db.exec("UPDATE sessions SET origin = 'terminal' WHERE model IS NULL AND cost_usd = 0 AND agent IS NULL AND parent_id IS NULL AND kind != 'main'");
+}
 // Routines: a schedule next to the event, an agent next to the action, a check in code before any model runs.
 const automationColumns = (db.query("PRAGMA table_info(automations)").all() as { name: string }[]).map((c) => c.name);
 if (!automationColumns.includes("schedule")) db.exec("ALTER TABLE automations ADD COLUMN schedule TEXT NOT NULL DEFAULT ''");

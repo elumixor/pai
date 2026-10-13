@@ -31,6 +31,16 @@ export function ago(iso: string | number) {
   return `${Math.round(seconds / 86400)}d`;
 }
 
+/** "Today 14:13", "Yesterday 09:02", "Oct 7 10:40" — an instant as a person says it. */
+export function stamp(at: number | string) {
+  const day = new Date(at);
+  const today = new Date();
+  const clock = day.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
+  if (day.toDateString() === today.toDateString()) return `Today ${clock}`;
+  if (day.toDateString() === new Date(today.getTime() - 86_400_000).toDateString()) return `Yesterday ${clock}`;
+  return `${day.toLocaleDateString(undefined, { month: "short", day: "numeric", ...(day.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}) })} ${clock}`;
+}
+
 /** "2h 10m", "35m", "now" — how long until an instant. */
 export function until(iso: string | undefined) {
   if (!iso) return "";

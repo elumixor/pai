@@ -179,7 +179,12 @@ export interface SessionOptions {
   effort?: Effort | null;
   /** The agent this session works for: pai itself or one of its staff. */
   agent?: AgentSetup;
+  /** Where it was started (see `ThreadOrigin`); kept from the first write on. */
+  origin?: ThreadOrigin;
 }
+
+/** Where a thread was started: the client's detached box, the CLI, a terminal, the phone, the builder, a routine. */
+export type ThreadOrigin = "general" | "cli" | "terminal" | "phone" | "builder" | "routine";
 
 /** Who a turn came from: the user typing, or the daemon (a report, a request, a routine) speaking to the session. */
 export type TurnOrigin = "user" | "system" | "silent";
@@ -203,6 +208,7 @@ export class Session {
   /** The agent this session works for, if any. */
   readonly agent: string | null;
   private readonly agentSetup?: AgentSetup;
+  private readonly origin: ThreadOrigin | null;
   /** Where each queued turn came from, oldest first; the head is the turn in flight. */
   private origins: TurnOrigin[] = [];
   cardId: number | null = null;
@@ -258,6 +264,7 @@ export class Session {
     this.parent = opts.parent ?? null;
     this.agent = opts.agent?.slug ?? null;
     this.agentSetup = opts.agent;
+    this.origin = opts.origin ?? null;
     if (opts.resume) {
       const row = db.query("SELECT card_id, cost_usd, turns, model, model_pref, effort FROM sessions WHERE session_id = ?").get(this.id) as
         | { card_id: number | null; cost_usd: number; turns: number; model: string | null; model_pref: string | null; effort: Effort | null }
@@ -497,7 +504,11 @@ export class Session {
       content.push({ type: "image", source: { type: "base64", media_type: img.media_type, data: img.data } });
     this.inbox.push({ type: "user", message: { role: "user", content }, parent_tool_use_id: null });
     // A thread started without a title is named after what was first said in it.
-    if (this.title === UNTITLED && text.trim()) this.title = text.replace(/\s+/g, " ").trim().slice(0, 60);
+    if (this.title === UNTITLED && text.trim()) {
+      this.title = text.replace(/\s+/g, " ").trim().slice(0, 60);
+      // A better name than the first words is written by a small model when one is configured (summaries.ts).
+      bus.emitEvent("session.untitled", { text: text.slice(0, 4_000) }, this.id);
+    }
     this.activeTurn = true;
     this.origins.push(opts.origin ?? "user");
     this.wake?.();
@@ -625,11 +636,11 @@ export class Session {
 
   persist() {
     db.prepare(
-      `INSERT INTO sessions (session_id, short_id, kind, title, cwd, project, thread_id, card_id, state, started_at, last_activity, cost_usd, turns, parent_id, model, model_pref, effort, agent)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO sessions (session_id, short_id, kind, title, cwd, project, thread_id, card_id, state, started_at, last_activity, cost_usd, turns, parent_id, model, model_pref, effort, agent, origin)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(session_id) DO UPDATE SET state=excluded.state, title=excluded.title, thread_id=excluded.thread_id,
          card_id=excluded.card_id, last_activity=excluded.last_activity, cost_usd=excluded.cost_usd, turns=excluded.turns, model=excluded.model,
-         model_pref=excluded.model_pref, effort=excluded.effort`,
+         model_pref=excluded.model_pref, effort=excluded.effort, origin=COALESCE(sessions.origin, excluded.origin)`,
     ).run(
       this.id,
       this.shortId,
@@ -649,7 +660,15 @@ export class Session {
       this.modelPref,
       this.effort,
       this.agent,
+      this.origin,
     );
+  }
+
+  /** A name for the thread, once something better than its first words is known. */
+  retitle(title: string) {
+    this.title = title.slice(0, 80);
+    this.persist();
+    bus.emitEvent("session.titled", { title: this.title }, this.id);
   }
 
   summary() {

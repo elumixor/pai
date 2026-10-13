@@ -50,6 +50,8 @@ export interface ComposeOptions {
   /** The chat look's foot: the model and the effort, changeable when `setPrefs` is given, and the quota rings. */
   readonly prefs?: () => Prefs | undefined;
   readonly setPrefs?: (changes: Prefs) => Promise<{ error?: string }>;
+  /** A control of the host's in the chat look's foot, after the effort (pai's "new thread" switch). */
+  readonly extra?: HTMLElement;
 }
 
 export interface Compose {
@@ -59,6 +61,8 @@ export interface Compose {
   /** Something the next message answers, shown above the box until it is sent or dismissed. */
   pin(content: HTMLElement | undefined, onDismiss?: () => void): void;
   disable(reason?: string): void;
+  /** Says something else in the empty box for a while; none puts the usual words back. */
+  placeholder(text?: string): void;
   focus(): void;
   /** The model or effort changed elsewhere: the foot follows. */
   refreshPrefs(): void;
@@ -251,6 +255,7 @@ export function compose(options: ComposeOptions): Compose {
         el("button.compose-tool", { title: "attach an image (or paste one)", onclick: () => picker.click() }, icon("paperclip", 15)),
         modelButton,
         effortButton,
+        options.extra,
         rings,
         el("span.grow"),
         note,
@@ -289,6 +294,9 @@ export function compose(options: ComposeOptions): Compose {
     disable(reason) {
       input.disabled = Boolean(reason);
       input.placeholder = reason ?? options.placeholder;
+    },
+    placeholder(text) {
+      if (!input.disabled) input.placeholder = text ?? options.placeholder;
     },
     focus: () => input.focus(),
     refreshPrefs: () => (drawPrefs(), drawRings()),

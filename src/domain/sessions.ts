@@ -1,5 +1,5 @@
 import { ensureTranscriptAt } from "./transcript.ts";
-import { Session, UNTITLED, asKind, closeWarm, prewarm, rewarm, type AgentSetup, type Effort, type SessionKind } from "./session.ts";
+import { Session, UNTITLED, asKind, closeWarm, prewarm, rewarm, type AgentSetup, type Effort, type SessionKind, type ThreadOrigin } from "./session.ts";
 import { db, kv, now } from "../core/db.ts";
 import { existsSync, watch } from "node:fs";
 import { join } from "node:path";
@@ -28,6 +28,7 @@ export interface SpawnTask {
   agent?: AgentSetup;
   /** A working directory other than the project's or the workspace (an agent's folder). */
   cwd?: string;
+  origin?: ThreadOrigin;
 }
 
 /** How a revived session finds its agent's setup again; agents.ts registers it, so this file does not import that one. */
@@ -49,7 +50,7 @@ export function spawnTask(opts: SpawnTask): Session {
     project = proj.slug;
   }
   if (opts.cwd) cwd = opts.cwd;
-  const session = new Session({ kind, title: opts.title.trim() || UNTITLED, cwd, project, threadId: opts.threadId, parent: opts.parent, model: opts.model, effort: opts.effort, agent: opts.agent });
+  const session = new Session({ kind, title: opts.title.trim() || UNTITLED, cwd, project, threadId: opts.threadId, parent: opts.parent, model: opts.model, effort: opts.effort, agent: opts.agent, origin: opts.origin ?? (opts.threadId != null ? "phone" : undefined) });
   live.set(session.id, session);
   log.info(`spawned ${kind} ${session.shortId} "${opts.title}"`);
   prewarm("chat");
@@ -124,6 +125,7 @@ export function adopt(sessionId: string, cwd: string, title: string): Session {
     cwd: workingDirectory(cwd, project?.slug ?? null),
     project: project?.slug,
     resume: sessionId,
+    origin: "terminal",
   });
   live.set(session.id, session);
   log.info(`adopted ${session.shortId} "${session.title}" from ${cwd}`);
@@ -188,6 +190,7 @@ export interface SessionRow {
   modelPref: string | null;
   effort: Effort | null;
   agent: string | null;
+  origin: ThreadOrigin | null;
 }
 
 /** Recent sessions, live or not, newest activity first. */
@@ -216,6 +219,7 @@ export function recent(limit = 20, kind?: SessionKind): SessionRow[] {
     modelPref: r.model_pref ?? null,
     effort: r.effort ?? null,
     agent: r.agent ?? null,
+    origin: r.origin ?? null,
   }));
 }
 

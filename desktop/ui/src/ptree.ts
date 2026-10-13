@@ -1,4 +1,4 @@
-import { clear, el } from "./dom.ts";
+import { clear, el, stamp } from "./dom.ts";
 import { icon, type IconName } from "./icons.ts";
 
 /**
@@ -16,29 +16,54 @@ export interface TreeRow {
   readonly title?: string;
   /** The first row of a top-level project starts a new group. */
   readonly group: boolean;
-  /** What the row is, drawn before its name when the spinner is not. */
-  readonly icon?: IconName;
-  /** A row with rows under it: whether they show; a click on the chevron flips it. */
-  readonly fold?: "open" | "closed";
-  /** Done or closed: still there, quieter. */
-  readonly faint?: boolean;
 }
 
-export function projectTree(root: HTMLElement, rows: readonly TreeRow[], onOpen: (id: string) => void, arm?: (row: HTMLElement, id: string) => void, empty = "No projects yet.", onFold?: (id: string) => void) {
+export function projectTree(root: HTMLElement, rows: readonly TreeRow[], onOpen: (id: string) => void, arm?: (row: HTMLElement, id: string) => void, empty = "No projects yet.") {
   const groups: HTMLElement[] = [];
   for (const row of rows) {
     if (row.group || !groups.length) groups.push(el("div.ptree-group"));
-    const fold = row.fold
-      ? el("span.ptree-fold", { class: `ptree-fold ${row.fold}`, title: row.fold === "open" ? "fold" : "unfold", onclick: (event: Event) => (event.stopPropagation(), onFold?.(row.id)) }, icon("chevron", 8))
-      : undefined;
     const node = el(
       "button.ptree-row",
-      { class: `ptree-row${row.on ? " on" : ""}${row.faint ? " faint" : ""}`, style: `--depth: ${row.depth}`, title: arm ? undefined : row.title, onclick: () => onOpen(row.id) },
-      el("span.ptree-name", {}, row.working ? el("span.spinner") : row.icon ? icon(row.icon, 10) : undefined, el("span.label", {}, row.label), fold),
-      row.waiting ? el("span.ptree-hand", {}, icon("hand", 10), el("span", {}, String(row.waiting))) : undefined,
+      { class: `ptree-row${row.on ? " on" : ""}`, style: `--depth: ${row.depth}`, title: arm ? undefined : row.title, onclick: () => onOpen(row.id) },
+      el("span.ptree-name", {}, row.working ? el("span.spinner") : undefined, el("span.label", {}, row.label)),
+      row.waiting ? hand(row.waiting) : undefined,
     );
     arm?.(node, row.id);
     groups[groups.length - 1]!.append(node);
   }
   clear(root, ...(groups.length ? groups : [el("p.ptree-empty", {}, empty)]));
 }
+
+/** One conversation under the projects: what it is about, and under that where it belongs and when it last moved. */
+export interface ThreadRow {
+  readonly id: string;
+  readonly title: string;
+  /** Where it belongs: the project an agent's job is in, Builder, Terminal, Phone, General. */
+  readonly context: string;
+  readonly at: number;
+  readonly working: boolean;
+  readonly waiting: number;
+  readonly on: boolean;
+  readonly icon: IconName;
+  /** Finished or gone: still there, quieter. */
+  readonly faint?: boolean;
+  readonly tip?: string;
+}
+
+export function threadList(root: HTMLElement, rows: readonly ThreadRow[], onOpen: (id: string) => void, empty = "No threads yet.") {
+  clear(
+    root,
+    ...(rows.length
+      ? rows.map((row) =>
+          el(
+            "button.thread-row",
+            { class: `thread-row${row.on ? " on" : ""}${row.faint ? " faint" : ""}`, title: row.tip, onclick: () => onOpen(row.id) },
+            el("span.thread-title", {}, row.working ? el("span.spinner") : icon(row.icon, 10), el("span.label", {}, row.title), row.waiting ? hand(row.waiting) : undefined),
+            el("span.thread-meta", {}, el("span.ellipsis", {}, row.context), el("span.thread-when", {}, stamp(row.at))),
+          ),
+        )
+      : [el("p.ptree-empty", {}, empty)]),
+  );
+}
+
+const hand = (count: number) => el("span.ptree-hand", {}, icon("hand", 10), el("span", {}, String(count)));

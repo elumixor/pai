@@ -708,17 +708,29 @@ export interface AgentThread {
   readonly shortId: string;
   readonly title: string;
   readonly project: string | null;
+  readonly cwd: string | null;
+  readonly kind: string;
   readonly state: string;
   readonly threadId: number | null;
+  readonly startedAt: number;
   readonly lastActivity: number;
   readonly costUsd: number;
+  readonly turns: number;
+  readonly model: string | null;
+  readonly modelPref: string | null;
+  readonly effort: string | null;
+  /** Where it was started: an agent (its owner), the client's detached box, the CLI, a terminal, the phone, the builder, a routine. */
+  readonly origin: string;
 }
 
 const THREADS_SHOWN_FOR_MS = 7 * 86_400_000;
 
+/** Where a thread came from when no origin was recorded (older rows, modules that do not say): a repo is the builder, a topic the phone, the rest a terminal. */
+const originOf = (r: sessions.SessionRow, owned: boolean) => r.origin ?? (r.kind === "code" ? "builder" : owned ? "agent" : r.threadId !== null ? "phone" : "terminal");
+
 /** Each agent's threads, by who started them: the session a thread's parent is belongs to an agent, or else to pai. */
 function threadsByAgent(): Map<string, AgentThread[]> {
-  const rows = sessions.recent(80);
+  const rows = sessions.recent(120);
   const ownerOf = new Map(list().filter((a) => a.sessionId).map((a) => [a.sessionId!, a.slug]));
   for (const r of rows) if (r.agent) ownerOf.set(r.sessionId, r.agent);
   const out = new Map<string, AgentThread[]>();
@@ -726,8 +738,26 @@ function threadsByAgent(): Map<string, AgentThread[]> {
     if (r.agent) continue;
     const live = r.state === "busy" || r.state === "starting";
     if (!live && now() - r.lastActivity > THREADS_SHOWN_FOR_MS) continue;
-    const owner = (r.parent && ownerOf.get(r.parent)) || PAI;
-    const thread: AgentThread = { sessionId: r.sessionId, shortId: r.shortId, title: r.title, project: r.project, state: r.state, threadId: r.threadId, lastActivity: r.lastActivity, costUsd: r.costUsd };
+    const parentOwner = r.parent ? ownerOf.get(r.parent) : undefined;
+    const owner = parentOwner || PAI;
+    const thread: AgentThread = {
+      sessionId: r.sessionId,
+      shortId: r.shortId,
+      title: r.title,
+      project: r.project,
+      cwd: r.cwd,
+      kind: r.kind,
+      state: r.state,
+      threadId: r.threadId,
+      startedAt: r.startedAt,
+      lastActivity: r.lastActivity,
+      costUsd: r.costUsd,
+      turns: r.turns,
+      model: r.model,
+      modelPref: r.modelPref,
+      effort: r.effort,
+      origin: originOf(r, Boolean(parentOwner)),
+    };
     out.set(owner, [...(out.get(owner) ?? []), thread]);
   }
   return out;

@@ -45,6 +45,14 @@ export interface ChatOptions {
   /** The model and effort shown in the box's foot, and how to change them. */
   readonly prefs?: () => Prefs | undefined;
   readonly setPrefs?: (changes: Prefs) => Promise<{ error?: string }>;
+  /** A plain thread instead of a log: its rows are its own transcript, its live session is itself. */
+  readonly session?: string;
+  /** What a plain thread was started with, shown until its transcript has it. */
+  readonly seed?: string;
+  /** While it returns something, what is written goes there instead of into this chat (a new thread from pai's box). */
+  readonly divert?: () => ((text: string, images: { media_type: string; data: string }[]) => Promise<void>) | undefined;
+  /** A control for the box's foot (see `compose`). */
+  readonly boxExtra?: HTMLElement;
 }
 
 export interface RevealTarget {
@@ -67,6 +75,8 @@ export interface Chat {
   /** The title over the column and, under it, a line of tags. */
   readonly setHead: (title: string | HTMLElement, sub?: HTMLElement) => void;
   readonly refreshPrefs: () => void;
+  /** The box, for a host that changes what it says. */
+  readonly box: Compose;
 }
 
 /** One turn's thinking and tool calls, from the transcript or the stream. */
@@ -181,6 +191,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     session: () => liveSession,
     prefs: options.prefs,
     setPrefs: options.setPrefs,
+    extra: options.boxExtra,
     submit: async (text, images) => {
       if (pinnedAnswer && text) {
         const answer = pinnedAnswer;
@@ -188,6 +199,8 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         pinnedAnswer = undefined;
         return answer(text);
       }
+      const diverted = options.divert?.();
+      if (diverted) return diverted(text, images);
       log.querySelector(":scope > .hint")?.remove();
       const pending = el("div.row.mine.pending", { "data-text": text }, el("div.bubble", {}, markdown(text || "(image)")), el("div.row-foot", {}, el("span.grow"), el("span", {}, "sending…")));
       log.append(pending);
@@ -197,7 +210,11 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         box.note.textContent = result.error;
         pending.classList.add("failed");
       } else if (result.queued) box.note.textContent = "queued — sent when the daemon answers";
-      else {
+      else if (options.session) {
+        box.note.textContent = "";
+        pending.remove();
+        place(spoken("user", text || "(image)", Date.now()));
+      } else {
         box.note.textContent = "";
         pending.querySelector(".row-foot span:last-child")!.textContent = "sent";
         const row = result.data as LogMessage | undefined;
@@ -597,6 +614,55 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
 
   // ---- the transcript: tool calls folded per turn ----------------------------------------
 
+  /** A line of a plain thread as a row of the log, so it is drawn as the log's are. */
+  let spokenCount = 0;
+  const spoken = (from: string, body: string, at: number): Row => {
+    spokenCount += 1;
+    const m = { id: -spokenCount, from, to: from === "user" ? options.agent : "user", kind: "chat", body, taskId: null, meta: {}, createdAt: at } as unknown as LogMessage;
+    return { kind: "message", key: `s${spokenCount}`, at, m, node: undefined as unknown as HTMLElement };
+  };
+
+  /** A plain thread's transcript as rows: what the user said, each turn's tool calls folded, and the turn's last text as its reply (the texts before it were thinking aloud). */
+  function turnsOf(history: Transcript[]): Item[] {
+    const out: Item[] = [];
+    let group: ToolGroup | undefined;
+    let reply: { text: string; at: number } | undefined;
+    const ensureGroup = (at: number) =>
+      (group ??= (() => {
+        const fresh: ToolGroup = { kind: "tools", key: `t${at}`, at, end: at, thinking: "", tools: [], live: false, open: false, node: undefined as unknown as HTMLElement };
+        out.push(fresh);
+        return fresh;
+      })());
+    const close = () => {
+      if (reply) out.push(spoken(options.agent, reply.text, reply.at));
+      reply = undefined;
+      group = undefined;
+    };
+    for (const entry of history) {
+      const at = new Date(entry.ts).getTime();
+      if (entry.role === "user") {
+        if (entry.meta || !entry.text.trim() || entry.text.startsWith("[Request interrupted")) continue;
+        close();
+        out.push(spoken("user", entry.text, at));
+        continue;
+      }
+      if (reply && (entry.text.trim() || entry.tools?.length)) {
+        const g = ensureGroup(reply.at);
+        g.thinking = [g.thinking, reply.text].filter(Boolean).join("\n\n");
+        reply = undefined;
+      }
+      if (entry.thinking || entry.tools?.length) {
+        const g = ensureGroup(at);
+        g.end = Math.max(g.end, at);
+        if (entry.thinking) g.thinking = [g.thinking, entry.thinking].filter(Boolean).join("\n\n");
+        g.tools.push(...(entry.tools ?? []));
+      }
+      if (entry.text.trim()) reply = { text: entry.text, at };
+    }
+    close();
+    return out;
+  }
+
   function groupsOf(history: Transcript[]): ToolGroup[] {
     const groups: ToolGroup[] = [];
     let current: ToolGroup | undefined;
@@ -627,6 +693,17 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   // ---- loading and following -------------------------------------------------------------
 
   async function load() {
+    if (options.session) {
+      const history = await transcript(options.session, undefined, 300).catch(() => [] as Transcript[]);
+      items.push(...turnsOf(history));
+      if (options.seed && !items.some((i) => i.kind === "message" && i.m.from === "user")) items.push(spoken("user", options.seed, Date.now()));
+      liveSession = options.session;
+      items.push(...addQuestions(await listNeeds().catch(() => [] as Need[])));
+      loading = false;
+      drawAll();
+      scroll();
+      return;
+    }
     const [page, open, needs] = await Promise.all([listMessages(options.agent, { limit: PAGE, task: options.task }), listAsks().catch(() => []), listNeeds().catch(() => [])]);
     for (const a of open) openAsks.add(a.id);
     for (const m of page) {
@@ -645,7 +722,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
 
   /** Questions a session is waiting on, not yet in the chat: the live one's, and for pai those of its earlier sessions too (a rotation does not answer them); an agent's own. */
   function addQuestions(needs: readonly Need[]) {
-    const ours = needs.filter((n) => n.kind === "question" && n.session && (n.session === liveSession || (options.agent === PAI ? n.agent === null : n.agent === options.agent)));
+    const ours = needs.filter((n) => n.kind === "question" && n.session && (n.session === liveSession || (!options.session && (options.agent === PAI ? n.agent === null : n.agent === options.agent))));
     const bySession = new Map<string, Need[]>();
     for (const n of ours) bySession.set(n.session!, [...(bySession.get(n.session!) ?? []), n]);
     const added: LiveQuestion[] = [];
@@ -674,7 +751,9 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
 
   // pai's chat also holds every question put to the user and every answer, whoever asked.
   const concerns = (m: LogMessage) =>
-    options.task !== undefined ? m.taskId === options.task : m.from === options.agent || m.to === options.agent || m.meta.agent === options.agent || (options.agent === PAI && (m.kind === "ask" || m.kind === "answer") && (m.to === "user" || m.from === "user"));
+    options.session
+      ? false
+      : options.task !== undefined ? m.taskId === options.task : m.from === options.agent || m.to === options.agent || m.meta.agent === options.agent || (options.agent === PAI && (m.kind === "ask" || m.kind === "answer") && (m.to === "user" || m.from === "user"));
 
   const stopLog = follow(
     undefined,
@@ -696,7 +775,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
           break;
         // A question in a session this chat does not stream (an agent's, or one pai asked before a rotation).
         case "session.question":
-          if (event.sessionId !== liveSession && options.task === undefined)
+          if (event.sessionId !== liveSession && options.task === undefined && !options.session)
             void listNeeds().then((needs) => {
               const stick = nearBottom();
               for (const q of addQuestions(needs)) place(q);
@@ -788,6 +867,12 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
               liveGroup = undefined;
             }
             liveText?.classList.remove("live");
+            // A plain thread has no log row to take the reply's place: the streamed text is the reply.
+            if (options.session && liveText) {
+              liveText.dataset.at = String(event.ts);
+              liveText = undefined;
+              liveRaw = "";
+            }
             stopWorking();
             break;
           case "session.exit":
@@ -876,6 +961,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     focus: () => box.focus(),
     refreshAgents,
     refreshPrefs: () => box.refreshPrefs(),
+    box,
     slot,
     setHead(text, extra) {
       clear(title, text);

@@ -1,20 +1,22 @@
-import { agent as fetchAgent, agentInstructions, agents as listAgents, follow, messageAgent, needs as listNeeds, pai as paiStatus, reconfigure, sendPai, status, task as fetchTask, taskItems } from "./api.ts";
+import { agent as fetchAgent, agentInstructions, agents as listAgents, follow, messageAgent, needs as listNeeds, pai as paiStatus, reconfigure, sendPai, sendThread, startThread, status, task as fetchTask, taskItems } from "./api.ts";
 import { board, type Board } from "./board.ts";
 import { chat, type Chat, type RevealTarget } from "./chat.ts";
-import { ago, clear, el, modelName } from "./dom.ts";
-import { icon } from "./icons.ts";
+import { basename, clear, el, modelName, stamp } from "./dom.ts";
+import { icon, type IconName } from "./icons.ts";
 import { markdown } from "./markdown.ts";
 import { needsButton } from "./needs.ts";
 import { projectPeek } from "./peek.ts";
-import { projectTree, type TreeRow } from "./ptree.ts";
+import { projectTree, threadList, type ThreadRow, type TreeRow } from "./ptree.ts";
 import { navigate } from "./router.ts";
-import type { Agent, AgentStatus, Effort, LogMessage, Need, SessionSummary, TaskItem, TaskStatus } from "./types.ts";
+import type { Agent, AgentStatus, AgentThread, Effort, LogMessage, Need, SessionSummary, TaskItem, TaskStatus } from "./types.ts";
 
 /**
- * The main view: the projects on the left (each one an agent, nested as the agents are) and under
- * them the threads (General › agent › … › its tasks and the threads it started), the chat in the
- * middle — pai's own, an agent's, a task's, or the board — with the hand above the box, and on the
- * right who is talking: the agent and what it is told. Usage sits in the box, the rest in settings.
+ * The main view: General and the projects on the left (each one an agent, nested as the agents are)
+ * and under them the threads, newest first — an agent's job on one task (a sub-agent), a thread an
+ * agent started, a builder thread, a terminal's `claude`, one from the phone, one started on its own
+ * from pai's box. The chat in the middle — pai's own, an agent's, a thread's, a task's, or the board —
+ * with the hand above the box, and on the right who is talking: the agent and what it is told.
+ * Usage sits in the box, the rest in settings.
  */
 
 const PAI = "pai";
@@ -25,9 +27,18 @@ const DEFAULT_EFFORT: Effort = "high";
 /** A closed sub-agent stays in the threads this long: a finished job is still worth a look. */
 const CLOSED_SHOWN_MS = 3 * 86_400_000;
 const TASK_STATUS: Record<TaskStatus, string> = { inbox: "inbox", active: "active", waiting_user: "waiting on you", waiting_other: "waiting on someone", scheduled: "scheduled", done: "done", dropped: "dropped" };
-const FOLDED_KEY = "pai.threads.folded";
+/** Where a thread was started, as a row says it and the icon it is drawn with; `agent` is the agent's own name. */
+const ORIGIN: Record<string, readonly [string, IconName]> = {
+  general: ["General", "message"],
+  cli: ["CLI", "terminal"],
+  terminal: ["Terminal", "terminal"],
+  phone: ["Phone", "send"],
+  builder: ["Builder", "code"],
+  routine: ["Routine", "clock"],
+  agent: ["", "bot"],
+};
 
-export type Centre = { kind: "chat" } | { kind: "agent"; slug: string } | { kind: "task"; id: number } | { kind: "board"; slug?: string };
+export type Centre = { kind: "chat" } | { kind: "agent"; slug: string } | { kind: "task"; id: number } | { kind: "thread"; id: string } | { kind: "board"; slug?: string };
 
 export function home(root: HTMLElement) {
   let agents: Agent[] = [];
@@ -50,11 +61,13 @@ export function home(root: HTMLElement) {
   let loaded = false;
   /** A row to scroll to once the thread that holds it has loaded. */
   let pendingReveal: RevealTarget | undefined;
+  /** The first message of a thread just started from pai's box, shown in it until its transcript has it. */
+  let seed: { id: string; text: string } | undefined;
 
   const sidePane = el("aside.home-side");
   const projectsList = el("div.side-list");
-  const threadsList = el("div.side-list");
-  clear(sidePane, el("div.side-head", {}, "Projects"), projectsList, el("div.side-head", {}, "Threads"), threadsList);
+  const threadsList = el("div.side-list.threads");
+  clear(sidePane, projectsList, threadsList);
   const centrePane = el("section.home-centre");
   const infoPane = el("aside.home-info");
   clear(root, sidePane, centrePane, infoPane);
@@ -76,6 +89,7 @@ export function home(root: HTMLElement) {
     },
     openBoard: (slug: string) => navigate(slug === PAI ? "board" : { name: "board", param: slug }),
     openTask: (id: number) => navigate({ name: "task", param: String(id) }),
+    openThread: (id: string) => navigate({ name: "thread", param: id }),
   };
 
   // ---- the hand ------------------------------------------------------------------------------
@@ -92,7 +106,7 @@ export function home(root: HTMLElement) {
 
   // ---- the tree ------------------------------------------------------------------------------
 
-  const selectedSlug = () => (centre.kind === "agent" ? centre.slug : centre.kind === "board" ? (centre.slug ?? PAI) : centre.kind === "task" ? (openTask?.owner ?? PAI) : PAI);
+  const selectedSlug = () => (centre.kind === "agent" ? centre.slug : centre.kind === "board" ? (centre.slug ?? PAI) : centre.kind === "task" ? (openTask?.owner ?? PAI) : centre.kind === "thread" ? (threadOf(centre.id)?.owner.slug ?? PAI) : PAI);
   /** Standing and service agents are projects; a sub-agent is a job inside one and folds into its nearest shown ancestor. */
   const shown = (a: Agent) => a.slug !== PAI && a.kind !== "sub" && (a.status !== "closed" || a.slug === selectedSlug());
 
@@ -112,7 +126,7 @@ export function home(root: HTMLElement) {
       }
     }
     const waitingOn = (slug: string) => needs.filter((n) => n.agent === slug).length;
-    const out: TreeRow[] = [];
+    const out: TreeRow[] = [{ id: PAI, label: "General", depth: 0, working: bySlug(PAI)?.status === "working", waiting: needs.filter((n) => (n.agent ?? PAI) === PAI && !(n.session && threadOf(n.session))).length, on: centre.kind === "chat", group: true, title: "pai, the orchestrator" }];
     const walk = (parent: string | null, depth: number) => {
       const list = (children.get(parent) ?? []).sort((x, y) => KIND_ORDER[x.kind] - KIND_ORDER[y.kind] || x.name.localeCompare(y.name));
       for (const a of list) {
@@ -157,105 +171,76 @@ export function home(root: HTMLElement) {
     answered: () => void refreshNeeds(),
   });
 
-  // ---- the threads: General › agent › … › agent, each with its tasks and the threads it started ----
+  // ---- the threads: every conversation that is not a project's own chat, newest first ----------
 
-  const folded = new Set<string>(
-    (() => {
-      try {
-        return JSON.parse(localStorage.getItem(FOLDED_KEY) ?? "[]") as string[];
-      } catch {
-        return [];
-      }
-    })(),
-  );
-  const toggleFold = (id: string) => {
-    if (!folded.delete(id)) folded.add(id);
-    try {
-      localStorage.setItem(FOLDED_KEY, JSON.stringify([...folded]));
-    } catch {
-      /* a fold that is not remembered is still a fold */
+  /** A thread by its session id, with the agent it is listed under. */
+  function threadOf(id: string): { thread: AgentThread; owner: Agent } | undefined {
+    for (const a of agents) {
+      const thread = a.threads?.find((t) => t.sessionId === id || t.shortId === id);
+      if (thread) return { thread, owner: a };
     }
-    drawTree();
-  };
-  const inThreads = (a: Agent) => a.slug !== PAI && (a.status !== "closed" || a.slug === selectedSlug() || (a.kind === "sub" && Date.now() - (a.closedAt ?? a.lastActive ?? 0) < CLOSED_SHOWN_MS));
+    return undefined;
+  }
 
-  function threadRows(): TreeRow[] {
-    const known = new Map(agents.map((a) => [a.slug, a]));
-    // An agent hangs under its nearest ancestor that is in the tree, and in the end under General.
-    const above = (a: Agent) => {
-      for (let p = a.parent ? known.get(a.parent) : undefined; p; p = p.parent ? known.get(p.parent) : undefined) if (p.slug === PAI || inThreads(p)) return p.slug;
-      return PAI;
-    };
-    const children = new Map<string, Agent[]>();
-    for (const a of agents) if (inThreads(a)) children.set(above(a), [...(children.get(above(a)) ?? []), a]);
-    // A task whose owner is not in the tree sits with the owner's nearest ancestor that is.
-    const holder = (owner: string) => {
-      const a = known.get(owner);
-      return owner === PAI || !a ? PAI : inThreads(a) ? owner : above(a);
-    };
-    const out: TreeRow[] = [];
-    const node = (a: Agent | undefined, slug: string, depth: number) => {
-      const subs = (children.get(slug) ?? []).sort((x, y) => KIND_ORDER[x.kind] - KIND_ORDER[y.kind] || x.name.localeCompare(y.name));
-      const own = tasks.filter((t) => holder(t.owner) === slug).sort((x, y) => x.id - y.id);
-      const started = a?.threads ?? [];
-      const id = `agent:${slug}`;
-      const has = subs.length + own.length + started.length > 0;
-      const open = !folded.has(id);
-      out.push({
-        id,
-        label: slug === PAI ? "General" : (a?.name ?? slug),
-        depth,
-        working: a?.status === "working",
-        waiting: needs.filter((n) => (n.agent ?? PAI) === slug && n.kind !== "task").length,
-        on: (centre.kind === "chat" && slug === PAI) || (centre.kind === "agent" && centre.slug === slug),
-        group: depth === 0,
-        faint: a?.status === "closed",
-        fold: has ? (open ? "open" : "closed") : undefined,
-        title: a ? [`${a.name} · ${a.kind}`, STATUS[a.status]].join("\n") : "pai, the orchestrator",
+  /** Where a thread belongs, in a word or two: the agent that started it, else how it was started (and the project it is in). */
+  function contextOf(thread: AgentThread, owner: { slug: string; name: string }) {
+    const origin = thread.origin ?? "agent";
+    if (origin === "agent") return owner.slug === PAI ? "General" : owner.name;
+    const label = ORIGIN[origin]?.[0] ?? origin;
+    const where = thread.project ?? (origin === "terminal" && thread.cwd ? basename(thread.cwd) : "");
+    return where ? `${label} · ${where}` : label;
+  }
+
+  /** The project a sub-agent's job is in: its nearest ancestor that is one, else General. */
+  const projectOf = (a: Agent) => {
+    for (let p = a.parent ? bySlug(a.parent) : undefined; p; p = p.parent ? bySlug(p.parent) : undefined) if (p.slug !== PAI && p.kind !== "sub") return p.name;
+    return "General";
+  };
+
+  function threadRows(): ThreadRow[] {
+    const rows: ThreadRow[] = [];
+    for (const a of agents) {
+      if (a.kind !== "sub" || (a.status === "closed" && a.slug !== selectedSlug() && Date.now() - (a.closedAt ?? a.lastActive ?? 0) > CLOSED_SHOWN_MS)) continue;
+      rows.push({
+        id: `agent:${a.slug}`,
+        title: a.name,
+        context: projectOf(a),
+        at: a.lastActive ?? a.createdAt ?? 0,
+        working: a.status === "working",
+        waiting: needs.filter((n) => n.agent === a.slug).length,
+        on: centre.kind === "agent" && centre.slug === a.slug,
+        icon: "bot",
+        faint: a.status === "closed",
+        tip: [`${a.name} · ${STATUS[a.status]}`, a.brief.split("\n")[0]].filter(Boolean).join("\n"),
       });
-      if (!open) return;
-      for (const sub of subs) node(sub, sub.slug, depth + 1);
-      for (const t of own)
-        out.push({
-          id: `task:${t.id}`,
-          label: t.title,
-          depth: depth + 1,
-          working: false,
-          waiting: t.status === "waiting_user" ? 1 : 0,
-          on: centre.kind === "task" && centre.id === t.id,
-          group: false,
-          icon: "list",
-          title: [`#${t.id} · ${TASK_STATUS[t.status]}`, t.nextAction].filter(Boolean).join("\n"),
+    }
+    for (const a of agents)
+      for (const t of a.threads ?? [])
+        rows.push({
+          id: `thread:${t.sessionId}`,
+          title: t.title || t.shortId,
+          context: contextOf(t, a),
+          at: t.lastActivity,
+          working: t.state === "busy" || t.state === "starting",
+          waiting: needs.filter((n) => n.session === t.sessionId).length,
+          on: centre.kind === "thread" && (centre.id === t.sessionId || centre.id === t.shortId),
+          icon: ORIGIN[t.origin ?? "agent"]?.[1] ?? "message",
+          faint: t.state === "dead",
+          tip: `${t.title || t.shortId} · ${t.state}${t.cwd ? `\n${t.cwd}` : ""}`,
         });
-      for (const th of started)
-        out.push({
-          id: `thread:${th.sessionId}`,
-          label: th.title || th.shortId,
-          depth: depth + 1,
-          working: th.state === "busy" || th.state === "starting",
-          waiting: 0,
-          on: false,
-          group: false,
-          icon: "terminal",
-          faint: th.state === "dead" || th.state === "detached",
-          title: `${th.title} · ${th.state}${th.project ? ` · ${th.project}` : ""}\nactive ${ago(th.lastActivity)} ago · opens in the editor`,
-        });
-    };
-    node(bySlug(PAI), PAI, 0);
-    return out;
+    return rows.sort((x, y) => y.at - x.at);
   }
 
   const openThreadRow = (id: string) => {
     const [kind, rest = ""] = id.split(/:(.*)/s);
     if (kind === "agent") ctx.openAgent(rest);
-    else if (kind === "task") ctx.openTask(Number(rest));
-    else navigate({ name: "editor", param: rest });
+    else ctx.openThread(rest);
   };
 
   const drawTree = () => {
-    projectTree(projectsList, treeRows(), (slug) => ctx.openAgent(slug), peek.attach);
+    projectTree(projectsList, treeRows(), (slug) => ctx.openAgent(slug), (row, id) => id !== PAI && peek.attach(row, id));
     peek.redraw();
-    projectTree(threadsList, threadRows(), openThreadRow, undefined, "No threads yet.", toggleFold);
+    threadList(threadsList, threadRows(), openThreadRow);
   };
 
   // ---- the centre ----------------------------------------------------------------------------
@@ -279,8 +264,35 @@ export function home(root: HTMLElement) {
     theBoard = undefined;
   }
 
+  // ---- a new thread from pai's box: on, the chat clears; the first message starts the thread and opens it ----
+
+  let detached = false;
+  const detachSwitch = el("button.compose-tool.detach", { title: "start a new thread on its own: not pai, no project", onclick: () => setDetached(!detached) }, el("span.switch"), el("span", {}, "New thread"));
+  function setDetached(on: boolean) {
+    detached = on;
+    detachSwitch.classList.toggle("on", on);
+    centrePane.classList.toggle("detached", on);
+    mainChat?.box.placeholder(on ? "Start a new thread…" : undefined);
+    mainChat?.setHead(on ? "New thread" : "General");
+    if (on) mainChat?.focus();
+  }
+  const startDetached = async (text: string, images: { media_type: string; data: string }[]) => {
+    const result = await startThread(text, images);
+    const started = result.data as SessionSummary | undefined;
+    if (result.error || !started?.sessionId) {
+      if (mainChat) mainChat.box.note.textContent = result.error ?? (result.queued ? "offline — start it again once the daemon answers" : "no thread came back");
+      return;
+    }
+    seed = { id: started.sessionId, text: text || "(image)" };
+    setDetached(false);
+    ctx.openThread(started.sessionId);
+  };
+
   function showMain() {
-    mainChat ??= chat({ agent: PAI, parent: "user", title: "General", live: liveSession, prefs: paiPrefs, setPrefs: setPaiPrefs, send: (text) => sendPai(text), placeholder: "Message pai…" }, ctx);
+    mainChat ??= chat(
+      { agent: PAI, parent: "user", title: "General", live: liveSession, prefs: paiPrefs, setPrefs: setPaiPrefs, send: (text) => sendPai(text), placeholder: "Message pai…", boxExtra: detachSwitch, divert: () => (detached ? startDetached : undefined) },
+      ctx,
+    );
     mainChat.slot.append(hand.node);
     clear(centrePane, mainChat.node);
     mainChat.focus();
@@ -354,13 +366,55 @@ export function home(root: HTMLElement) {
     drawInfo();
   }
 
+  /** A plain thread: its own transcript, its own session; General › (the agent that started it ›) its title. */
+  function showThread(id: string) {
+    const key = `thread:${id}`;
+    const found = threadOf(id);
+    const first = seed?.id === id ? seed.text : undefined;
+    seed = undefined;
+    const thread = chat(
+      {
+        agent: "thread",
+        parent: "user",
+        session: id,
+        seed: first,
+        title: found?.thread.title ?? "New thread",
+        projectPath: () => threadOf(id)?.thread.cwd ?? undefined,
+        prefs: () => {
+          const t = threadOf(id)?.thread;
+          return t ? { model: t.modelPref ?? t.model ?? undefined, effort: t.effort ?? DEFAULT_EFFORT } : undefined;
+        },
+        setPrefs: async (changes) => ({ error: (await reconfigure(id, changes)).error }),
+        send: (text, images) => sendThread(id, text, images),
+        placeholder: "Message this thread…",
+      },
+      ctx,
+    );
+    agentChat = { key, slug: found?.owner.slug ?? PAI, chat: thread };
+    thread.slot.append(hand.node);
+    clear(centrePane, thread.node);
+    drawThreadHead();
+  }
+
+  function drawThreadHead() {
+    if (centre.kind !== "thread" || !agentChat?.key.startsWith("thread:")) return;
+    const found = threadOf(centre.id);
+    const crumbs = el("span.crumbs", {}, el("button.crumb", { onclick: () => navigate("home") }, "General"));
+    const owner = found?.owner;
+    if (owner && owner.slug !== PAI && found?.thread.origin === "agent") crumbs.append(el("span.crumb-sep", {}, "›"), el("button.crumb", { onclick: () => ctx.openAgent(owner.slug) }, owner.name));
+    const title = found ? found.thread.title || found.thread.shortId : "New thread";
+    crumbs.append(el("span.crumb-sep", {}, "›"), el("span.crumb.here", { title }, title));
+    agentChat.chat.setHead(crumbs);
+  }
+
   function showBoard(slug?: string) {
     theBoard = board(slug, { agents: () => agents, openAgent: ctx.openAgent, onSelect: (s) => navigate(s === PAI ? "board" : { name: "board", param: s }, true) });
     clear(centrePane, theBoard.node);
   }
 
   function show(next: Centre) {
-    const sameChat = (next.kind === "agent" && agentChat?.key === `agent:${next.slug}`) || (next.kind === "task" && agentChat?.key === `task:${next.id}`);
+    const sameChat = (next.kind === "agent" && agentChat?.key === `agent:${next.slug}`) || (next.kind === "task" && agentChat?.key === `task:${next.id}`) || (next.kind === "thread" && agentChat?.key === `thread:${next.id}`);
+    if (next.kind !== "chat" && detached) setDetached(false);
     const sameBoard = next.kind === "board" && theBoard;
     centre = next;
     if (!(next.kind === "task" && sameChat)) openTask = undefined;
@@ -370,6 +424,7 @@ export function home(root: HTMLElement) {
       if (next.kind === "chat") showMain();
       else if (next.kind === "agent") void showAgent(next.slug);
       else if (next.kind === "task") void showTask(next.id);
+      else if (next.kind === "thread") showThread(next.id);
       else showBoard(next.slug);
     }
     if (next.kind !== "chat" && mainChat) mainChat.node.remove();
@@ -384,6 +439,7 @@ export function home(root: HTMLElement) {
   /** The agent behind the open chat (and the task, in a task's thread): its setup, its brief, its files, the instructions it runs with. */
   function drawInfo() {
     if (centre.kind === "board") return void clear(infoPane);
+    if (centre.kind === "thread") return drawThreadInfo(centre.id);
     const slug = centre.kind === "agent" ? centre.slug : centre.kind === "task" ? (openTask?.owner ?? "") : PAI;
     const key = `${centre.kind}:${slug}:${openTask?.id ?? ""}`;
     if (!slug || key === infoFor) return;
@@ -429,6 +485,35 @@ export function home(root: HTMLElement) {
         );
       })
       .catch(() => infoFor === key && clear(files, el("p.info-dim", {}, "Instructions unavailable.")));
+  }
+
+  /** A plain thread's facts: where it came from, where it runs, what it runs with, what it cost. */
+  function drawThreadInfo(id: string) {
+    const found = threadOf(id);
+    const t = found?.thread;
+    const key = `thread:${id}:${t?.title ?? ""}:${t?.state ?? ""}:${t?.turns ?? ""}`;
+    if (key === infoFor) return;
+    infoFor = key;
+    const fact = (label: string, value: string | undefined | null | false) => (value ? el("div.info-fact", {}, el("span.info-key", {}, label), el("span.info-val", {}, value)) : undefined);
+    if (!t || !found) return void clear(infoPane, el("div.info", {}, el("div.info-title", {}, icon("message", 11), el("span", {}, "New thread")), el("p.info-dim", {}, "Starting…")));
+    clear(
+      infoPane,
+      el(
+        "div.info",
+        {},
+        el("div.info-title", {}, icon(ORIGIN[t.origin ?? "agent"]?.[1] ?? "message", 11), el("span", {}, t.title || t.shortId)),
+        fact("From", contextOf(t, found.owner)),
+        fact("State", t.state),
+        fact("Project", t.project),
+        fact("Folder", t.cwd?.replace(/^\/(Users|home)\/[^/]+/, "~")),
+        fact("Model", modelName(t.modelPref ?? t.model ?? "") || undefined),
+        fact("Effort", t.effort),
+        fact("Turns", t.turns ? `${t.turns}${t.costUsd ? ` · $${t.costUsd.toFixed(2)}` : ""}` : undefined),
+        fact("Started", t.startedAt ? stamp(t.startedAt) : undefined),
+        fact("Active", stamp(t.lastActivity)),
+        fact("Session", t.shortId),
+      ),
+    );
   }
 
   // ---- loading and following -----------------------------------------------------------------
@@ -492,8 +577,10 @@ export function home(root: HTMLElement) {
         // A thread started or ended: the threads under each agent follow.
         case "session.started":
         case "session.exit":
+        case "session.titled":
+        case "task.created":
           clearTimeout(threadsTimer);
-          threadsTimer = setTimeout(() => void listAgents().then((all) => ((agents = all), drawTree())), 1500);
+          threadsTimer = setTimeout(() => void listAgents().then((all) => ((agents = all), drawTree(), drawThreadHead(), centre.kind === "thread" && drawInfo())), event.kind === "session.titled" ? 200 : 1500);
           break;
         case "session.question":
         case "session.answer":
