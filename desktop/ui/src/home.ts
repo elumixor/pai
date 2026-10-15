@@ -267,7 +267,7 @@ export function home(root: HTMLElement) {
   // ---- a new thread from pai's box: on, the chat clears; the first message starts the thread and opens it ----
 
   let detached = false;
-  const detachSwitch = el("button.compose-tool.detach", { title: "start a new thread on its own: not pai, no project", onclick: () => setDetached(!detached) }, el("span.switch"), el("span", {}, "New thread"));
+  const detachSwitch = el("button.compose-tool.detach", { title: "start a new thread on its own: not pai, no project", onclick: () => setDetached(!detached) }, icon("plus", 12), el("span", {}, "New thread"));
   function setDetached(on: boolean) {
     detached = on;
     detachSwitch.classList.toggle("on", on);

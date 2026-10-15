@@ -766,12 +766,11 @@ body.in-home .nav:hover { opacity: 0.85; }
 
 /* pai's box with "New thread" on: the chat behind it is gone at once, the box starts a thread of its own */
 .home-centre.detached .chat-log > *, .home-centre.detached .chat-slot { visibility: hidden; }
-.compose-tool.detach { gap: 6px; }
-.compose-tool.detach .switch { position: relative; width: 20px; height: 11px; border-radius: 999px; background: var(--ink-20); transition: background-color 0.18s ease; }
-.compose-tool.detach .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 7px; height: 7px; border-radius: 50%; background: var(--canvas); transition: transform 0.18s ease; }
-.compose-tool.detach.on { opacity: 0.9; }
-.compose-tool.detach.on .switch { background: var(--ink); }
-.compose-tool.detach.on .switch::after { transform: translateX(9px); }
+.compose-tool.detach { gap: 4px; padding: 3px 10px 3px 7px; border-radius: 999px; background: var(--ink-10); opacity: 0.55; }
+.compose-tool.detach:hover { opacity: 0.85; }
+.compose-tool.detach .icon { width: 12px; height: 12px; transition: transform 0.18s ease; }
+.compose-tool.detach.on { background: var(--ink); color: var(--canvas); opacity: 0.9; }
+.compose-tool.detach.on .icon { transform: rotate(45deg); }
 
 /* the right: the agent the open chat is with, and what it is told */
 .home-info { position: absolute; top: 102px; right: 50px; width: 250px; bottom: 20px; z-index: 2; overflow-y: auto; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-45); }
