@@ -1021,8 +1021,6 @@ time { color: inherit; font: inherit; }
 .q-meta b { font-weight: 400; }
 .q-crumb { font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-45); }
 .q-body { margin: 0; width: 100%; color: var(--ink); }
-/* An open question is marked by a bar in the action colour; its words stay ink, to be read. */
-.row.question.open { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--act) 75%, transparent); border-radius: 2px; }
 .q-body .md-p { margin: 0 0 4px; }
 .q-foot { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; width: 100%; }
 .q-options { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
