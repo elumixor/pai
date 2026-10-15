@@ -16,11 +16,18 @@ interface Choice {
   dark: string;
 }
 
+// Nord Light replaced pai Light as the light default: a stored pai Light was the old default, not a choice.
+try {
+  const stored = JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<Choice>;
+  if (stored.light === "pai-light" && !localStorage.getItem(`${KEY}.nord`)) localStorage.setItem(KEY, JSON.stringify({ ...stored, light: "nord-light" }));
+  localStorage.setItem(`${KEY}.nord`, "1");
+} catch {}
+
 const read = (): Choice => {
   try {
-    return { mode: "system", light: "pai-light", dark: "pai-dark", ...(JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<Choice>) };
+    return { mode: "system", light: "nord-light", dark: "pai-dark", ...(JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<Choice>) };
   } catch {
-    return { mode: "system", light: "pai-light", dark: "pai-dark" };
+    return { mode: "system", light: "nord-light", dark: "pai-dark" };
   }
 };
 
@@ -46,10 +53,16 @@ const VARS: Record<keyof Theme["ui"], string> = {
   busy: "--busy", idle: "--idle", warn: "--warn", hot: "--hot", codeBg: "--code-bg", selection: "--selection",
 };
 
+let applied: string[] = [];
+
 function apply() {
   const theme = current();
   const root = document.documentElement;
   for (const [key, name] of Object.entries(VARS)) root.style.setProperty(name, theme.ui[key as keyof Theme["ui"]]);
+  // The main view's tokens a theme sets itself; the ones it leaves fall back to the stylesheet's.
+  for (const name of applied) root.style.removeProperty(name);
+  applied = Object.keys(theme.home ?? {});
+  for (const [name, value] of Object.entries(theme.home ?? {})) root.style.setProperty(name, value);
   root.style.colorScheme = theme.kind;
   root.dataset.theme = theme.kind;
   window.dispatchEvent(new Event("pai:theme"));

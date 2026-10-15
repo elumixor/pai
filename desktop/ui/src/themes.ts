@@ -43,6 +43,8 @@ export interface Theme {
     readonly invalid: string;
   };
   readonly terminal: readonly [string, string, string, string, string, string, string, string, string, string, string, string, string, string, string, string];
+  /** The main view's own tokens (`--canvas`, `--act`, …), where the stylesheet's defaults for the kind do not fit. */
+  readonly home?: Readonly<Record<string, string>>;
 }
 
 const t = (
@@ -52,7 +54,8 @@ const t = (
   ui: Theme["ui"],
   syntax: Theme["syntax"],
   terminal: Theme["terminal"],
-): Theme => ({ id, name, kind, ui, syntax, terminal });
+  home?: Theme["home"],
+): Theme => ({ id, name, kind, ui, syntax, terminal, home });
 
 export const THEMES: readonly Theme[] = [
   t(
@@ -118,6 +121,31 @@ export const THEMES: readonly Theme[] = [
     { bg: "#ebe6e1", panel: "#ffffff", panel2: "#f4efea", line: "#dfdad5", line2: "#cfc9c3", text: "#000000", dim: "#6b6763", accent: "#cb5800", accentInk: "#ffffff", busy: "#ff9100", idle: "#086c0b", warn: "#cb5800", hot: "#c8102e", codeBg: "#f7f3ef", selection: "#f4dcc4" },
     { comment: "#8a919e", keyword: "#a626a4", string: "#50a14f", number: "#986801", function: "#4078f2", variable: "#e45649", type: "#c18401", property: "#e45649", operator: "#0184bc", punctuation: "#383a42", tag: "#e45649", attribute: "#986801", constant: "#986801", heading: "#e45649", link: "#4078f2", invalid: "#e45649" },
     ["#383a42", "#e45649", "#50a14f", "#c18401", "#4078f2", "#a626a4", "#0184bc", "#a0a1a7", "#4f525e", "#e45649", "#50a14f", "#c18401", "#4078f2", "#a626a4", "#0184bc", "#fafafa"],
+  ),
+  t(
+    "nord-light",
+    "Nord Light",
+    "light",
+    { bg: "#e5e9f0", panel: "#f8f9fb", panel2: "#eceff4", line: "#d8dee9", line2: "#c5cdd9", text: "#2e3440", dim: "#4c566a", accent: "#5e81ac", accentInk: "#ffffff", busy: "#b4842c", idle: "#4f7a3a", warn: "#b4593c", hot: "#a3434d", codeBg: "#eceff4", selection: "#d3dfee" },
+    { comment: "#7b88a1", keyword: "#5e81ac", string: "#4f7a3a", number: "#8c5f86", function: "#3b7a8c", variable: "#2e3440", type: "#2f7c79", property: "#3b7a8c", operator: "#5e81ac", punctuation: "#4c566a", tag: "#5e81ac", attribute: "#2f7c79", constant: "#8c5f86", heading: "#5e81ac", link: "#5e81ac", invalid: "#a3434d" },
+    ["#3b4252", "#a3434d", "#4f7a3a", "#9a7020", "#5e81ac", "#8c5f86", "#3b7a8c", "#d8dee9", "#4c566a", "#bf616a", "#5f8f49", "#b4842c", "#81a1c1", "#b48ead", "#5f9fae", "#eceff4"],
+    {
+      "--canvas": "#e5e9f0",
+      "--canvas-gradient": "linear-gradient(238deg, #eceff4 15%, #e5e9f0 95%)",
+      "--surface": "#f8f9fb",
+      "--surface-2": "#eef1f5",
+      "--surface-3": "#e9edf2",
+      "--soft-shadow": "0 1px 2px rgba(46, 52, 64, 0.06), 0 10px 30px rgba(46, 52, 64, 0.08)",
+      "--card-shadow": "0 3px 6px rgba(46, 52, 64, 0.08)",
+      "--hand": "#c86e50",
+      "--act": "#4c6f9a",
+      "--act-btn": "#5e81ac",
+      "--ok": "#4f7a3a",
+      "--model": "#5e81ac",
+      "--effort": "#8c5f86",
+      "--mine-bg": "#d6e3f0",
+      "--pill-bg": "#d8dee9",
+    },
   ),
   t(
     "github-light",

@@ -694,6 +694,11 @@ body.in-home nav.crumbs .crumb.on { font-size: 15px; }
   --effort: #c84601;
   --mine-bg: rgba(251, 238, 219, 0.76);
   --pill-bg: #dfdad5;
+  /* On a light canvas the mock's 45/30/20 % ink reads as washed out: secondary text keeps more of it. */
+  --ink-70: color-mix(in srgb, var(--ink) 80%, transparent);
+  --ink-45: color-mix(in srgb, var(--ink) 62%, transparent);
+  --ink-30: color-mix(in srgb, var(--ink) 48%, transparent);
+  --ink-20: color-mix(in srgb, var(--ink) 34%, transparent);
 }
 body.in-home { background: var(--canvas-gradient); }
 body.in-home .statusbar { display: none; }
@@ -1009,12 +1014,14 @@ time { color: inherit; font: inherit; }
 .row.question.answered { color: var(--ink-70); opacity: 0.8; }
 .q-block { display: flex; flex-direction: column; gap: 12px; width: 100%; }
 .q-block + .q-block { margin-top: 0; padding-top: 12px; border-top: 1px solid var(--ink-10); }
-.q-meta { display: inline-flex; align-items: center; gap: 6px; opacity: 0.45; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--act); }
+.q-meta { display: inline-flex; align-items: center; gap: 6px; opacity: 0.8; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--act); }
 .row.question.answered .q-meta { color: var(--ink); }
 .q-meta .icon { width: 10px; height: 10px; }
 .q-meta b { font-weight: 400; }
-.q-crumb { font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--act); opacity: 0.45; }
-.q-body { margin: 0; width: 100%; opacity: 0.7; }
+.q-crumb { font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-45); }
+.q-body { margin: 0; width: 100%; color: var(--ink); }
+/* An open question is marked by a bar in the action colour; its words stay ink, to be read. */
+.row.question.open { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--act) 75%, transparent); border-radius: 2px; }
 .q-body .md-p { margin: 0 0 4px; }
 .q-foot { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; width: 100%; }
 .q-options { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
@@ -1022,7 +1029,7 @@ time { color: inherit; font: inherit; }
 .q-answer.dim { color: var(--ink-30); }
 .q-answer .icon { width: 10px; height: 10px; }
 .row.question time { font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-20); }
-.opt { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; border: 0; border-radius: 52px; background: var(--act-btn); opacity: 0.8; box-shadow: var(--card-shadow); color: #fff; font: 700 12.5px/15px var(--font-ui); cursor: pointer; transition: opacity 0.12s; }
+.opt { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; border: 0; border-radius: 52px; background: var(--act-btn); box-shadow: var(--card-shadow); color: #fff; font: 700 12.5px/15px var(--font-ui); cursor: pointer; transition: opacity 0.12s; }
 .opt:hover { opacity: 1; }
 a.opt { text-decoration: none; }
 .opt.icon-only { padding: 6px 12px; background: #8e8e8e; opacity: 0.5; }
