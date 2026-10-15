@@ -1,5 +1,5 @@
 import { commands as listCommands, fileIndex, usage } from "./api.ts";
-import { clear, el, modelName } from "./dom.ts";
+import { el, modelName } from "./dom.ts";
 import { icon } from "./icons.ts";
 import { menu } from "./menu.ts";
 import { miniRings } from "./rings.ts";
@@ -24,7 +24,7 @@ export interface Attachment {
   readonly preview: string;
 }
 
-/** A pasted image as the base64 the API takes, plus a data URL for the chip. */
+/** A pasted image as the API takes it, plus a data URL for the chip's thumbnail. */
 const readImage = (file: File) =>
   new Promise<Attachment>((resolve, reject) => {
     const reader = new FileReader();
@@ -35,6 +35,19 @@ const readImage = (file: File) =>
     };
     reader.readAsDataURL(file);
   });
+
+// A paste longer than this collapses into a chip instead of filling the box with raw text.
+const CHUNK_CHARS = 400;
+const CHUNK_LINES = 8;
+
+type Chip = { kind: "image"; attachment: Attachment } | { kind: "text"; text: string };
+
+/** `plaintext-only` keeps formatting out (no bold/links pasted in) while still letting line breaks through; older engines fall back to plain editing. */
+const PLAINTEXT_EDITABLE = (() => {
+  const probe = document.createElement("div");
+  probe.contentEditable = "plaintext-only";
+  return probe.contentEditable === "plaintext-only";
+})();
 
 export interface ComposeOptions {
   readonly placeholder: string;
@@ -56,7 +69,7 @@ export interface ComposeOptions {
 
 export interface Compose {
   readonly node: HTMLElement;
-  readonly input: HTMLTextAreaElement;
+  readonly input: HTMLElement;
   readonly note: HTMLElement;
   /** Something the next message answers, shown above the box until it is sent or dismissed. */
   pin(content: HTMLElement | undefined, onDismiss?: () => void): void;
@@ -70,24 +83,82 @@ export interface Compose {
 
 /**
  * The message box every conversation here shares: `@` offers files of the project, `/` the
- * session's slash commands, a pasted image becomes a chip, enter sends and shift+enter breaks
- * the line.
+ * session's slash commands, a pasted image or a long paste becomes a chip right where it was
+ * dropped — one message can interleave plain text and attachments, in order. Enter sends,
+ * shift+enter breaks the line.
  */
 export function compose(options: ComposeOptions): Compose {
-  const input = el("textarea", { rows: 1, placeholder: options.placeholder, spellcheck: false }) as HTMLTextAreaElement;
+  const input = el("div.input", { contenteditable: PLAINTEXT_EDITABLE ? "plaintext-only" : "true", role: "textbox", "aria-multiline": "true", "data-placeholder": options.placeholder }) as HTMLElement;
   const note = el("span.note");
-  const chips = el("div.chips.attachments");
   const pinned = el("div.compose-pin", { hidden: true });
-  const attachments: Attachment[] = [];
+  const chips = new WeakMap<HTMLElement, Chip>();
   let dismissPin: (() => void) | undefined;
-  const drawChips = () =>
-    clear(chips, ...attachments.map((a, i) => el("span.chip.image", {}, el("img", { src: a.preview, alt: "" }), el("button.iconbtn", { title: "remove", onclick: () => (attachments.splice(i, 1), drawChips()) }, icon("x", 11)))));
+
+  /** A true-empty element is what the CSS placeholder hooks on; a stray trailing `<br>` would hide it. */
+  const settle = () => {
+    if (!input.textContent?.trim() && !input.querySelector(".inline-chip")) input.replaceChildren();
+  };
+
+  const selectionRange = (): Range | undefined => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount && input.contains(sel.anchorNode)) return sel.getRangeAt(0).cloneRange();
+    return undefined;
+  };
+  const endRange = () => {
+    const r = document.createRange();
+    r.selectNodeContents(input);
+    r.collapse(false);
+    return r;
+  };
+
+  const removeChip = (span: HTMLElement) => {
+    span.remove();
+    chips.delete(span);
+    settle();
+    input.focus();
+  };
+  const chipNode = (chip: Chip) => {
+    const body =
+      chip.kind === "image"
+        ? [el("img", { src: chip.attachment.preview, alt: "" })]
+        : [icon("file", 11), el("span", {}, `Pasted text · ${chip.text.length.toLocaleString()} chars`)];
+    const span = el("span.chip.inline-chip", { class: `chip inline-chip ${chip.kind}`, contenteditable: "false" }, ...body, el("button.chip-remove", { type: "button", tabindex: -1, title: "remove", onmousedown: (e: Event) => e.preventDefault(), onclick: () => removeChip(span) }, icon("x", 10)));
+    chips.set(span, chip);
+    return span;
+  };
+  /** Drops a chip at the caret (or the end, when nothing is focused there), with room for the caret right after it. */
+  const insertChip = (chip: Chip) => {
+    const range = selectionRange() ?? endRange();
+    range.deleteContents();
+    const spacer = document.createTextNode(" ");
+    range.insertNode(spacer);
+    const beforeSpacer = document.createRange();
+    beforeSpacer.setStartBefore(spacer);
+    beforeSpacer.collapse(true);
+    beforeSpacer.insertNode(chipNode(chip));
+    const after = document.createRange();
+    after.setStart(spacer, 1);
+    after.collapse(true);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(after);
+    input.normalize();
+    settle();
+    input.focus();
+  };
+
   input.addEventListener("paste", async (event) => {
     const files = [...(event.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
-    if (!files.length) return;
-    event.preventDefault();
-    for (const file of files) attachments.push(await readImage(file));
-    drawChips();
+    if (files.length) {
+      event.preventDefault();
+      for (const file of files) insertChip({ kind: "image", attachment: await readImage(file) });
+      return;
+    }
+    const text = event.clipboardData?.getData("text/plain") ?? "";
+    if (text.length > CHUNK_CHARS || text.split("\n").length > CHUNK_LINES) {
+      event.preventDefault();
+      insertChip({ kind: "text", text });
+    }
   });
 
   // One popup for both `@file` and `/command`: what it lists and what it inserts differ, the keys do not.
@@ -99,25 +170,35 @@ export function compose(options: ComposeOptions): Compose {
   const mentions = el("div.mentions", { hidden: true });
   let index: string[] | undefined;
   let slash: SlashCommand[] | undefined;
+  /** The run of text `@`/`/` opened on: its node (merged by `normalize()`, so always one run) and where in it the trigger sits. */
+  let menuNode: Text | undefined;
   let menuStart = -1;
   let shown: Suggestion[] = [];
   const closeMenu = () => {
     mentions.setAttribute("hidden", "");
+    menuNode = undefined;
     menuStart = -1;
     shown = [];
   };
   const pick = (item: Suggestion) => {
-    input.value = `${input.value.slice(0, menuStart)}${item.insert}${input.value.slice(input.selectionStart)}`;
+    const node = menuNode;
+    if (!node?.isConnected) return closeMenu();
+    const caret = selectionRange();
+    const end = caret?.collapsed && caret.startContainer === node ? caret.startOffset : node.length;
+    node.textContent = `${node.textContent!.slice(0, menuStart)}${item.insert}${node.textContent!.slice(end)}`;
     closeMenu();
     input.focus();
-    input.selectionStart = input.selectionEnd = menuStart + item.insert.length;
-    grow();
+    const range = document.createRange();
+    range.setStart(node, menuStart + item.insert.length);
+    range.collapse(true);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
   };
   const showMenu = (items: Suggestion[]) => {
     shown = items;
     if (!items.length) return closeMenu();
-    clear(
-      mentions,
+    mentions.replaceChildren(
       ...items.map((item, i) =>
         el("button.mention", { class: `mention${i === 0 ? " active" : ""}`, onmousedown: (e: Event) => (e.preventDefault(), pick(item)) }, el("span.label", {}, item.label), item.hint ? el("span.dim.ellipsis", {}, item.hint) : undefined),
       ),
@@ -146,38 +227,51 @@ export function compose(options: ComposeOptions): Compose {
     );
   };
   input.addEventListener("input", () => {
-    grow();
-    const before = input.value.slice(0, input.selectionStart);
+    input.normalize();
+    settle();
+    const range = selectionRange();
+    const node = range?.collapsed ? range.startContainer : undefined;
+    if (!node || node.nodeType !== Node.TEXT_NODE) return closeMenu();
+    const text = node as Text;
+    const before = text.textContent!.slice(0, range!.startOffset);
     const at = before.lastIndexOf("@");
     if (at >= 0 && (at === 0 || /\s/.test(before[at - 1]!)) && !/\s/.test(before.slice(at + 1))) {
+      menuNode = text;
       menuStart = at;
       return void showFiles(before.slice(at + 1));
     }
-    if (before.startsWith("/") && !/\s/.test(before)) {
+    // A command only reads as one at the very start of the message: no earlier sibling in its run.
+    if (!text.previousSibling && before.startsWith("/") && !/\s/.test(before)) {
+      menuNode = text;
       menuStart = 0;
       return void showCommands(before.slice(1));
     }
     closeMenu();
   });
 
-  const grow = () => {
-    input.style.height = "auto";
-    input.style.height = `${Math.min(160, input.scrollHeight)}px`;
-  };
-
   const submit = async () => {
-    const text = input.value.trim();
-    if ((!text && !attachments.length) || input.disabled) return;
-    input.value = "";
-    grow();
+    if (input.getAttribute("contenteditable") === "false") return;
+    let text = "";
+    const images: { media_type: string; data: string }[] = [];
+    const walk = (node: Node) => {
+      if (node.nodeType === Node.TEXT_NODE) return void (text += node.textContent ?? "");
+      if (node.nodeName === "BR") return void (text += "\n");
+      const chip = node instanceof HTMLElement ? chips.get(node) : undefined;
+      if (chip?.kind === "image") return void images.push({ media_type: chip.attachment.media_type, data: chip.attachment.data });
+      if (chip?.kind === "text") return void (text += chip.text);
+      node.childNodes.forEach(walk);
+    };
+    input.childNodes.forEach(walk);
+    text = text.replace(/ /g, " ").trim();
+    if (!text && !images.length) return;
+    input.replaceChildren();
+    settle();
     closeMenu();
-    const images = attachments.splice(0).map(({ media_type, data }) => ({ media_type, data }));
-    drawChips();
     await options.submit(text, images);
   };
 
   input.addEventListener("keydown", (event) => {
-    if (menuStart >= 0 && shown.length) {
+    if (menuNode && shown.length) {
       const rows = [...mentions.querySelectorAll<HTMLElement>(".mention")];
       const active = Math.max(0, rows.findIndex((r) => r.classList.contains("active")));
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -203,9 +297,8 @@ export function compose(options: ComposeOptions): Compose {
   // The foot: attach, the model, the effort, the rings; the note; enter.
   const picker = el("input", { type: "file", accept: "image/*", multiple: true, hidden: true }) as HTMLInputElement;
   picker.addEventListener("change", async () => {
-    for (const file of picker.files ?? []) attachments.push(await readImage(file));
+    for (const file of picker.files ?? []) insertChip({ kind: "image", attachment: await readImage(file) });
     picker.value = "";
-    drawChips();
   });
   const modelButton = el("button.compose-tool.model", { title: "the model this conversation runs with" }) as HTMLButtonElement;
   const effortButton = el("button.compose-tool.effort", { title: "how hard it thinks" }) as HTMLButtonElement;
@@ -237,7 +330,7 @@ export function compose(options: ComposeOptions): Compose {
   drawPrefs();
   const rings = el("span.rings");
   let lastUsage: Usage | undefined;
-  const drawRings = () => clear(rings, ...miniRings(lastUsage ?? { windows: [], costUsd: 0, error: "the daemon is not reachable" }, options.prefs?.()?.model));
+  const drawRings = () => rings.replaceChildren(...miniRings(lastUsage ?? { windows: [], costUsd: 0, error: "the daemon is not reachable" }, options.prefs?.()?.model));
   const refreshRings = () =>
     usage()
       .then((data) => ((lastUsage = data), drawRings()))
@@ -266,7 +359,6 @@ export function compose(options: ComposeOptions): Compose {
     { class: `compose ${options.mono ? "tui-compose" : "chat-compose"}` },
     pinned,
     mentions,
-    chips,
     picker,
     el("div.compose-row", {}, options.mono ? el("span.prompt-char", {}, "❯") : undefined, input),
     foot,
@@ -280,23 +372,25 @@ export function compose(options: ComposeOptions): Compose {
       dismissPin = undefined;
       if (!content) {
         pinned.hidden = true;
-        clear(pinned);
+        pinned.replaceChildren();
         return;
       }
       dismissPin = () => {
         this.pin(undefined);
         onDismiss?.();
       };
-      clear(pinned, content, el("button.iconbtn.slim", { title: "not answering this (esc)", onclick: dismissPin }, icon("x", 11)));
+      pinned.replaceChildren(content, el("button.iconbtn.slim", { title: "not answering this (esc)", onclick: dismissPin }, icon("x", 11)));
       pinned.hidden = false;
       input.focus();
     },
     disable(reason) {
-      input.disabled = Boolean(reason);
-      input.placeholder = reason ?? options.placeholder;
+      input.setAttribute("contenteditable", reason ? "false" : PLAINTEXT_EDITABLE ? "plaintext-only" : "true");
+      input.classList.toggle("disabled", Boolean(reason));
+      input.dataset.placeholder = reason ?? options.placeholder;
+      settle();
     },
     placeholder(text) {
-      if (!input.disabled) input.placeholder = text ?? options.placeholder;
+      if (input.getAttribute("contenteditable") !== "false") input.dataset.placeholder = text ?? options.placeholder;
     },
     focus: () => input.focus(),
     refreshPrefs: () => (drawPrefs(), drawRings()),

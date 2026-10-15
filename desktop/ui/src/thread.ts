@@ -174,14 +174,14 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
 }
 
 /** The compose box of a thread pane, for keyboard focus. */
-export const composeOf = (pane: HTMLElement) => pane.querySelector<HTMLTextAreaElement>(".tui-compose textarea");
+export const composeOf = (pane: HTMLElement) => pane.querySelector<HTMLElement>(".tui-compose .input");
 
 function userLine(text: string) {
   return el("div.entry.user", {}, el("span.mark", {}, "❯"), el("div.body", {}, text));
 }
 
 /** `⏺ Bash(ls -la)` — the tool and the gist of its input, the result folded under it. */
-export function toolLine(tool: TranscriptTool) {
+function toolLine(tool: TranscriptTool) {
   const name = tool.name.replace(/^mcp__/, "").replace(/__/g, ":");
   const input = (tool.input ?? "").replace(/^\$ /, "");
   const node = el(
@@ -194,7 +194,7 @@ export function toolLine(tool: TranscriptTool) {
   return node;
 }
 
-export function resultLine(result: string) {
+function resultLine(result: string) {
   return el("div.result", {}, el("span.mark", {}, "⎿"), el("pre.body", {}, result || "(no output)"));
 }
 

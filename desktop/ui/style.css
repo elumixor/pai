@@ -259,8 +259,7 @@ main.b-empty #thread-b { display: none; }
 .tui-compose { flex-direction: column; align-items: stretch; gap: 4px; padding: 6px 12px 6px; background: var(--code-bg); font-family: var(--mono); border-top: 1px solid var(--line-2); }
 .compose-row { display: flex; align-items: flex-start; gap: 8px; }
 .prompt-char { color: var(--accent); font-weight: 700; line-height: 1.55; padding-top: 4px; }
-.tui-compose textarea { flex: 1; width: 100%; resize: none; color: var(--text); min-height: 26px; padding: 4px 0; border: 0; border-radius: 0; background: transparent; font-family: var(--mono); font-size: 12px; line-height: 1.55; }
-.tui-compose textarea:focus { outline: none; }
+.tui-compose .input { flex: 1; width: 100%; min-height: 26px; max-height: 240px; overflow-y: auto; padding: 4px 0; border: 0; border-radius: 0; background: transparent; color: var(--text); font-family: var(--mono); font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; outline: none; }
 .compose-foot { display: flex; gap: 10px; font-size: 10.5px; color: var(--dim); }
 .entry.user { margin-top: 10px; padding: 0; background: transparent; border-radius: 0; }
 time { color: var(--dim); font-size: 10.5px; }
@@ -422,11 +421,6 @@ dialog.settings .sheet-body { padding: 0; max-height: none; height: 100%; overfl
 .entry.notice.warning .mark, .entry.notice.suggestion .mark { color: var(--warn); }
 .entry.notice pre.body { margin: 0; white-space: pre-wrap; font: inherit; color: var(--dim); }
 .entry.notice.output pre.body { color: var(--text); }
-.attachments { margin-bottom: 4px; }
-.attachments:empty { display: none; }
-.chip.image { display: inline-flex; align-items: center; gap: 4px; padding: 2px; border: 1px solid var(--line-2); border-radius: 6px; }
-.chip.image img { height: 40px; border-radius: 4px; }
-
 /* ---- sheets: dialogs and the palette -------------------------------------------------- */
 dialog.sheet { border: 1px solid var(--line-2); border-radius: 12px; padding: 0; background: var(--panel); color: var(--text); box-shadow: var(--shadow); width: min(460px, 90vw); }
 dialog.sheet::backdrop { background: rgba(0, 0, 0, 0.35); }
@@ -909,6 +903,19 @@ time { color: inherit; font: inherit; }
 .row.mine .md-code { background: color-mix(in srgb, var(--ink) 5%, transparent); }
 .row.mine .md-inline { background: color-mix(in srgb, var(--ink) 7%, transparent); }
 
+/* a reply to a message: the quoted bar it carries, the button that starts one, the pin above the box */
+.row-reply-btn { position: absolute; top: 6px; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 999px; background: var(--surface); color: var(--ink-30); opacity: 0; box-shadow: var(--card-shadow); transition: opacity 0.12s ease; }
+.row-reply-btn:hover { color: var(--ink-70); }
+.row:hover .row-reply-btn { opacity: 1; }
+.row.mine .row-reply-btn { left: -30px; }
+.row.reply .row-reply-btn { right: -30px; }
+.quote-ref { display: flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; padding: 5px 9px; border: 0; border-left: 2px solid var(--ink-30); border-radius: 0 8px 8px 0; background: color-mix(in srgb, var(--ink) 5%, transparent); color: var(--ink-45); font: 400 var(--meta)/var(--meta-lh) var(--font-ui); text-align: left; cursor: pointer; }
+.quote-ref:hover { background: color-mix(in srgb, var(--ink) 9%, transparent); }
+.quote-ref b { font-weight: 700; color: var(--ink-70); white-space: nowrap; }
+.quote-ref .ellipsis { min-width: 0; }
+.quote-pin { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.quote-pin b { font-weight: 700; }
+
 /* a reply: the receipt — what it did, whom it called, the text, the time */
 .row.reply { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 28px 12px; background: transparent; border: 0; }
 .row.reply .bubble { width: 100%; }
@@ -922,6 +929,10 @@ time { color: inherit; font: inherit; }
 /* mine: the tinted bubble on the right, folded past three lines */
 .row.mine { align-self: flex-end; width: auto; max-width: 500px; display: flex; flex-direction: column; gap: 12px; padding: 10px 12px; border-radius: 19px; background: var(--mine-bg); box-shadow: 0 5px 5px rgba(0, 0, 0, 0.012); color: var(--ink-70); }
 .row.mine .bubble { align-self: stretch; }
+.row-images { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; align-self: flex-end; max-width: 100%; }
+.row-images a { display: block; border-radius: 9px; overflow: hidden; }
+.row-images img { display: block; max-width: min(320px, 100%); max-height: 240px; object-fit: cover; }
+.row-images a:focus-visible { outline: 2px solid var(--ink-30); outline-offset: 2px; }
 .row.mine .row-from { display: flex; align-items: center; gap: 6px; margin-bottom: -4px; font: 700 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-45); }
 .row.mine.folded .bubble { max-height: calc(var(--body-lh) * 3); overflow: hidden; -webkit-mask-image: linear-gradient(180deg, #000 50%, transparent 100%); mask-image: linear-gradient(180deg, #000 50%, transparent 100%); }
 .row.mine .row-foot { justify-content: space-between; }
@@ -968,9 +979,25 @@ time { color: inherit; font: inherit; }
 .row.tools.live .tools-head > .icon-gear { color: var(--act); animation: spin 2s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .tools-body { display: none; }
-.row.tools.open .tools-body { display: flex; width: 100%; margin: 6px 0 2px; padding: 8px 10px; border-radius: 10px; background: var(--surface); max-height: 50vh; }
-.entry.thinking { opacity: 0.7; font-style: italic; white-space: pre-wrap; }
-.entry.thinking .mark { color: var(--dim); }
+.row.tools.open .tools-body { display: flex; flex-direction: column; gap: 2px; width: 100%; margin: 8px 0 2px 5px; padding: 0 0 0 12px; border-left: 1px solid var(--ink-10); }
+.tool-thinking { margin-bottom: 6px; white-space: pre-wrap; font: italic 400 var(--meta)/var(--meta-lh) var(--font-body); color: var(--ink-45); }
+.tool-call { display: flex; flex-direction: column; min-width: 0; }
+.tool-call-head { display: flex; align-items: center; gap: 8px; min-width: 0; width: 100%; padding: 3px 0; border: 0; background: none; text-align: left; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-70); cursor: pointer; }
+.tool-call-head[disabled] { cursor: default; }
+.tool-call-head > .icon { flex: none; width: 12px; height: 12px; color: var(--ink-30); }
+.tool-call.live .tool-call-head > .icon { color: var(--act); animation: pulse 1.2s ease-in-out infinite; }
+.tool-call-what { flex: none; white-space: nowrap; font-weight: 500; }
+.tool-call-server { font-weight: 400; color: var(--ink-45); }
+.tool-call-arg { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: var(--mono); font-size: 10.5px; color: var(--ink-45); }
+.tool-call-size { flex: none; margin-left: auto; padding-left: 12px; white-space: nowrap; color: var(--ink-20); }
+.tool-call-head:not([disabled]):hover .tool-call-what, .tool-call-head:not([disabled]):hover .tool-call-size { color: var(--ink); }
+.tool-call-head:focus-visible { outline: 1px solid var(--ink-30); outline-offset: 2px; border-radius: 4px; }
+.tool-call-in, .tool-call-out { display: none; margin: 2px 0 0 20px; padding: 8px 10px; max-height: min(420px, 45vh); overflow: auto; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; font: 400 10.5px/1.5 var(--mono); }
+.tool-call-in { border: 1px solid var(--ink-10); color: var(--ink-45); }
+.tool-call-out { margin-bottom: 6px; background: var(--ink-10); color: var(--ink-70); }
+.tool-call.open .tool-call-in:not(:empty), .tool-call.open .tool-call-out { display: block; }
+.tool-call.loading .tool-call-out { animation: pulse 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .tool-call.live .tool-call-head > .icon, .tool-call.loading .tool-call-out { animation: none; } }
 /* a reply's receipt lines sit right above it: no gap between them and the text they describe */
 /* the receipt lines belong to the reply under them: the same 16px above the first line, 6px between them and the text */
 .row.tools + .row.reply, .row.card.delegate + .row.reply { margin-top: -12px; padding-top: 6px; }
@@ -1023,10 +1050,16 @@ a.opt { text-decoration: none; }
 /* the box */
 .chat-compose { width: 100%; flex-direction: column; align-items: stretch; gap: 0; padding: 12px 10px 12px 19px; border: 0; border-radius: 19px; background: var(--surface); box-shadow: var(--card-shadow); }
 .chat-compose .compose-row { display: flex; align-items: flex-end; gap: 10px; padding: 0; background: none; box-shadow: none; border-radius: 0; }
-.chat-compose textarea { flex: 1; resize: none; min-height: 35px; max-height: 200px; padding: 0; border: 0; background: transparent; color: var(--ink-70); font: 400 var(--body)/var(--body-lh) var(--font-body); }
-.chat-compose textarea::placeholder { color: var(--ink-30); }
-.chat-compose textarea:focus { outline: none; }
-.chat-compose textarea:disabled { opacity: 0.5; }
+.chat-compose .input { flex: 1; min-height: 35px; max-height: 200px; overflow-y: auto; padding: 0; border: 0; background: transparent; color: var(--ink-70); font: 400 var(--body)/var(--body-lh) var(--font-body); white-space: pre-wrap; overflow-wrap: anywhere; outline: none; }
+.chat-compose .input:empty::before, .tui-compose .input:empty::before { content: attr(data-placeholder); color: var(--ink-30); pointer-events: none; }
+.tui-compose .input:empty::before { color: var(--dim); }
+.chat-compose .input.disabled, .tui-compose .input.disabled { opacity: 0.5; }
+.inline-chip { display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; margin: 0 2px; user-select: none; cursor: default; }
+.inline-chip.image { padding: 2px; border: 1px solid var(--line-2); border-radius: 6px; }
+.inline-chip.image img { display: block; height: 34px; border-radius: 4px; }
+.inline-chip.text { padding: 2px 6px 2px 8px; border: 1px solid var(--line-2); border-radius: 999px; font-size: 11px; color: var(--dim); white-space: nowrap; }
+.chip-remove { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; padding: 0; border: 0; border-radius: 999px; background: color-mix(in srgb, var(--ink, var(--text)) 10%, transparent); color: inherit; opacity: 0.6; }
+.chip-remove:hover { opacity: 1; }
 .compose-foot { display: flex; align-items: center; gap: 12px; margin-top: 10px; padding: 0; font: 700 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink); }
 .compose-foot .note { font-weight: 400; color: var(--hot); }
 .compose-foot .hintkeys { display: none; }
@@ -1040,7 +1073,6 @@ a.opt { text-decoration: none; }
 .compose-pin { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 6px 10px; border-radius: 12px; background: color-mix(in srgb, var(--act) 12%, transparent); font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--act); }
 .compose-pin > span { flex: 1; display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
 .chat-compose .mentions { margin-bottom: 8px; border-radius: 12px; }
-.chat-compose .attachments { margin-bottom: 8px; }
 /* the rings: a percent inside a circle, the time left beside it */
 .rings { display: inline-flex; align-items: center; gap: 6px; opacity: 0.3; transition: opacity 0.18s ease; }
 .rings:hover { opacity: 0.6; }

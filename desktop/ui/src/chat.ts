@@ -1,11 +1,10 @@
-import { answerAsk, answerQuestion, asks as listAsks, dropAsk, follow, messages as listMessages, messageHeadline, needs as listNeeds, transcript, type Transcript, type TranscriptTool } from "./api.ts";
+import { answerAsk, answerQuestion, asks as listAsks, dropAsk, follow, messages as listMessages, messageHeadline, needs as listNeeds, attachmentUrl, toolCall, transcript, type Transcript, type TranscriptTool } from "./api.ts";
 import { compose, type Compose, type Prefs } from "./compose.ts";
 import { clear, el } from "./dom.ts";
-import { icon } from "./icons.ts";
+import { icon, type IconName } from "./icons.ts";
 import { EVENT_ICONS } from "../../../src/protocol/rich.ts";
 import { kindIcon, kindTint } from "./kinds.ts";
 import { inline, markdown } from "./markdown.ts";
-import { resultLine, toolLine } from "./thread.ts";
 import type { Agent, AgentStatus, LogMessage, Need, Question } from "./types.ts";
 
 /**
@@ -89,6 +88,8 @@ interface ToolGroup {
   readonly tools: TranscriptTool[];
   live: boolean;
   open: boolean;
+  /** The session whose transcript holds these calls in full. */
+  session?: string;
   node: HTMLElement;
 }
 
@@ -128,6 +129,25 @@ const duration = (ms: number) => (ms < 60_000 ? `${Math.max(1, Math.round(ms / 1
 const clock = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
 const time = (at: number) => el("time", { title: new Date(at).toLocaleString() }, clock(at));
 const chevron = () => icon("chevron", 9);
+
+/**
+ * A reply quotes what it answers inline, in the text itself: there is nowhere else to put it that
+ * survives a reload (a plain SDK thread's history is only ever the text it was sent). `at` is the
+ * target's `createdAt`, the one id every row already carries in `data-at`, so the quote can find it.
+ */
+const REPLY_RE = /^↪ (.+?) @ (\d+): "([^"]*)"\n([\s\S]*)$/;
+interface ReplyQuote {
+  readonly from: string;
+  readonly at: number;
+  readonly excerpt: string;
+}
+function parseReply(body: string): (ReplyQuote & { text: string }) | undefined {
+  const m = REPLY_RE.exec(body);
+  if (!m) return undefined;
+  return { from: m[1]!, at: Number(m[2]), excerpt: m[3]!, text: m[4]! };
+}
+const withReply = (quote: ReplyQuote | undefined, text: string) => (quote ? `↪ ${quote.from} @ ${quote.at}: "${quote.excerpt.replace(/"/g, "'")}"\n${text}` : text);
+const excerptOf = (text: string) => firstLine(parseReply(text)?.text ?? text).replace(/\s+/g, " ").slice(0, 140);
 /** "Created a file, ran 5 commands" — what a turn's tool calls amount to, by family. */
 function describeTools(tools: readonly TranscriptTool[]) {
   const families: Record<string, [string, string]> = { Write: ["created a file", "created %n files"], Edit: ["edited a file", "edited %n files"], Bash: ["ran a command", "ran %n commands"], Read: ["read a file", "read %n files"], Grep: ["searched", "searched %n times"], Glob: ["searched", "searched %n times"], WebSearch: ["searched the web", "searched the web %n times"], WebFetch: ["fetched a page", "fetched %n pages"], Agent: ["delegated once", "delegated %n times"] };
@@ -142,6 +162,113 @@ function describeTools(tools: readonly TranscriptTool[]) {
   });
   const text = parts.join(", ");
   return text ? text[0]!.toUpperCase() + text.slice(1) : "";
+}
+
+/** Built-in tools as the chat says them: a verb and an icon. */
+const TOOL_VERBS: Record<string, [string, IconName]> = {
+  Bash: ["Ran", "terminal"],
+  Read: ["Read", "file"],
+  Edit: ["Edited", "pencil"],
+  MultiEdit: ["Edited", "pencil"],
+  Write: ["Created", "file"],
+  NotebookEdit: ["Edited", "pencil"],
+  Grep: ["Searched", "search"],
+  Glob: ["Found files", "search"],
+  WebSearch: ["Searched the web", "globe"],
+  WebFetch: ["Fetched", "globe"],
+  Agent: ["Delegated", "bot"],
+  Task: ["Delegated", "bot"],
+  ToolSearch: ["Loaded tools", "wrench"],
+  TodoWrite: ["Updated the plan", "list"],
+  Skill: ["Used a skill", "book"],
+  AskUserQuestion: ["Asked you", "help"],
+};
+const SERVER_ICONS: Record<string, IconName> = { gmail: "mail", mail: "mail", calendar: "calendar", balance: "calendar", playwright: "globe", browser: "globe", tg: "message", telegram: "message", linkedin: "users", pai: "zap" };
+const sentence = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s);
+
+/** `mcp__claude_ai_Gmail__gmail_search` → server "Gmail", action "Search"; a built-in → its verb. */
+function toolLabel(name: string): { server?: string; action: string; icon: IconName } {
+  const builtin = TOOL_VERBS[name];
+  if (builtin) return { action: builtin[0], icon: builtin[1] };
+  const mcp = /^mcp__(.+?)__(.+)$/.exec(name);
+  if (!mcp) return { action: sentence(name.replace(/_/g, " ")), icon: "wrench" };
+  const server = mcp[1]!.replace(/^claude_ai_/, "").replace(/^plugin_[^_]+_/, "").replace(/_/g, " ");
+  const key = server.toLowerCase();
+  const action = mcp[2]!.replace(new RegExp(`^${key.replace(/\W/g, "_")}_`, "i"), "").replace(/[_-]+/g, " ");
+  return { server: sentence(server), action: sentence(action), icon: SERVER_ICONS[key] ?? "zap" };
+}
+
+/** What the call was about, without the tool's name the summary starts with. */
+function toolArgument(tool: TranscriptTool) {
+  const short = tool.name.replace(/^mcp__/, "").replace(/__/g, ":");
+  let text = (tool.input ?? "").trim();
+  for (const prefix of [short, tool.name]) if (text.startsWith(prefix)) text = text.slice(prefix.length).trim();
+  if (tool.name === "ToolSearch") text = text.replace(/^select:/, "").replace(/mcp__[^_]+(?:_[^_]+)*?__/g, "").replace(/,/g, ", ");
+  return text.replace(/^(\$|search|fetch|agent:)\s+/, "").replace(/^"(.*)"$/, "$1");
+}
+
+/** The pictures a message came with, each opening full size in a new tab. */
+function pictures(urls: readonly string[] | undefined) {
+  if (!urls?.length) return undefined;
+  return el("div.row-images", {}, ...urls.map((src) => el("a", { href: src, target: "_blank", rel: "noopener" }, el("img", { src, alt: "attached image", loading: "lazy" }))));
+}
+
+/** A preview the daemon cut ends in "… +N lines". */
+const CUT = /\n… \+(\d+) lines$/;
+
+/** "12 lines", "no output" — how much came back, for the end of the row. */
+function resultSize(result: string) {
+  const text = result.trim();
+  if (!text || text === "[]" || text === "{}") return "no output";
+  const hidden = Number(CUT.exec(text)?.[1] ?? 0);
+  const lines = text.replace(CUT, "").split("\n").length + hidden;
+  return lines > 1 ? `${lines} lines` : "";
+}
+
+/** A call's input as a person reads it: the command, the path, else the fields. */
+function inputText(name: string, input: unknown) {
+  if (!input || typeof input !== "object") return String(input ?? "");
+  const fields = input as Record<string, unknown>;
+  if (name === "Bash" && typeof fields.command === "string") return fields.command;
+  const values = Object.values(fields);
+  if (values.length === 1 && typeof values[0] === "string") return values[0];
+  return JSON.stringify(fields, null, 2);
+}
+
+/** One call in a turn: icon, what was done, what on, how much came back; opened, its input and output in full. */
+function toolRow(tool: TranscriptTool, session?: string) {
+  const { server, action, icon: name } = toolLabel(tool.name);
+  const argument = toolArgument(tool);
+  const done = tool.result !== undefined;
+  const preview = (tool.result ?? "").trim();
+  const full = done && tool.id && session ? { session, id: tool.id } : undefined;
+  const row = el("div.tool-call", { class: `tool-call${done ? "" : " live"}` });
+  const input = el("pre.tool-call-in");
+  const output = el("pre.tool-call-out", {}, preview.replace(CUT, "\n…") || "no output");
+  let fetched = false;
+  const open = async () => {
+    head.setAttribute("aria-expanded", String(row.classList.toggle("open")));
+    if (!full || fetched || !row.classList.contains("open")) return;
+    fetched = true;
+    row.classList.add("loading");
+    const call = await toolCall(full.session, full.id).catch(() => undefined);
+    row.classList.remove("loading");
+    if (!call) return;
+    const text = inputText(call.name, call.input).trim();
+    if (text && text !== argument) clear(input, text);
+    if (call.result !== undefined) clear(output, call.result.trim() || "no output");
+  };
+  const head = el(
+    "button.tool-call-head",
+    { onclick: () => void open(), "aria-expanded": "false" },
+    icon(name, 12),
+    el("span.tool-call-what", {}, server ? el("span.tool-call-server", {}, `${server} · `) : undefined, action),
+    argument ? el("span.tool-call-arg", {}, argument) : undefined,
+    el("span.tool-call-size", {}, done ? resultSize(preview) : "running"),
+  );
+  row.append(head, input, output);
+  if (!done || (!preview && !full)) head.setAttribute("disabled", "");
+  return row;
 }
 
 export function chat(options: ChatOptions, ctx: ChatContext): Chat {
@@ -178,10 +305,40 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   }
   /** What the compose box answers instead of sending a message, while a question is pinned to it. */
   let pinnedAnswer: ((text: string) => Promise<void>) | undefined;
+  /** What the next message replies to, while its quote is pinned to the box. */
+  let replyTarget: ReplyQuote | undefined;
 
   const bySlug = (slug: string) => ctx.agents().find((a) => a.slug === slug);
   const nameOf = (party: string) => (party === "user" ? "you" : party === PAI ? "Orchestrator" : (bySlug(party)?.name ?? party.replace(/^(watcher|routine):/, "")));
   const mine = (m: LogMessage) => m.from === options.parent || (options.parent !== "user" && m.from === "user");
+
+  /** Pins a quote of `m` to the box; the next message carries it, Telegram-style. */
+  function startReply(m: LogMessage, bodyText: string) {
+    pinnedAnswer = undefined;
+    const quote: ReplyQuote = { from: nameOf(m.from), at: m.createdAt, excerpt: excerptOf(bodyText) };
+    replyTarget = quote;
+    box.pin(el("span.ellipsis.quote-pin", {}, icon("reply", 10), " ", el("b", {}, quote.from), ": ", quote.excerpt), () => (replyTarget = undefined));
+  }
+  /** The reply a message itself carries, as a small clickable bar: author, excerpt, jumps to what it answers. */
+  function quoteBlock(quote: ReplyQuote) {
+    return el(
+      "button.quote-ref",
+      {
+        type: "button",
+        onclick: () => {
+          const target = log.querySelector<HTMLElement>(`[data-at="${quote.at}"]`);
+          if (target) flash(target);
+        },
+      },
+      icon("reply", 10),
+      el("b", {}, quote.from),
+      el("span.ellipsis", {}, quote.excerpt),
+    );
+  }
+  /** A small icon on hover, over the top corner of a row, that starts a reply to it. */
+  function replyButton(m: LogMessage, bodyText: string) {
+    return el("button.row-reply-btn", { type: "button", title: "reply", onclick: () => startReply(m, bodyText) }, icon("reply", 13));
+  }
 
   // ---- the box ---------------------------------------------------------------------------
 
@@ -201,11 +358,23 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       }
       const diverted = options.divert?.();
       if (diverted) return diverted(text, images);
+      const quote = replyTarget;
+      replyTarget = undefined;
+      box.pin(undefined);
+      const wrapped = withReply(quote, text);
       log.querySelector(":scope > .hint")?.remove();
-      const pending = el("div.row.mine.pending", { "data-text": text }, el("div.bubble", {}, markdown(text || "(image)")), el("div.row-foot", {}, el("span.grow"), el("span", {}, "sending…")));
+      const local = images.map((image) => `data:${image.media_type};base64,${image.data}`);
+      const pending = el(
+        "div.row.mine.pending",
+        { "data-text": wrapped },
+        quote ? quoteBlock(quote) : undefined,
+        pictures(local),
+        text ? el("div.bubble", {}, markdown(text)) : undefined,
+        el("div.row-foot", {}, el("span.grow"), el("span", {}, "sending…")),
+      );
       log.append(pending);
       scroll();
-      const result = await options.send(text, images);
+      const result = await options.send(wrapped, images);
       if (result.error) {
         box.note.textContent = result.error;
         pending.classList.add("failed");
@@ -213,7 +382,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       else if (options.session) {
         box.note.textContent = "";
         pending.remove();
-        place(spoken("user", text || "(image)", Date.now()));
+        place(spoken("user", wrapped, Date.now(), local));
       } else {
         box.note.textContent = "";
         pending.querySelector(".row-foot span:last-child")!.textContent = "sent";
@@ -237,13 +406,15 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
 
   /** A reply: the text in full; the time rides the end of the last line when it fits, else the next line, right-aligned. */
   function replyRow(m: LogMessage) {
-    const bubble = el("div.bubble", {}, markdown(m.body));
+    const quoted = parseReply(m.body);
+    const bodyText = quoted?.text ?? m.body;
+    const bubble = el("div.bubble", {}, markdown(bodyText));
     const last = bubble.lastElementChild;
     const stamp = time(m.createdAt);
     stamp.classList.add("inline-time");
     if (last?.classList.contains("md-p")) last.append(stamp);
     else bubble.append(el("p.md-p.only-time", {}, stamp));
-    return el("div.row.reply", { "data-message": m.id, "data-at": m.createdAt }, bubble);
+    return el("div.row.reply", { "data-message": m.id, "data-at": m.createdAt }, quoted ? quoteBlock(quoted) : undefined, bubble, replyButton(m, bodyText));
   }
 
   /**
@@ -252,12 +423,17 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
    */
   function mineRow(m: LogMessage) {
     const from = m.from === "user" ? undefined : nameOf(m.from);
-    const long = m.body.length > MINE_FOLD_CHARS || m.body.split("\n").length > 3;
+    const quoted = parseReply(m.body);
+    const bodyText = quoted?.text ?? m.body;
+    const long = bodyText.length > MINE_FOLD_CHARS || bodyText.split("\n").length > 3;
     const row = el(
       "div.row.mine",
       { class: `row mine${long ? " folded" : ""}`, "data-message": m.id, "data-task": m.taskId ?? "", "data-at": m.createdAt },
       from ? el("div.row-from", {}, el("b", {}, from), m.taskId ? el("span.tag", {}, `#${m.taskId}`) : undefined) : undefined,
-      el("div.bubble", {}, markdown(m.body)),
+      quoted ? quoteBlock(quoted) : undefined,
+      pictures(m.meta.images),
+      bodyText.trim() ? el("div.bubble", {}, markdown(bodyText)) : undefined,
+      replyButton(m, bodyText),
     );
     const toggle = long ? el("button.more", { onclick: () => (row.classList.toggle("folded"), (toggle!.textContent = row.classList.contains("folded") ? "Show more" : "Show less")) }, "Show more") : undefined;
     row.append(el("div.row-foot", {}, toggle, el("span.grow"), time(m.createdAt)));
@@ -354,6 +530,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
           {
             title: options.length ? "answer in words" : "answer",
             onclick: () => {
+              replyTarget = undefined;
               pinnedAnswer = reply;
               box.pin(el("span.ellipsis", {}, icon("help", 10), " ", firstLine(question)), () => (pinnedAnswer = undefined));
             },
@@ -443,11 +620,11 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       el("span", {}, `${what}${span && group.live ? ` · ${span}` : ""}`),
       chevron(),
     );
-    const body = el("div.tools-body.tui");
+    const body = el("div.tools-body");
     if (group.open) {
-      if (group.thinking) body.append(el("div.entry.thinking", {}, el("span.mark", {}, "∴"), el("div.body", {}, group.thinking)));
+      if (group.thinking) body.append(el("div.tool-thinking", {}, group.thinking));
       for (const tool of group.tools) {
-        const line = toolLine(tool);
+        const line = toolRow(tool, group.session);
         if (tool.id) liveTools.set(tool.id, line);
         body.append(line);
       }
@@ -457,8 +634,9 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
 
   /** A question the session asked: one block per question, the answered ones ticked, the next one with its buttons. */
   function renderQuestion(q: LiveQuestion): HTMLElement {
-    const index = q.answers.findIndex((a) => a === undefined || a === "");
-    const open = index >= 0 && index < q.questions.length;
+    // A fresh question has no answers at all, so the first unanswered one is looked up by question.
+    const index = q.questions.findIndex((_, i) => !q.answers[i]);
+    const open = index >= 0;
     const row = el("div.row.question.tint-warn", { class: `row question tint-warn${open ? " open" : " answered"}`, "data-question": q.id, "data-at": q.at });
     q.questions.forEach((question, i) => {
       const answered = q.answers[i];
@@ -619,9 +797,9 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
 
   /** A line of a plain thread as a row of the log, so it is drawn as the log's are. */
   let spokenCount = 0;
-  const spoken = (from: string, body: string, at: number): Row => {
+  const spoken = (from: string, body: string, at: number, images?: readonly string[]): Row => {
     spokenCount += 1;
-    const m = { id: -spokenCount, from, to: from === "user" ? options.agent : "user", kind: "chat", body, taskId: null, meta: {}, createdAt: at } as unknown as LogMessage;
+    const m = { id: -spokenCount, from, to: from === "user" ? options.agent : "user", kind: "chat", body, taskId: null, meta: images?.length ? { images } : {}, createdAt: at } as unknown as LogMessage;
     return { kind: "message", key: `s${spokenCount}`, at, m, node: undefined as unknown as HTMLElement };
   };
 
@@ -632,7 +810,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     let reply: { text: string; at: number } | undefined;
     const ensureGroup = (at: number) =>
       (group ??= (() => {
-        const fresh: ToolGroup = { kind: "tools", key: `t${at}`, at, end: at, thinking: "", tools: [], live: false, open: false, node: undefined as unknown as HTMLElement };
+        const fresh: ToolGroup = { kind: "tools", key: `t${at}`, at, end: at, thinking: "", tools: [], live: false, open: false, session: options.session, node: undefined as unknown as HTMLElement };
         out.push(fresh);
         return fresh;
       })());
@@ -644,9 +822,9 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     for (const entry of history) {
       const at = new Date(entry.ts).getTime();
       if (entry.role === "user") {
-        if (entry.meta || !entry.text.trim() || entry.text.startsWith("[Request interrupted")) continue;
+        if (entry.meta || (!entry.text.trim() && !entry.images?.length) || entry.text.startsWith("[Request interrupted")) continue;
         close();
-        out.push(spoken("user", entry.text, at));
+        out.push(spoken("user", entry.text, at, entry.images?.map(attachmentUrl)));
         continue;
       }
       if (reply && (entry.text.trim() || entry.tools?.length)) {
@@ -666,7 +844,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     return out;
   }
 
-  function groupsOf(history: Transcript[]): ToolGroup[] {
+  function groupsOf(history: Transcript[], session: string): ToolGroup[] {
     const groups: ToolGroup[] = [];
     let current: ToolGroup | undefined;
     for (const entry of history) {
@@ -677,7 +855,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       }
       if (entry.role !== "assistant" || (!entry.tools?.length && !entry.thinking)) continue;
       if (!current) {
-        current = { kind: "tools", key: `t${at}`, at, end: at, thinking: "", tools: [], live: false, open: false, node: undefined as unknown as HTMLElement };
+        current = { kind: "tools", key: `t${at}`, at, end: at, thinking: "", tools: [], live: false, open: false, session, node: undefined as unknown as HTMLElement };
         groups.push(current);
       }
       current.end = Math.max(current.end, at);
@@ -690,7 +868,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   async function loadTools(session: string) {
     const history = await transcript(session, undefined, 300).catch(() => [] as Transcript[]);
     const oldest = items.find((i) => i.kind === "message")?.at ?? 0;
-    for (const group of groupsOf(history)) if (group.at >= oldest - 60_000 && !items.some((i) => i.key === group.key)) items.push(group);
+    for (const group of groupsOf(history, session)) if (group.at >= oldest - 60_000 && !items.some((i) => i.key === group.key)) items.push(group);
   }
 
   // ---- loading and following -------------------------------------------------------------
@@ -826,7 +1004,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
           case "session.tool": {
             if (!liveGroup) {
               // What streamed before the first call was the model thinking aloud, not the reply.
-              liveGroup = { kind: "tools", key: `t${event.ts}`, at: event.ts, end: event.ts, thinking: liveText ? liveRaw : "", tools: [], live: true, open: false, node: undefined as unknown as HTMLElement };
+              liveGroup = { kind: "tools", key: `t${event.ts}`, at: event.ts, end: event.ts, thinking: liveText ? liveRaw : "", tools: [], live: true, open: false, session, node: undefined as unknown as HTMLElement };
               liveText?.remove();
               liveText = undefined;
               liveRaw = "";
@@ -843,9 +1021,10 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
             if (tool) (tool as { result?: string }).result = payload.result ?? "";
             liveGroup.end = event.ts;
             const line = payload.id ? liveTools.get(payload.id) : undefined;
-            if (line?.isConnected) {
-              line.classList.remove("live");
-              line.append(resultLine(payload.result ?? ""));
+            if (line?.isConnected && tool) {
+              const done = toolRow(tool, liveGroup.session);
+              line.replaceWith(done);
+              liveTools.set(payload.id!, done);
             } else redraw(liveGroup);
             break;
           }

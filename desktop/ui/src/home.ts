@@ -329,7 +329,7 @@ export function home(root: HTMLElement) {
     clear(centrePane, thread.node);
     const draw = (agent: Agent) => {
       thread.setHead(crumbsOf(agent));
-      if (agent.status === "closed") thread.node.querySelector<HTMLTextAreaElement>("textarea")?.setAttribute("disabled", "");
+      if (agent.status === "closed") thread.node.querySelector<HTMLElement>(".input")?.setAttribute("contenteditable", "false");
     };
     if (existing) draw(existing);
     const full = await fetchAgent(slug).catch(() => undefined);
