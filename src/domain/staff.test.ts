@@ -288,6 +288,14 @@ describe("asks and notices", () => {
     expect(cardOf(later.id)).toBeUndefined();
     tasks.update(later.id, { status: "waiting_user", nextAction: "Open the link" });
     expect(cardOf(later.id)!.question).toContain("Open the link");
+    // Reworded, the card is asked again with the new words; unchanged, it stays the one card.
+    const first = cardOf(later.id)!.id;
+    tasks.update(later.id, { nextAction: "Open https://x.test and press Reconnect" });
+    expect(cardOf(later.id)!.id).not.toBe(first);
+    expect(cardOf(later.id)!.question).toContain("press Reconnect");
+    const second = cardOf(later.id)!.id;
+    tasks.update(later.id, { notes: "still waiting" });
+    expect(asks.open().filter((a) => a.taskId === later.id).map((a) => a.id)).toEqual([second]);
     // A real question about the task takes the card's place rather than being swallowed as a repeat.
     const real = asks.ask({ agent: "pai", question: "Which mailbox first?", options: ["Work", "Personal"], blocking: false, fallback: "Work", taskId: later.id });
     expect(asks.open().filter((a) => a.taskId === later.id).map((a) => a.id)).toEqual([real.id]);

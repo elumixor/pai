@@ -216,11 +216,19 @@ export const TASK_SKIP = "Won't do";
 
 /**
  * A task waiting on the user is a decision like any other: an ask with its own row in the chat,
- * answered Done, Drop or in words. Nothing waits on the user without a row to answer it on.
+ * answered I did it, Won't do or in words. Nothing waits on the user without a row to answer it on.
+ * A card whose task has since been reworded (or that predates the current buttons) is asked again.
  */
 export function askForTask(t: tasks.Task) {
-  if (t.status !== "waiting_user" || open().some((a) => a.taskId === t.id)) return;
-  ask({ agent: t.owner, question: t.nextAction ? `**${t.title}**\n\n${t.nextAction}` : t.title, options: [TASK_DID, TASK_SKIP], blocking: false, fallback: TASK_FALLBACK, taskId: t.id });
+  if (t.status !== "waiting_user") return;
+  const question = t.nextAction ? `**${t.title}**\n\n${t.nextAction}` : t.title;
+  const options = [TASK_DID, TASK_SKIP];
+  const asked = open().filter((a) => a.taskId === t.id);
+  if (asked.some((a) => !isTaskAsk(a))) return;
+  const stale = asked.filter((a) => a.question !== question.trim() || a.options.join("\n") !== options.join("\n"));
+  if (asked.length > stale.length) return;
+  for (const a of stale) drop(a.id);
+  ask({ agent: t.owner, question, options, blocking: false, fallback: TASK_FALLBACK, taskId: t.id });
 }
 
 /** Keeps a card on every waiting task: one when it starts waiting, none once it stops. Covers what waited before this ran. */
