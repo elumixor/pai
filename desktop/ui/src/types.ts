@@ -271,6 +271,8 @@ export interface LogMessage {
     readonly freeText?: boolean;
     /** A one-line gist of a long message, written by the daemon's summariser. */
     readonly tldr?: string;
+    /** Pictures that came with it, as urls an `<img>` loads. */
+    readonly images?: readonly string[];
     /** A six-word line for the row, written once by a small model. */
     readonly headline?: string;
   };

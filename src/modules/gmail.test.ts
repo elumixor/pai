@@ -207,7 +207,7 @@ describe("gmail: the message that goes on the wire", () => {
     connect("personal", "me@example.com");
     const restore = stubGoogle({ id: "msg1", threadId: "thr1" });
     try {
-      expect(await send("personal", { to: "a@b.com", subject: "x", body: "y" })).toMatchObject({ link: "https://mail.google.com/mail/u/me@example.com/#sent/thr1" });
+      expect(await send("personal", { to: "a@b.com", subject: "x", body: "y" })).toMatchObject({ link: "https://mail.google.com/mail/?authuser=me%40example.com#sent/thr1" });
     } finally {
       restore();
     }

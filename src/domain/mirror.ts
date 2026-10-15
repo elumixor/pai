@@ -104,7 +104,7 @@ export class TerminalThread {
    * here and answers itself.
    */
   send(text: string, opts: { images?: { media_type: string; data: string }[] } = {}) {
-    if (channels.deliver(this.id, text)) return;
+    if (channels.deliver(this.id, text, opts.images)) return;
     if (this.busy) {
       bus.emitEvent("session.progress", { text: "Not sent: this conversation is mid-turn in a terminal started without the pai channel. Try again once it is done, and I will continue it here.", terminal: true }, this.id);
       return;

@@ -82,7 +82,12 @@ describe("mirror", () => {
     const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
     expect((await reader.read()).value).toContain("connected");
     mirror.find(id)!.send("one more thing");
-    expect((await reader.read()).value).toBe(`data: ${JSON.stringify({ text: "one more thing" })}\n\n`);
+    expect((await reader.read()).value).toBe(`data: ${JSON.stringify({ text: "one more thing", images: [] })}\n\n`);
+    // Pictures go down with it, named as the daemon keeps them, so the terminal can save its own copy.
+    const data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+    mirror.find(id)!.send("and this", { images: [{ media_type: "image/png", data }] });
+    const sent = JSON.parse(((await reader.read()).value ?? "").replace(/^data: /, ""));
+    expect(sent).toMatchObject({ text: "and this", images: [{ media_type: "image/png", data, name: expect.stringMatching(/^[0-9a-f]{16}\.png$/) }] });
     await reader.cancel();
     await Bun.sleep(50); // the cancel travels up the pipe on its own time
     expect(channels.connected(id)).toBe(false);

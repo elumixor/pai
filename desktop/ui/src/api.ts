@@ -24,6 +24,7 @@ export interface Transcript {
   readonly text: string;
   readonly thinking?: string;
   readonly tools?: readonly TranscriptTool[];
+  readonly images?: readonly string[];
   readonly meta?: boolean;
 }
 
@@ -282,6 +283,10 @@ export const fileIndex = (path: string) => get<string[]>(`/files/index?path=${en
 export const file = (path: string) => get<{ path: string; text: string; truncated?: boolean }>(`/file?path=${encodeURIComponent(path)}`);
 export const transcript = (session: string, cwd?: string, limit = 300) =>
   get<Transcript[]>(`/transcript?session=${session}&limit=${limit}${cwd ? `&cwd=${encodeURIComponent(cwd)}` : ""}`);
+/** A picture from a transcript, as an `<img>` can load it (it cannot carry the header). */
+export const attachmentUrl = (name: string) => withToken(`${baseUrl()}/attachments/${encodeURIComponent(name)}`);
+/** One tool call in full, from the session's transcript: the input and the output the previews cut. */
+export const toolCall = (session: string, tool: string) => get<{ name: string; input: unknown; result?: string }>(`/transcript/tool?session=${session}&tool=${encodeURIComponent(tool)}`);
 /** A new plain thread, on its own: no agent, no project; its first message goes with it. */
 export const startThread = (text: string, images: { media_type: string; data: string }[] = []) => send("/task", { title: "", text, images, origin: "general" });
 /** A turn in a plain thread, a terminal's included (into the terminal while its channel is connected). */

@@ -21,7 +21,18 @@ const MARK = "# pai channel";
 const INSTRUCTIONS =
   'Messages in <channel source="pai"> are the user writing to this conversation from their phone (Paigram, the chat app pai runs in). ' +
   "Treat each one as the user's own next message, exactly as if they had typed it in this terminal, and answer it the same way. " +
+  "An [image: <path>] line in one is a picture they attached: Read the file to see it. " +
   "The conversation is mirrored to the phone, so there is no reply tool and nothing to send back.";
+
+const ATTACHMENTS = join(homedir(), ".cache", "pai", "attachments");
+
+/** A picture that came with a message, saved where this terminal can read it; the line that points at it. */
+function saveImage(image: { name: string; data: string }) {
+  const path = join(ATTACHMENTS, image.name.replace(/[^\w.]/g, ""));
+  mkdirSync(ATTACHMENTS, { recursive: true });
+  if (!existsSync(path)) writeFileSync(path, Buffer.from(image.data, "base64"));
+  return `[image: ${path}]`;
+}
 
 /** What `claude` needs to load the channel: the server's definition and the switch that lets an unlisted channel push messages. */
 export function channelArgs(): string[] {
@@ -130,8 +141,8 @@ export async function run(api: { base: string; auth: Record<string, string> }) {
               .map((l) => l.slice(6))
               .join("\n");
             if (!data) continue;
-            const { text } = JSON.parse(data) as { text: string };
-            say({ jsonrpc: "2.0", method: "notifications/claude/channel", params: { content: text, meta: { from: "paigram" } } });
+            const { text, images = [] } = JSON.parse(data) as { text: string; images?: { name: string; data: string }[] };
+            say({ jsonrpc: "2.0", method: "notifications/claude/channel", params: { content: [text, ...images.map(saveImage)].filter(Boolean).join("\n"), meta: { from: "paigram" } } });
           }
         }
       } catch (err) {

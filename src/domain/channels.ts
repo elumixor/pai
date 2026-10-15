@@ -1,4 +1,5 @@
 import { logger } from "../core/log.ts";
+import { keep, type Image } from "./attachments.ts";
 
 /**
  * Terminals that can be written to: each `claude` started with the pai channel (`pai channel`)
@@ -11,11 +12,12 @@ const enc = new TextEncoder();
 const open = new Map<string, Set<(data: string) => void>>();
 
 /** True when a terminal took it. The newest connection for a conversation wins; there is rarely more than one. */
-export function deliver(sessionId: string, text: string): boolean {
+export function deliver(sessionId: string, text: string, images: readonly Image[] = []): boolean {
   const writers = open.get(sessionId);
   const newest = writers ? [...writers].at(-1) : undefined;
   if (!newest) return false;
-  newest(JSON.stringify({ text }));
+  // The terminal may be on another machine: the pictures go down the stream, named as the daemon keeps them.
+  newest(JSON.stringify({ text, images: images.map((image) => ({ ...image, name: keep(image) })) }));
   log.info(`${sessionId.slice(0, 6)}: delivered to its terminal`);
   return true;
 }

@@ -2,6 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { config } from "../core/config.ts";
+import { IMAGE_REF, keep } from "./attachments.ts";
 
 /**
  * A session's conversation, read from the transcript Claude Code keeps on disk — the same
@@ -26,6 +27,8 @@ export interface TranscriptMessage {
   readonly text: string;
   readonly thinking?: string;
   readonly tools?: readonly TranscriptTool[];
+  /** Pictures in the message, as names `GET /attachments/<name>` serves. */
+  readonly images?: readonly string[];
   /** Injected context rather than something the user typed (task results, tool output, hooks). */
   readonly meta?: boolean;
 }
@@ -72,6 +75,7 @@ interface Block {
   name?: string;
   input?: unknown;
   content?: unknown;
+  source?: { type?: string; media_type?: string; data?: string };
 }
 
 interface Entry {
@@ -87,14 +91,18 @@ interface Entry {
 const RESULT_LINES = 4;
 const RESULT_CHARS = 400;
 
+/** What a tool returned, as text. */
+function resultText(content: unknown): string {
+  return typeof content === "string"
+    ? content
+    : Array.isArray(content)
+      ? content.map((block: Block) => (block.type === "text" ? (block.text ?? "") : `[${block.type}]`)).join("\n")
+      : JSON.stringify(content ?? "");
+}
+
 /** What a tool returned, cut to what fits under the call. */
 export function resultPreview(content: unknown): string {
-  const text =
-    typeof content === "string"
-      ? content
-      : Array.isArray(content)
-        ? content.map((block: Block) => (block.type === "text" ? (block.text ?? "") : `[${block.type}]`)).join("\n")
-        : JSON.stringify(content ?? "");
+  const text = resultText(content);
   const lines = text.split("\n").filter((line) => line.trim());
   const cut = lines.slice(0, RESULT_LINES).join("\n").slice(0, RESULT_CHARS);
   const more = lines.length - RESULT_LINES;
@@ -133,6 +141,35 @@ export async function transcript(sessionId: string, cwd?: string, limit = 200): 
     messages.push(message);
   }
   return messages.slice(-limit);
+}
+
+const FULL_CHARS = 200_000;
+
+/** One call in full, as the transcript holds it: its input and everything it returned (capped at 200k characters). */
+export async function toolCall(sessionId: string, toolId: string, cwd?: string): Promise<{ name: string; input: unknown; result?: string } | undefined> {
+  const path = transcriptPath(sessionId, cwd);
+  if (!path) return undefined;
+  let call: { name: string; input: unknown; result?: string } | undefined;
+  for (const line of (await Bun.file(path).text()).split("\n")) {
+    if (!line.includes(toolId)) continue;
+    let entry: Entry;
+    try {
+      entry = JSON.parse(line) as Entry;
+    } catch {
+      continue;
+    }
+    const content = entry.message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      if (block.type === "tool_use" && block.id === toolId) call = { name: block.name ?? "tool", input: block.input };
+      else if (block.type === "tool_result" && block.tool_use_id === toolId && call) {
+        const text = resultText(block.content);
+        call.result = text.length > FULL_CHARS ? `${text.slice(0, FULL_CHARS)}\n… cut at ${FULL_CHARS.toLocaleString("en")} characters` : text;
+        return call;
+      }
+    }
+  }
+  return call;
 }
 
 export interface DiskSession {
@@ -253,26 +290,40 @@ function toMessage(entry: Entry): TranscriptMessage | undefined {
   const role = entry.type === "assistant" ? "assistant" : "user";
   const ts = entry.timestamp ?? new Date().toISOString();
   const content = entry.message?.content;
-  if (typeof content === "string") return { role, ts, text: content, meta: entry.isMeta || isInjected(content) };
+  if (typeof content === "string") {
+    const { text, images } = imageRefs(content);
+    return { role, ts, text, images, meta: entry.isMeta || isInjected(content) };
+  }
 
   const text: string[] = [];
+  const images: string[] = [];
   const thinking: string[] = [];
   const tools: TranscriptTool[] = [];
   for (const block of content ?? []) {
     if (block.type === "text" && block.text) text.push(block.text);
     else if (block.type === "thinking" && block.thinking) thinking.push(block.thinking);
     else if (block.type === "tool_use" && block.name) tools.push({ id: block.id, name: block.name, input: summarize(block.input) });
+    else if (block.type === "image" && block.source?.type === "base64" && block.source.data) images.push(keep({ media_type: block.source.media_type ?? "image/png", data: block.source.data }));
   }
   // A user entry with no text is a tool result: the call it answers is already shown.
-  if (!text.length && !tools.length && !thinking.length) return undefined;
+  if (!text.length && !tools.length && !thinking.length && !images.length) return undefined;
+  const typed = imageRefs(text.join("\n"));
+  images.push(...(typed.images ?? []));
   return {
     role,
     ts,
-    text: text.join("\n"),
+    text: typed.text,
+    images: images.length ? images : undefined,
     thinking: thinking.join("\n") || undefined,
     tools: tools.length ? tools : undefined,
     meta: entry.isMeta || isInjected(text.join("\n")),
   };
+}
+
+/** A message that reached a terminal as text names its pictures in `[image: …]` lines: those become images. */
+function imageRefs(raw: string): { text: string; images?: string[] } {
+  const images = [...raw.matchAll(IMAGE_REF)].map((m) => m[1]!);
+  return images.length ? { text: raw.replace(IMAGE_REF, "").trim(), images } : { text: raw };
 }
 
 /** System reminders, hook output and task results arrive as user messages but were not typed. */

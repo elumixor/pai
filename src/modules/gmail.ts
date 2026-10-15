@@ -29,6 +29,11 @@ const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
 const CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 
+/** A thread in Gmail's web UI. `authuser` picks the signed-in account by address, or asks to sign in;
+ * `/mail/u/<address>/` gave Gmail's "Temporary Error (404)" instead. */
+const threadLink = (email: string, folder: string, threadId: string) =>
+  `https://mail.google.com/mail/?authuser=${encodeURIComponent(email)}#${folder}/${threadId}`;
+
 const GMAIL = "https://www.googleapis.com/auth/gmail.";
 const READ = `${GMAIL}readonly`;
 const SEND = `${GMAIL}send`;
@@ -589,7 +594,7 @@ export async function send(label: string, input: Readonly<SendInput>, by?: strin
   // Gmail answers with the id it filed the message under. A 2xx without one is not a send,
   // and reporting it as one is how a tool comes to claim something that never happened.
   if (!sent.id || !sent.threadId) throw new Error(`gmail: ${label} accepted the message but returned no id — it was not sent. Check the Sent folder of ${account.email} before sending again.`);
-  const link = `https://mail.google.com/mail/u/${account.email}/#sent/${sent.threadId}`;
+  const link = threadLink(account.email, "sent", sent.threadId);
   messages.event(by ?? "pai", "sent", `email from ${account.email} to ${input.to}: ${subject}`, { meta: { link } });
   archive("mail", sent.id, `${account.email} → ${input.to} — ${subject}`, input.body);
   log.info(`${label}: sent to ${input.to}`);
@@ -656,7 +661,7 @@ export function startWatch(emit: (kind: string, payload: Record<string, unknown>
     for (const { label, email } of listAccounts()) {
       try {
         for (const m of await newMail(label)) {
-          emit("gmail.new", { account: label, email, id: m.id, threadId: m.threadId, from: m.from, subject: m.subject, snippet: m.snippet, link: `https://mail.google.com/mail/u/${email}/#inbox/${m.threadId}` });
+          emit("gmail.new", { account: label, email, id: m.id, threadId: m.threadId, from: m.from, subject: m.subject, snippet: m.snippet, link: threadLink(email, "inbox", m.threadId) });
           archive("mail", m.id, `${m.from} — ${m.subject}`, m.snippet, m.at);
         }
       } catch (err) {

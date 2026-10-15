@@ -1,4 +1,5 @@
 import { config } from "../core/config.ts";
+import { serve as serveAttachment } from "../domain/attachments.ts";
 import { all as allProjects, clone, CloneError, createContext, refresh } from "../domain/catalog.ts";
 import * as automations from "../domain/automations.ts";
 import { context, save as saveContext } from "../domain/context.ts";
@@ -20,7 +21,7 @@ import { messagePage } from "./message.ts";
 import { status } from "./status.ts";
 import * as files from "../domain/files.ts";
 import * as settings from "../domain/settings.ts";
-import { allThreads, ensureTranscriptAt, sessionsIn, transcript, transcriptPath } from "../domain/transcript.ts";
+import { allThreads, ensureTranscriptAt, sessionsIn, toolCall, transcript, transcriptPath } from "../domain/transcript.ts";
 import { cost as hostingCost } from "../domain/hetzner.ts";
 import * as agents from "../domain/agents.ts";
 import * as asks from "../domain/asks.ts";
@@ -108,6 +109,9 @@ export async function handle(req: Request): Promise<Response> {
 
     if (path === "/roots") return json(files.roots());
 
+    // A picture someone attached, by the name the transcript gives it.
+    if (path.startsWith("/attachments/")) return serveAttachment(path.slice("/attachments/".length)) ?? json({ error: "no such attachment" }, 404);
+
     // A thread's conversation as it is on disk, which is what `claude --resume` shows.
     if (path === "/transcript") {
       const raw = url.searchParams.get("session") ?? "";
@@ -115,6 +119,15 @@ export async function handle(req: Request): Promise<Response> {
       const id = session?.id ?? sessions.resolveId(raw) ?? raw;
       const limit = Number(url.searchParams.get("limit") ?? 200);
       return json(await transcript(id, session?.cwd ?? url.searchParams.get("cwd") ?? undefined, limit));
+    }
+
+    // One tool call in full: the transcript keeps the input and the output the previews cut.
+    if (path === "/transcript/tool") {
+      const raw = url.searchParams.get("session") ?? "";
+      const session = sessions.find(raw);
+      const id = session?.id ?? sessions.resolveId(raw) ?? raw;
+      const call = await toolCall(id, url.searchParams.get("tool") ?? "", session?.cwd ?? url.searchParams.get("cwd") ?? undefined);
+      return call ? json(call) : json({ error: "no such tool call" }, 404);
     }
 
     // Every conversation in every project, the daemon's and terminal ones, synced ones included.
