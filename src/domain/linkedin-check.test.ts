@@ -77,3 +77,4 @@ describe("LinkedIn, healthy", () => {
     expect(unwell(live({ signedIn: undefined, lastMessageAt: now - 83 * h }), now)).toContain("83h");
   });
 });
+

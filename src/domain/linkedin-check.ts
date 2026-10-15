@@ -9,7 +9,7 @@
 import { db, kv } from "../core/db.ts";
 import { logger } from "../core/log.ts";
 import * as external from "../modules/external.ts";
-import * as tasks from "./tasks.ts";
+import * as watch from "./watch.ts";
 
 const log = logger("linkedin");
 const NAME = "linkedin";
@@ -69,26 +69,12 @@ export function unwell(s: Readonly<Signal>, nowMs = Date.now()): string | undefi
   return `the LinkedIn session reads fine, but nothing has arrived in ${hours(quiet)} — the longest quiet stretch in the month before that was ${hours(normal)}. Either his inbox is genuinely still or the poller stopped seeing it, and from the inside those look the same.`;
 }
 
-const TITLE = "pai may have stopped seeing LinkedIn";
+export const TITLE = "pai may have stopped seeing LinkedIn";
 const NEXT_ACTION = "Run `pai linkedin status`; if it is signed out, `pai browser login linkedin` on the Mac captures the session again";
 
 /** One task, its reason kept current, closed by the check itself when LinkedIn answers again. */
-export function report(reason: string | undefined) {
-  const open = tasks.list({ open: true }).find((t) => t.title === TITLE);
-  if (!reason) {
-    if (open) {
-      log.info("LinkedIn looks healthy again; closing its task");
-      tasks.update(open.id, { status: "done", nextAction: "" });
-    }
-    return;
-  }
-  if (open) {
-    if (open.notes !== reason) tasks.update(open.id, { notes: reason, nextAction: NEXT_ACTION });
-    return;
-  }
-  log.warn(reason);
-  tasks.add({ title: TITLE, status: "inbox", owner: "pai-dev", createdBy: "linkedin-check", nextAction: NEXT_ACTION, notes: reason });
-}
+export const report = (reason: string | undefined, nowMs = Date.now()) =>
+  watch.keep({ title: TITLE, nextAction: NEXT_ACTION, by: "linkedin-check" }, reason, nowMs);
 
 /** What his LinkedIn traffic has looked like: the newest message, and the worst quiet stretch before it. */
 export function traffic(nowMs = Date.now()) {
@@ -138,6 +124,7 @@ export async function checkLinkedIn(nowMs = Date.now()) {
       },
       nowMs,
     ),
+    nowMs,
   );
 }
 

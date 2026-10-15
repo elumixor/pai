@@ -6,6 +6,9 @@ const log = logger("browser");
 
 let proc: Subprocess | undefined;
 let stopping = false;
+/** Every spawn after the first is the server having died under the sessions holding it. */
+let restarts = 0;
+let startedAt = Date.now();
 
 /** Pinned: the daemon is long-lived, and `@latest` would change the browser under it on any restart. */
 const MCP = "@playwright/mcp@0.0.83";
@@ -53,14 +56,25 @@ function spawn() {
     { stdout: "ignore", stderr: "pipe", env: { ...process.env } },
   );
   const pid = proc.pid;
+  startedAt = Date.now();
   log.info(`playwright mcp on :${config.browserPort} (pid ${pid})`);
   void (async () => {
     const err = await new Response(proc!.stderr as ReadableStream).text();
     const code = await proc!.exited;
     if (stopping) return;
+    restarts += 1;
     log.warn(`playwright mcp exited (code ${code}) ${err.trim().slice(-300)} — restarting in 5s`);
     setTimeout(spawn, 5000);
   })();
+}
+
+/**
+ * What the server has been doing, for the observer that watches it: when this process last started
+ * it, and how often it has had to. A session holding a connection to a dead server hangs rather
+ * than failing, so a restart is never free.
+ */
+export function mcpState() {
+  return { restarts, startedAt, url: `http://localhost:${config.browserPort}/mcp` };
 }
 
 export function browserMcp() {

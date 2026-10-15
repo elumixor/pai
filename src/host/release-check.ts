@@ -9,7 +9,7 @@
 import { $ } from "bun";
 import { config } from "../core/config.ts";
 import { logger } from "../core/log.ts";
-import * as tasks from "../domain/tasks.ts";
+import * as watch from "../domain/watch.ts";
 import type { UpdateStatus } from "./update.ts";
 
 const log = logger("update");
@@ -39,22 +39,7 @@ const TITLE = "A release has not reached the daemon";
 const NEXT_ACTION = "Check the CI run for that tag, then `pai update` on the box (`pai dev update --force` builds it there)";
 
 /** One task, its reason kept current — the tag and the minutes are in it, so "CI is slow" reads differently from "nothing arrived". */
-export function report(reason: string | undefined) {
-  const open = tasks.list({ open: true }).find((t) => t.title === TITLE);
-  if (!reason) {
-    if (open) {
-      log.info("the release arrived; closing its task");
-      tasks.update(open.id, { status: "done", nextAction: "" });
-    }
-    return;
-  }
-  if (open) {
-    if (open.notes !== reason) tasks.update(open.id, { notes: reason, nextAction: NEXT_ACTION });
-    return;
-  }
-  log.warn(reason);
-  tasks.add({ title: TITLE, status: "inbox", owner: "pai-dev", createdBy: "release-check", nextAction: NEXT_ACTION, notes: reason });
-}
+export const report = (reason: string | undefined) => watch.keep({ title: TITLE, nextAction: NEXT_ACTION, by: "release-check" }, reason);
 
 /** When the tag was cut, in milliseconds; undefined when git cannot say. */
 async function taggedAt(tag: string): Promise<number | undefined> {
