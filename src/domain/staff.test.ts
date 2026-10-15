@@ -274,10 +274,15 @@ describe("asks and notices", () => {
     const unwire = asks.wireTasks();
     const cardOf = (id: number) => asks.open().find((a) => a.taskId === id);
     // What waited before the wiring is covered too.
-    expect(cardOf(before.id)?.options).toEqual(["Done", "Drop"]);
+    expect(cardOf(before.id)?.options).toEqual([asks.TASK_DID, asks.TASK_SKIP]);
     expect(messages.list({ kinds: ["ask"] }).some((m) => m.taskId === before.id)).toBe(true);
-    asks.answer(cardOf(before.id)!.id, "Done");
-    expect(tasks.get(before.id)!.status).toBe("done");
+    // The user did their part: the task goes back to its owner, who resumes it.
+    asks.answer(cardOf(before.id)!.id, asks.TASK_DID);
+    expect(tasks.get(before.id)!.status).toBe("active");
+    expect(sessionOf("hiring").sent.at(-1)).toContain("check it and carry on");
+    tasks.update(before.id, { status: "waiting_user" });
+    asks.answer(cardOf(before.id)!.id, asks.TASK_SKIP);
+    expect(tasks.get(before.id)!.status).toBe("dropped");
 
     const later = tasks.add({ title: "Reconnect the mailbox", owner: "hiring" });
     expect(cardOf(later.id)).toBeUndefined();
