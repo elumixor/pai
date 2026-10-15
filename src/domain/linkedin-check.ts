@@ -55,7 +55,8 @@ const mins = (ms: number) => `${Math.round(ms / 60_000)} min`;
  * than his own traffic ever goes quiet — from the inside those are the same picture.
  */
 export function unwell(s: Readonly<Signal>, nowMs = Date.now()): string | undefined {
-  if (!s.answering) return "the LinkedIn module is installed but not answering — it never started, so nothing is reading the inbox at all.";
+  if (!s.answering)
+    return `the LinkedIn module did not answer its own status route within ${ASK_TIMEOUT_MS / 1000}s. Either it never started, or the browser page it reads through is wedged — a dead page makes its callers hang rather than fail, so from here the two look the same.`;
   if (s.signedIn === false)
     return `LinkedIn is signed out${s.lastPollAt ? `; the inbox was last read ${hours(nowMs - s.lastPollAt)} ago` : ""}. Nothing arrives until the session is captured again: \`pai browser login linkedin\` on the Mac.`;
   const late = Math.max(LATE_POLLS * s.pollEveryMs, LATE_FLOOR_MS);
@@ -84,8 +85,13 @@ export function traffic(nowMs = Date.now()) {
   return { lastMessageAt: rows.at(-1)?.ts, longestGapMs: longestGapMs || undefined };
 }
 
-/** Asking the module costs a browser cookie check; past this it counts as unanswered, not as healthy. */
-const ASK_TIMEOUT_MS = 15_000;
+/**
+ * Asking the module costs a cookie check and a live read, both through the one page a site has, and
+ * that page serves one caller at a time — so a healthy answer can queue behind the poller. This has
+ * to stay well above the module's own caps, or a slow answer is reported as a dead module: the first
+ * look after v0.6.31 said "it never started" about a module that answered in six seconds.
+ */
+const ASK_TIMEOUT_MS = 45_000;
 
 interface Status {
   readonly signedIn?: boolean;

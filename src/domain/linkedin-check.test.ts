@@ -20,8 +20,11 @@ const live = (over: Partial<Signal> = {}): Signal => ({
 });
 
 describe("LinkedIn, the bad edge", () => {
-  test("the module never started", () => {
-    expect(unwell(live({ answering: false }), now)).toContain("not answering");
+  test("a module that does not answer its own status route", () => {
+    const reason = unwell(live({ answering: false }), now)!;
+    expect(reason).toContain("did not answer its own status route within 45s");
+    // The sentence may not claim it never started: a wedged page looks identical from here.
+    expect(reason).toContain("look the same");
   });
 
   test("signed out, with how long since the last read", () => {
