@@ -261,6 +261,16 @@ export function warmUp() {
   prewarm("chat");
 }
 
+/** A new login on the machine: idle processes still hold the old one, so they go and are resumed on their next turn. */
+export function recycle() {
+  rewarm("chat");
+  for (const s of live.values()) {
+    if (s.state !== "idle" || s.pending) continue;
+    s.kill();
+    live.delete(s.id);
+  }
+}
+
 /** Frees the subprocess of long-idle task sessions. The session itself stays resumable. */
 export function reapIdle() {
   const cutoff = now() - config.idleShutdownMs;

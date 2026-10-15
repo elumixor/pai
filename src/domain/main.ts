@@ -167,7 +167,14 @@ export function start() {
     note: (slug, text) => (slug === agents.PAI ? note(text) : agents.noteTo(slug, text)),
   });
   const unwireTasks = asks.wireTasks();
+  // A message that met a dead login got no answer; once the login is back, pai answers it.
+  let unanswered = false;
   const handler = (e: PaiEvent) => {
+    if (e.kind === "claude.auth_failed" && isMain(e.sessionId) && e.payload.origin === "user") unanswered = true;
+    if (e.kind === "claude.login_restored" && unanswered) {
+      unanswered = false;
+      system("[Claude was signed out on the box until now, so the user's last messages went unanswered. Answer them now.]");
+    }
     if (e.kind !== "session.turn_end" || !isMain(e.sessionId)) return;
     gate.turnTaken();
     const text = String(e.payload.text ?? "").trim();

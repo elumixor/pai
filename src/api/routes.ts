@@ -5,7 +5,8 @@ import { context, save as saveContext } from "../domain/context.ts";
 import { byName as moduleByName, describeModules } from "../modules/index.ts";
 import * as external from "../modules/external.ts";
 import { handleConnect as gmailConnect, listAccounts as gmailAccounts, removeAccount as gmailRemove } from "../modules/gmail.ts";
-import { installCredentials, needsLogin, usage } from "../domain/usage.ts";
+import { needsLogin, usage } from "../domain/usage.ts";
+import * as claudeLogin from "../domain/claude-login.ts";
 import { diagnostics } from "../domain/diagnostics.ts";
 import { recentEvents, waitFor } from "../core/bus.ts";
 import * as sessions from "../domain/sessions.ts";
@@ -183,15 +184,16 @@ export async function handle(req: Request): Promise<Response> {
     }
     if (path === "/sync") return json(sync.list());
 
-    // A laptop's Claude Code login for this machine: the limits and `claude` here use it from now on.
-    if (path === "/usage/credentials" && req.method === "POST") {
+    // This machine's own Claude login: the page that reconnects it, and the code pasted back.
+    if (path === claudeLogin.LOGIN_PATH && req.method === "GET") return claudeLogin.page();
+    if (path === `${claudeLogin.LOGIN_PATH}/code` && req.method === "POST") {
       try {
-        await installCredentials(await req.text());
-        return json(await usage());
+        return json(await claudeLogin.finish((await body<{ code: string }>(req)).code ?? ""));
       } catch (err) {
         return json({ error: (err as Error).message }, 400);
       }
     }
+    if (path === "/claude/status") return json(await claudeLogin.status());
 
     // A turn in a conversation: a new one, or `id` for an existing one. The same path as a Telegram message.
     if (path === "/chat" && req.method === "POST") {

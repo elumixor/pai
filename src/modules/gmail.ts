@@ -323,7 +323,7 @@ const connectUrl = (label: string) => `${config.baseUrl}/gmail/connect?label=${e
 
 /** One task per mailbox, its reason kept current: raised again every pass, never duplicated. */
 function raiseNeed(label: string, email: string, why: string) {
-  const nextAction = `Open ${connectUrl(label)} and consent as ${email}`;
+  const nextAction = `[Reconnect ${label}](${connectUrl(label)}) and consent as ${email}`;
   const notes = `${email} ${why}. A Google grant is frozen at consent time, so only reconnecting the mailbox changes it.`;
   const open = tasks.list({ open: true }).find((t) => t.title === needTitle(label));
   if (open) {

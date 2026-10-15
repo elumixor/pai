@@ -127,13 +127,3 @@ export async function boxApi(r: Remote, relearn = false): Promise<BoxApi> {
   await Bun.write(boxFile, JSON.stringify({ url: url.replace(/\/$/, ""), token }, null, 2));
   return { url, token };
 }
-
-/** This machine's Claude Code login, as Claude Code stores it: the keychain on macOS, a file elsewhere. */
-export async function localClaudeLogin(): Promise<string | undefined> {
-  if (process.platform === "darwin") {
-    const proc = Bun.spawn(["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"], { stdout: "pipe", stderr: "ignore" });
-    const out = await new Response(proc.stdout as ReadableStream).text();
-    if ((await proc.exited) === 0 && out.trim()) return out.trim();
-  }
-  return Bun.file(join(homedir(), ".claude", ".credentials.json")).text().catch(() => undefined);
-}

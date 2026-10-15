@@ -1000,6 +1000,7 @@ time { color: inherit; font: inherit; }
 .row.question time { font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-20); }
 .opt { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; border: 0; border-radius: 52px; background: var(--act-btn); opacity: 0.8; box-shadow: var(--card-shadow); color: #fff; font: 700 12.5px/15px var(--font-ui); cursor: pointer; transition: opacity 0.12s; }
 .opt:hover { opacity: 1; }
+a.opt { text-decoration: none; }
 .opt.icon-only { padding: 6px 12px; background: #8e8e8e; opacity: 0.5; }
 .opt.icon-only:hover { opacity: 0.8; }
 .opt.icon-only.faint { opacity: 0.2; }

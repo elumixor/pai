@@ -232,6 +232,8 @@ export class Session {
   private closed = false;
   private warm?: Warm;
   private turnText: string[] = [];
+  /** The turn was refused for the login, not answered: its text is the CLI's error, never a reply. */
+  private authFailed = false;
   /** The text block being streamed, and the turn's completed blocks before it. */
   private streamText = "";
   private turnStream = "";
@@ -420,6 +422,12 @@ export class Session {
           this.persist();
           bus.emitEvent("session.model", { model }, this.id);
         }
+        // A dead login answers every turn with a synthetic message; it is the login's problem, not a reply (claude-login.ts).
+        if (m.error === "authentication_failed" && !parent) {
+          if (!this.authFailed) bus.emitEvent("claude.auth_failed", { error: m.error, text: (m.message.content as { text?: string }[])[0]?.text, origin: this.origins[0] ?? "user", agent: this.agent ?? undefined }, this.id);
+          this.authFailed = true;
+          break;
+        }
         for (const block of m.message.content as Record<string, any>[]) {
           if (block.type === "text" && block.text) {
             if (parent) continue;
@@ -451,7 +459,9 @@ export class Session {
         break;
 
       case "result": {
-        const text = this.turnText.join("\n\n").trim() || (m.subtype === "success" ? m.result : "");
+        const authFailed = this.authFailed;
+        this.authFailed = false;
+        const text = authFailed ? "" : this.turnText.join("\n\n").trim() || (m.subtype === "success" ? m.result : "");
         // What the turn ended on, without the narration that led there: an agent's report to whoever asked.
         const final = this.turnText.at(-1)?.trim() || text;
         this.turnText = [];
@@ -460,7 +470,7 @@ export class Session {
         this.recentTools = [];
         // A result with no model turn behind it (context injected with shouldQuery false) is
         // not the end of a turn a message is waiting for — and can land while a real turn runs.
-        const injected = m.num_turns === 0 && !text && this.injections > 0;
+        const injected = !authFailed && m.num_turns === 0 && !text && this.injections > 0;
         if (injected) this.injections -= 1;
         if (injected || (!this.activeTurn && !text)) {
           if (!this.activeTurn) {
@@ -481,7 +491,8 @@ export class Session {
           {
             text,
             final,
-            isError: m.subtype !== "success" || Boolean(m.is_error),
+            isError: authFailed || m.subtype !== "success" || Boolean(m.is_error),
+            authFailed,
             subtype: m.subtype,
             durationMs: m.duration_ms,
             costUsd: m.total_cost_usd,

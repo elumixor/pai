@@ -23,6 +23,7 @@ import * as briefs from "./domain/briefs.ts";
 import * as recall from "./domain/recall.ts";
 import * as summaries from "./domain/summaries.ts";
 import { flush as flushNotices } from "./domain/asks.ts";
+import { startClaudeLoginCheck } from "./domain/claude-login.ts";
 
 const log = logger("daemon");
 
@@ -37,6 +38,7 @@ const stopMain = main.start();
 automations.link({ turn: main.system, triage: triage.add, fields: { brief: briefs.morning, digest: briefs.evening } });
 automations.seed();
 const stopMemoryWatch = watchMemory();
+const stopClaudeLoginCheck = startClaudeLoginCheck();
 const server = startServer();
 const stopBrowser = startBrowser();
 const stopEditor = startEditor();
@@ -75,6 +77,7 @@ function shutdown(signal: string) {
   stopAutoUpdate?.();
   stopAutomations();
   stopMemoryWatch();
+  stopClaudeLoginCheck();
   stopModules();
   stopMirror();
   void external.stopAll();

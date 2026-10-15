@@ -506,18 +506,13 @@ function taskLine(t: any) {
 }
 
 /**
- * The limits, read by the box. A box that cannot read them (its own token is a setup token)
- * is given this laptop's Claude Code login from the keychain; a laptop without one is told
- * to sign in.
+ * The limits, read by the box with its own login. A laptop's login is never copied over: a refresh
+ * token is single-use, so two machines sharing one sign each other out.
  */
 async function usageWithLogin() {
-  let data = await api("/usage");
+  const data = await api("/usage");
   if (!data.needsLogin || !remoteBox) return data;
-  const creds = await r.localClaudeLogin();
-  if (!creds) return { ...data, error: `${data.error ?? "the box cannot read the limits"} — run \`claude\` here and /login, then \`pai cost\` again` };
-  data = await api("/usage/credentials", { method: "POST", body: creds });
-  if (!data.error) console.error("the box now has this machine's Claude login");
-  return data;
+  return { ...data, error: `${data.error ?? "the box cannot read the limits"} — reconnect its Claude login at ${(await r.boxApi(remoteBox)).url}/claude/login` };
 }
 
 const resetIn = (iso?: string) => {

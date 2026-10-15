@@ -65,7 +65,7 @@ export function miniRings(data: Usage, model?: string | null) {
   const week = (family && data.windows.find((w) => w.name.toLowerCase().includes(family))) || data.windows.find((w) => w.name === "Weekly");
   if (!session && !week) {
     const why = data.error ?? "no usage reported yet";
-    const hint = data.needsLogin ? " — run `pai cost` on a Mac that is signed in" : "";
+    const hint = data.needsLogin ? " — reconnect Claude at /claude/login" : "";
     return [disc(undefined, `Session: unavailable — ${why}${hint}`), disc(undefined, `Weekly: unavailable — ${why}${hint}`)];
   }
   return [disc(session, session ? `${session.name}: ${session.percent}% used` : "Session: unavailable"), disc(week, week ? `${week.name}: ${week.percent}% used` : "Weekly: unavailable")];

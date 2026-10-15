@@ -336,6 +336,9 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         else settleAsk(askId);
       };
       foot = answerButtons(options, m.meta.freeText !== false || !options.length, reply, m.body, drop);
+      // A task that is done somewhere else (a reconnect page) leads with that place, as a button.
+      const action = m.body.match(/\[([^\]]+)\]\(((?:https?:\/\/|\/)[^)\s]+)\)/);
+      if (action) foot.prepend(el("a.opt", { href: action[2], target: "_blank", rel: "noopener" }, action[1]));
     } else if (answer !== undefined) foot = el("div.q-answer", {}, icon("check", 10), el("span", {}, answer));
     else if (askId !== undefined) foot = el("div.q-answer.dim", {}, "answered");
     row.append(el("div.q-foot", {}, foot ?? el("span"), time(m.createdAt)));
