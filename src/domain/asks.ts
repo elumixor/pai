@@ -171,7 +171,16 @@ export function answer(id: number, text: string, via = "user"): Ask {
     throw new AskError(`ask #${id} takes one of: ${a.options.join(", ")}`);
   db.prepare("UPDATE asks SET status = 'answered', answer = ?, answered_at = ? WHERE id = ?").run(reply, now(), id);
   messages.log({ from: "user", to: a.agent, kind: "answer", body: reply, taskId: a.taskId, meta: { askId: id, via, event: "answered", agent: a.agent } });
-  const closing = isTaskAsk(a) && a.taskId ? ({ done: "done", drop: "dropped" } as const)[reply.toLowerCase() as "done" | "drop"] : undefined;
+  const choice = reply.toLowerCase();
+  if (isTaskAsk(a) && a.taskId && choice === TASK_DID.toLowerCase()) {
+    // The user did their part: the work goes back to its owner, who checks it and carries on.
+    tasks.update(a.taskId, { status: "active" });
+    agents.deliver(a.agent, `[the user says they did what task #${a.taskId} "${tasks.get(a.taskId)?.title}" waited on: check it and carry on]`, { askId: id, taskId: a.taskId });
+    const answered = getAsk(id)!;
+    bus.emitEvent("ask.answered", answered as unknown as Record<string, unknown>);
+    return answered;
+  }
+  const closing = isTaskAsk(a) && a.taskId ? ({ done: "done", drop: "dropped", [TASK_SKIP.toLowerCase()]: "dropped" } as Record<string, "done" | "dropped">)[choice] : undefined;
   if (closing) {
     // A task's card answered Done or Drop: the task closes, its owner hears it without a turn.
     tasks.update(a.taskId!, { status: closing });
@@ -201,6 +210,9 @@ export function drop(id: number): boolean {
 /** What marks the Done / Drop card a waiting task gets, as against a question asked about it. */
 const TASK_FALLBACK = "the task stays on the list";
 const isTaskAsk = (a: Ask) => a.fallback === TASK_FALLBACK;
+/** A task card's buttons: the user did their part (the owner resumes), or will not (the task drops). */
+export const TASK_DID = "I did it";
+export const TASK_SKIP = "Won't do";
 
 /**
  * A task waiting on the user is a decision like any other: an ask with its own row in the chat,
@@ -208,7 +220,7 @@ const isTaskAsk = (a: Ask) => a.fallback === TASK_FALLBACK;
  */
 export function askForTask(t: tasks.Task) {
   if (t.status !== "waiting_user" || open().some((a) => a.taskId === t.id)) return;
-  ask({ agent: t.owner, question: t.nextAction ? `${t.title}\n\n${t.nextAction}` : t.title, options: ["Done", "Drop"], blocking: false, fallback: TASK_FALLBACK, taskId: t.id });
+  ask({ agent: t.owner, question: t.nextAction ? `**${t.title}**\n\n${t.nextAction}` : t.title, options: [TASK_DID, TASK_SKIP], blocking: false, fallback: TASK_FALLBACK, taskId: t.id });
 }
 
 /** Keeps a card on every waiting task: one when it starts waiting, none once it stops. Covers what waited before this ran. */

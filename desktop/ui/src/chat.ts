@@ -577,7 +577,19 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     return row;
   }
 
+  /** The user's answer to an ask: their bubble, quoting the question it answers, as a Telegram reply does. */
   function answerRow(m: LogMessage) {
+    const ask = items.find((i): i is Row => i.kind === "message" && i.m.kind === "ask" && i.m.meta.askId === m.meta.askId);
+    if (m.from === "user" && ask) {
+      const quote: ReplyQuote = { from: nameOf(ask.m.from), at: ask.m.createdAt, excerpt: excerptOf(ask.m.body) };
+      return el(
+        "div.row.mine",
+        { "data-message": m.id, "data-at": m.createdAt },
+        quoteBlock(quote),
+        el("div.bubble", {}, markdown(m.body)),
+        el("div.row-foot", {}, el("span.grow"), time(m.createdAt)),
+      );
+    }
     return el(
       "div.row.answer.pill.tint-ok",
       { "data-message": m.id, "data-at": m.createdAt },

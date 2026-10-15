@@ -491,7 +491,7 @@ export async function handle(req: Request): Promise<Response> {
         agent: area(t.owner),
         from: agents.get(t.owner)?.name ?? t.owner,
         question: t.nextAction ? `${t.title}\n${t.nextAction}` : t.title,
-        options: ["Done", "Drop"],
+        options: [asks.TASK_DID, asks.TASK_SKIP],
         freeText: true,
         priority: "normal",
         link: tasks.firstUrl(t.nextAction, t.source, t.notes),
@@ -515,7 +515,15 @@ export async function handle(req: Request): Promise<Response> {
         if (kind === "task") {
           const t = tasks.get(Number(ref));
           if (!t) return json({ error: "no such task" }, 404);
-          const choice = text.trim().toLowerCase();
+          let choice = text.trim().toLowerCase();
+          if (choice === asks.TASK_DID.toLowerCase()) {
+            tasks.update(t.id, { status: "active" });
+            const said = `[the user says they did what task #${t.id} "${t.title}" waited on: check it and carry on]`;
+            if (t.owner === agents.PAI) main.send(said);
+            else agents.fromUser(t.owner, said);
+            return json({ answered: true });
+          }
+          if (choice === asks.TASK_SKIP.toLowerCase()) choice = "drop";
           if (choice === "done" || choice === "drop") {
             const updated = tasks.update(t.id, { status: choice === "done" ? "done" : "dropped" });
             const note = `[the user marked task #${t.id} "${t.title}" ${choice === "done" ? "done" : "dropped"}]`;

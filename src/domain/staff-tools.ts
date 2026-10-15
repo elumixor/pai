@@ -82,6 +82,10 @@ function areaOwned(taskId: number) {
   inArea(t.owner);
 }
 
+/** What a waiting_user task's card shows the user: it is their instruction, not a note to another agent. */
+const NEXT_ACTION =
+  "With status waiting_user this is the card the user reads: say to them (you, never he/his) exactly what to do, each step with its link, then one line on why you cannot do it yourself (the access or tool you lack). They answer I did it (you resume) or Won't do.";
+
 export function staffTools(me: string | undefined) {
   const role = roleOf(me);
   const self = me ?? agents.PAI;
@@ -98,7 +102,7 @@ export function staffTools(me: string | undefined) {
         owner: z.string().optional().describe(isPai ? "agent slug that owns it; default pai" : "default you"),
         parent_id: z.number().optional(),
         status: status.optional().describe("default inbox"),
-        next_action: z.string().optional(),
+        next_action: z.string().optional().describe(NEXT_ACTION),
         due: z.string().optional().describe("YYYY-MM-DD"),
         source: z.string().optional().describe("a Notion page, GitHub issue or email thread link"),
         notes: z.string().optional(),
@@ -115,7 +119,7 @@ export function staffTools(me: string | undefined) {
         id: z.number(),
         title: z.string().optional(),
         status: status.optional(),
-        next_action: z.string().optional(),
+        next_action: z.string().optional().describe(NEXT_ACTION),
         due: z.string().nullable().optional(),
         owner: z.string().optional(),
         source: z.string().nullable().optional(),
