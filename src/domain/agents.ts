@@ -315,7 +315,7 @@ function sessionOf(a: Agent): Session | undefined {
 /** The forum topic an agent's session posts into: its own, or (a sub-agent) its parent's. */
 function topicOf(a: Agent): number | null {
   if (a.threadId !== null) return a.threadId;
-  const parent = a.parent ? get(a.parent) : undefined;
+  const parent = a.kind === "sub" && a.parent ? get(a.parent) : undefined;
   return parent && parent.kind !== "orchestrator" ? topicOf(parent) : null;
 }
 
@@ -411,8 +411,8 @@ export function message(slug: string, text: string, opts: MessageOptions): messa
 function wake(slug: string, text: string, requestId?: number, taskId?: number | null) {
   const a = get(slug)!;
   if (a.turnsToday >= a.budget.turnsPerDay) {
-    messages.event(slug, "error", `${a.name} hit its budget of ${a.budget.turnsPerDay} turns today; not woken`, { to: a.parent ?? PAI });
-    tellParent(a, `${a.name} hit its budget (${a.budget.turnsPerDay} turns a day) and was not woken. Raise it with configure_agent if the work should go on.`);
+    messages.event(slug, "error", `${a.name} hit its budget of ${a.budget.turnsPerDay} turns today; not woken`, { to: reportsTo(a) });
+    tellOwner(a, `${a.name} hit its budget (${a.budget.turnsPerDay} turns a day) and was not woken. Raise it with configure_agent if the work should go on.`);
     return;
   }
   const s = a.sessionId ? sessions.find(a.sessionId) : undefined;
@@ -442,8 +442,8 @@ function run(a: Agent, text: string, requestId?: number, taskId?: number | null)
     setTimeout(() => {
       if (s.state !== "busy") return;
       void s.interrupt();
-      messages.event(a.slug, "error", `${a.name}'s turn ran past ${a.budget.turnMinutes} minutes and was stopped`, { to: a.parent ?? PAI });
-      tellParent(a, `${a.name}'s turn ran past its ${a.budget.turnMinutes}-minute budget and was interrupted.`);
+      messages.event(a.slug, "error", `${a.name}'s turn ran past ${a.budget.turnMinutes} minutes and was stopped`, { to: reportsTo(a) });
+      tellOwner(a, `${a.name}'s turn ran past its ${a.budget.turnMinutes}-minute budget and was interrupted.`);
     }, a.budget.turnMinutes * 60_000),
   );
 }
@@ -534,9 +534,20 @@ export function onRequestAnswered(fn: typeof onAnswered) {
   onAnswered = fn;
 }
 
-function tellParent(a: Agent, text: string) {
-  if (!a.parent || a.parent === PAI) return toPai(`[${a.name}] ${text}`);
-  const p = get(a.parent);
+/**
+ * Who an agent's work answers to. A sub-agent was started by its parent for one job, so its report belongs
+ * in that session. A standing or service agent's parent is only where it sits in the tree: its work is pai's,
+ * and a report relayed to another standing agent lands in a session with neither the context nor the tools
+ * for it — at best a wasted turn, at worst one acted on by the wrong hands.
+ */
+function reportsTo(a: Agent): string {
+  return a.kind === "sub" ? (a.parent ?? PAI) : PAI;
+}
+
+function tellOwner(a: Agent, text: string) {
+  const to = reportsTo(a);
+  if (to === PAI) return toPai(`[${a.name}] ${text}`);
+  const p = get(to);
   if (p && p.status !== "closed") sessionOf(p)?.inject(`[${a.name}] ${text}`);
 }
 
@@ -576,11 +587,12 @@ function turnEnded(a: Agent, payload: Record<string, unknown>) {
       const closed = close(a.slug, report.split("\n")[0]!.slice(0, 200));
       if (closed.folder !== a.folder) report = report.replaceAll(a.folder, closed.folder);
     }
-    messages.log({ from: a.slug, to: a.parent ?? PAI, kind: "report", body: report, taskId, meta: { agent: a.slug } });
-    if (a.parent === PAI || !a.parent) {
+    const to = reportsTo(current);
+    messages.log({ from: a.slug, to, kind: "report", body: report, taskId, meta: { agent: a.slug } });
+    if (to === PAI) {
       toPai(`[${a.name} reported]\n${report}`);
     } else {
-      const parent = get(a.parent);
+      const parent = get(to);
       if (parent && parent.status !== "closed") message(parent.slug, `${a.name} reported:\n${report}`, { from: a.slug, kind: "report", taskId, meta: { agent: a.slug } });
     }
   }
@@ -591,8 +603,8 @@ function turnFailed(a: Agent, message: string) {
   clearTimeout(turnTimers.get(a.slug));
   answering.get(a.slug)?.shift();
   setStatus(a.slug, "idle");
-  messages.event(a.slug, "error", `${a.name} failed: ${message}`, { to: a.parent ?? PAI });
-  tellParent(a, `failed: ${message}`);
+  messages.event(a.slug, "error", `${a.name} failed: ${message}`, { to: reportsTo(a) });
+  tellOwner(a, `failed: ${message}`);
   drain();
 }
 

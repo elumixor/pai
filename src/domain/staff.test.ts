@@ -177,6 +177,21 @@ describe("agents", () => {
     finish("hiring", "");
   });
 
+  it("sends a standing agent's report to pai even when it sits under another agent", () => {
+    const atma = agents.create({ name: "Atma", kind: "standing", brief: "Run the services." });
+    const nested = agents.create({ name: "Hiring two", kind: "standing", brief: "Hire people for Hypocrisy." });
+    expect(agents.configure(nested.slug, { parent: atma.slug }).parent).toBe(atma.slug);
+    agents.message(nested.slug, "Any news on Keyur?", { from: "pai" });
+    const before = pai.turns.length;
+    finish(nested.slug, "Keyur passed the screen.");
+    agents.flushReports();
+    expect(messages.list({ agent: nested.slug, kinds: ["report"] }).at(-1)!.to).toBe("pai");
+    expect(pai.turns.length).toBe(before + 1);
+    expect(pai.turns.at(-1)).toContain("Keyur passed the screen.");
+    // Nothing reached Atma at all: a report it was never meant to read cannot even wake it.
+    expect(agents.get(atma.slug)!.sessionId).toBeNull();
+  });
+
   it("queues past the working limit and drains as agents finish", () => {
     agents.create({ name: "Job search", kind: "standing", brief: "Find a better job." });
     agents.create({ name: "Visit", kind: "standing", brief: "Mother's visit." });
