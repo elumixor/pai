@@ -34,11 +34,11 @@ export function projectTree(root: HTMLElement, rows: readonly TreeRow[], onOpen:
   clear(root, ...(groups.length ? groups : [el("p.ptree-empty", {}, empty)]));
 }
 
-/** One conversation under the projects: what it is about, and under that where it belongs and when it last moved. */
+/** One conversation under the projects, on one line: what it is about, where it belongs and when it last moved. */
 export interface ThreadRow {
   readonly id: string;
   readonly title: string;
-  /** Where it belongs: the project an agent's job is in, Builder, Terminal, Phone, General. */
+  /** Where it belongs: its project (folder), else the agent's, else how it was started, else General. */
   readonly context: string;
   readonly at: number;
   readonly working: boolean;
@@ -57,13 +57,25 @@ export function threadList(root: HTMLElement, rows: readonly ThreadRow[], onOpen
       ? rows.map((row) =>
           el(
             "button.thread-row",
-            { class: `thread-row${row.on ? " on" : ""}${row.faint ? " faint" : ""}`, title: row.tip, onclick: () => onOpen(row.id) },
-            el("span.thread-title", {}, row.working ? el("span.spinner") : icon(row.icon, 10), el("span.label", {}, row.title), row.waiting ? hand(row.waiting) : undefined),
-            el("span.thread-meta", {}, el("span.ellipsis", {}, row.context), el("span.thread-when", {}, stamp(row.at))),
+            { class: `thread-row${row.on ? " on" : ""}${row.faint ? " faint" : ""}`, title: [row.tip, stamp(row.at)].filter(Boolean).join("\n"), onclick: () => onOpen(row.id) },
+            row.working ? el("span.spinner") : icon(row.icon, 10),
+            el("span.label", {}, row.title),
+            row.waiting ? hand(row.waiting) : undefined,
+            el("span.thread-meta", {}, row.context),
+            el("span.thread-when", {}, when(row.at)),
           ),
         )
       : [el("p.ptree-empty", {}, empty)]),
   );
+}
+
+/** "11:35" today, "Tue" this week, "Oct 7" before: the full instant is in the tooltip. */
+function when(at: number) {
+  const day = new Date(at);
+  const today = new Date();
+  if (day.toDateString() === today.toDateString()) return day.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
+  if (today.getTime() - at < 6 * 86_400_000) return day.toLocaleDateString(undefined, { weekday: "short" });
+  return day.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 const hand = (count: number) => el("span.ptree-hand", {}, icon("hand", 10), el("span", {}, String(count)));

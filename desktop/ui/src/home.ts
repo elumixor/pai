@@ -182,13 +182,16 @@ export function home(root: HTMLElement) {
     return undefined;
   }
 
-  /** Where a thread belongs, in a word or two: the agent that started it, else how it was started (and the project it is in). */
+  /** How a thread was started; a daemon that does not say: a project means Claude Code in its folder, else an agent. */
+  const originOf = (thread: AgentThread) => thread.origin ?? (thread.project || thread.kind === "code" ? "terminal" : "agent");
+
+  /** Where a thread belongs, in a word: its project (the folder it runs in), else the agent that started it, else how it was started. */
   function contextOf(thread: AgentThread, owner: { slug: string; name: string }) {
-    const origin = thread.origin ?? "agent";
+    const where = thread.project ?? (thread.kind === "code" && thread.cwd ? basename(thread.cwd) : "");
+    if (where) return where;
+    const origin = originOf(thread);
     if (origin === "agent") return owner.slug === PAI ? "General" : owner.name;
-    const label = ORIGIN[origin]?.[0] ?? origin;
-    const where = thread.project ?? (origin === "terminal" && thread.cwd ? basename(thread.cwd) : "");
-    return where ? `${label} · ${where}` : label;
+    return ORIGIN[origin]?.[0] ?? origin;
   }
 
   /** The project a sub-agent's job is in: its nearest ancestor that is one, else General. */
@@ -224,9 +227,9 @@ export function home(root: HTMLElement) {
           working: t.state === "busy" || t.state === "starting",
           waiting: needs.filter((n) => n.session === t.sessionId).length,
           on: centre.kind === "thread" && (centre.id === t.sessionId || centre.id === t.shortId),
-          icon: ORIGIN[t.origin ?? "agent"]?.[1] ?? "message",
+          icon: ORIGIN[originOf(t)]?.[1] ?? "message",
           faint: t.state === "dead",
-          tip: `${t.title || t.shortId} · ${t.state}${t.cwd ? `\n${t.cwd}` : ""}`,
+          tip: `${t.title || t.shortId} · ${ORIGIN[originOf(t)]?.[0] || "agent"} · ${t.state}${t.cwd ? `\n${t.cwd}` : ""}`,
         });
     return rows.sort((x, y) => y.at - x.at);
   }
@@ -501,7 +504,7 @@ export function home(root: HTMLElement) {
       el(
         "div.info",
         {},
-        el("div.info-title", {}, icon(ORIGIN[t.origin ?? "agent"]?.[1] ?? "message", 11), el("span", {}, t.title || t.shortId)),
+        el("div.info-title", {}, icon(ORIGIN[originOf(t)]?.[1] ?? "message", 11), el("span", {}, t.title || t.shortId)),
         fact("From", contextOf(t, found.owner)),
         fact("State", t.state),
         fact("Project", t.project),

@@ -746,22 +746,19 @@ body.in-home .nav:hover { opacity: 0.85; }
 /* the two sections on the left, no headings, just room between them: General and the projects, then the threads */
 .side-list { display: flex; flex-direction: column; }
 .side-list + .side-list { margin-top: 34px; }
-.side-list.threads { gap: 14px; }
+.side-list.threads { gap: 9px; }
 
-/* a thread: its title, and under it where it belongs and when it last moved */
-.thread-row { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 0; border: 0; background: none; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
-.thread-title { display: flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; }
-.thread-title .label { min-width: 0; opacity: 0.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity 0.12s; }
-.thread-title > .icon { flex: 0 0 auto; width: 10px; height: 10px; opacity: 0.25; }
-.thread-title .spinner { flex: 0 0 auto; width: 10px; height: 10px; border-width: 1px; opacity: 0.45; }
-.thread-title .ptree-hand { flex: 0 0 auto; }
-.thread-meta { display: flex; gap: 6px; min-width: 0; padding-left: 15px; font-size: 0.86em; color: var(--ink-20); }
-.thread-meta .ellipsis { min-width: 0; }
-.thread-when { flex: 0 0 auto; }
-.thread-meta .ellipsis:not(:empty) + .thread-when::before { content: "·"; margin-right: 6px; }
+/* a thread, one line: icon, title, then where it belongs and when it last moved */
+.thread-row { display: flex; align-items: center; gap: 5px; width: 100%; min-width: 0; padding: 0; border: 0; background: none; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+.thread-row .label { flex: 1 1 auto; min-width: 0; opacity: 0.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity 0.12s; }
+.thread-row > .icon { flex: 0 0 auto; width: 10px; height: 10px; opacity: 0.25; }
+.thread-row > .spinner { flex: 0 0 auto; width: 10px; height: 10px; border-width: 1px; opacity: 0.45; }
+.thread-row .ptree-hand { flex: 0 0 auto; }
+.thread-meta { flex: 0 1 auto; min-width: 0; max-width: 40%; margin-left: 4px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 0.86em; color: var(--ink-20); }
+.thread-when { flex: 0 0 auto; font-size: 0.86em; color: var(--ink-20); font-variant-numeric: tabular-nums; }
 .thread-row:hover .label, .thread-row.on .label { opacity: 0.7; }
-.thread-row:hover .thread-title > .icon, .thread-row.on .thread-title > .icon { opacity: 0.55; }
-.thread-row:hover .thread-meta, .thread-row.on .thread-meta { color: var(--ink-30); }
+.thread-row:hover > .icon, .thread-row.on > .icon { opacity: 0.55; }
+.thread-row:hover :is(.thread-meta, .thread-when), .thread-row.on :is(.thread-meta, .thread-when) { color: var(--ink-30); }
 .thread-row.faint .label { opacity: 0.18; }
 
 /* pai's box with "New thread" on: the chat behind it is gone at once, the box starts a thread of its own */
