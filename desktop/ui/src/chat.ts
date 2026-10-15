@@ -147,7 +147,7 @@ function parseReply(body: string): (ReplyQuote & { text: string }) | undefined {
   return { from: m[1]!, at: Number(m[2]), excerpt: m[3]!, text: m[4]! };
 }
 const withReply = (quote: ReplyQuote | undefined, text: string) => (quote ? `↪ ${quote.from} @ ${quote.at}: "${quote.excerpt.replace(/"/g, "'")}"\n${text}` : text);
-const excerptOf = (text: string) => firstLine(parseReply(text)?.text ?? text).replace(/\s+/g, " ").slice(0, 140);
+const excerptOf = (text: string) => firstLine(parseReply(text)?.text ?? text).replace(/\*\*/g, "").replace(/\s+/g, " ").slice(0, 140);
 /** "Created a file, ran 5 commands" — what a turn's tool calls amount to, by family. */
 function describeTools(tools: readonly TranscriptTool[]) {
   const families: Record<string, [string, string]> = { Write: ["created a file", "created %n files"], Edit: ["edited a file", "edited %n files"], Bash: ["ran a command", "ran %n commands"], Read: ["read a file", "read %n files"], Grep: ["searched", "searched %n times"], Glob: ["searched", "searched %n times"], WebSearch: ["searched the web", "searched the web %n times"], WebFetch: ["fetched a page", "fetched %n pages"], Agent: ["delegated once", "delegated %n times"] };

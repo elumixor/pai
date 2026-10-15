@@ -16,11 +16,11 @@ interface Choice {
   dark: string;
 }
 
-// Nord Light replaced pai Light as the light default: a stored pai Light was the old default, not a choice.
+// Nord Light became the light theme once, whatever was picked before it existed; a pick after that stays.
 try {
   const stored = JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<Choice>;
-  if (stored.light === "pai-light" && !localStorage.getItem(`${KEY}.nord`)) localStorage.setItem(KEY, JSON.stringify({ ...stored, light: "nord-light" }));
-  localStorage.setItem(`${KEY}.nord`, "1");
+  if (stored.light && !localStorage.getItem(`${KEY}.nord-light`)) localStorage.setItem(KEY, JSON.stringify({ ...stored, light: "nord-light" }));
+  localStorage.setItem(`${KEY}.nord-light`, "1");
 } catch {}
 
 const read = (): Choice => {

@@ -679,21 +679,22 @@ body.in-home nav.crumbs .crumb.on { font-size: 15px; }
   --chat-w: clamp(600px, 46vw, 900px);
 }
 :root[data-theme="light"] {
-  --canvas: #ebe6e1;
-  --canvas-gradient: linear-gradient(238.35deg, #ebe6e1 17.91%, #ece4df 95.11%);
-  --surface: #ffffff;
-  --surface-2: color-mix(in srgb, #ffffff 50%, var(--bg));
-  --surface-3: color-mix(in srgb, #ffffff 25%, var(--bg));
-  --soft-shadow: 0 1px 2px rgba(60, 40, 30, 0.06), 0 10px 30px rgba(60, 40, 30, 0.07);
+  /* From the theme's chrome colours; a theme sets its own in `home` where these do not fit (pai Light). */
+  --canvas: var(--bg);
+  --canvas-gradient: var(--bg);
+  --surface: var(--panel);
+  --surface-2: color-mix(in srgb, var(--panel) 50%, var(--bg));
+  --surface-3: color-mix(in srgb, var(--panel) 25%, var(--bg));
+  --soft-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 10px 30px rgba(0, 0, 0, 0.07);
   --card-shadow: 0 5px 5px rgba(0, 0, 0, 0.05);
-  --hand: #ff9100;
-  --act: #cb5800;
-  --act-btn: rgba(253, 124, 26, 0.78);
-  --ok: #086c0b;
-  --model: #0061e0;
-  --effort: #c84601;
-  --mine-bg: rgba(251, 238, 219, 0.76);
-  --pill-bg: #dfdad5;
+  --hand: var(--warn);
+  --act: var(--accent);
+  --act-btn: var(--accent);
+  --ok: var(--idle);
+  --model: var(--accent);
+  --effort: var(--warn);
+  --mine-bg: color-mix(in srgb, var(--accent) 13%, var(--panel));
+  --pill-bg: var(--line);
   /* On a light canvas the mock's 45/30/20 % ink reads as washed out: secondary text keeps more of it. */
   --ink-70: color-mix(in srgb, var(--ink) 80%, transparent);
   --ink-45: color-mix(in srgb, var(--ink) 62%, transparent);
@@ -705,7 +706,7 @@ body.in-home .statusbar { display: none; }
 
 /* ---- the nav: four icons in the corner ------------------------------------------------- */
 .nav { display: flex; align-items: center; gap: 19px; height: 40px; padding: 0 14px; flex: 0 0 auto; z-index: 30; border-bottom: 1px solid var(--line); background: var(--panel); }
-body.in-home .nav { position: absolute; top: 40px; left: 50px; height: auto; padding: 0; border: 0; background: transparent; opacity: 0.5; transition: opacity 0.15s; }
+body.in-home .nav { position: absolute; top: 40px; left: 50px; height: auto; padding: 0; border: 0; background: transparent; opacity: 0.7; transition: opacity 0.15s; }
 body.in-home .nav:hover { opacity: 0.85; }
 .nav-item { display: inline-flex; align-items: center; justify-content: center; width: 27px; height: 27px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); text-decoration: none; }
 .nav-item:hover { text-decoration: none; background: var(--ink-10); }
@@ -736,12 +737,12 @@ body.in-home .nav:hover { opacity: 0.85; }
 .ptree-group { display: flex; flex-direction: column; gap: 7px; padding-bottom: 6px; }
 .ptree-row { display: flex; align-items: center; gap: 9px; width: fit-content; max-width: 100%; padding: 0; border: 0; background: none; color: var(--ink); text-align: left; font: inherit; cursor: pointer; margin-left: calc(var(--depth, 0) * 6px); }
 .ptree-name { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
-.ptree-name .label { opacity: 0.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity 0.12s; }
-.ptree-row:hover .label, .ptree-row.on .label { opacity: 0.7; }
+.ptree-name .label { opacity: 0.62; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity 0.12s; }
+.ptree-row:hover .label, .ptree-row.on .label { opacity: 0.92; }
 .ptree-row .spinner { width: 10px; height: 10px; border-width: 1px; opacity: 0.45; }
-.ptree-hand { display: inline-flex; align-items: center; gap: 2px; color: var(--hand); opacity: 0.45; font: 400 9px/10px var(--font-ui); }
+.ptree-hand { display: inline-flex; align-items: center; gap: 2px; color: var(--hand); opacity: 0.75; font: 400 9px/10px var(--font-ui); }
 .ptree-hand .icon { width: 10px; height: 10px; }
-.ptree-empty { opacity: 0.3; }
+.ptree-empty { opacity: 0.5; }
 /* the two sections on the left, no headings, just room between them: General and the projects, then the threads */
 .side-list { display: flex; flex-direction: column; }
 .side-list + .side-list { margin-top: 34px; }
@@ -749,16 +750,16 @@ body.in-home .nav:hover { opacity: 0.85; }
 
 /* a thread, one line: icon, title, then where it belongs and when it last moved */
 .thread-row { display: flex; align-items: center; gap: 5px; width: 100%; min-width: 0; padding: 0; border: 0; background: none; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
-.thread-row .label { flex: 1 1 auto; min-width: 0; opacity: 0.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity 0.12s; }
-.thread-row > .icon { flex: 0 0 auto; width: 10px; height: 10px; opacity: 0.25; }
+.thread-row .label { flex: 1 1 auto; min-width: 0; opacity: 0.58; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity 0.12s; }
+.thread-row > .icon { flex: 0 0 auto; width: 10px; height: 10px; opacity: 0.45; }
 .thread-row > .spinner { flex: 0 0 auto; width: 10px; height: 10px; border-width: 1px; opacity: 0.45; }
 .thread-row .ptree-hand { flex: 0 0 auto; }
 .thread-meta { flex: 0 1 auto; min-width: 0; max-width: 40%; margin-left: 4px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 0.86em; color: var(--ink-20); }
 .thread-when { flex: 0 0 auto; font-size: 0.86em; color: var(--ink-20); font-variant-numeric: tabular-nums; }
-.thread-row:hover .label, .thread-row.on .label { opacity: 0.7; }
-.thread-row:hover > .icon, .thread-row.on > .icon { opacity: 0.55; }
+.thread-row:hover .label, .thread-row.on .label { opacity: 0.92; }
+.thread-row:hover > .icon, .thread-row.on > .icon { opacity: 0.75; }
 .thread-row:hover :is(.thread-meta, .thread-when), .thread-row.on :is(.thread-meta, .thread-when) { color: var(--ink-30); }
-.thread-row.faint .label { opacity: 0.18; }
+.thread-row.faint .label { opacity: 0.38; }
 
 /* pai's box with "New thread" on: the chat behind it is gone at once, the box starts a thread of its own */
 .home-centre.detached .chat-log > *, .home-centre.detached .chat-slot { visibility: hidden; }
@@ -844,7 +845,7 @@ body.in-home .nav:hover { opacity: 0.85; }
 .chat-title { font: 700 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-30); pointer-events: auto; }
 .chat-title.sub { font-weight: 400; color: var(--ink-20); }
 .crumbs { display: inline-flex; align-items: center; gap: 0; font: 700 var(--meta)/var(--meta-lh) var(--font-ui); }
-.crumb { margin: 0; padding: 0; border: 0; background: none !important; box-shadow: none; font: 700 var(--meta)/var(--meta-lh) var(--font-ui); line-height: var(--meta-lh); color: var(--ink-45); opacity: 0.65; cursor: pointer; transition: opacity 0.18s ease; }
+.crumb { margin: 0; padding: 0; border: 0; background: none !important; box-shadow: none; font: 700 var(--meta)/var(--meta-lh) var(--font-ui); line-height: var(--meta-lh); color: var(--ink-45); opacity: 0.9; cursor: pointer; transition: opacity 0.18s ease; }
 button.crumb:hover, button.crumb:focus-visible { opacity: 1; background: none; }
 .crumb.here { cursor: default; opacity: 1; }
 .crumb-sep { margin: 0 8px; color: var(--ink-20); font-weight: 400; }
@@ -878,7 +879,7 @@ body.in-home .btn.chat-more:hover { color: var(--ink-70); }
 .row { position: relative; width: 100%; max-width: 100%; border-radius: 0; font: 400 var(--body)/var(--body-lh) var(--font-body); color: var(--ink-70); }
 .row.flash { animation: flash 1.6s ease-out; }
 @keyframes flash { 0% { box-shadow: 0 0 0 3px var(--hand); } 100% { box-shadow: 0 0 0 0 transparent; } }
-.meta-line { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; padding: 0; border: 0; background: none; color: var(--ink); opacity: 0.3; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); text-align: left; cursor: pointer; }
+.meta-line { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; padding: 0; border: 0; background: none; color: var(--ink); opacity: 0.55; font: 400 var(--meta)/var(--meta-lh) var(--font-ui); text-align: left; cursor: pointer; }
 .meta-line:hover { opacity: 0.6; }
 .meta-line .icon { width: 10px; height: 10px; }
 .meta-line .icon-chevron { width: 9px; height: 9px; }
