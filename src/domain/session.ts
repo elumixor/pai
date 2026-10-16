@@ -5,6 +5,7 @@ import { db, now } from "../core/db.ts";
 import { bus } from "../core/bus.ts";
 import { logger } from "../core/log.ts";
 import { resultPreview } from "./transcript.ts";
+import * as audit from "./audit.ts";
 import { paiTools, type SessionRef } from "./tools.ts";
 import { browserMcp } from "./browser.ts";
 import { instructionsFor } from "./prompts.ts";
@@ -437,6 +438,7 @@ export class Session {
             this.lastTool = summarizeTool(block.name, block.input);
             this.recentTools = [...this.recentTools.slice(-(RECENT_TOOLS - 1)), this.lastTool];
             bus.emitEvent("session.tool", { id: block.id, name: block.name, summary: this.lastTool, parent }, this.id);
+            audit.record({ toolUseId: block.id, sessionId: this.id, agent: this.agent, tool: block.name, summary: this.lastTool, input: block.input });
           }
         }
         break;
@@ -448,8 +450,11 @@ export class Session {
         const parent = m.parent_tool_use_id ?? undefined;
         if (Array.isArray(content))
           for (const block of content as Record<string, any>[])
-            if (block.type === "tool_result")
-              bus.emitEvent("session.tool_result", { id: block.tool_use_id, result: resultPreview(block.content), parent }, this.id);
+            if (block.type === "tool_result") {
+              const result = resultPreview(block.content);
+              bus.emitEvent("session.tool_result", { id: block.tool_use_id, result, parent }, this.id);
+              audit.settle(block.tool_use_id, result, Boolean(block.is_error));
+            }
         break;
       }
 

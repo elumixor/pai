@@ -6,6 +6,7 @@ import { bus, recentEvents } from "../core/bus.ts";
 import * as sessions from "./sessions.ts";
 import { cost as hostingCost } from "./hetzner.ts";
 import { roleOf, staffTools } from "./staff-tools.ts";
+import * as audit from "./audit.ts";
 
 const ok = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });
 const taskArg = z.string().describe("thread id, full or the 6-character short form");
@@ -38,6 +39,17 @@ export function paiTools(kind: SessionKind, ref: SessionRef, agent?: string) {
       "What the host costs per month, priced from the Hetzner account itself. The Claude usage the sessions spend is billed separately and is not in here.",
       {},
       async () => ok(await hostingCost().catch((err: Error) => ({ error: err.message }))),
+    ),
+    tool(
+      "audit",
+      "What the sessions did outside the daemon, newest first: emails and messages sent, posts, calendar and document writes, clicks in signed-in sites — with the full input and whether it went through. Use it to answer \"did we send X\", \"what went to Y\", or before repeating something that may already have gone out.",
+      {
+        agent: z.string().optional().describe("one agent's slug; omit for everyone"),
+        q: z.string().optional().describe("words to find in the call's summary or input, e.g. a name or an address"),
+        days: z.number().optional().describe("only the last this many days"),
+        limit: z.number().max(200).optional(),
+      },
+      async ({ agent, q, days, limit }) => ok(audit.list({ agent, search: q, since: days ? Date.now() - days * 86_400_000 : undefined, limit: limit ?? 30 })),
     ),
     tool(
       "list_projects",

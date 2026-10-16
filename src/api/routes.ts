@@ -29,6 +29,7 @@ import * as main from "../domain/main.ts";
 import * as messages from "../domain/messages.ts";
 import * as summaries from "../domain/summaries.ts";
 import * as recall from "../domain/recall.ts";
+import * as audit from "../domain/audit.ts";
 import * as requests from "../domain/requests.ts";
 import * as tasks from "../domain/tasks.ts";
 import * as sync from "../domain/sync.ts";
@@ -567,6 +568,11 @@ export async function handle(req: Request): Promise<Response> {
     }
     if (path === "/mutes" && req.method === "DELETE") return json({ removed: asks.unmute(Number(url.searchParams.get("id"))) });
     if (path === "/mutes") return json(asks.mutes());
+    // What the sessions did outside the daemon: sends, posts, writes, clicks in signed-in sites.
+    if (path === "/audit") {
+      const p = url.searchParams;
+      return json(audit.list({ agent: p.get("agent") ?? undefined, search: p.get("q") ?? undefined, since: Number(p.get("since")) || undefined, limit: Number(p.get("limit") ?? 50) }));
+    }
     if (path === "/recall") {
       const q = url.searchParams.get("q") ?? "";
       const sources = url.searchParams.get("sources")?.split(",").filter(Boolean);

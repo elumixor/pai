@@ -12,7 +12,7 @@ if (dev && cmd === "daemon" && foreground) process.env.PAI_VERBOSE ??= "1";
 const { config } = await import("../core/config.ts");
 const jsonOut = args.includes("--json");
 /** Flags that take a value: the word after one is its value, not a positional argument. */
-const VALUED = new Set(["--id", "--project", "--limit", "--owner", "--due"]);
+const VALUED = new Set(["--id", "--project", "--limit", "--owner", "--due", "--q"]);
 const positional = args.filter((a, i) => !a.startsWith("--") && !VALUED.has(args[i - 1] ?? ""));
 const r = await import("../host/remote.ts");
 const box = r.remote();
@@ -449,6 +449,12 @@ async function userCommand() {
       out(data, () => data.map((r: any) => `${String(r.id).padStart(3)}  ${r.enabled ? "on " : "off"} ${(r.schedule || r.event).padEnd(18)} ${r.action.padEnd(6)} ${(r.agent || "").padEnd(12)} ${r.name}  · ${r.runs} runs`).join("\n"));
       break;
     }
+    case "audit": {
+      const agent = positional[0];
+      const data = await api(`/audit?limit=${flag("limit") ?? 40}${agent ? `&agent=${encodeURIComponent(agent)}` : ""}${flag("q") ? `&q=${encodeURIComponent(flag("q")!)}` : ""}`);
+      out(data, () => data.map(auditLine).join("\n") || "(nothing done outside yet)");
+      break;
+    }
     case "recall": {
       const data = await api(`/recall?q=${encodeURIComponent(positional.join(" "))}`);
       out(data, () => (Array.isArray(data) && data.length && "snippet" in data[0] ? data.map((h: any) => `${h.at}  ${h.source.padEnd(10)} ${h.title}\n    ${h.snippet.replace(/\s+/g, " ")}`).join("\n") : data.map?.((s: any) => `${s.source.padEnd(12)} ${s.entries}`).join("\n") || "(nothing found)"));
@@ -499,6 +505,12 @@ function logLine(m: any) {
   const at = new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const arrow = m.kind === "event" ? `· ${m.meta?.event ?? "event"}` : `${m.from} → ${m.to}`;
   return `${at}  ${m.kind.padEnd(8)} ${arrow.padEnd(24)} ${m.body.replace(/\s+/g, " ").slice(0, 140)}`;
+}
+
+function auditLine(e: any) {
+  const at = new Date(e.ts).toLocaleString([], { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  const mark = e.ok === null ? "…" : e.ok ? "✓" : "✗";
+  return `${at}  ${mark} ${(e.agent ?? "thread").padEnd(12)} ${e.summary.replace(/\s+/g, " ").slice(0, 140)}`;
 }
 
 function taskLine(t: any) {

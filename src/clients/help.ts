@@ -34,6 +34,7 @@ export const CORE: readonly Command[] = [
   { name: "asks", description: "what the agents are waiting on you for" },
   { name: "answer", args: "<id> <text>", description: "answer an ask" },
   { name: "routines", description: "what runs on a schedule or an event, and whom it wakes" },
+  { name: "audit", args: "[agent] [--q words] [--limit n]", description: "what the sessions did outside: sends, posts, writes, clicks in signed-in sites" },
   { name: "recall", args: "<words…>", description: "search transcripts, the message log, mail and chats" },
   { name: "tools", args: "[server]", description: "what the sessions can call, by MCP server; a name lists its tools" },
   { name: "skills", args: "[name]", description: "the skills sessions load; a name prints one" },

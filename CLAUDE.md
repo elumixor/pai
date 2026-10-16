@@ -29,7 +29,7 @@ pai completion                      # installs zsh completion (src/clients/help.
 bun run infra [--destroy]  # the Hetzner host from nothing (provision + bootstrap), idempotent
 
 pai dev daemon [-f]        # detached; -f/--foreground = attached, verbose, telegram off
-pai agents | log [agent] | tasks [add|done|drop] | asks | answer <id> <text> | routines | recall <words>
+pai agents | log [agent] | tasks [add|done|drop] | asks | answer <id> <text> | routines | recall <words> | audit [agent]
 pai dev say "<text>"       # a turn in pai's one chat, waits for the reply; `pai dev rotate` rebuilds its session
 pai dev chat "<text>"      # a turn in a new plain thread, waits for the reply
 pai dev task "<title>" "<text>" [--project <slug>]
@@ -120,6 +120,7 @@ reconnect every account, so say so in the same breath as shipping it.
 - `src/domain/watch.ts` — what an observer does with what it found: one task per fault, its reason kept current, closed when the thing answers, and **reopened** when a flapping fault comes back, with the return counted in its notes. LinkedIn's fault came and went eleven times between 12 and 15 October and each episode opened its own row — nothing duplicated at any instant, eleven identical tasks all the same, and a watcher that floods is one he learns to scroll past. A task he dropped himself is never reopened.
 - `src/domain/browser-check.ts` — does the browser still work? Every module reading a signed-in site and every session's browser tools go through the one Playwright MCP server, and nothing watched it. Both questions are ones that cannot be answered from inside it: does it answer a read made **now** (a dead server makes callers hang, not fail — `/inbox` returning nothing in 280s was this), and has it been dying under the sessions holding it (`mcpState()` counts the restarts). Its own timer, one task through `watch.ts`.
 - `src/domain/linkedin-check.ts` — does pai still see LinkedIn? Both edges are faults: a session that cannot read (not started, signed out, a failed or stopped poll) and one that reads but has heard nothing for longer than his own traffic ever goes quiet — from the inside those look the same, which is what the phantom sends were. One task, its reason current, closed when LinkedIn answers again; its own timer, outside the module, because an observer sharing a loop with what it watches dies with it. A read it could not make says nothing at all.
+- `src/domain/audit.ts` — the trail of outward tool calls (sends, writes, clicks in signed-in sites; a verb in the tool name, pai's own servers excluded) with full input and result; `GET /audit`, `pai audit`, the `audit` tool.
 - `src/domain/automations.ts` — `on <event> → notify | turn | task`, rows in the `automations` table, run from the bus; tasks capped at 6/h. `GET/POST/PATCH/DELETE /automations`.
 - `src/domain/diagnostics.ts` — `GET /diagnostics?path=` runs tsc on the project around a file (cached a minute per project); the client's editor shows them inline.
 - `src/domain/attachments.ts` — attached images kept by hash next to the db (`GET /attachments/<name>`); a terminal gets them through its channel as `[image: <local path>]` lines, which the transcript turns back into images.
