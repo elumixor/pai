@@ -473,16 +473,21 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     node.classList.add("flash");
   };
 
-  /** A reply: the text in full; the time rides the end of the last line when it fits, else the next line, right-aligned. */
-  function replyRow(m: LogMessage) {
-    const quoted = parseReply(m.body);
-    const bodyText = quoted?.text ?? m.body;
-    const bubble = el("div.bubble", {}, markdown(bodyText));
+  /** The time at the end of a bubble's last line when it fits there, else on a line of its own, right-aligned. */
+  function timed(bubble: HTMLElement, at: number) {
     const last = bubble.lastElementChild;
-    const stamp = time(m.createdAt);
+    const stamp = time(at);
     stamp.classList.add("inline-time");
     if (last?.classList.contains("md-p")) last.append(stamp);
     else bubble.append(el("p.md-p.only-time", {}, stamp));
+    return bubble;
+  }
+
+  /** A reply: the text in full, the time riding its last line. */
+  function replyRow(m: LogMessage) {
+    const quoted = parseReply(m.body);
+    const bodyText = quoted?.text ?? m.body;
+    const bubble = timed(el("div.bubble", {}, markdown(bodyText)), m.createdAt);
     return el("div.row.reply", { "data-message": m.id, "data-at": m.createdAt }, quoted ? quoteBlock(quoted) : undefined, bubble);
   }
 
@@ -501,10 +506,11 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       from ? el("div.row-from", {}, el("b", {}, from), m.taskId ? el("span.tag", {}, `#${m.taskId}`) : undefined) : undefined,
       quoted ? quoteBlock(quoted) : undefined,
       pictures(m.meta.images),
-      bodyText.trim() ? el("div.bubble", {}, markdown(bodyText)) : undefined,
+      bodyText.trim() ? (long ? el("div.bubble", {}, markdown(bodyText)) : timed(el("div.bubble", {}, markdown(bodyText)), m.createdAt)) : undefined,
     );
+    // Folded, the last line is hidden, so the time and the toggle share a line under it.
     const toggle = long ? el("button.more", { onclick: () => (row.classList.toggle("folded"), (toggle!.textContent = row.classList.contains("folded") ? "Show more" : "Show less")) }, "Show more") : undefined;
-    row.append(el("div.row-foot", {}, toggle, el("span.grow"), time(m.createdAt)));
+    if (long || !bodyText.trim()) row.append(el("div.row-foot", {}, toggle, el("span.grow"), time(m.createdAt)));
     return row;
   }
 
@@ -659,8 +665,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         "div.row.mine",
         { "data-message": m.id, "data-at": m.createdAt },
         quote ? quoteBlock(quote) : undefined,
-        el("div.bubble", {}, markdown(m.body)),
-        el("div.row-foot", {}, el("span.grow"), time(m.createdAt)),
+        timed(el("div.bubble", {}, markdown(m.body)), m.createdAt),
       );
     return el(
       "div.row.answer.pill.tint-ok",
