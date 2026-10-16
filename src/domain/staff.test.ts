@@ -103,7 +103,7 @@ beforeEach(() => {
 
 describe("tasks", () => {
   it("keeps one list with owners, waiting-on-user first", () => {
-    const a = tasks.add({ title: "Find a better job", owner: "pai" });
+    const a = tasks.add({ title: "Plan the trip", owner: "pai" });
     const b = tasks.add({ title: "Reply to Anna", owner: "pai", status: "waiting_user", due: "2026-10-07" });
     tasks.add({ title: "Old thing", status: "done" });
     const open = tasks.list();
@@ -193,15 +193,15 @@ describe("agents", () => {
   });
 
   it("queues past the working limit and drains as agents finish", () => {
-    agents.create({ name: "Job search", kind: "standing", brief: "Find a better job." });
+    agents.create({ name: "Travel", kind: "standing", brief: "Plan the trip." });
     agents.create({ name: "Visit", kind: "standing", brief: "Mother's visit." });
     agents.message("hiring", "a", { from: "pai" });
-    agents.message("job-search", "b", { from: "pai" });
+    agents.message("travel", "b", { from: "pai" });
     agents.message("visit", "c", { from: "pai" });
     expect(agents.get("visit")!.status).toBe("queued");
     finish("hiring", "done a");
     expect(agents.get("visit")!.status).toBe("working");
-    finish("job-search", "done b");
+    finish("travel", "done b");
     finish("visit", "done c");
   });
 
@@ -230,11 +230,11 @@ describe("requests", () => {
     finish("hiring", "");
 
     pai.turns.length = 0;
-    const second = requests.create("job-search", "rewrite in the user's  voice!", "Dear recruiter");
+    const second = requests.create("travel", "rewrite in the user's  voice!", "Dear host");
     expect(pai.turns.length).toBe(0);
     expect(requests.get(second.id)!.handler).toBe(voice.slug);
     finish(voice.slug, "Hi, thanks");
-    finish("job-search", "");
+    finish("travel", "");
   });
 
   it("lets pai answer a request itself", () => {

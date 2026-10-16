@@ -22,7 +22,7 @@ const log = logger("agents");
  * folder at any time: one idle for more than a day starts fresh from those two files.
  *
  * - `orchestrator`: pai, the one voice the user hears (main.ts holds its session).
- * - `standing`: owns an area of the user's life (hiring, the job search); only pai creates one.
+ * - `standing`: owns an area of the user's life (hiring, travel); only pai creates one.
  * - `sub`: one bounded job for its parent; reports once and closes.
  * - `service`: owns no tasks, answers requests (Voice rewrites drafts in the user's voice).
  */

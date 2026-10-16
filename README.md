@@ -99,7 +99,7 @@ to the prompt, the events it emits and its switches. **Automations** are `on <ev
 <action>` rules: notify you on Telegram, open a conversation with the text, or start a task in a
 project — the LinkedIn module's `linkedin.message` into a notification is the two-click case.
 **Projects** are repositories, or *contexts*: a directory with a `CLAUDE.md` for its voice and
-rules of its own, for work that has no code — a job search, hiring. **Context**
+rules of its own, for work that has no code — travel, hiring. **Context**
 lists everything a session is given (instructions, memory, skills, tools) with which surfaces
 see it — pai's main, task and code sessions, or a `claude` started in a terminal — and edits it
 in place.

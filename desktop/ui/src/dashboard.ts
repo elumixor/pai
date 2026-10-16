@@ -263,9 +263,9 @@ export function dashboardPages(handlers: DashboardHandlers): Record<Page, PageRe
     const create = async () => {
       const answer = await dialog({
         title: "New context project",
-        description: "A project that is not code: a directory with its own CLAUDE.md (voice, preferences) and its own memory. A job search, hiring, a client.",
+        description: "A project that is not code: a directory with its own CLAUDE.md (voice, preferences) and its own memory. Travel, hiring, a client.",
         fields: [
-          { name: "name", label: "Name", placeholder: "Job search", required: true },
+          { name: "name", label: "Name", placeholder: "Travel", required: true },
           { name: "about", label: "What it is for", placeholder: "Finding the next role: tracking applications, drafting messages in my voice." },
         ],
         submit: "Create",

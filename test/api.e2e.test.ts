@@ -253,12 +253,12 @@ describe("pai and its staff over the api", () => {
   });
 
   it("creates an agent, shows it in the tree and its chat", async () => {
-    const res = await post("/agents", { name: "Job search", kind: "standing", brief: "Find a better job." });
+    const res = await post("/agents", { name: "Travel", kind: "standing", brief: "Plan the trip." });
     expect(res.status).toBe(201);
     const tree = (await (await get("/agents")).json()) as { slug: string; depth: number; breadcrumb: string }[];
     expect(tree.find((a) => a.slug === "pai")?.depth).toBe(1);
-    expect(tree.find((a) => a.slug === "job-search")?.breadcrumb).toBe("pai › Job search");
-    const chat = (await (await get("/messages?agent=job-search")).json()) as { kind: string; meta: { event?: string } }[];
+    expect(tree.find((a) => a.slug === "travel")?.breadcrumb).toBe("pai › Travel");
+    const chat = (await (await get("/messages?agent=travel")).json()) as { kind: string; meta: { event?: string } }[];
     expect(chat.some((m) => m.meta.event === "agent.created")).toBe(true);
     expect((await get("/agents/nobody")).status).toBe(404);
   });

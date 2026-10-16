@@ -41,7 +41,7 @@ export function paiTools(kind: SessionKind, ref: SessionRef, agent?: string) {
     ),
     tool(
       "list_projects",
-      "The user's projects: every git repo under the dev root, plus the context projects (a directory with its own instructions and memory, for work that is not code — a job search, hiring).",
+      "The user's projects: every git repo under the dev root, plus the context projects (a directory with its own instructions and memory, for work that is not code — travel, hiring).",
       {},
       async () => ok(allProjects().map((p) => ({ slug: p.slug, kind: p.kind, summary: p.summary }))),
     ),

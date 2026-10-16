@@ -230,7 +230,7 @@ export function staffTools(me: string | undefined) {
           ? "Create an agent. standing: owns an area (more than one task or a routine). sub: one bounded job, reports once and closes. service: answers requests (no tasks). The brief is its CLAUDE.md: goal, context, voice, rules, what done means. task is the first job, sent right away."
           : "Start a sub-agent for one bounded job ('screen these 12 profiles'). It gets at most your tools, reports back to you once and closes.",
         {
-          name: z.string().describe("short display name: 'Hiring', 'Job search', 'Screener'"),
+          name: z.string().describe("short display name: 'Hiring', 'Travel', 'Screener'"),
           ...(isPai ? { kind: z.enum(["standing", "sub", "service"]) } : {}),
           brief: z.string(),
           task: z.string().optional().describe("the first job"),
