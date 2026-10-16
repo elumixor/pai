@@ -125,7 +125,7 @@ const callbackUrl = (req: Request, url: URL) => `${origin(req, url)}/auth/google
 
 const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const page = (body: string, status = 200) =>
-  new Response(`<!doctype html><body style="font-family:sans-serif;padding:2rem;max-width:32rem">${body}</body>`, { status, headers: { "content-type": "text/html" } });
+  new Response(`<!doctype html><body style="font-family:sans-serif;padding:2rem;max-width:32rem">${body}</body>`, { status, headers: { "content-type": "text/html; charset=utf-8" } });
 const respondJson = (data: unknown, status = 200) => new Response(JSON.stringify(data, null, 2), { status, headers: { "content-type": "application/json" } });
 const secure = (req: Request) => (req.headers.get("x-forwarded-proto") === "https" ? "; Secure" : "");
 
