@@ -1,5 +1,6 @@
 import { answerAsk, answerQuestion, asks as listAsks, dropAsk, follow, messages as listMessages, messageHeadline, needs as listNeeds, attachmentUrl, toolCall, transcript, type Transcript, type TranscriptTool } from "./api.ts";
 import { compose, type Compose, type Prefs } from "./compose.ts";
+import { contextMenu } from "./context-menu.ts";
 import { clear, el } from "./dom.ts";
 import { icon, type IconName } from "./icons.ts";
 import { EVENT_ICONS } from "../../../src/protocol/rich.ts";
@@ -140,6 +141,8 @@ interface ReplyQuote {
   readonly from: string;
   readonly at: number;
   readonly excerpt: string;
+  /** The quoted row's id in the log, when it is one: what a click scrolls to. */
+  readonly messageId?: number;
 }
 function parseReply(body: string): (ReplyQuote & { text: string }) | undefined {
   const m = REPLY_RE.exec(body);
@@ -272,7 +275,7 @@ function toolRow(tool: TranscriptTool, session?: string) {
 }
 
 export function chat(options: ChatOptions, ctx: ChatContext): Chat {
-  const log = el("div.chat-log");
+  const log = el("div.chat-log") as HTMLElement;
   const items: Item[] = [];
   const seen = new Set<number>();
   let more = false;
@@ -326,7 +329,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       {
         type: "button",
         onclick: () => {
-          const target = log.querySelector<HTMLElement>(`[data-at="${quote.at}"]`);
+          const target = log.querySelector<HTMLElement>(quote.messageId !== undefined ? `[data-message="${quote.messageId}"]` : `[data-at="${quote.at}"]`);
           if (target) flash(target);
         },
       },
@@ -334,10 +337,6 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       el("b", {}, quote.from),
       el("span.ellipsis", {}, quote.excerpt),
     );
-  }
-  /** A small icon on hover, over the top corner of a row, that starts a reply to it. */
-  function replyButton(m: LogMessage, bodyText: string) {
-    return el("button.row-reply-btn", { type: "button", title: "reply", onclick: () => startReply(m, bodyText) }, icon("reply", 13));
   }
 
   // ---- the box ---------------------------------------------------------------------------
@@ -397,6 +396,76 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
 
   // ---- rows ------------------------------------------------------------------------------
 
+  // ---- acting on a row: a right click opens its menu, a two-finger swipe to the left replies ----
+
+  const rowMessage = (row: HTMLElement) => {
+    const id = Number(row.dataset.message);
+    return items.find((i): i is Row => i.kind === "message" && i.m.id === id)?.m;
+  };
+  const textOf = (m: LogMessage) => parseReply(m.body)?.text ?? m.body;
+
+  log.addEventListener("contextmenu", (event: MouseEvent) => {
+    const row = (event.target as HTMLElement).closest<HTMLElement>("[data-message]");
+    const m = row && rowMessage(row);
+    if (!m) return;
+    event.preventDefault();
+    const selected = window.getSelection()?.toString().trim();
+    const link = m.meta.link ?? /https?:\/\/[^\s)>\]]+/.exec(m.body)?.[0];
+    const copy = (text: string) => void navigator.clipboard.writeText(text);
+    contextMenu(event.clientX, event.clientY, [
+      { label: "Reply", icon: "reply", run: () => (startReply(m, textOf(m)), box.focus()) },
+      ...(selected ? [{ label: "Copy selection", icon: "copy" as const, run: () => copy(selected) }] : []),
+      { label: "Copy text", icon: "copy", run: () => copy(textOf(m)) },
+      ...(link ? [{ label: "Copy link", icon: "link" as const, run: () => copy(link) }] : []),
+    ]);
+  });
+
+  /** The swipe in progress: the row following the fingers, how far it went, and the pause that ends it. */
+  let swipe: { row: HTMLElement; m: LogMessage; dx: number; timer: ReturnType<typeof setTimeout> } | undefined;
+  const SWIPE_REPLY = 56;
+  const SWIPE_MAX = 84;
+  const endSwipe = () => {
+    if (!swipe) return;
+    const { row, m, dx } = swipe;
+    swipe = undefined;
+    row.classList.remove("swiping");
+    row.style.transform = "";
+    row.style.removeProperty("--swipe");
+    if (dx >= SWIPE_REPLY) {
+      startReply(m, textOf(m));
+      box.focus();
+    }
+  };
+  log.addEventListener(
+    "wheel",
+    (event: WheelEvent) => {
+      if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
+      // A code block or a table wider than the row scrolls sideways as it always did.
+      for (let node = event.target as HTMLElement | null; node && node !== log; node = node.parentElement)
+        if (node.scrollWidth > node.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(node).overflowX)) return;
+      const row = (event.target as HTMLElement).closest<HTMLElement>("[data-message]");
+      const m = row && rowMessage(row);
+      // Sideways over the chat never goes back in history, whatever is under the fingers.
+      event.preventDefault();
+      if (!row || !m) return;
+      if (swipe && swipe.row !== row) endSwipe();
+      if (!swipe) {
+        swipe = { row, m, dx: 0, timer: setTimeout(endSwipe, 0) };
+        row.classList.add("swiping");
+        if (!row.querySelector(":scope > .swipe-reply")) row.append(el("span.swipe-reply", {}, icon("reply", 14)));
+      }
+      clearTimeout(swipe.timer);
+      swipe.dx = Math.max(0, Math.min(SWIPE_MAX, swipe.dx + event.deltaX));
+      // Past the point that replies the row follows the fingers less, so the threshold is felt.
+      const shown = swipe.dx <= SWIPE_REPLY ? swipe.dx : SWIPE_REPLY + (swipe.dx - SWIPE_REPLY) * 0.35;
+      row.style.transform = `translateX(${-shown}px)`;
+      row.style.setProperty("--swipe", String(Math.min(1, swipe.dx / SWIPE_REPLY)));
+      row.classList.toggle("armed", swipe.dx >= SWIPE_REPLY);
+      swipe.timer = setTimeout(endSwipe, 160);
+    },
+    { passive: false },
+  );
+
   const flash = (node: HTMLElement) => {
     node.scrollIntoView({ block: "center", behavior: "smooth" });
     node.classList.remove("flash");
@@ -414,7 +483,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     stamp.classList.add("inline-time");
     if (last?.classList.contains("md-p")) last.append(stamp);
     else bubble.append(el("p.md-p.only-time", {}, stamp));
-    return el("div.row.reply", { "data-message": m.id, "data-at": m.createdAt }, quoted ? quoteBlock(quoted) : undefined, bubble, replyButton(m, bodyText));
+    return el("div.row.reply", { "data-message": m.id, "data-at": m.createdAt }, quoted ? quoteBlock(quoted) : undefined, bubble);
   }
 
   /**
@@ -433,7 +502,6 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       quoted ? quoteBlock(quoted) : undefined,
       pictures(m.meta.images),
       bodyText.trim() ? el("div.bubble", {}, markdown(bodyText)) : undefined,
-      replyButton(m, bodyText),
     );
     const toggle = long ? el("button.more", { onclick: () => (row.classList.toggle("folded"), (toggle!.textContent = row.classList.contains("folded") ? "Show more" : "Show less")) }, "Show more") : undefined;
     row.append(el("div.row-foot", {}, toggle, el("span.grow"), time(m.createdAt)));
@@ -580,16 +648,20 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   /** The user's answer to an ask: their bubble, quoting the question it answers, as a Telegram reply does. */
   function answerRow(m: LogMessage) {
     const ask = items.find((i): i is Row => i.kind === "message" && i.m.kind === "ask" && i.m.meta.askId === m.meta.askId);
-    if (m.from === "user" && ask) {
-      const quote: ReplyQuote = { from: nameOf(ask.m.from), at: ask.m.createdAt, excerpt: excerptOf(ask.m.body) };
+    const saved = m.meta.quote;
+    const quote: ReplyQuote | undefined = ask
+      ? { from: nameOf(ask.m.from), at: ask.m.createdAt, excerpt: excerptOf(ask.m.body), messageId: ask.m.id }
+      : saved
+        ? { from: nameOf(saved.from), at: saved.at ?? 0, excerpt: saved.excerpt, messageId: saved.messageId }
+        : undefined;
+    if (m.from === "user")
       return el(
         "div.row.mine",
         { "data-message": m.id, "data-at": m.createdAt },
-        quoteBlock(quote),
+        quote ? quoteBlock(quote) : undefined,
         el("div.bubble", {}, markdown(m.body)),
         el("div.row-foot", {}, el("span.grow"), time(m.createdAt)),
       );
-    }
     return el(
       "div.row.answer.pill.tint-ok",
       { "data-message": m.id, "data-at": m.createdAt },

@@ -275,6 +275,8 @@ export interface LogMessage {
     readonly images?: readonly string[];
     /** A six-word line for the row, written once by a small model. */
     readonly headline?: string;
+    /** An answer's reply to the ask it answers: who asked, the ask's first line, and its row. */
+    readonly quote?: { readonly from: string; readonly excerpt: string; readonly messageId?: number; readonly at?: number };
   };
   readonly createdAt: number;
 }

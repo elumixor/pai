@@ -56,6 +56,8 @@ export interface MessageMeta {
   link?: string;
   options?: string[];
   breadcrumb?: string;
+  /** An answer's reply to the ask it answers: who asked, the ask's first line, and its row. */
+  quote?: { from: string; excerpt: string; messageId?: number; at?: number };
   [key: string]: unknown;
 }
 

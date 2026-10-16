@@ -170,7 +170,7 @@ export function answer(id: number, text: string, via = "user"): Ask {
   if (!a.freeText && a.options.length && !a.options.some((o) => o.toLowerCase() === reply.toLowerCase()))
     throw new AskError(`ask #${id} takes one of: ${a.options.join(", ")}`);
   db.prepare("UPDATE asks SET status = 'answered', answer = ?, answered_at = ? WHERE id = ?").run(reply, now(), id);
-  messages.log({ from: "user", to: a.agent, kind: "answer", body: reply, taskId: a.taskId, meta: { askId: id, via, event: "answered", agent: a.agent } });
+  messages.log({ from: "user", to: a.agent, kind: "answer", body: reply, taskId: a.taskId, meta: { askId: id, via, event: "answered", agent: a.agent, quote: quoteOf(id) } });
   const choice = reply.toLowerCase();
   if (isTaskAsk(a) && a.taskId && choice === TASK_DID.toLowerCase()) {
     // The user did their part: the work goes back to its owner, who checks it and carries on.
@@ -197,6 +197,25 @@ export function answer(id: number, text: string, via = "user"): Ask {
   const answered = getAsk(id)!;
   bus.emitEvent("ask.answered", answered as unknown as Record<string, unknown>);
   return answered;
+}
+
+/** What an answer quotes, as a reply quotes the message it answers: the ask's author, first line and row. */
+function quoteOf(askId: number): messages.MessageMeta["quote"] {
+  const row = db.query("SELECT agent, question, message_id FROM asks WHERE id = ?").get(askId) as { agent: string; question: string; message_id: number | null } | undefined;
+  if (!row) return undefined;
+  const excerpt = (row.question.split("\n").find((l) => l.trim()) ?? "").replace(/\*\*/g, "").trim().slice(0, 140);
+  const asked = row.message_id ? messages.get(row.message_id) : undefined;
+  return { from: row.agent, excerpt, messageId: asked?.id, at: asked?.createdAt };
+}
+
+/** Answers written before they carried their quote get it, so every answer draws as a reply. */
+function backfillQuotes() {
+  const rows = db.query("SELECT id, meta FROM messages WHERE kind = 'answer' AND json_extract(meta, '$.quote') IS NULL AND json_extract(meta, '$.askId') IS NOT NULL").all() as { id: number; meta: string }[];
+  for (const r of rows) {
+    const meta = JSON.parse(r.meta) as messages.MessageMeta;
+    const quote = quoteOf(Number(meta.askId));
+    if (quote) db.prepare("UPDATE messages SET meta = ? WHERE id = ?").run(JSON.stringify({ ...meta, quote }), r.id);
+  }
 }
 
 export function drop(id: number): boolean {
@@ -233,6 +252,7 @@ export function askForTask(t: tasks.Task) {
 
 /** Keeps a card on every waiting task: one when it starts waiting, none once it stops. Covers what waited before this ran. */
 export function wireTasks() {
+  backfillQuotes();
   for (const t of tasks.list({ status: "waiting_user" })) askForTask(t);
   const handler = (e: { kind: string; payload: Record<string, unknown> }) => {
     if (e.kind !== "task.added" && e.kind !== "task.updated") return;
