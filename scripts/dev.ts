@@ -70,8 +70,27 @@ const sweep = async () => {
 await sweep();
 setInterval(() => void sweep(), 1000);
 
-const server = Bun.serve({
-  port,
+/** Whether a dev server of ours already answers on a port: then this one is the second, and only opens the page. */
+const ours = (p: number) =>
+  fetch(`http://localhost:${p}/__config`, { signal: AbortSignal.timeout(500) })
+    .then((r) => r.ok)
+    .catch(() => false);
+
+/** Listens on the port asked for, or the next free one; a port held by an earlier `bun run dev` is reused as it is. */
+async function listen(from: number) {
+  for (let p = from; p < from + 20; p += 1) {
+    try {
+      return { server: serve(p) };
+    } catch (err) {
+      if ((err as { code?: string }).code !== "EADDRINUSE") throw err;
+      if (await ours(p)) return { running: p };
+    }
+  }
+  throw new Error(`no free port from ${from} up`);
+}
+
+const serve = (p: number) => Bun.serve({
+  port: p,
   // The reload stream stays open as long as the tab does.
   idleTimeout: 0,
   async fetch(req) {
@@ -92,6 +111,9 @@ const server = Bun.serve({
   },
 });
 
-const url = `http://localhost:${server.port}/`;
-console.log(`pai client at ${url} — edits under desktop/ui rebuild and reload the page`);
+const started = await listen(port);
+const url = `http://localhost:${started.running ?? started.server!.port}/`;
+if (started.running) console.log(`a dev server is already running at ${url} — it rebuilds on save; this one leaves it to it`);
+else console.log(`pai client at ${url} — edits under desktop/ui rebuild and reload the page`);
 if (!args.includes("--no-open")) Bun.spawn([process.platform === "darwin" ? "open" : "xdg-open", url]);
+if (started.running) process.exit(0);

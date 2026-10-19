@@ -12,5 +12,7 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["src"]
+  // The browser bundle is what this checks; the tests beside it run under bun, with bun's types.
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
 }

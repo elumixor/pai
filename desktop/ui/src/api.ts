@@ -291,6 +291,7 @@ export const file = (path: string) => get<{ path: string; text: string; truncate
 export const transcript = (session: string, cwd?: string, limit = 300) =>
   get<Transcript[]>(`/transcript?session=${session}&limit=${limit}${cwd ? `&cwd=${encodeURIComponent(cwd)}` : ""}`);
 /** A picture from a transcript, as an `<img>` can load it (it cannot carry the header). */
+export const mapUrl = (lat: number, lon: number, width = 600, height = 220) => withToken(`${baseUrl()}/map?lat=${lat}&lon=${lon}&w=${width}&h=${height}`);
 export const attachmentUrl = (name: string) => withToken(`${baseUrl()}/attachments/${encodeURIComponent(name)}`);
 /** One tool call in full, from the session's transcript: the input and the output the previews cut. */
 export const toolCall = (session: string, tool: string) => get<{ name: string; input: unknown; result?: string }>(`/transcript/tool?session=${session}&tool=${encodeURIComponent(tool)}`);
@@ -298,7 +299,7 @@ export const toolCall = (session: string, tool: string) => get<{ name: string; i
 export const startThread = (text: string, images: { media_type: string; data: string }[] = [], project?: string) => send("/task", { title: "", text, images, project, origin: project ? undefined : "general" });
 /** A turn in a plain thread, a terminal's included (into the terminal while its channel is connected). */
 export const sendThread = (id: string, text: string, images: { media_type: string; data: string }[] = []) => send("/send", { id, text, images });
-export const threadsIn = (cwd: string) => get<DiskSession[]>(`/threads?cwd=${encodeURIComponent(cwd)}`);
+export const threadsIn = (cwd: string, limit?: number) => get<DiskSession[]>(`/threads?cwd=${encodeURIComponent(cwd)}${limit ? `&limit=${limit}` : ""}`);
 
 // ---- the staff: pai and its agents, the message log, tasks, asks, routines ----------------
 

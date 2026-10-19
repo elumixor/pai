@@ -51,6 +51,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@happy-dom/global-registrator": "^21.0.3",
     "@types/bun": "latest",
     "@types/react": "^19.2.18",
     "@types/vscode": "^1.90.0",

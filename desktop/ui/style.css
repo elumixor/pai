@@ -868,6 +868,28 @@ body.in-home .statusbar { display: none; }
 .info-link { padding: 0; border: 0; background: none; font: inherit; color: inherit; text-decoration: underline; text-decoration-color: var(--ink-20); cursor: pointer; }
 .info-link:hover { text-decoration-color: var(--ink-45); }
 .info-dim { color: var(--ink-30); }
+/* a task named in a message: its number, its title, its state */
+.task-pill { display: inline-flex; align-items: baseline; gap: 4px; max-width: 320px; margin: 0 1px; padding: 0 7px; border: 1px solid var(--line-2); border-radius: 999px; background: color-mix(in srgb, var(--ink, var(--text)) 5%, transparent); color: inherit; font: inherit; font-size: 0.92em; line-height: 1.5; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; vertical-align: baseline; }
+.task-pill:hover { background: color-mix(in srgb, var(--ink, var(--text)) 10%, transparent); }
+.task-pill.warn { border-color: color-mix(in srgb, var(--busy) 50%, transparent); color: var(--busy); }
+.task-pill.done { color: var(--ink-30); text-decoration: line-through; text-decoration-color: var(--ink-20); }
+/* a pin: the map, then the name and the address on their own lines */
+.place-card { align-self: flex-start; width: 100%; max-width: 420px; display: block; overflow: hidden; border: 1px solid var(--line-2); border-radius: 12px; color: inherit; text-decoration: none; }
+.place-card:hover { border-color: var(--ink-20); }
+.place-map { display: block; width: 100%; height: 180px; object-fit: cover; background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.place-text { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px 10px; }
+.place-name { font: 700 var(--body)/var(--body-lh) var(--font-ui); color: var(--ink-70); }
+.place-address { font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-45); }
+.place-text .when { font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-20); }
+/* a hover card over a row: what was said, rendered rather than printed with its asterisks */
+.body-peek { width: 420px; gap: 8px; }
+.body-peek .peek-body { max-height: 320px; overflow-y: auto; font: 400 var(--body)/var(--body-lh) var(--font-body); color: var(--ink-70); }
+.body-peek .peek-body > :first-child { margin-top: 0; }
+.body-peek .peek-foot { color: var(--ink-30); font: 400 var(--meta)/var(--meta-lh) var(--font-ui); }
+/* a repo's conversations: one pill per thread, newest first */
+.thread-list { display: flex; flex-direction: column; gap: 4px; padding: 12px 16px 24px; overflow-y: auto; }
+.thread-list .thread-row { width: 100%; text-align: left; }
+.thread-list .more-threads { align-self: flex-start; margin-top: 8px; }
 .info-dim { margin: 0; color: var(--ink-20); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* the card a long hover over a project opens */
@@ -1063,9 +1085,16 @@ time, .pill-line .when { color: inherit; font: 400 var(--meta)/var(--meta-lh) va
 /* mine: the tinted bubble on the right, folded past three lines */
 .row.mine { align-self: flex-end; width: auto; max-width: 500px; display: flex; flex-direction: column; gap: 12px; padding: 10px 12px; border-radius: 19px; background: var(--mine-bg); box-shadow: 0 5px 5px rgba(0, 0, 0, 0.012); color: var(--ink-70); }
 .row.mine .bubble { align-self: stretch; }
-.row-images { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; align-self: flex-end; max-width: 100%; }
-.row-images a { display: block; border-radius: 9px; overflow: hidden; }
-.row-images img { display: block; width: min(200px, 45vw); aspect-ratio: 1; object-fit: cover; }
+/* one picture keeps its own shape; several become a grid, where a tile may crop to keep rows even */
+.row-images { display: grid; gap: 3px; align-self: stretch; max-width: 100%; border-radius: 12px; overflow: hidden; }
+.row-images a { position: relative; display: block; min-width: 0; }
+.row-images.one { display: block; border-radius: 0; overflow: visible; }
+.row-images.one img { display: block; width: auto; max-width: 100%; max-height: 400px; border-radius: 12px; }
+.row-images.two, .row-images.four { grid-template-columns: 1fr 1fr; grid-auto-rows: 118px; }
+.row-images.three { grid-template-columns: 1.6fr 1fr; grid-auto-rows: 118px; }
+.row-images.three a:first-child { grid-row: span 2; }
+.row-images:not(.one) img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.row-images .more-count { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); color: #fff; font: 700 15px/1 var(--font-ui); }
 .row-images a:focus-visible { outline: 2px solid var(--ink-30); outline-offset: 2px; }
 .row.mine .row-from { display: flex; align-items: center; gap: 6px; margin-bottom: -4px; font: 700 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-45); }
 @property --fold-fade { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
@@ -1193,7 +1222,7 @@ a.opt { text-decoration: none; }
 .chat-compose .input.disabled, .tui-compose .input.disabled { opacity: 0.5; }
 .inline-chip { display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; margin: 0 2px; user-select: none; cursor: default; }
 .inline-chip.image { padding: 2px; border: 1px solid var(--line-2); border-radius: 6px; }
-.inline-chip.image img { display: block; width: 34px; height: 34px; object-fit: cover; border-radius: 4px; }
+.inline-chip.image img { display: block; height: 34px; max-width: 120px; border-radius: 4px; }
 .inline-chip.text { padding: 2px 6px 2px 8px; border: 1px solid var(--line-2); border-radius: 999px; font-size: 11px; color: var(--dim); white-space: nowrap; }
 .chip-remove { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; padding: 0; border: 0; border-radius: 999px; background: color-mix(in srgb, var(--ink, var(--text)) 10%, transparent); color: inherit; opacity: 0.6; }
 .chip-remove:hover { opacity: 1; }

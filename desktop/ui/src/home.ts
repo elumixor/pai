@@ -1,5 +1,8 @@
 import { agentTasks } from "./agent-tasks.ts";
-import { agent as fetchAgent, agentInstructions, agents as listAgents, configureAgent, file as readFile, follow, projects as listProjects, messageAgent, needs as listNeeds, pai as paiStatus, reconfigure, sendPai, sendThread, startThread, status, task as fetchTask, taskItems } from "./api.ts";
+import { fillTaskPills, taskPills } from "./markdown.ts";
+import { bodyPeek } from "./body-peek.ts";
+import { projectThreads } from "./project-threads.ts";
+import { agent as fetchAgent, agentInstructions, agents as listAgents, allTasks, configureAgent, file as readFile, follow, projects as listProjects, messageAgent, needs as listNeeds, pai as paiStatus, reconfigure, sendPai, sendThread, startThread, status, task as fetchTask, taskItems } from "./api.ts";
 import { board, type Board } from "./board.ts";
 import { chat, type Chat, type RevealTarget } from "./chat.ts";
 import { crumbBar, type Crumb } from "./crumbs.ts";
@@ -63,13 +66,21 @@ const ORIGIN: Record<string, readonly [string, IconName]> = {
   agent: ["", "bot"],
 };
 
-/** What an agent's page shows: its tasks (the desk), its notes (STATE.md and the files it runs with), or the chat with it. */
-export type AgentView = "tasks" | "notes" | "chat";
+/** What a page shows: its conversations (a repo only), its tasks (the desk), its notes, or the chat. */
+export type AgentView = "threads" | "tasks" | "notes" | "chat";
 const AGENT_VIEWS: readonly { readonly view: AgentView; readonly icon: IconName; readonly title: string }[] = [
   { view: "tasks", icon: "list", title: "Tasks" },
   { view: "notes", icon: "book", title: "Notes: what it knows and runs with" },
   { view: "chat", icon: "message", title: "Chat with it" },
 ];
+/** A repo also has its conversations, and leads with them: that is what he opens a project for. */
+const PROJECT_VIEWS: readonly { readonly view: AgentView; readonly icon: IconName; readonly title: string }[] = [
+  { view: "threads", icon: "message", title: "Conversations in this repo" },
+  { view: "tasks", icon: "list", title: "Tasks of the agents working here" },
+  { view: "notes", icon: "book", title: "Notes: its CLAUDE.md and README" },
+  { view: "chat", icon: "plus", title: "Start a thread in it" },
+];
+const viewsFor = (slug: string) => (slug.startsWith("project:") ? PROJECT_VIEWS : AGENT_VIEWS);
 const VIEW_KEY = "pai.agent.view";
 /** The remembered views, by slug; a browser with none, or with an older shape under the key, starts with the defaults. */
 function storedViews(): Record<string, AgentView> {
@@ -104,7 +115,11 @@ export function home(root: HTMLElement) {
   let agentPage: { key: string; dispose?: () => void } | undefined;
   /** Which view each agent's page is on; General opens on its chat, an agent on its desk. */
   const views = new Map<string, AgentView>(Object.entries(storedViews()));
-  const viewOf = (slug: string): AgentView => views.get(slug) ?? (slug === PAI ? "chat" : "tasks");
+  const viewOf = (slug: string): AgentView => {
+    const stored = views.get(slug);
+    const allowed = viewsFor(slug).some((v) => v.view === stored);
+    return allowed && stored ? stored : slug === PAI ? "chat" : slug.startsWith("project:") ? "threads" : "tasks";
+  };
   const setView = (slug: string, view: AgentView) => {
     views.set(slug, view);
     remember(VIEW_KEY, JSON.stringify(Object.fromEntries(views)));
@@ -424,6 +439,16 @@ export function home(root: HTMLElement) {
   async function showPage(slug: string, view: Exclude<AgentView, "chat">) {
     const key = `agent:${slug}:${view}`;
     const project = slug.startsWith("project:") ? slug.slice("project:".length) : undefined;
+    if (view === "threads") {
+      agentPage = { key };
+      swap(centrePane, el("div.agent-view", {}, skeleton("lines", 5)));
+      const path = projects.find((p) => p.slug === project)?.path ?? (await listProjects().catch(() => [] as ProjectSummary[])).find((p) => p.slug === project)?.path;
+      if (agentPage?.key !== key) return;
+      const list = path ? projectThreads(path, { openThread: ctx.openThread, newThread: () => toChat(slug) }) : undefined;
+      agentPage = { key, dispose: list?.dispose };
+      swap(centrePane, list?.node ?? el("div.agent-view", {}, el("p.info-dim", {}, "This project has no directory on the box.")));
+      return;
+    }
     if (view === "tasks") {
       const desk = agentTasks(slug, { under: (owner) => (project ? underProject(project, owner) : underDesk(slug, owner)), nameOf, working: (owner) => bySlug(owner)?.status === "working", openTask: ctx.openTask, selected: () => undefined, newTask: () => toChat(slug) });
       agentPage = { key, dispose: desk.dispose };
@@ -524,7 +549,7 @@ export function home(root: HTMLElement) {
     clear(
       viewSwitch,
       ...(project ? [el("button.view-btn.files", { title: "its files and a terminal: the editor", onclick: () => openEditor(project) }, icon("terminal", 13))] : []),
-      ...AGENT_VIEWS.map((v) =>
+      ...viewsFor(slug).map((v) =>
         el(
           "button.view-btn",
           {
@@ -637,7 +662,41 @@ export function home(root: HTMLElement) {
     [agents, tasks, needs, projects] = await Promise.all([listAgents().catch(() => [] as Agent[]), taskItems().catch(() => [] as TaskItem[]), listNeeds().catch(() => [] as Need[]), listProjects().catch(() => [] as ProjectSummary[])]);
     drawTree();
     hand.draw(needs);
+    void indexTasks();
   }
+
+  /**
+   * Every task by id, closed ones included, so `#20` in a message can say what it was and read as
+   * closed. Open tasks are already here; the rest are fetched once and refreshed when one changes.
+   */
+  const taskIndex = new Map<number, TaskItem>();
+  let indexing: Promise<void> | undefined;
+  async function indexTasks() {
+    indexing ??= allTasks()
+      .then((all) => {
+        for (const t of all) taskIndex.set(t.id, t);
+        // Rows drawn before the index arrived kept their `#id` as text; now it can be a pill.
+        fillTaskPills();
+      })
+      .catch(() => undefined)
+      .finally(() => (indexing = undefined));
+    await indexing;
+  }
+  taskPills(
+    (id) => {
+      const t = taskIndex.get(id) ?? tasks.find((x) => x.id === id);
+      return t ? { id: t.id, title: t.title, status: t.status, owner: nameOf(t.owner), due: t.due, nextAction: t.nextAction } : undefined;
+    },
+    (id) => ctx.openTask(id),
+    (pill, task) =>
+      bodyPeek().arm(pill, `task${task.id}`, () => {
+        const live = taskIndex.get(task.id) ?? task;
+        return {
+          body: `**#${live.id} ${live.title}**\n\n${live.nextAction?.trim() || "_no next action_"}`,
+          foot: [live.status.replace("_", " "), live.owner, live.due ? `due ${live.due}` : "", "click opens it"].filter(Boolean).join(" · "),
+        };
+      }),
+  );
 
   let threadsTimer: ReturnType<typeof setTimeout> | undefined;
   const refreshAgents = () => listAgents().then((all) => ((agents = all), drawTree(), drawHead()));
@@ -661,6 +720,13 @@ export function home(root: HTMLElement) {
         case "message.new": {
           const m = payload as unknown as LogMessage;
           if (m.kind === "ask" || m.kind === "answer") void refreshNeeds();
+          break;
+        }
+        case "task.added":
+        case "task.updated": {
+          const t = payload as unknown as TaskItem;
+          if (typeof t?.id === "number") taskIndex.set(t.id, t);
+          fillTaskPills();
           break;
         }
         case "agent.changed":

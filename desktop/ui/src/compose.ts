@@ -3,7 +3,7 @@ import { el, modelName } from "./dom.ts";
 import { icon } from "./icons.ts";
 import { menu } from "./menu.ts";
 import { miniRings } from "./rings.ts";
-import { remember } from "./storage.ts";
+import { clearDraft, loadDraft, saveDraft, type DraftPart } from "./drafts.ts";
 import type { Effort, SlashCommand, Usage } from "./types.ts";
 
 /** The model and effort a conversation runs with, resolved: what was asked for, else what it runs with anyway. */
@@ -270,16 +270,28 @@ export function compose(options: ComposeOptions): Compose {
     return { text: text.trim(), images };
   };
 
-  /**
-   * The draft outlives a reload: the text only, because an attached picture is base64 and the
-   * browser's storage is small — a lost chip is visible in the box, lost words are not.
-   */
+  /** The box as draft parts, in the order he typed them, so a reload puts the chips back where they were. */
+  const parts = (): DraftPart[] => {
+    const out: DraftPart[] = [];
+    const walk = (node: Node) => {
+      if (node.nodeType === Node.TEXT_NODE) return void out.push({ kind: "text", text: node.textContent ?? "" });
+      if (node.nodeName === "BR") return void out.push({ kind: "text", text: "\n" });
+      const chip = node instanceof HTMLElement ? chips.get(node) : undefined;
+      if (chip?.kind === "image") return void out.push({ kind: "image", ...chip.attachment });
+      if (chip?.kind === "text") return void out.push({ kind: "paste", text: chip.text });
+      node.childNodes.forEach(walk);
+    };
+    input.childNodes.forEach(walk);
+    return out.filter((p) => p.kind !== "text" || p.text);
+  };
+
+  /** The draft outlives a reload — pictures too, which is why it lives in IndexedDB and not in localStorage. */
   const draftKey = options.draftKey ? `${DRAFT_PREFIX}${options.draftKey}` : undefined;
+  let saving: ReturnType<typeof setTimeout> | undefined;
   const keepDraft = () => {
     if (!draftKey) return;
-    const { text } = contents();
-    if (text) remember(draftKey, text);
-    else localStorage.removeItem(draftKey);
+    if (saving) clearTimeout(saving);
+    saving = setTimeout(() => void saveDraft(draftKey, parts()), 300);
   };
   input.addEventListener("input", keepDraft);
 
@@ -290,7 +302,7 @@ export function compose(options: ComposeOptions): Compose {
     input.replaceChildren();
     settle();
     closeMenu();
-    if (draftKey) localStorage.removeItem(draftKey);
+    if (draftKey) void clearDraft(draftKey);
     await options.submit(text, images);
   };
 
@@ -388,14 +400,20 @@ export function compose(options: ComposeOptions): Compose {
     foot,
   );
 
-  // What he typed last time and never sent, put back line by line (a `<br>` is the box's newline).
-  const draft = draftKey ? localStorage.getItem(draftKey) : null;
-  if (draft) {
-    draft.split("\n").forEach((line, i) => {
-      if (i) input.append(el("br"));
-      if (line) input.append(document.createTextNode(line));
+  // What he typed last time and never sent, chips and all, put back in order.
+  if (draftKey)
+    void loadDraft(draftKey).then((stored) => {
+      if (!stored.length || input.textContent?.trim() || input.querySelector(".inline-chip")) return;
+      for (const part of stored) {
+        if (part.kind === "image") input.append(chipNode({ kind: "image", attachment: { media_type: part.media_type, data: part.data, preview: part.preview } }));
+        else if (part.kind === "paste") input.append(chipNode({ kind: "text", text: part.text }));
+        else for (const [i, line] of part.text.split("\n").entries()) {
+          if (i) input.append(el("br"));
+          if (line) input.append(document.createTextNode(line));
+        }
+      }
+      settle();
     });
-  }
 
   return {
     node,

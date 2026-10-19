@@ -1,4 +1,4 @@
-import { answerAsk, answerQuestion, asks as listAsks, dropAsk, follow, messages as listMessages, messageHeadline, needs as listNeeds, attachmentUrl, toolCall, transcript, type Transcript, type TranscriptTool } from "./api.ts";
+import { answerAsk, answerQuestion, asks as listAsks, dropAsk, follow, messages as listMessages, messageHeadline, needs as listNeeds, attachmentUrl, mapUrl, toolCall, transcript, type Transcript, type TranscriptTool } from "./api.ts";
 import { compose, type Compose, type Prefs } from "./compose.ts";
 import { contextMenu } from "./context-menu.ts";
 import { clear, el, fresh, STAGGER_MAX, STAGGER_MS, topLoader } from "./dom.ts";
@@ -6,6 +6,7 @@ import { icon, type IconName } from "./icons.ts";
 import { EVENT_ICONS } from "../../../src/protocol/rich.ts";
 import { kindIcon, kindTint } from "./kinds.ts";
 import { remember } from "./storage.ts";
+import { bodyPeek } from "./body-peek.ts";
 import { mapsUrl, placeText } from "../../../src/protocol/rich.ts";
 import { inline, markdown } from "./markdown.ts";
 import type { Agent, AgentStatus, LogMessage, Need, Question } from "./types.ts";
@@ -214,10 +215,30 @@ function toolArgument(tool: TranscriptTool) {
 const KEPT = /^[0-9a-f]{16}\.\w+$/;
 const pictureUrl = (src: string) => (KEPT.test(src) ? attachmentUrl(src) : src);
 
-/** The pictures a message came with, each opening full size in a new tab. */
+/** How many tiles a grid of pictures shows; the rest are counted on the last one. */
+const TILES = 4;
+const LAYOUT = ["", "one", "two", "three", "four"] as const;
+
+/**
+ * The pictures a message came with. One keeps its own shape — bounded by the bubble's width and
+ * ~400px of height, scaled down whole, never cut. Several become a balanced grid the way every
+ * chat draws it (two side by side, three as a large one plus two, four as a 2×2, more as a 2×2
+ * with "+N" on the last tile), where a tile may crop to keep the rows even. Any of them opens
+ * full size in a new tab.
+ */
 function pictures(urls: readonly string[] | undefined) {
   if (!urls?.length) return undefined;
-  return el("div.row-images", {}, ...urls.map(pictureUrl).map((src) => el("a", { href: src, target: "_blank", rel: "noopener" }, el("img", { src, alt: "attached image", loading: "lazy" }))));
+  const shown = urls.slice(0, TILES).map(pictureUrl);
+  const hidden = urls.length - shown.length;
+  const tiles = shown.map((src, i) =>
+    el(
+      "a",
+      { href: src, target: "_blank", rel: "noopener" },
+      el("img", { src, alt: "attached image", loading: "lazy" }),
+      hidden > 0 && i === shown.length - 1 ? el("span.more-count", {}, `+${hidden}`) : undefined,
+    ),
+  );
+  return el("div.row-images", { class: `row-images ${LAYOUT[Math.min(shown.length, TILES)]}` }, ...tiles);
 }
 
 /** A preview the daemon cut ends in "… +N lines". */
@@ -282,6 +303,8 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   const log = el("div.chat-log") as HTMLElement;
   /** Which chat this is, for the two things remembered about it between visits: his draft and where he was reading. */
   const chatKey = options.session ?? (options.task !== undefined ? `task${options.task}` : options.agent);
+  /** What a hover over a row shows: its body, rendered, in the one card every row shares. */
+  const peek = bodyPeek();
   /** The rows and day marks drawn once already: a redraw lets only the others in, one by one, bottom to top. */
   const drawn = new Set<string>();
   const earlier = topLoader(log, loadEarlier);
@@ -412,6 +435,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
    */
   const placeKey = `pai.scroll:${chatKey}`;
   let holding: number | undefined;
+  const settleIn = (ms: number) => setTimeout(() => (settled = true), ms);
   function holdBottom(forMs = 2000) {
     const until = Date.now() + forMs;
     const tick = () => {
@@ -422,6 +446,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     if (holding !== undefined) cancelAnimationFrame(holding);
     scroll();
     holding = requestAnimationFrame(tick);
+    settleIn(forMs + 100);
   }
   /** The topmost row he can see, so returning to the chat resumes where he stopped reading. */
   function rememberPlace() {
@@ -444,10 +469,17 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       if (Date.now() < until) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
+    settleIn(2100);
   }
 
+  /**
+   * Nothing is written down until the chat has settled where it opened: the scrolls of the first
+   * paint are the restore's own, and saving those would overwrite the place he actually left.
+   */
+  let settled = false;
   let placing: ReturnType<typeof setTimeout> | undefined;
   log.addEventListener("scroll", () => {
+    if (!settled) return;
     if (placing) clearTimeout(placing);
     placing = setTimeout(rememberPlace, 200);
   });
@@ -620,7 +652,6 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         class: `row card pill ${m.kind} tint-${kindTint(m.kind)}${mine(m) ? " mine" : ""}`,
         "data-message": m.id,
         "data-task": m.taskId ?? "",
-        title: `${m.body.slice(0, 600)}${m.body.length > 600 ? "…" : ""}\n${new Date(m.createdAt).toLocaleString()}${openable ? ` · click opens ${nameOf(agent)}` : ""}`,
         onclick: () => (openable ? ctx.openAgent(agent, m.id) : row.classList.toggle("open")),
       },
       down
@@ -628,6 +659,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         : el("span.pill-line", {}, icon("rocket", 10), statusDot(agent), headlineOf(m, `${nameOf(m.from)} ${verb}: ${firstLine(m.body)}`), el("span.when", {}, clock(m.createdAt)), m.taskId ? el("span.tag", {}, `#${m.taskId}`) : undefined, chevron()),
       el("div.card-body", {}, markdown(m.body)),
     );
+    peek.arm(row, `m${m.id}`, () => ({ body: m.body, foot: `${new Date(m.createdAt).toLocaleString()}${openable ? ` · click opens ${nameOf(agent)}` : ""}` }));
     row.dataset.at = String(m.createdAt);
     return row;
   }
@@ -714,12 +746,12 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         class: `row event pill tint-${name === "error" ? "hot" : "muted"}`,
         "data-message": m.id,
         "data-task": m.taskId ?? "",
-        title: `${firstLine(m.body)}\n${new Date(m.createdAt).toLocaleString()}${m.meta.link ? `\n${m.meta.link}` : ""}`,
         onclick: () => row.classList.toggle("open"),
       },
       el("span.pill-line", {}, eventIcon(m), headlineOf(m), el("span.when", {}, clock(m.createdAt)), chevron()),
       el("div.event-body", {}, markdown(m.body), m.meta.link ? el("a", { href: m.meta.link, target: "_blank", rel: "noreferrer" }, icon("external", 10), " open") : undefined),
     );
+    peek.arm(row, `m${m.id}`, () => ({ body: m.body, foot: [new Date(m.createdAt).toLocaleString(), m.meta.link ? "has a link" : ""].filter(Boolean).join(" · ") }));
     row.dataset.at = String(m.createdAt);
     return row;
   }
@@ -753,21 +785,30 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     return el(
       "div.row.answer.pill.tint-ok",
       { "data-message": m.id, "data-at": m.createdAt },
-      el("span.pill-line", {}, kindIcon("answered", 10), el("span.ellipsis.pill-text", { title: m.body }, `${nameOf(m.from)} answered: ${m.body}`), el("span.when", {}, clock(m.createdAt))),
+      el("span.pill-line", {}, kindIcon("answered", 10), el("span.ellipsis.pill-text", {}, `${nameOf(m.from)} answered: ${m.body}`), el("span.when", {}, clock(m.createdAt))),
     );
   }
 
   /** The tick on his own message: the row exists, so the daemon has it and the turn is its problem now. */
   const receipt = () => el("span.tick", { title: "pai has it" }, icon("check", 9));
 
-  /** A map pin — his own or pai's: the name, the address, and a tap that opens maps. */
+  /**
+   * A map pin — his own or pai's — as a card: the map itself, centred on the point with a marker,
+   * then the name and the address on their own lines, the whole thing opening maps.
+   */
   function placeRow(m: LogMessage) {
     const place = m.meta.place!;
-    const where = place.title ?? "Location";
     return el(
-      "a.row.pill.place.tint-accent",
+      "a.row.place-card",
       { href: mapsUrl(place), target: "_blank", rel: "noopener", "data-message": m.id, "data-at": m.createdAt, title: placeText(place) },
-      el("span.pill-line", {}, kindIcon("place", 10), el("b", {}, where), place.address ? el("span.ellipsis", {}, place.address) : undefined, el("span.when", {}, clock(m.createdAt))),
+      el("img.place-map", { src: mapUrl(place.latitude, place.longitude), alt: `map of ${place.title ?? "the place"}`, loading: "lazy" }),
+      el(
+        "div.place-text",
+        {},
+        el("b.place-name", {}, place.title ?? "Location"),
+        place.address ? el("span.place-address", {}, place.address) : undefined,
+        el("span.when", {}, clock(m.createdAt)),
+      ),
     );
   }
 
