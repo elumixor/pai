@@ -291,6 +291,7 @@ export const file = (path: string) => get<{ path: string; text: string; truncate
 export const transcript = (session: string, cwd?: string, limit = 300) =>
   get<Transcript[]>(`/transcript?session=${session}&limit=${limit}${cwd ? `&cwd=${encodeURIComponent(cwd)}` : ""}`);
 /** A picture from a transcript, as an `<img>` can load it (it cannot carry the header). */
+export const message = (id: number) => get<LogMessage>(`/messages/${id}`);
 export const mapUrl = (lat: number, lon: number, width = 600, height = 220) => withToken(`${baseUrl()}/map?lat=${lat}&lon=${lon}&w=${width}&h=${height}`);
 export const attachmentUrl = (name: string) => withToken(`${baseUrl()}/attachments/${encodeURIComponent(name)}`);
 /** One tool call in full, from the session's transcript: the input and the output the previews cut. */
@@ -343,12 +344,15 @@ export interface FollowOptions {
   readonly deltas?: boolean;
   /** The last events before connecting; off for a view that already has the transcript. */
   readonly replay?: boolean;
+  /** The stream came back after being away: the host re-reads what it cannot have been told. */
+  readonly onReconnect?: () => void;
 }
 
 /** The daemon's event stream. Reconnects by itself; silence is simply treated as offline. */
 export function follow(session: string | undefined, onEvent: (event: PaiEvent) => void, options: FollowOptions = {}) {
   let source: EventSource | undefined;
   let stopped = false;
+  let opened = false;
 
   const connect = () => {
     if (stopped) return;
@@ -357,6 +361,14 @@ export function follow(session: string | undefined, onEvent: (event: PaiEvent) =
     source.addEventListener("message", (message) => {
       setOnline(true);
       onEvent(JSON.parse(message.data as string) as PaiEvent);
+    });
+    // A reconnection means the stream (or the daemon) was away: whatever happened meanwhile was
+    // never delivered, so the host re-reads the state rather than trusting what it last drew. A
+    // spinner left behind by a daemon restart is exactly this.
+    source.addEventListener("open", () => {
+      setOnline(true);
+      if (opened) options.onReconnect?.();
+      opened = true;
     });
     source.addEventListener("error", () => {
       setOnline(false);

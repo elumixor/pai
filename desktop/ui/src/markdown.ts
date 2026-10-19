@@ -86,66 +86,77 @@ export function markdown(source: string): DocumentFragment {
 const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*|_[^_]+_)|(\[[^\]]+\]\([^)]+\))|(https?:\/\/[^\s<>)]+)/g;
 
 /**
- * `#20` in a message is a task, and reads as one: the pill carries its title and its state, the
- * details sit on it for a hover, and a click opens it. An id nothing answers to stays plain text —
- * a dead chip would say more than is known. The host fills this in (`taskPills`), so this file
- * still renders without knowing where tasks come from.
+ * What a message can point at, written as a sigil and a name: `#87` a task, `@dev` an agent,
+ * `?53` a decision waiting on him, `^1904` a row of the log. Each becomes a chip carrying what
+ * it is, its details on a hover and the thing itself on a click; a reference nothing answers to
+ * stays plain text, since a dead chip would claim more than is known. The host resolves them
+ * (`referencePills`), so this file still renders without knowing where any of it comes from.
  */
-export interface TaskRef {
-  readonly id: number;
-  readonly title: string;
-  readonly status: string;
-  readonly owner: string;
-  readonly due: string | null;
-  readonly nextAction?: string;
-}
-let findTask: (id: number) => TaskRef | undefined = () => undefined;
-let openTask: ((id: number) => void) | undefined;
-/** Gives the pill its hover card; without one it is still a button that opens the task. */
-let armPill: ((pill: HTMLElement, task: TaskRef) => void) | undefined;
-export function taskPills(find: (id: number) => TaskRef | undefined, open: (id: number) => void, arm?: (pill: HTMLElement, task: TaskRef) => void) {
-  findTask = find;
-  openTask = open;
-  armPill = arm;
+export type RefKind = "task" | "agent" | "ask" | "message";
+
+export interface Reference {
+  readonly kind: RefKind;
+  /** What the chip says. */
+  readonly label: string;
+  /** How it is coloured: open (the default), waiting on him, or closed. */
+  readonly state?: "open" | "warn" | "done";
 }
 
-/** Open, waiting on him, or closed: the three states a pill is coloured by. */
-const PILL_STATE: Readonly<Record<string, string>> = { waiting_user: "warn", done: "done", dropped: "done" };
+const SIGILS: Readonly<Record<string, RefKind>> = { "#": "task", "@": "agent", "?": "ask", "^": "message" };
 
-/** Where an id must not be touched: code, links, and a pill already made. */
-const NO_PILLS = "code, pre, a, .task-pill, .task-ref";
-const TASK_IN_TEXT = /(^|[\s([{,:;])#(\d{1,6})\b/g;
+let findRef: (kind: RefKind, id: string) => Reference | undefined = () => undefined;
+let openRef: ((kind: RefKind, id: string) => void) | undefined;
+/** Gives a chip its hover card; without one it is still a button that opens the thing. */
+let armRef: ((pill: HTMLElement, kind: RefKind, id: string) => void) | undefined;
+
+export function referencePills(
+  find: (kind: RefKind, id: string) => Reference | undefined,
+  open: (kind: RefKind, id: string) => void,
+  arm?: (pill: HTMLElement, kind: RefKind, id: string) => void,
+) {
+  findRef = find;
+  openRef = open;
+  armRef = arm;
+}
+
+/** Where a reference must not be touched: code, links, and a chip already made. */
+const NO_PILLS = "code, pre, a, .ref-pill, .ref-text";
+/** A sigil only reads as one at the start of a word, so `a@b.com` and `x^2` are left alone. */
+const REF_IN_TEXT = /(^|[\s([{,:;])([#@?^])([a-z0-9][a-z0-9-]{0,39})\b/gi;
 
 /**
- * Task ids become pills **after** the markdown is rendered, by walking the text nodes: an id
+ * References become chips **after** the markdown is rendered, by walking the text nodes: one
  * inside bold, a list item or a heading is markup by then, and a transform over the source text
  * would never see it (`**#87**` stayed plain while a bare `#87` became a chip). One walk, over
  * whatever a body was rendered into, so history and the live stream cannot drift apart.
  *
- * An id no task answers to is left as a placeholder rather than a chip, and upgraded by a later
- * pass once the host knows that task — which is also how a row drawn before the task index
- * arrived gets its pill.
+ * What the host cannot resolve yet is left as a placeholder and upgraded by a later pass — which
+ * is how a row drawn before the task index arrived still gets its chip.
  */
 export function fillTaskPills(root: ParentNode = document) {
-  for (const ref of [...root.querySelectorAll<HTMLElement>(".task-ref[data-task]")]) {
-    const pill = taskPill(Number(ref.dataset.task));
+  for (const ref of [...root.querySelectorAll<HTMLElement>(".ref-text[data-ref]")]) {
+    const [kind, id] = (ref.dataset.ref ?? "").split(":");
+    const pill = kind && id ? refPill(kind as RefKind, id) : undefined;
     if (pill) ref.replaceWith(pill);
   }
   const walker = document.createTreeWalker(root as Node, NodeFilter.SHOW_TEXT, {
     acceptNode: (node) => ((node.parentElement?.closest(NO_PILLS) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) as number),
   });
   const texts: Text[] = [];
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) if (/#\d/.test(node.textContent ?? "")) texts.push(node as Text);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) if (/[#@?^][a-z0-9]/i.test(node.textContent ?? "")) texts.push(node as Text);
   for (const text of texts) {
     const source = text.textContent ?? "";
     const out = document.createDocumentFragment();
     let last = 0;
-    for (const match of source.matchAll(TASK_IN_TEXT)) {
-      const at = (match.index ?? 0) + match[1]!.length;
-      const id = Number(match[2]);
+    for (const match of source.matchAll(REF_IN_TEXT)) {
+      const [whole, before = "", sigil = "", id = ""] = match;
+      const kind = SIGILS[sigil];
+      // A task, an ask and a message are numbers; an agent is a slug.
+      if (!kind || ((kind === "task" || kind === "ask" || kind === "message") && !/^\d+$/.test(id))) continue;
+      const at = (match.index ?? 0) + before.length;
       out.append(source.slice(last, at));
-      out.append(taskPill(id) ?? el("span.task-ref", { "data-task": String(id) }, `#${id}`));
-      last = at + 1 + match[2]!.length;
+      out.append(refPill(kind, id) ?? el("span.ref-text", { "data-ref": `${kind}:${id}` }, `${sigil}${id}`));
+      last = at + whole.length - before.length;
     }
     if (!last) continue;
     out.append(source.slice(last));
@@ -153,22 +164,22 @@ export function fillTaskPills(root: ParentNode = document) {
   }
 }
 
-function taskPill(id: number) {
-  const task = findTask(id);
-  if (!task) return undefined;
+function refPill(kind: RefKind, id: string) {
+  const found = findRef(kind, id);
+  if (!found) return undefined;
   const pill = el(
-    "button.task-pill",
+    "button.ref-pill",
     {
-      class: `task-pill ${PILL_STATE[task.status] ?? "open"}`,
-      // A pill inside a row whose own card is armed: the click is the pill's, not the row's.
+      class: `ref-pill ${kind} ${found.state ?? "open"}`,
+      // A chip inside a row whose own card is armed: the click is the chip's, not the row's.
       onclick: (event: Event) => {
         event.stopPropagation();
-        openTask?.(task.id);
+        openRef?.(kind, id);
       },
     },
-    `#${task.id} ${task.title.slice(0, 60)}`,
+    found.label,
   );
-  armPill?.(pill, task);
+  armRef?.(pill, kind, id);
   return pill;
 }
 

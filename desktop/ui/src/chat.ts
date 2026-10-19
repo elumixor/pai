@@ -349,10 +349,36 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
 
   /** Pins a quote of `m` to the box; the next message carries it, Telegram-style. */
   function startReply(m: LogMessage, bodyText: string) {
+    pinReply({ from: nameOf(m.from), at: m.createdAt, excerpt: excerptOf(bodyText), messageId: m.id });
+  }
+
+  /**
+   * The quote above the box, and what is remembered of it: a reload without it would send the
+   * reply as a plain message, which is the one thing a reply must not silently become.
+   */
+  const replyKey = `pai.reply:${chatKey}`;
+  function pinReply(quote: ReplyQuote, remember = true) {
     pinnedAnswer = undefined;
-    const quote: ReplyQuote = { from: nameOf(m.from), at: m.createdAt, excerpt: excerptOf(bodyText) };
     replyTarget = quote;
-    box.pin(el("span.ellipsis.quote-pin", {}, icon("reply", 10), " ", el("b", {}, quote.from), ": ", quote.excerpt), () => (replyTarget = undefined));
+    if (remember) localStorage.setItem(replyKey, JSON.stringify(quote));
+    box.pin(el("span.ellipsis.quote-pin", {}, icon("reply", 10), " ", el("b", {}, quote.from), ": ", quote.excerpt), () => dropReply());
+  }
+  function dropReply() {
+    replyTarget = undefined;
+    localStorage.removeItem(replyKey);
+  }
+  /** What he was replying to when he left, unless that row is gone — then the words stay, the quote does not. */
+  function restoreReply() {
+    const stored = localStorage.getItem(replyKey);
+    if (!stored) return;
+    try {
+      const quote = JSON.parse(stored) as ReplyQuote;
+      if (!quote?.excerpt || !quote.from) return localStorage.removeItem(replyKey);
+      if (quote.messageId !== undefined && !items.some((i) => i.kind === "message" && i.m.id === quote.messageId)) return localStorage.removeItem(replyKey);
+      pinReply(quote, false);
+    } catch {
+      localStorage.removeItem(replyKey);
+    }
   }
   /** The reply a message itself carries, as a small clickable bar: author, excerpt, jumps to what it answers. */
   function quoteBlock(quote: ReplyQuote) {
@@ -391,7 +417,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       const diverted = options.divert?.();
       if (diverted) return diverted(text, images);
       const quote = replyTarget;
-      replyTarget = undefined;
+      dropReply();
       box.pin(undefined);
       const wrapped = withReply(quote, text);
       log.querySelector(":scope > .hint")?.remove();
@@ -399,10 +425,8 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       const pending = el(
         "div.row.mine.pending",
         { "data-text": wrapped },
-        quote ? quoteBlock(quote) : undefined,
         pictures(local),
-        text ? el("div.bubble", {}, markdown(text)) : undefined,
-        el("div.row-foot", {}, el("span.grow"), el("span", {}, "sending…")),
+        el("div.mine-text", {}, quote ? quoteBlock(quote) : undefined, text ? el("div.bubble", {}, markdown(text)) : undefined, el("div.row-foot", {}, el("span.grow"), el("span", {}, "sending…"))),
       );
       log.append(pending);
       scroll();
@@ -593,13 +617,20 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     const quoted = parseReply(m.body);
     const bodyText = quoted?.text ?? m.body;
     const long = bodyText.length > MINE_FOLD_CHARS || bodyText.split("\n").length > 3;
+    const words = bodyText.trim()
+      ? el(
+          "div.mine-text",
+          {},
+          from ? el("div.row-from", {}, el("b", {}, from), m.taskId ? el("span.tag", {}, `#${m.taskId}`) : undefined) : undefined,
+          quoted ? quoteBlock(quoted) : undefined,
+          long ? el("div.bubble", {}, markdown(bodyText)) : timed(el("div.bubble", {}, markdown(bodyText)), m.createdAt, m.from === "user" ? receipt() : undefined),
+        )
+      : undefined;
     const row = el(
       "div.row.mine",
       { class: `row mine${long ? " folded" : ""}`, "data-message": m.id, "data-task": m.taskId ?? "", "data-at": m.createdAt },
-      from ? el("div.row-from", {}, el("b", {}, from), m.taskId ? el("span.tag", {}, `#${m.taskId}`) : undefined) : undefined,
-      quoted ? quoteBlock(quoted) : undefined,
       pictures(m.meta.images),
-      bodyText.trim() ? (long ? el("div.bubble", {}, markdown(bodyText)) : timed(el("div.bubble", {}, markdown(bodyText)), m.createdAt, m.from === "user" ? receipt() : undefined)) : undefined,
+      words,
     );
     // Folded, the last line is hidden, so the time and the toggle share a line under it. Unfolding grows the bubble to its height, folding shrinks it back.
     const toggle = long
@@ -625,7 +656,8 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
           "Show more",
         )
       : undefined;
-    if (long || !bodyText.trim()) row.append(el("div.row-foot", {}, toggle, el("span.grow"), time(m.createdAt), m.from === "user" ? receipt() : undefined));
+    // Folded, or a picture with nothing said: the time (and the toggle) go under whichever there is.
+    if (long || !bodyText.trim()) (words ?? row).append(el("div.row-foot", {}, toggle, el("span.grow"), time(m.createdAt), m.from === "user" ? receipt() : undefined));
     return row;
   }
 
@@ -719,7 +751,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
           {
             title: options.length ? "answer in words" : "answer",
             onclick: () => {
-              replyTarget = undefined;
+              dropReply();
               pinnedAnswer = reply;
               box.pin(el("span.ellipsis", {}, icon("help", 10), " ", firstLine(question)), () => (pinnedAnswer = undefined));
             },
@@ -1144,6 +1176,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     loading = false;
     drawAll();
     restorePlace();
+    restoreReply();
   }
 
   /** Questions a session is waiting on, not yet in the chat: the live one's, and for pai those of its earlier sessions too (a rotation does not answer them); an agent's own. */

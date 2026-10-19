@@ -386,6 +386,28 @@ describe("recall", () => {
   });
 });
 
+describe("a status nothing will clear", () => {
+  it("stops calling an agent working when its session is gone", () => {
+    const a = agents.create({ name: "Stuck", kind: "standing", brief: "Mind the shop." });
+    const session = new FakeSession({ agent: { slug: a.slug } });
+    agents.message(a.slug, "go", { from: "pai" });
+    // The turn is running: the release it cut restarts the daemon and the session dies with it.
+    db.prepare("UPDATE agents SET status = 'working', session_id = ? WHERE slug = ?").run(session.id, a.slug);
+    session.state = "dead";
+    agents.settle();
+    expect(agents.get(a.slug)!.status).toBe("idle");
+  });
+
+  it("leaves an agent that really is working alone", () => {
+    const a = agents.create({ name: "Busy", kind: "standing", brief: "Mind the shop." });
+    const session = new FakeSession({ agent: { slug: a.slug } });
+    db.prepare("UPDATE agents SET status = 'working', session_id = ? WHERE slug = ?").run(session.id, a.slug);
+    session.state = "busy";
+    agents.settle();
+    expect(agents.get(a.slug)!.status).toBe("working");
+  });
+});
+
 describe("closing", () => {
   it("archives the folder and closes the sub-agents with it", () => {
     const sub = agents.create({ name: "Booker", kind: "sub", brief: "Book flights." }, "visit");

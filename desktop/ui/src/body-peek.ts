@@ -1,5 +1,4 @@
 import { clear, el } from "./dom.ts";
-import { hoverCard } from "./hover.ts";
 import { markdown } from "./markdown.ts";
 
 /**
@@ -7,7 +6,10 @@ import { markdown } from "./markdown.ts";
  * the markdown's own asterisks, which is what it was doing until now. One card serves every
  * trigger (a delegation, a report, an event, a task pill): the trigger that is hovered fills it.
  */
-const HOVER_MS = 380;
+/** Long enough not to flicker while he reads past a chip, short enough to feel like a hover. */
+const OPEN_MS = 180;
+/** The pointer travels from the chip to the card across a small gap: the card waits that long. */
+const CLOSE_MS = 150;
 /** A preview ends on a word, never mid-word, and never past this much of it. */
 const PREVIEW_CHARS = 700;
 
@@ -26,44 +28,85 @@ export function preview(text: string, max = PREVIEW_CHARS) {
   return `${cut.slice(0, at > max * 0.6 ? at : max).trimEnd()}…`;
 }
 
+/** What fills the card: known at once, or read when the hover asks for it (a log row). */
+export type MakeBody = () => PeekBody | Promise<PeekBody | undefined> | undefined;
+
 export interface BodyPeek {
   /** This element opens the card, filled by `make` when it does. */
-  arm(trigger: HTMLElement, key: string, make: () => PeekBody | undefined): void;
+  arm(trigger: HTMLElement, key: string, make: MakeBody): void;
   dismiss(): void;
 }
 
 let shared: BodyPeek | undefined;
 
-/** The one card every row and pill shares; made on first use, since only a browser has a body. */
+/**
+ * The one card every row and chip shares; made on first use, since only a browser has a body.
+ * It keeps itself open while the pointer is on the trigger **or** on the card, with a grace
+ * period between the two: the card is not a child of the chip, so leaving the chip must not
+ * close what the pointer is on its way to.
+ */
 export function bodyPeek(): BodyPeek {
   if (shared) return shared;
   const card = el("div.peek.body-peek", { hidden: true });
   document.body.append(card);
-  const sources = new Map<string, () => PeekBody | undefined>();
+  let openFor: string | undefined;
+  let opening: ReturnType<typeof setTimeout> | undefined;
+  let closing: ReturnType<typeof setTimeout> | undefined;
 
-  const peek = hoverCard(card, {
-    openMs: HOVER_MS,
-    show: (trigger, key) => {
-      const content = sources.get(key)?.();
-      if (!content?.body.trim()) return false;
-      clear(card, el("div.peek-body", {}, markdown(preview(content.body))), content.foot ? el("div.peek-foot", {}, content.foot) : undefined);
-      card.hidden = false;
-      const at = trigger.getBoundingClientRect();
-      const left = Math.min(Math.max(8, at.left), window.innerWidth - card.offsetWidth - 8);
-      const below = at.bottom + 8;
-      const top = below + card.offsetHeight > window.innerHeight - 8 ? Math.max(8, at.top - card.offsetHeight - 8) : below;
-      card.style.left = `${left}px`;
-      card.style.top = `${top}px`;
-      return true;
-    },
-  });
+  const cancelOpen = () => {
+    if (opening) clearTimeout(opening);
+    opening = undefined;
+  };
+  const hold = () => {
+    if (closing) clearTimeout(closing);
+    closing = undefined;
+  };
+  const hide = () => {
+    card.hidden = true;
+    card.replaceChildren();
+    openFor = undefined;
+  };
+  const closeSoon = () => {
+    hold();
+    closing = setTimeout(hide, CLOSE_MS);
+  };
+
+  card.addEventListener("pointerenter", hold);
+  card.addEventListener("pointerleave", closeSoon);
+
+  async function show(trigger: HTMLElement, key: string, make: MakeBody) {
+    const content = await make();
+    // He may have moved on while a card's body was being read from the daemon.
+    if (openFor !== key || !content?.body.trim()) return;
+    clear(card, el("div.peek-body", {}, markdown(preview(content.body))), content.foot ? el("div.peek-foot", {}, content.foot) : undefined);
+    card.hidden = false;
+    const at = trigger.getBoundingClientRect();
+    const left = Math.min(Math.max(8, at.left), window.innerWidth - card.offsetWidth - 8);
+    const below = at.bottom + 8;
+    const top = below + card.offsetHeight > window.innerHeight - 8 ? Math.max(8, at.top - card.offsetHeight - 8) : below;
+    card.style.left = `${left}px`;
+    card.style.top = `${top}px`;
+  }
 
   shared = {
     arm(trigger, key, make) {
-      sources.set(key, make);
-      peek.arm(trigger, key);
+      trigger.addEventListener("pointerenter", (event) => {
+        if ((event as PointerEvent).pointerType === "touch") return;
+        hold();
+        cancelOpen();
+        opening = setTimeout(() => {
+          openFor = key;
+          void show(trigger, key, make);
+        }, OPEN_MS);
+      });
+      trigger.addEventListener("pointerleave", () => {
+        cancelOpen();
+        if (openFor === key) closeSoon();
+      });
+      // Opening whatever the chip points at should not leave its card behind.
+      trigger.addEventListener("click", () => (cancelOpen(), hide()));
     },
-    dismiss: () => peek.dismiss(),
+    dismiss: () => (cancelOpen(), hide()),
   };
   return shared;
 }

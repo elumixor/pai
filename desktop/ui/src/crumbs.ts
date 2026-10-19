@@ -22,10 +22,19 @@ export function crumbBar() {
   const tail = el("span.crumb-tail");
   const shown = new Map<string, HTMLElement>();
 
+  /**
+   * A crumb's element outlives the crumb it was made from — it slides across redraws — so what a
+   * click does is read from the crumb of the latest draw, never from the one captured when the
+   * button was built. The stale closure is why General, last on the home page and reused as the
+   * first crumb everywhere else, stopped being a way back.
+   */
+  const latest = new WeakMap<HTMLElement, Crumb>();
+
   const item = (crumb: Crumb) => {
     const button = el("button.crumb", { type: "button", title: crumb.title }, crumb.label) as HTMLButtonElement;
-    button.addEventListener("click", () => shown.get(crumb.key)?.dataset.here !== "1" && crumb.open?.());
-    return el("span.crumb-item", { "data-key": crumb.key }, el("span.crumb-sep", { "aria-hidden": "true" }, "›"), button);
+    const row = el("span.crumb-item", { "data-key": crumb.key }, el("span.crumb-sep", { "aria-hidden": "true" }, "›"), button);
+    button.addEventListener("click", () => row.dataset.here !== "1" && latest.get(row)?.open?.());
+    return row;
   };
 
   function set(crumbs: readonly Crumb[]) {
@@ -63,6 +72,7 @@ export function crumbBar() {
       if (button.textContent !== crumb.label) button.textContent = crumb.label;
       if (crumb.title) button.title = crumb.title;
       else button.removeAttribute("title");
+      latest.set(element, crumb);
       const here = crumb === crumbs[crumbs.length - 1];
       element.dataset.here = here ? "1" : "0";
       button.classList.toggle("here", here);

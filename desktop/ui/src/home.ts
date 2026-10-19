@@ -1,8 +1,8 @@
 import { agentTasks } from "./agent-tasks.ts";
-import { fillTaskPills, taskPills } from "./markdown.ts";
-import { bodyPeek } from "./body-peek.ts";
+import { fillTaskPills, referencePills, type RefKind } from "./markdown.ts";
+import { bodyPeek, type PeekBody } from "./body-peek.ts";
 import { projectThreads } from "./project-threads.ts";
-import { agent as fetchAgent, agentInstructions, agents as listAgents, allTasks, configureAgent, file as readFile, follow, projects as listProjects, messageAgent, needs as listNeeds, pai as paiStatus, reconfigure, sendPai, sendThread, startThread, status, task as fetchTask, taskItems } from "./api.ts";
+import { agent as fetchAgent, agentInstructions, agents as listAgents, allTasks, configureAgent, message as fetchMessage, file as readFile, follow, projects as listProjects, messageAgent, needs as listNeeds, pai as paiStatus, reconfigure, sendPai, sendThread, startThread, status, task as fetchTask, taskItems } from "./api.ts";
 import { board, type Board } from "./board.ts";
 import { chat, type Chat, type RevealTarget } from "./chat.ts";
 import { crumbBar, type Crumb } from "./crumbs.ts";
@@ -15,7 +15,7 @@ import { sideTree, type TreeRow } from "./ptree.ts";
 import { navigate } from "./router.ts";
 import { save as saveState, state } from "./state.ts";
 import { remember } from "./storage.ts";
-import type { Agent, AgentStatus, AgentThread, Effort, LogMessage, Need, ProjectSummary, SessionSummary, TaskItem } from "./types.ts";
+import type { Agent, AgentStatus, AgentThread, Effort, LogMessage, Need, ProjectSummary, SessionSummary, TaskItem, TaskStatus } from "./types.ts";
 
 /**
  * The main view: on the left the tree — General, under it the agents as they report (each under the
@@ -682,21 +682,67 @@ export function home(root: HTMLElement) {
       .finally(() => (indexing = undefined));
     await indexing;
   }
-  taskPills(
-    (id) => {
-      const t = taskIndex.get(id) ?? tasks.find((x) => x.id === id);
-      return t ? { id: t.id, title: t.title, status: t.status, owner: nameOf(t.owner), due: t.due, nextAction: t.nextAction } : undefined;
+  /** The state a chip is coloured by: closed, waiting on him, or open. */
+  const taskState = (status: TaskStatus) => (status === "done" || status === "dropped" ? "done" : status === "waiting_user" ? "warn" : "open");
+  const taskOf = (id: number) => taskIndex.get(id) ?? tasks.find((x) => x.id === id);
+  const askOf = (id: number) => needs.find((n) => n.kind === "ask" && n.askId === id);
+
+  referencePills(
+    (kind, id) => {
+      if (kind === "task") {
+        const t = taskOf(Number(id));
+        // Only the number: the sentence around it already says what the task is, and the title is in the card.
+        return t ? { kind, label: `#${t.id}`, state: taskState(t.status) } : undefined;
+      }
+      if (kind === "agent") {
+        const a = bySlug(id);
+        return a ? { kind, label: a.name, state: a.status === "waiting" ? "warn" : a.status === "closed" ? "done" : "open" } : undefined;
+      }
+      if (kind === "ask") {
+        const need = askOf(Number(id));
+        return need ? { kind, label: `?${id}`, state: "warn" } : undefined;
+      }
+      // A log row is not held here: the chip says as much and the card reads it when hovered.
+      return /^\d+$/.test(id) ? { kind, label: `^${id}` } : undefined;
     },
-    (id) => ctx.openTask(id),
-    (pill, task) =>
-      bodyPeek().arm(pill, `task${task.id}`, () => {
-        const live = taskIndex.get(task.id) ?? task;
-        return {
-          body: `**#${live.id} ${live.title}**\n\n${live.nextAction?.trim() || "_no next action_"}`,
-          foot: [live.status.replace("_", " "), live.owner, live.due ? `due ${live.due}` : "", "click opens it"].filter(Boolean).join(" · "),
-        };
-      }),
+    (kind, id) => {
+      if (kind === "task") return ctx.openTask(Number(id));
+      if (kind === "agent") return ctx.openAgent(id);
+      if (kind === "ask") {
+        const need = askOf(Number(id));
+        if (need) void reveal(need);
+        return;
+      }
+      void messageRow(Number(id)).then((row) => row && ctx.openAgent(row.meta.agent ?? (row.from === "user" ? PAI : row.from), row.id));
+    },
+    (pill, kind, id) => bodyPeek().arm(pill, `${kind}:${id}`, () => refCard(kind, id)),
   );
+
+  /** A log row, fetched once and kept: a `^id` chip has nothing else to show on a hover. */
+  const rows = new Map<number, LogMessage | null>();
+  const messageRow = async (id: number) => {
+    if (!rows.has(id)) rows.set(id, (await fetchMessage(id).catch(() => null)) ?? null);
+    return rows.get(id) ?? undefined;
+  };
+
+  /** What a chip's hover card shows, per kind; a message's is read from the daemon when asked for. */
+  function refCard(kind: RefKind, id: string): PeekBody | Promise<PeekBody | undefined> | undefined {
+    if (kind === "task") {
+      const t = taskOf(Number(id));
+      return t && { body: `**#${t.id} ${t.title}**\n\n${t.nextAction?.trim() || "_no next action_"}`, foot: [t.status.replace("_", " "), nameOf(t.owner), t.due ? `due ${t.due}` : "", "click opens it"].filter(Boolean).join(" · ") };
+    }
+    if (kind === "agent") {
+      const a = bySlug(id);
+      if (!a) return undefined;
+      const open = tasks.filter((t) => t.owner === a.slug && t.status !== "done" && t.status !== "dropped").length;
+      return { body: `**${a.name}**\n\n${a.brief.split("\n").find((l) => l.trim()) ?? ""}`, foot: [a.status, `${open} open ${open === 1 ? "task" : "tasks"}`, "click opens it"].join(" · ") };
+    }
+    if (kind === "ask") {
+      const need = askOf(Number(id));
+      return need && { body: `**${need.question}**${need.options.length ? `\n\n${need.options.map((o) => `- ${o}`).join("\n")}` : ""}`, foot: [nameOf(need.agent ?? PAI), "waiting on you", "click reveals it"].join(" · ") };
+    }
+    return messageRow(Number(id)).then((row) => (row ? { body: row.body, foot: [nameOf(row.from), new Date(row.createdAt).toLocaleString(), "click opens its chat"].join(" · ") } : undefined));
+  }
 
   let threadsTimer: ReturnType<typeof setTimeout> | undefined;
   const refreshAgents = () => listAgents().then((all) => ((agents = all), drawTree(), drawHead()));
@@ -778,7 +824,7 @@ export function home(root: HTMLElement) {
           break;
       }
     },
-    { replay: false },
+    { replay: false, onReconnect: () => void load() },
   );
 
   void load().then(() => {

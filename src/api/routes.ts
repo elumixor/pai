@@ -418,6 +418,13 @@ export async function handle(req: Request): Promise<Response> {
       return json({ ...a, breadcrumb: agents.breadcrumb(slug), children: agents.list({ parent: slug }), tasks: tasks.list({ owner: slug, open: false }) });
     }
 
+    // One row of the log, for a `^<id>` reference in a message somewhere else.
+    const messagePath = /^\/messages\/(\d+)$/.exec(path);
+    if (messagePath?.[1]) {
+      const row = messages.get(Number(messagePath[1]));
+      return row ? json(row) : json({ error: "no such message" }, 404);
+    }
+
     // The gist of one message, written on first request and kept.
     const headlinePath = /^\/messages\/(\d+)\/headline$/.exec(path);
     if (headlinePath?.[1]) return json({ headline: (await summaries.headline(Number(headlinePath[1]))) ?? null, enabled: summaries.enabled() });

@@ -665,7 +665,32 @@ export function start() {
   };
   bus.on("event", handler);
   setTimeout(drain, 5_000);
-  return () => bus.off("event", handler);
+  const settling = setInterval(settle, SETTLE_EVERY_MS);
+  return () => {
+    clearInterval(settling);
+    bus.off("event", handler);
+  };
+}
+
+/** How often a status that cannot be true any more is corrected. */
+const SETTLE_EVERY_MS = 60_000;
+
+/**
+ * A status nothing will ever clear. `working` is cleared by the turn's own end, so a turn that
+ * never ends — the session gone, or the daemon restarted by the very release that turn cut —
+ * leaves the agent working for ever, and the tree draws a spinner on an agent that is idle. He
+ * then asks whether it is stuck, which is the cost of a spinner that lies. The one safe reading:
+ * working with no live session of its own is not working.
+ */
+export function settle() {
+  for (const a of list()) {
+    if (a.kind === "orchestrator" || a.status !== "working") continue;
+    const s = a.sessionId ? sessions.find(a.sessionId) : undefined;
+    if (s && s.state !== "dead") continue;
+    log.info(`${a.slug} was marked working with no live session; idle`);
+    setStatus(a.slug, "idle");
+    drain();
+  }
 }
 
 // ---- stopping --------------------------------------------------------------
