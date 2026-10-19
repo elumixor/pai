@@ -3,7 +3,7 @@ import { fillTaskPills, referencePills, type RefKind } from "./markdown.ts";
 import { bodyPeek, type PeekBody } from "./body-peek.ts";
 import { projectThreads } from "./project-threads.ts";
 import { taskHead } from "./task-head.ts";
-import { conversions, moneyRates, type Amount } from "./money.ts";
+import { conversions, fillMoney, moneyRates, type Amount } from "./money.ts";
 import { agent as fetchAgent, agentInstructions, agents as listAgents, allTasks, configureAgent, message as fetchMessage, rates, file as readFile, follow, projects as listProjects, messageAgent, needs as listNeeds, pai as paiStatus, reconfigure, sendPai, sendThread, startThread, status, task as fetchTask, taskItems } from "./api.ts";
 import { board, type Board } from "./board.ts";
 import { chat, type Chat, type RevealTarget } from "./chat.ts";
@@ -114,7 +114,11 @@ export function home(root: HTMLElement) {
     }),
   );
   void rates()
-    .then((r) => moneyRates(r))
+    .then((r) => {
+      moneyRates(r);
+      // Rows drawn before the rates arrived carry their amounts as plain text; now they can convert.
+      fillMoney(document.body);
+    })
     .catch(() => undefined);
   void status()
     .then((h) => ((mainModel = h.settings.models.main), mainChat?.refreshPrefs()))

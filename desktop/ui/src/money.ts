@@ -25,21 +25,31 @@ export interface Amount {
   readonly per?: string;
 }
 
-const SYMBOLS: Readonly<Record<string, string>> = { $: "USD", "€": "EUR", "£": "GBP", "₴": "UAH", "₽": "RUB", "Kč": "CZK", "zł": "PLN" };
+const SYMBOLS: Readonly<Record<string, string>> = { $: "USD", "€": "EUR", "£": "GBP", "₴": "UAH", "₽": "RUB", "Kč": "CZK", "kč": "CZK", "KČ": "CZK", "Kc": "CZK", "zł": "PLN" };
 const CODES = ["USD", "EUR", "CZK", "GBP", "UAH", "PLN", "CHF", "SEK", "NOK", "DKK", "CAD", "AUD", "JPY", "INR", "RUB"];
 const MULTIPLIER: Readonly<Record<string, number>> = { k: 1e3, K: 1e3, m: 1e6, M: 1e6, b: 1e9, B: 1e9 };
 
 /** The one pattern. Kept as a source string so each piece can be read on its own. */
 const NUMBER = String.raw`\d{1,3}(?:[,  ]\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?`;
-const SYMBOL = String.raw`[$€£₴₽]|Kč|zł`;
+/** `Kč` is the commonest way money appears in his chat, so it is matched as a unit — before any
+ *  `K` can be read as a multiplier and leave the `č` orphaned outside the component. */
+const SYMBOL = String.raw`[$€£₴₽]|[KkК][čČ]|zł`;
 const CODE = CODES.join("|");
+/** A multiplier is only a multiplier when nothing follows it: the `K` of `Kč` is a currency. */
+const MULT_RE = String.raw`(?:[kKmMbB](?![čČ\w]))`;
 const MONEY = new RegExp(
-  String.raw`(?<![\w#^?@$€£/.:-])(~|about |around )?(${SYMBOL})?\s?(${NUMBER})\s?([kKmMbB])?(?:\s?[–—-]\s?(${NUMBER})\s?([kKmMbB])?)?\s?(${SYMBOL}|${CODE})?\b(\s?\/\s?(?:mo|month|yr|year|hr|hour|wk|week))?`,
+  String.raw`(?<![\w#^?@$€£/.:-])(~|about |around )?(${SYMBOL})?\s?(${NUMBER})\s?(${MULT_RE})?(?:\s?[–—-]\s?(${NUMBER})\s?(${MULT_RE})?)?\s?(?:(${SYMBOL})|\b(${CODE})\b)?(,-)?(\s?\/\s?(?:mo|month|yr|year|hr|hour|wk|week))?`,
   "g",
 );
 
 const value = (raw: string, mult: string | undefined) => Number(raw.replace(/[,  ]/g, "")) * (mult ? MULTIPLIER[mult]! : 1);
-const codeOf = (token: string | undefined) => (token ? (SYMBOLS[token] ?? (CODES.includes(token.toUpperCase()) ? token.toUpperCase() : undefined)) : undefined);
+const codeOf = (token: string | undefined) => {
+  if (!token) return undefined;
+  if (SYMBOLS[token]) return SYMBOLS[token];
+  // `kč`, `KČ`, `Kc` — the same symbol however it was typed.
+  if (/^[kkК][cčČ]$/i.test(token)) return "CZK";
+  return CODES.includes(token.toUpperCase()) ? token.toUpperCase() : undefined;
+};
 
 /**
  * Every amount in a line, with where it sits. `main` is what a bare number is read as; a match with
@@ -48,8 +58,10 @@ const codeOf = (token: string | undefined) => (token ? (SYMBOLS[token] ?? (CODES
 export function amountsIn(text: string, main = "CZK"): (Amount & { readonly at: number })[] {
   const out: (Amount & { at: number })[] = [];
   for (const match of text.matchAll(MONEY)) {
-    const [whole, tilde, symbol, first, mult, second, secondMult, trailing, per] = match;
-    const currency = codeOf(symbol) ?? codeOf(trailing);
+    const [whole, tilde, symbol, first, mult, second, secondMult, trailingSymbol, trailingCode, crowns, per] = match;
+    const trailing = trailingSymbol ?? trailingCode;
+    // `6 300,-` is Czech for crowns and nothing else.
+    const currency = codeOf(symbol) ?? codeOf(trailing) ?? (crowns ? "CZK" : undefined);
     const separated = /[,  ]\d{3}/.test(first!);
     // Nothing says this is money: a bare count, a version part, a page number.
     if (!currency && !mult && !secondMult && !separated) continue;
@@ -122,8 +134,13 @@ export function conversions(amount: Amount): { readonly lines: string[]; readonl
 /** Where an amount must not be touched: code, links, and anything already made into something. */
 const SKIP = "code, pre, a, .ref-pill, .ref-text, .money";
 
-/** Every amount under `root`, tinted in place, each armed with its conversions. */
+/**
+ * Every amount under `root`, tinted in place, each armed with its conversions. With no rates
+ * nothing is marked at all: a card that opens only to say it has nothing to convert with is worse
+ * than plain text. The host decorates what is already drawn once the rates arrive.
+ */
 export function fillMoney(root: ParentNode = document) {
+  if (!table) return;
   const walker = document.createTreeWalker(root as Node, NodeFilter.SHOW_TEXT, {
     acceptNode: (node) => ((node.parentElement?.closest(SKIP) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) as number),
   });
@@ -138,7 +155,7 @@ export function fillMoney(root: ParentNode = document) {
     for (const amount of found) {
       if (amount.at < last) continue;
       out.append(source.slice(last, amount.at));
-      const node = el("span.money", { title: "" }, amount.text);
+      const node = el("span.money", {}, amount.text);
       armAmount?.(node, amount);
       out.append(node);
       last = amount.at + amount.text.length;

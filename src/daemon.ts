@@ -17,6 +17,7 @@ import * as external from "./modules/external.ts";
 import { start as startMirror } from "./domain/mirror.ts";
 import { logger } from "./core/log.ts";
 import * as agents from "./domain/agents.ts";
+import { startRates } from "./domain/rates.ts";
 import * as main from "./domain/main.ts";
 import * as automations from "./domain/automations.ts";
 import * as triage from "./domain/triage.ts";
@@ -35,6 +36,7 @@ await external.load();
 relayToParent();
 // pai and its staff: the agents' turns, the one chat, routines feeding both.
 const stopAgents = agents.start();
+const stopRates = startRates();
 const stopMain = main.start();
 automations.link({ turn: main.system, triage: triage.add, fields: { brief: briefs.morning, digest: briefs.evening } });
 automations.seed();
@@ -77,6 +79,7 @@ function shutdown(signal: string) {
   stopSummaries();
   stopMain();
   stopAgents();
+  stopRates();
   stopAutoUpdate?.();
   stopAutomations();
   stopMemoryWatch();

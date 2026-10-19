@@ -131,7 +131,7 @@ export const config = {
   /** The user's time zone: schedules, quiet hours, the journal's dates and the 04:00 rotation are read in it. */
   timezone: setting("PAI_TIMEZONE") ?? "Europe/Prague",
   /** The currencies he thinks in: the first is what a bare amount means, the rest are what a hover shows. */
-  currencies: (setting("PAI_CURRENCIES") ?? "CZK,EUR,USD").split(",").map((c) => c.trim().toUpperCase()).filter(Boolean),
+  currencies: (setting("PAI_CURRENCIES") ?? "CZK,USD,EUR,UAH").split(",").map((c) => c.trim().toUpperCase()).filter(Boolean),
 
   /** `HH:MM-HH:MM` in that zone: notices other than urgent ones are held; agents keep working. */
   quietHours: setting("PAI_QUIET_HOURS") ?? "23:00-08:00",

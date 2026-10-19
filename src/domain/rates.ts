@@ -11,7 +11,13 @@ import { logger } from "../core/log.ts";
  */
 
 const log = logger("rates");
-const SOURCE = "https://api.frankfurter.app/latest?base=EUR";
+/**
+ * Two free sources, no key either side. The first carries 160+ currencies — the ECB's own list has
+ * no UAH, and he has family in Ukraine — and the second is the ECB feed as a fallback.
+ */
+const SOURCES = ["https://open.er-api.com/v6/latest/EUR", "https://api.frankfurter.app/latest?base=EUR"];
+/** A failed fetch is retried, backing off, rather than waiting for tomorrow's tick. */
+const RETRY_MS = [30_000, 5 * 60_000, 30 * 60_000];
 const file = join(dirname(config.dbPath), "rates.json");
 const DAY_MS = 86_400_000;
 
@@ -39,19 +45,48 @@ async function stored(): Promise<Rates | undefined> {
   }
 }
 
-async function refresh(): Promise<Rates | undefined> {
-  const res = await fetch(SOURCE, { signal: AbortSignal.timeout(10_000) }).catch((err: Error) => {
-    log.warn(`rates: ${err.message}`);
+async function fromSource(url: string): Promise<Rates | undefined> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(10_000) }).catch((err: Error) => {
+    log.warn(`rates ${new URL(url).host}: ${err.message}`);
     return undefined;
   });
   if (!res?.ok) return undefined;
-  const body = (await res.json()) as { base?: string; date?: string; rates?: Record<string, number> };
-  if (!body.rates || !body.base) return undefined;
-  // The base itself is not in the answer, and an amount in it must convert like any other.
-  held = { base: body.base, date: body.date ?? new Date().toISOString().slice(0, 10), rates: { ...body.rates, [body.base]: 1 }, at: Date.now() };
-  await Bun.write(file, JSON.stringify(held));
-  log.info(`rates for ${held.date}, ${Object.keys(held.rates).length} currencies`);
-  return held;
+  const body = (await res.json().catch(() => undefined)) as { base?: string; base_code?: string; date?: string; time_last_update_utc?: string; rates?: Record<string, number> } | undefined;
+  const base = body?.base ?? body?.base_code;
+  if (!body?.rates || !base) return undefined;
+  const date = body.date ?? (body.time_last_update_utc ? new Date(body.time_last_update_utc).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
+  // The base itself is not always in the answer, and an amount in it must convert like any other.
+  return { base, date, rates: { ...body.rates, [base]: 1 }, at: Date.now() };
+}
+
+async function refresh(): Promise<Rates | undefined> {
+  for (const url of SOURCES) {
+    const fresh = await fromSource(url);
+    if (!fresh) continue;
+    held = fresh;
+    await Bun.write(file, JSON.stringify(held));
+    log.info(`rates for ${held.date}, ${Object.keys(held.rates).length} currencies (${new URL(url).host})`);
+    return held;
+  }
+  log.warn("no source answered; keeping what is on disk");
+  return undefined;
+}
+
+/**
+ * Asked for at start as well as daily, so a client is never offered an amount it cannot convert;
+ * a failure backs off and tries again instead of waiting for tomorrow.
+ */
+export function startRates() {
+  const timers: ReturnType<typeof setTimeout>[] = [];
+  const attempt = async (tries = 0) => {
+    const have = await rates();
+    if (have && Date.now() - have.at < DAY_MS) return;
+    const wait = RETRY_MS[Math.min(tries, RETRY_MS.length - 1)]!;
+    timers.push(setTimeout(() => void attempt(tries + 1), wait));
+  };
+  void attempt();
+  timers.push(setInterval(() => void attempt(), DAY_MS) as unknown as ReturnType<typeof setTimeout>);
+  return () => timers.forEach((t) => clearTimeout(t));
 }
 
 /** The rates to answer with: the cached ones, refreshed in the background once they are a day old. */

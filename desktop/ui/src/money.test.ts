@@ -65,3 +65,20 @@ describe("several in one line", () => {
     expect(found.map((a) => a.from)).toEqual([9000, 120_000, 265_000]);
   });
 });
+
+describe("Kč, which is how money usually appears in his chat", () => {
+  test("the symbol is a unit, not a K multiplier with a stray letter", () => {
+    const found = one("~6,300–11,200 Kč");
+    expect(found).toMatchObject({ from: 6300, to: 11_200, currency: "CZK", assumed: false });
+    // The whole thing is one component: nothing may be left outside it.
+    expect(found.text).toContain("Kč");
+  });
+
+  test("however it was typed", () => {
+    for (const written of ["9 000 Kč", "9 000 kč", "9 000 KČ", "9 000,-"]) expect(one(written)).toMatchObject({ from: 9000, currency: "CZK" });
+  });
+
+  test("a trailing K is still a multiplier when it is one", () => {
+    expect(one("265K CZK")).toMatchObject({ from: 265_000, currency: "CZK" });
+  });
+});
