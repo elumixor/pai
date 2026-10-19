@@ -705,6 +705,13 @@ export function start() {
   for (const a of list()) if (a.kind !== "orchestrator" && (a.status === "working" || a.status === "queued") && !queue.some((q) => q.slug === a.slug)) setStatus(a.slug, "idle");
   const handler = (e: PaiEvent) => {
     if (e.kind === "session.input" && e.sessionId && e.sessionId === get(PAI)?.sessionId) return void setStatus(PAI, "working");
+    // Thinking or a tool call is a turn in flight, whoever started it: a turn resumed after a
+    // restart is never woken, so this is the only thing that says it is working.
+    if ((e.kind === "session.delta" || e.kind === "session.tool") && e.sessionId) {
+      const at = bySession(e.sessionId);
+      if (at && at.kind !== "orchestrator" && at.status === "idle") setStatus(at.slug, "working");
+      return;
+    }
     if (!e.sessionId || !(e.kind === "session.turn_end" || e.kind === "session.error" || e.kind === "session.exit")) return;
     const a = bySession(e.sessionId);
     if (!a || a.status === "closed") return;
@@ -730,17 +737,25 @@ export function start() {
 const SETTLE_EVERY_MS = 60_000;
 
 /**
- * A status nothing will ever clear. `working` is cleared by the turn's own end, so a turn that
- * never ends — the session gone, or the daemon restarted by the very release that turn cut —
- * leaves the agent working for ever, and the tree draws a spinner on an agent that is idle. He
- * then asks whether it is stuck, which is the cost of a spinner that lies. The one safe reading:
- * working with no live session of its own is not working.
+ * A status that is no longer true, in either direction. `working` is written on a wake and cleared
+ * by the turn's own end, so both halves can go stale: a turn that never ends (the session gone, or
+ * the daemon restarted by the very release that turn cut) leaves an agent working for ever, and a
+ * turn the daemon did not send — one resumed after a restart — leaves it idle while it works. Both
+ * are the same lie, and the second is the one he cannot catch by waiting. So the status is derived
+ * from whether a session of its own is alive and busy, not from what was written when it started.
  */
 export function settle() {
   for (const a of list()) {
-    if (a.kind === "orchestrator" || a.status !== "working") continue;
+    if (a.kind === "orchestrator" || a.status === "closed" || a.status === "queued" || a.status === "waiting") continue;
     const s = a.sessionId ? sessions.find(a.sessionId) : undefined;
-    if (s && s.state !== "dead") continue;
+    const alive = s && s.state !== "dead";
+    const busy = Boolean(alive && (s.state === "busy" || s.state === "starting") && !s.pending);
+    if (busy && a.status !== "working") {
+      log.info(`${a.slug} has a turn running and was marked ${a.status}; working`);
+      setStatus(a.slug, "working");
+      continue;
+    }
+    if (a.status !== "working" || alive) continue;
     log.info(`${a.slug} was marked working with no live session; idle`);
     setStatus(a.slug, "idle");
     drain();

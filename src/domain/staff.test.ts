@@ -398,6 +398,16 @@ describe("a status nothing will clear", () => {
     expect(agents.get(a.slug)!.status).toBe("idle");
   });
 
+  it("marks an agent working when a turn of its own is running: a resumed turn is never woken", () => {
+    const a = agents.create({ name: "Resumed", kind: "standing", brief: "Mind the shop." });
+    const session = new FakeSession({ agent: { slug: a.slug } });
+    // What a restart leaves behind: the session resumed, the row reset to idle by the start-up sweep.
+    db.prepare("UPDATE agents SET status = 'idle', session_id = ? WHERE slug = ?").run(session.id, a.slug);
+    session.state = "busy";
+    agents.settle();
+    expect(agents.get(a.slug)!.status).toBe("working");
+  });
+
   it("leaves an agent that really is working alone", () => {
     const a = agents.create({ name: "Busy", kind: "standing", brief: "Mind the shop." });
     const session = new FakeSession({ agent: { slug: a.slug } });
