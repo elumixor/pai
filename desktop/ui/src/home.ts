@@ -2,6 +2,7 @@ import { agentTasks } from "./agent-tasks.ts";
 import { fillTaskPills, referencePills, type RefKind } from "./markdown.ts";
 import { bodyPeek, type PeekBody } from "./body-peek.ts";
 import { projectThreads } from "./project-threads.ts";
+import { taskHead } from "./task-head.ts";
 import { agent as fetchAgent, agentInstructions, agents as listAgents, allTasks, configureAgent, message as fetchMessage, file as readFile, follow, projects as listProjects, messageAgent, needs as listNeeds, pai as paiStatus, reconfigure, sendPai, sendThread, startThread, status, task as fetchTask, taskItems } from "./api.ts";
 import { board, type Board } from "./board.ts";
 import { chat, type Chat, type RevealTarget } from "./chat.ts";
@@ -230,6 +231,7 @@ export function home(root: HTMLElement) {
         id: `task:${t.id}`,
         label: t.title,
         depth,
+        // A spinner means work happening now, never "a row exists": he has asked twice about rows that looked busy.
         working: t.status === "active" && bySlug(owner)?.status === "working",
         waiting: t.status === "waiting_user" ? 1 : 0,
         on: centre.kind === "task" && centre.id === t.id,
@@ -616,7 +618,9 @@ export function home(root: HTMLElement) {
     );
     agentChat = { key, slug: owner, chat: thread };
     thread.slot.append(hand.node);
-    swap(centrePane, thread.node);
+    // The task first, the conversation about it under it: an empty chat is not a task's page.
+    const head = openTask ? taskHead(openTask, { ownerName: nameOf(owner), working: agent?.status === "working", start: () => thread.focus() }) : undefined;
+    swap(centrePane, head ? el("div.task-view", {}, head, thread.node) : thread.node);
     drawHead();
     drawTree();
   }

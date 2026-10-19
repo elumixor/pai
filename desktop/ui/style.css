@@ -874,6 +874,18 @@ body.in-home .statusbar { display: none; }
 .info-link { padding: 0; border: 0; background: none; font: inherit; color: inherit; text-decoration: underline; text-decoration-color: var(--ink-20); cursor: pointer; }
 .info-link:hover { text-decoration-color: var(--ink-45); }
 .info-dim { color: var(--ink-30); }
+/* a task's own page: what it is, over the conversation about it */
+.task-view { display: flex; flex-direction: column; min-height: 0; height: 100%; width: 100%; max-width: var(--chat-w); }
+.task-view .chat-view { flex: 1; min-height: 0; }
+.task-head { display: flex; flex-direction: column; gap: 6px; padding: 16px 16px 12px; border-bottom: 1px solid var(--line-2); }
+.task-head-line { display: flex; align-items: center; gap: 8px; }
+.task-head-line .icon, .task-head-line .spinner { flex: 0 0 auto; opacity: 0.55; }
+.task-title { margin: 0; font: 700 15px/20px var(--font-ui); color: var(--ink-70); }
+.task-meta { font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-45); }
+.task-next { display: flex; flex-direction: column; gap: 2px; font: 400 var(--body)/var(--body-lh) var(--font-body); color: var(--ink-70); }
+.task-next > b { font: 700 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-45); }
+.task-notes { font: 400 var(--meta)/var(--meta-lh) var(--font-body); color: var(--ink-45); }
+.task-start { align-self: flex-start; margin-top: 4px; }
 /* a thing named in a message — a task, an agent, a decision, a log row — as a chip */
 .ref-pill { display: inline-flex; align-items: baseline; gap: 4px; max-width: 320px; margin: 0 1px; padding: 0 7px; border: 1px solid var(--line-2); border-radius: 999px; background: color-mix(in srgb, var(--ink, var(--text)) 5%, transparent); color: inherit; font: inherit; font-size: 0.92em; line-height: 1.5; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; vertical-align: baseline; }
 .ref-pill:hover { background: color-mix(in srgb, var(--ink, var(--text)) 10%, transparent); }
