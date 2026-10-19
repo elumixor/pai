@@ -14,8 +14,10 @@ const CLOSE_MS = 150;
 const PREVIEW_CHARS = 700;
 
 export interface PeekBody {
-  readonly body: string;
-  /** The small line under it: when it was, what a click does. */
+  /** The line over the body: glyphs and names, the tree's own vocabulary rather than words. */
+  readonly head?: readonly (Node | string)[];
+  readonly body?: string;
+  /** The small line under it: whose it is, when it was. */
   readonly foot?: string;
 }
 
@@ -77,8 +79,13 @@ export function bodyPeek(): BodyPeek {
   async function show(trigger: HTMLElement, key: string, make: MakeBody) {
     const content = await make();
     // He may have moved on while a card's body was being read from the daemon.
-    if (openFor !== key || !content?.body.trim()) return;
-    clear(card, el("div.peek-body", {}, markdown(preview(content.body))), content.foot ? el("div.peek-foot", {}, content.foot) : undefined);
+    if (openFor !== key || !content || (!content.body?.trim() && !content.head?.length)) return;
+    clear(
+      card,
+      content.head?.length ? el("div.peek-line", {}, ...content.head) : undefined,
+      content.body?.trim() ? el("div.peek-body", {}, markdown(preview(content.body))) : undefined,
+      content.foot ? el("div.peek-foot", {}, content.foot) : undefined,
+    );
     card.hidden = false;
     const at = trigger.getBoundingClientRect();
     const left = Math.min(Math.max(8, at.left), window.innerWidth - card.offsetWidth - 8);

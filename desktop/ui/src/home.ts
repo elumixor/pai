@@ -213,6 +213,30 @@ export function home(root: HTMLElement) {
   });
   const byActivity = (x: AgentThread, y: AgentThread) => y.lastActivity - x.lastActivity;
 
+  /** The glyph a task's row carries, the same vocabulary the rest of the tree uses. */
+  const TASK_ICON: Record<TaskStatus, IconName> = { waiting_user: "hand", active: "play", inbox: "circle", scheduled: "clock", waiting_other: "hourglass", done: "circleCheck", dropped: "x" };
+  const TASK_ORDER: readonly TaskStatus[] = ["waiting_user", "active", "waiting_other", "inbox", "scheduled"];
+
+  /**
+   * An agent's open tasks, as rows under it — General's included, which had none while every other
+   * row had its own: General owns tasks like any agent, and a list he cannot see is a list he asks
+   * about. Decisions first, then what is being worked on, then what is waiting.
+   */
+  const taskRows = (owner: string, depth: number): TreeRow[] =>
+    tasks
+      .filter((t) => t.owner === owner && t.status !== "done" && t.status !== "dropped")
+      .sort((x, y) => TASK_ORDER.indexOf(x.status) - TASK_ORDER.indexOf(y.status) || y.id - x.id)
+      .map((t) => ({
+        id: `task:${t.id}`,
+        label: t.title,
+        depth,
+        working: t.status === "active" && bySlug(owner)?.status === "working",
+        waiting: t.status === "waiting_user" ? 1 : 0,
+        on: centre.kind === "task" && centre.id === t.id,
+        icon: TASK_ICON[t.status],
+        title: `#${t.id} ${t.title} · ${t.status.replace("_", " ")}${t.due ? ` · due ${t.due}` : ""}`,
+      }));
+
   function treeRows(): TreeRow[] {
     const children = new Map<string | null, Agent[]>();
     for (const a of agents) if (shown(a)) children.set(a.parent, [...(children.get(a.parent) ?? []), a]);
@@ -242,11 +266,13 @@ export function home(root: HTMLElement) {
           icon: agentIcon(a),
           title: [`${a.name} · ${a.kind}`, STATUS[a.status] + (a.queued ? ` · ${a.queued} queued` : ""), open ? `${open} open task${open === 1 ? "" : "s"}` : "", a.model ? modelName(a.model) : ""].filter(Boolean).join("\n"),
         });
+        out.push(...taskRows(a.slug, depth + 1));
         walk(a.slug, depth + 1);
         if (a.slug === dev?.slug) out.push(...projectRows(depth + 1));
         for (const t of (a.threads ?? []).filter((t) => !isCode(t) && running(t)).sort(byActivity)) out.push(threadRow(t, depth + 1));
       }
     };
+    out.push(...taskRows(PAI, 1));
     walk(PAI, 1);
     if (!dev && (code.length || projects.length)) out.push({ id: "dev", label: DEV_LABEL, depth: 1, working: false, waiting: 0, on: false, icon: "code", inert: true }, ...projectRows(2));
     // What runs for General itself: a thread of no agent's, started from the box, the phone, the CLI or a routine.
@@ -286,6 +312,7 @@ export function home(root: HTMLElement) {
   const openRow = (id: string) => {
     if (id.startsWith("thread:")) ctx.openThread(id.slice("thread:".length));
     else if (id.startsWith("project:")) ctx.openProject(id.slice("project:".length));
+    else if (id.startsWith("task:")) ctx.openTask(Number(id.slice("task:".length)));
     else ctx.openAgent(id);
   };
   const tree = sideTree(treeList, openRow, (row, id) => !id.includes(":") && id !== PAI && bySlug(id) && peek.attach(row, id));
@@ -725,23 +752,50 @@ export function home(root: HTMLElement) {
     return rows.get(id) ?? undefined;
   };
 
-  /** What a chip's hover card shows, per kind; a message's is read from the daemon when asked for. */
+  /** The tree's own vocabulary for a state: working spins, a decision is a hand, closed is a tick. */
+  const stateGlyph = (status: TaskStatus | AgentStatus) =>
+    status === "working" || status === "active"
+      ? el("span.spinner")
+      : status === "waiting_user" || status === "waiting"
+        ? icon("hand", 12)
+        : status === "done" || status === "dropped" || status === "closed"
+          ? icon("circleCheck", 12)
+          : status === "scheduled"
+            ? icon("clock", 12)
+            : icon("circle", 12);
+
+  /** What a chip's hover card shows: glyphs and names, and only a line that carries something. */
   function refCard(kind: RefKind, id: string): PeekBody | Promise<PeekBody | undefined> | undefined {
     if (kind === "task") {
       const t = taskOf(Number(id));
-      return t && { body: `**#${t.id} ${t.title}**\n\n${t.nextAction?.trim() || "_no next action_"}`, foot: [t.status.replace("_", " "), nameOf(t.owner), t.due ? `due ${t.due}` : "", "click opens it"].filter(Boolean).join(" · ") };
+      if (!t) return undefined;
+      return {
+        head: [stateGlyph(t.status), el("b", {}, t.title), el("span.dim", {}, `#${t.id}`)],
+        // A next action only means something while something is waiting on it.
+        body: t.nextAction?.trim() || undefined,
+        foot: [nameOf(t.owner), t.due ? `due ${t.due}` : ""].filter(Boolean).join(" · "),
+      };
     }
     if (kind === "agent") {
       const a = bySlug(id);
       if (!a) return undefined;
       const open = tasks.filter((t) => t.owner === a.slug && t.status !== "done" && t.status !== "dropped").length;
-      return { body: `**${a.name}**\n\n${a.brief.split("\n").find((l) => l.trim()) ?? ""}`, foot: [a.status, `${open} open ${open === 1 ? "task" : "tasks"}`, "click opens it"].join(" · ") };
+      return {
+        head: [icon(agentIcon(a), 12), el("b", {}, a.name), stateGlyph(a.status)],
+        body: a.brief.split("\n").find((l) => l.trim()),
+        foot: `${open} open ${open === 1 ? "task" : "tasks"}`,
+      };
     }
     if (kind === "ask") {
       const need = askOf(Number(id));
-      return need && { body: `**${need.question}**${need.options.length ? `\n\n${need.options.map((o) => `- ${o}`).join("\n")}` : ""}`, foot: [nameOf(need.agent ?? PAI), "waiting on you", "click reveals it"].join(" · ") };
+      if (!need) return undefined;
+      return {
+        head: [icon("hand", 12), el("b", {}, need.question)],
+        body: need.options.length ? need.options.map((o) => `- ${o}`).join("\n") : undefined,
+        foot: nameOf(need.agent ?? PAI),
+      };
     }
-    return messageRow(Number(id)).then((row) => (row ? { body: row.body, foot: [nameOf(row.from), new Date(row.createdAt).toLocaleString(), "click opens its chat"].join(" · ") } : undefined));
+    return messageRow(Number(id)).then((row) => (row ? { head: [el("b", {}, nameOf(row.from))], body: row.body, foot: new Date(row.createdAt).toLocaleString() } : undefined));
   }
 
   let threadsTimer: ReturnType<typeof setTimeout> | undefined;

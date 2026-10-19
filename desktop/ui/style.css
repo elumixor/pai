@@ -836,7 +836,13 @@ body.in-home .statusbar { display: none; }
 /* the tree: General, the agents under it, their sub-agents and running threads under each; a row is a
    its icon (a spinner in its place while it works), the name, then a hand with how many decisions wait on the user */
 .ptree { display: flex; flex-direction: column; gap: 6px; }
-.ptree-row { display: flex; align-items: center; gap: 9px; width: fit-content; max-width: 100%; padding: 0; border: 0; background: none; color: var(--ink); text-align: left; font: inherit; cursor: pointer; margin-left: calc(var(--depth, 0) * 18px); }
+/* a shallower step than before: four levels of nesting have to fit a narrow column */
+.ptree-row { display: flex; align-items: center; gap: 7px; width: fit-content; max-width: 100%; padding: 0; border: 0; background: none; color: var(--ink); text-align: left; font: inherit; cursor: pointer; margin-left: calc(var(--depth, 0) * 13px); }
+/* the disclosure: only the chevron folds a node, the row itself still opens it */
+.ptree-fold { display: inline-flex; align-items: center; justify-content: center; width: 11px; height: 11px; padding: 0; border: 0; background: none; color: var(--ink-30); cursor: pointer; transition: transform var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.ptree-fold.open { transform: rotate(90deg); }
+.ptree-fold:hover { color: var(--ink-70); }
+.ptree-fold.empty { cursor: default; }
 .ptree-row.inert { cursor: default; }
 .ptree-name { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .ptree-name > .icon { flex: 0 0 auto; opacity: 0.4; transition: opacity var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
@@ -885,6 +891,8 @@ body.in-home .statusbar { display: none; }
 .place-text .when { font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-20); }
 /* a hover card over a row: what was said, rendered rather than printed with its asterisks */
 .body-peek { width: 420px; gap: 8px; }
+.body-peek .peek-line { display: flex; align-items: center; gap: 6px; font: 700 var(--body)/var(--body-lh) var(--font-ui); color: var(--ink-70); }
+.body-peek .peek-line .dim { font-weight: 400; color: var(--ink-45); }
 .body-peek .peek-body { max-height: 320px; overflow-y: auto; font: 400 var(--body)/var(--body-lh) var(--font-body); color: var(--ink-70); }
 .body-peek .peek-body > :first-child { margin-top: 0; }
 .body-peek .peek-foot { color: var(--ink-30); font: 400 var(--meta)/var(--meta-lh) var(--font-ui); }
