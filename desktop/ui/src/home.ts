@@ -3,7 +3,8 @@ import { fillTaskPills, referencePills, type RefKind } from "./markdown.ts";
 import { bodyPeek, type PeekBody } from "./body-peek.ts";
 import { projectThreads } from "./project-threads.ts";
 import { taskHead } from "./task-head.ts";
-import { agent as fetchAgent, agentInstructions, agents as listAgents, allTasks, configureAgent, message as fetchMessage, file as readFile, follow, projects as listProjects, messageAgent, needs as listNeeds, pai as paiStatus, reconfigure, sendPai, sendThread, startThread, status, task as fetchTask, taskItems } from "./api.ts";
+import { conversions, moneyRates, type Amount } from "./money.ts";
+import { agent as fetchAgent, agentInstructions, agents as listAgents, allTasks, configureAgent, message as fetchMessage, rates, file as readFile, follow, projects as listProjects, messageAgent, needs as listNeeds, pai as paiStatus, reconfigure, sendPai, sendThread, startThread, status, task as fetchTask, taskItems } from "./api.ts";
 import { board, type Board } from "./board.ts";
 import { chat, type Chat, type RevealTarget } from "./chat.ts";
 import { crumbBar, type Crumb } from "./crumbs.ts";
@@ -105,6 +106,16 @@ export function home(root: HTMLElement) {
   let paiSession: SessionSummary | undefined;
   /** The daemon's model for the main chat, for when the session has not answered yet. */
   let mainModel: string | undefined;
+  // What a currency is worth, once per load: an amount's hover must never wait for the network.
+  moneyRates(undefined, (node: HTMLElement, amount: Amount) =>
+    bodyPeek().arm(node, `money:${amount.text}:${amount.currency}`, () => {
+      const { lines, note } = conversions(amount);
+      return { head: [el("b", {}, `${amount.text}${amount.per && !amount.text.includes(amount.per) ? amount.per : ""}`)], body: lines.length ? lines.join("\n\n") : "no rates to convert with yet", foot: note };
+    }),
+  );
+  void rates()
+    .then((r) => moneyRates(r))
+    .catch(() => undefined);
   void status()
     .then((h) => ((mainModel = h.settings.models.main), mainChat?.refreshPrefs()))
     .catch(() => undefined);

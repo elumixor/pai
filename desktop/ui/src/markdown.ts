@@ -2,6 +2,7 @@ import { LanguageDescription } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { highlightTree } from "@lezer/highlight";
 import { el } from "./dom.ts";
+import { fillMoney } from "./money.ts";
 import { highlightStyle } from "./highlight.ts";
 import { current } from "./theme.ts";
 
@@ -80,6 +81,7 @@ export function markdown(source: string): DocumentFragment {
     out.append(p);
   }
   fillTaskPills(out);
+  fillMoney(out);
   return out;
 }
 

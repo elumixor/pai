@@ -32,6 +32,24 @@ Changing pai itself:
 - Restarting or updating the daemon cuts off every running turn, yours included. Do it only as the very last step of a turn, after reporting, and say the reply may arrive after the restart.`;
 
 /** The heading a module's paragraph sits under, so what each module adds can be told apart. */
+/**
+ * How to write money so every client can convert it. The renderer takes a leading symbol or a
+ * trailing code, `k`/`M` multipliers, ranges and `/mo`; what it cannot take is an amount with
+ * nothing to mark it as one, so a currency is always written when it is not the main one.
+ */
+export const MONEY_FORMAT = `# Writing money
+
+Amounts are rendered and converted, so write them in a form that parses:
+
+- the currency as a leading symbol or a trailing code: \`$4,200\`, \`€9,000\`, \`265K CZK\`, \`3.74M CZK\`
+- \`k\` or \`M\` for thousands and millions, attached to the number: \`120k\`, \`1.4M\`
+- a range with an en dash, the multiplier on either end: \`$10–14k\`, \`172–210K\`
+- a period after it, when it is one: \`/mo\`, \`/yr\` — \`€9,000/mo\`, \`103–162K/mo\`
+- a bare number is read in his main currency (CZK), and the hover says it was assumed: write the
+  currency whenever it is anything else
+- never dress up something that is not money (a version, an id, a count, a percentage); a number
+  with no currency and no multiplier is left alone, which is what keeps \`v0.6.41\` and \`#87\` intact`;
+
 export const moduleHeading = (title: string) => `# Instructions (from ${title})`;
 
 /** Every module's paragraph for a session of `kind`, each under its own heading. */
@@ -118,7 +136,8 @@ export function instructionsFor(kind: SessionKind, project?: string, agent?: Age
     : agent
       ? `${COMMON}\n- Facts about a person go into people/<name>.md here (search before creating one); a day's events into journal/; MEMORY.md is the profile, kept under about 150 lines.`
       : COMMON;
-  return [`${common}\n${role}`, ...(kind === "code" && agent ? [CODE.trim()] : []), missingTools(agent), ...sections].filter(Boolean).join("\n\n");
+  // Money is rendered and converted in every client, so everyone who writes an amount writes it the same way.
+  return [`${common}\n${role}`, ...(kind === "code" && agent ? [CODE.trim()] : []), MONEY_FORMAT, missingTools(agent), ...sections].filter(Boolean).join("\n\n");
 }
 
 /**
@@ -142,6 +161,7 @@ export function missingTools(agent?: AgentSetup): string {
 export function sections(): [name: string, text: string, kinds: SessionKind[]][] {
   return [
     ["general", COMMON.trim(), ["chat", "code"]],
+    ["writing money", MONEY_FORMAT.trim(), ["chat", "code"]],
     ["conversation", CHAT.trim(), ["chat"]],
     ["coding session", CODE.trim(), ["code"]],
     ["pai (orchestrator)", ORCHESTRATOR.trim(), ["chat"]],

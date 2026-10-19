@@ -27,6 +27,7 @@ export const EDITABLE = [
   "PAI_MAX_AGENTS",
   "PAI_TRIAGE_MODEL",
   "PAI_ROTATE_HOUR",
+  "PAI_CURRENCIES",
 ] as const;
 
 export type Editable = (typeof EDITABLE)[number];
@@ -41,6 +42,7 @@ export function effective() {
   return {
     PAI_BIND: config.host,
     PAI_BASE_URL: config.baseUrl,
+    PAI_CURRENCIES: config.currencies.join(","),
     PAI_MAIN_MODEL: config.models.main,
     PAI_TASK_MODEL: config.models.task,
     PAI_UPDATE_CHANNEL: config.updateChannel,

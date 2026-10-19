@@ -886,6 +886,8 @@ body.in-home .statusbar { display: none; }
 .task-next > b { font: 700 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-45); }
 .task-notes { font: 400 var(--meta)/var(--meta-lh) var(--font-body); color: var(--ink-45); }
 .task-start { align-self: flex-start; margin-top: 4px; }
+/* money in a sentence: tinted, not chipped — it is part of the line, and the hover converts it */
+.money { color: var(--ok, var(--idle)); border-bottom: 1px dotted color-mix(in srgb, var(--ok, var(--idle)) 45%, transparent); cursor: help; }
 /* a thing named in a message — a task, an agent, a decision, a log row — as a chip */
 .ref-pill { display: inline-flex; align-items: baseline; gap: 4px; max-width: 320px; margin: 0 1px; padding: 0 7px; border: 1px solid var(--line-2); border-radius: 999px; background: color-mix(in srgb, var(--ink, var(--text)) 5%, transparent); color: inherit; font: inherit; font-size: 0.92em; line-height: 1.5; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; vertical-align: baseline; }
 .ref-pill:hover { background: color-mix(in srgb, var(--ink, var(--text)) 10%, transparent); }

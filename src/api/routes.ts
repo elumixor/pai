@@ -1,6 +1,7 @@
 import { config } from "../core/config.ts";
 import { serve as serveAttachment } from "../domain/attachments.ts";
 import { mapResponse } from "../domain/maps.ts";
+import { ratesResponse } from "../domain/rates.ts";
 import { all as allProjects, clone, CloneError, createContext, refresh } from "../domain/catalog.ts";
 import * as automations from "../domain/automations.ts";
 import { context, save as saveContext } from "../domain/context.ts";
@@ -114,6 +115,9 @@ export async function handle(req: Request): Promise<Response> {
 
     // A picture someone attached, by the name the transcript gives it.
     if (path.startsWith("/attachments/")) return serveAttachment(path.slice("/attachments/".length)) ?? json({ error: "no such attachment" }, 404);
+
+    // What a currency is worth, for showing an amount in the ones he thinks in.
+    if (path === "/rates") return await ratesResponse();
 
     // A place's map picture: OpenStreetMap tiles stitched into an SVG, cached on the box.
     if (path === "/map") return (await mapResponse(url.searchParams)) ?? json({ error: "lat and lon required" }, 400);
