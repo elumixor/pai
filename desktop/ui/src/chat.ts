@@ -126,7 +126,13 @@ const dayLabel = (at: number) => {
   if (day.toDateString() === yesterday.toDateString()) return "Yesterday";
   return day.toLocaleDateString(undefined, { day: "numeric", month: "long", ...(day.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}) });
 };
-const firstLine = (text: string) => text.replace(/^\[[^\]]+\]\s*/, "").split("\n").find((l) => l.trim()) ?? "";
+/**
+ * The one line a collapsed row shows. A body that opens with a list item keeps its marker in the
+ * source, and the row then read "1. 1. …" beside the rendered list underneath it: the marker is
+ * the list's, not the sentence's, so it has no place in a one-liner.
+ */
+const firstLine = (text: string) =>
+  (text.replace(/^\[[^\]]+\]\s*/, "").split("\n").find((l) => l.trim()) ?? "").replace(/^\s*(?:[-*+]|\d+[.)])\s+/, "");
 const duration = (ms: number) => (ms < 60_000 ? `${Math.max(1, Math.round(ms / 1000))}s` : `${Math.round(ms / 60_000)} min`);
 const clock = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
 const time = (at: number) => el("time", { title: new Date(at).toLocaleString() }, clock(at));
@@ -807,12 +813,12 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       : saved
         ? { from: nameOf(saved.from), at: saved.at ?? 0, excerpt: saved.excerpt, messageId: saved.messageId }
         : undefined;
+    // His answer is his message: the same tinted bubble, with the question quoted over it.
     if (m.from === "user")
       return el(
         "div.row.mine",
         { "data-message": m.id, "data-at": m.createdAt },
-        quote ? quoteBlock(quote) : undefined,
-        timed(el("div.bubble", {}, markdown(m.body)), m.createdAt),
+        el("div.mine-text", {}, quote ? quoteBlock(quote) : undefined, timed(el("div.bubble", {}, markdown(m.body)), m.createdAt, receipt())),
       );
     return el(
       "div.row.answer.pill.tint-ok",
@@ -936,7 +942,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   const isEvent = (item: Item): item is Row => item.kind === "message" && item.m.kind === "event";
   /** What an event is of: its source when it has one (telegram, gmail), else its event name. */
   const eventType = (m: LogMessage) => ((m.meta as { source?: string }).source ?? m.meta.event ?? "event").toLowerCase();
-  const TYPE_LABEL: Record<string, string> = { telegram: "Telegram", gmail: "Email", mail: "Email", linkedin: "LinkedIn", "routine.fired": "routines", "calendar.upcoming": "calendar events", "item.arrived": "items" };
+  const TYPE_LABEL: Record<string, string> = { telegram: "Telegram", gmail: "Email", mail: "Email", linkedin: "LinkedIn", "routine.fired": "routines", "calendar.upcoming": "calendar events", "item.arrived": "items", rate_limited: "paused on the account's limit" };
   const typeLabel = (type: string) => TYPE_LABEL[type] ?? type.replace(/^item\./, "");
   /** The icon by where it came from when the source has one (Telegram, LinkedIn), else by the event. */
   const eventIcon = (m: LogMessage) => kindIcon(`item.${eventType(m)}` in EVENT_ICONS ? `item.${eventType(m)}` : (m.meta.event ?? "event"), 10);

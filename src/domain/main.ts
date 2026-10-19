@@ -11,6 +11,8 @@ import type { RichPlace } from "../protocol/rich.ts";
 import * as asks from "./asks.ts";
 import * as gate from "./gate.ts";
 import * as journal from "./journal.ts";
+import * as limits from "./limits.ts";
+import { isLimit } from "./limits.ts";
 import * as messages from "./messages.ts";
 import * as requests from "./requests.ts";
 import type { Session } from "./session.ts";
@@ -29,6 +31,8 @@ const log = logger("main");
 
 const THREAD_KEY = "main_thread_id";
 const ROTATED_DAY = "main_rotated_day";
+/** His last message, kept only so a turn the account's limit killed can be asked again. */
+const LAST_USER = "main_last_user";
 const ROTATE_AT_PERCENT = 50;
 const BRIEFING_MESSAGES = 20;
 
@@ -78,6 +82,7 @@ function fresh(reason: string): Session {
 export function send(text: string, opts: { images?: readonly Image[]; place?: RichPlace } = {}) {
   const s = session();
   // Kept before the turn: the row carries their names, so every client draws what he attached.
+  kv.set(LAST_USER, text);
   const pictures = attach(opts.images);
   messages.log({ from: "user", to: agents.PAI, kind: "chat", body: text, meta: { ...pictures.meta, ...(opts.place ? { place: opts.place } : {}) } });
   if (s.pending) {
@@ -88,6 +93,35 @@ export function send(text: string, opts: { images?: readonly Image[]; place?: Ri
   if (open.length) s.inject(`[open asks — if the user's next message answers one, call answer_ask]\n${open.map((a) => `#${a.id} ${agents.breadcrumb(a.agent)}: ${a.question}${a.options.length ? ` (${a.options.join(" / ")})` : ""}`).join("\n")}`);
   s.send(text, { images: opts.images ? [...opts.images] : undefined, origin: "user" });
   return s;
+}
+
+/**
+ * pai's turn died on the account's limit. The limit is the account's, so nothing it was asked is
+ * wrong: the row says so in one quiet line and the same message is sent again once the window
+ * reopens — his words are never silently dropped because the account was out of room.
+ */
+const LIMIT_HELD = "main_limit_held";
+function heldByLimit(text: string) {
+  const at = limits.resetAt(text);
+  const last = kv.get(LAST_USER) ?? "";
+  messages.event(agents.PAI, "rate_limited", limits.limitLine("pai", at), { to: "user" });
+  if (last) kv.set(LIMIT_HELD, JSON.stringify({ at, text: last }));
+  log.info(`pai hit the account's limit; its turn is held until ${new Date(at).toISOString()}`);
+}
+
+/** The held turn, sent again once the window has reopened. */
+function drainLimitHeld(now = Date.now()) {
+  const stored = kv.get(LIMIT_HELD);
+  if (!stored) return;
+  try {
+    const { at, text } = JSON.parse(stored) as { at: number; text: string };
+    if (at > now) return;
+    kv.set(LIMIT_HELD, "");
+    log.info("the limit window reopened; asking pai again");
+    session().send(`[the account's limit stopped this before it was answered]\n${text}`, { origin: "system" });
+  } catch {
+    kv.set(LIMIT_HELD, "");
+  }
 }
 
 /** The daemon speaking to pai (a report it waits for, a routine, an answer): a turn, not the user's. */
@@ -183,7 +217,9 @@ export function start() {
     gate.turnTaken();
     const text = String(e.payload.text ?? "").trim();
     // "No response needed." on a system turn is pai obeying the prompt out loud: not a message.
-    if (text && e.payload.origin !== "silent" && !(e.payload.origin === "system" && gate.boilerplate(text))) messages.log({ from: agents.PAI, to: "user", kind: "chat", body: text, meta: { origin: String(e.payload.origin ?? "user") } });
+    // The account's limit is not pai talking: an event row, and the message it never answered is asked again.
+    if (text && isLimit(text)) heldByLimit(text);
+    else if (text && e.payload.origin !== "silent" && !(e.payload.origin === "system" && gate.boilerplate(text))) messages.log({ from: agents.PAI, to: "user", kind: "chat", body: text, meta: { origin: String(e.payload.origin ?? "user") } });
     void sessions
       .find(e.sessionId!)
       ?.contextUsage()
@@ -194,6 +230,7 @@ export function start() {
   bus.on("event", handler);
   const profile = setTimeout(fillProfile, 10 * 60_000);
   const clock = setInterval(() => {
+    drainLimitHeld();
     const z = zoned();
     if (z.hour >= config.rotateHour && kv.get(ROTATED_DAY) !== journal.logicalDay() && !rotating && agents.get(agents.PAI)?.sessionId) void rotate("daily");
   }, 60_000);

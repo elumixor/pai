@@ -13,6 +13,7 @@ const SYMBOLS: Readonly<Record<string, IconName>> = {
   "arrow.turn.up.left": "reply",
   bolt: "zap",
   "clock.arrow.circlepath": "hourglass",
+  hourglass: "hourglass",
   envelope: "mail",
   "bubble.left": "message",
   calendar: "calendar",

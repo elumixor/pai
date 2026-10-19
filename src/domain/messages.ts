@@ -45,6 +45,8 @@ export type EventName =
   | "calendar.upcoming"
   | "answered"
   | "sent"
+  /** The account's own limit stopped a turn; the work is held until the window reopens. */
+  | "rate_limited"
   | "error";
 
 export interface MessageMeta {

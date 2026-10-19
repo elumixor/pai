@@ -7,6 +7,7 @@ import { logger } from "../core/log.ts";
 import { day } from "../core/time.ts";
 import { attach, type Image } from "./attachments.ts";
 import { narrowed, unresolved } from "./capabilities.ts";
+import { isLimit, limitLine, resetAt } from "./limits.ts";
 import { get as getProject } from "./catalog.ts";
 import * as journal from "./journal.ts";
 import * as messages from "./messages.ts";
@@ -374,6 +375,56 @@ const queue: Pending[] = (() => {
 const saveQueue = () => kv.set(QUEUE_KEY, JSON.stringify(queue));
 
 /**
+ * Turns the account's own limit stopped, with the moment the window reopens. They are kept on
+ * disk, so a daemon restart in the meantime does not lose them either; `drainHeld` sends them
+ * again. Without this a turn that hit the limit was simply gone, and someone had to notice and
+ * re-send it by hand.
+ */
+interface Held extends Pending {
+  at: number;
+}
+const HELD_KEY = "agent_held";
+const held: Held[] = (() => {
+  try {
+    return JSON.parse(kv.get(HELD_KEY) ?? "[]") as Held[];
+  } catch {
+    return [];
+  }
+})();
+const saveHeld = () => kv.set(HELD_KEY, JSON.stringify(held));
+
+/** What each agent was last woken with, so a turn the limit killed can be sent again verbatim. */
+const lastWake = new Map<string, Pending>();
+
+/** The turns whose window has reopened, sent again. */
+export function drainHeld(now = Date.now()) {
+  const due = held.filter((h) => h.at <= now);
+  if (!due.length) return;
+  held.length = 0;
+  held.push(...held.filter((h) => h.at > now));
+  saveHeld();
+  for (const h of due) {
+    const a = get(h.slug);
+    if (!a || a.status === "closed") continue;
+    log.info(`${h.slug}: the limit window reopened, sending its turn again`);
+    messages.event(h.slug, "rate_limited", `${a.name} picks up the turn the account's limit stopped`, { to: reportsTo(a) });
+    wake(h.slug, h.text, h.requestId, h.taskId);
+  }
+}
+
+/** A turn the limit killed: nothing said, nothing reported, and the same turn sent again later. */
+function limitHit(a: Agent, text: string) {
+  const at = resetAt(text);
+  const pending = lastWake.get(a.slug);
+  setStatus(a.slug, "idle");
+  messages.event(a.slug, "rate_limited", limitLine(a.name, at), { to: reportsTo(a) });
+  if (!pending) return log.warn(`${a.slug} hit the limit with no turn to hold`);
+  held.push({ ...pending, at });
+  saveHeld();
+  log.info(`${a.slug} hit the account's limit; its turn is held until ${new Date(at).toISOString()}`);
+}
+
+/**
  * The turns each agent has been sent and not finished, oldest first, with the request a turn
  * answers (0 for none) and the task it is about: a session queues turns, so the head is the one
  * whose end comes next. The task's thread gets the turn's report.
@@ -417,6 +468,7 @@ export function message(slug: string, text: string, opts: MessageOptions): messa
 
 function wake(slug: string, text: string, requestId?: number, taskId?: number | null) {
   const a = get(slug)!;
+  lastWake.set(slug, { slug, text, requestId, taskId });
   if (a.turnsToday >= a.budget.turnsPerDay) {
     messages.event(slug, "error", `${a.name} hit its budget of ${a.budget.turnsPerDay} turns today; not woken`, { to: reportsTo(a) });
     tellOwner(a, `${a.name} hit its budget (${a.budget.turnsPerDay} turns a day) and was not woken. Raise it with configure_agent if the work should go on.`);
@@ -587,6 +639,8 @@ export function park(slug: string) {
 function turnEnded(a: Agent, payload: Record<string, unknown>) {
   clearTimeout(turnTimers.get(a.slug));
   const text = String(payload.text ?? "").trim();
+  // The account's limit, not an answer: held and sent again, never reported as what came of the work.
+  if (isLimit(text)) return limitHit(a, text);
   const cost = Number(payload.costUsd ?? 0);
   const current = get(a.slug)!;
   const s = sessionOf(current);
@@ -665,7 +719,7 @@ export function start() {
   };
   bus.on("event", handler);
   setTimeout(drain, 5_000);
-  const settling = setInterval(settle, SETTLE_EVERY_MS);
+  const settling = setInterval(() => (settle(), drainHeld()), SETTLE_EVERY_MS);
   return () => {
     clearInterval(settling);
     bus.off("event", handler);
