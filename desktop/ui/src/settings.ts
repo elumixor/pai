@@ -1,4 +1,4 @@
-import { baseUrl, inDesktop, setBaseUrl, setToken, token, usage } from "./api.ts";
+import { baseUrl, importSnapshot, inDesktop, setBaseUrl, setToken, snapshot, token, usage } from "./api.ts";
 import type { DashboardHandlers, Page, PageRenderer } from "./dashboard.ts";
 import { dashboardPages } from "./dashboard.ts";
 import { clear, el } from "./dom.ts";
@@ -33,12 +33,13 @@ export const SHORTCUTS: { keys: string; what: string }[] = [
   { keys: "@", what: "in a message: mention a file of the project" },
 ];
 
-export type SettingsSection = "appearance" | "usage" | "shortcuts" | "connection" | Page;
+export type SettingsSection = "appearance" | "usage" | "shortcuts" | "connection" | "snapshot" | Page;
 const SECTIONS: { id: SettingsSection; label: string; icon: IconName }[] = [
   { id: "appearance", label: "Appearance", icon: "sun" },
   { id: "usage", label: "Usage rings", icon: "zap" },
   { id: "shortcuts", label: "Shortcuts", icon: "key" },
   { id: "connection", label: "Connection", icon: "link" },
+  { id: "snapshot", label: "Snapshot", icon: "archive" },
 ];
 /** What the dashboard used to be: pages about the daemon itself, each a section here. */
 const PAGES: { id: Page; label: string; icon: IconName }[] = [
@@ -152,6 +153,43 @@ export function settingsView(pane: HTMLElement, initial: SettingsSection = "appe
   });
   row("connection", "link", "Daemon", "the pai API this app talks to", address, "address url host");
   row("connection", "key", "Token", "only if the daemon asks for one", secret, "auth secret");
+
+  // ---- snapshot: the state of things as one document, out and back in ------------------
+  const exportNote = el("span.dim");
+  const exportBtn = el(
+    "button.btn",
+    {
+      onclick: async () => {
+        exportBtn.disabled = true;
+        try {
+          const { text } = await snapshot();
+          const url = URL.createObjectURL(new Blob([text], { type: "text/markdown" }));
+          const a = el("a", { href: url, download: `pai-snapshot-${new Date().toISOString().slice(0, 10)}.md` });
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(url), 10_000);
+          exportNote.textContent = `${Math.round(text.length / 1000)}k characters`;
+        } catch (err) {
+          exportNote.textContent = (err as Error).message;
+        }
+        exportBtn.disabled = false;
+      },
+    },
+    icon("download", 12),
+    "Export",
+  ) as HTMLButtonElement;
+  const importNote = el("span.dim");
+  const picker = el("input", { type: "file", accept: ".md,.txt,.json,text/*", hidden: true }) as HTMLInputElement;
+  picker.addEventListener("change", async () => {
+    const file = picker.files?.[0];
+    picker.value = "";
+    if (!file) return;
+    importNote.textContent = "handing it to pai…";
+    const result = await importSnapshot(await file.text());
+    importNote.textContent = result.error ?? (result.queued ? "queued until the daemon answers" : "pai is rebuilding from it; watch General");
+  });
+  const importBtn = el("button.btn", { onclick: () => picker.click() }, icon("enter", 12), "Import", picker);
+  row("snapshot", "download", "Export", "memory, staff with their notes, open tasks, decisions, routines, project contexts — one markdown file", el("span.row-inline", {}, exportNote, exportBtn), "backup save state life", false);
+  row("snapshot", "enter", "Import", "a snapshot handed to pai as a prompt: it creates the missing agents and tasks, writes their notes, merges the memory", el("span.row-inline", {}, importNote, importBtn), "restore load state life", false);
 
   // ---- layout -------------------------------------------------------------------------
   const search = el("input.settings-search", { placeholder: "Search settings…", spellcheck: false }) as HTMLInputElement;

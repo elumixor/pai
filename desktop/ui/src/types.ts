@@ -214,6 +214,8 @@ export interface Agent {
   readonly unresolvedTools?: readonly string[];
   readonly effort?: Effort | null;
   readonly project?: string | null;
+  /** Reports it receives from the agents under it go on to its own parent too. */
+  readonly bubble?: boolean;
   readonly budget?: { readonly turnsPerDay: number; readonly turnMinutes: number };
   readonly createdAt?: number;
   readonly closedAt?: number | null;
@@ -271,8 +273,10 @@ export interface LogMessage {
     readonly freeText?: boolean;
     /** A one-line gist of a long message, written by the daemon's summariser. */
     readonly tldr?: string;
-    /** Pictures that came with it, as urls an `<img>` loads. */
+    /** Pictures that came with it: attachment names, or urls an `<img>` loads directly. */
     readonly images?: readonly string[];
+    /** A map pin, drawn as a place card. */
+    readonly place?: { readonly latitude: number; readonly longitude: number; readonly title?: string; readonly address?: string };
     /** A six-word line for the row, written once by a small model. */
     readonly headline?: string;
     /** An answer's reply to the ask it answers: who asked, the ask's first line, and its row. */
@@ -338,4 +342,18 @@ export interface Routine {
   readonly runs: number;
   readonly lastRun: number | null;
   readonly owner: string;
+}
+
+/** One outward tool call as `GET /audit` lists them: a send, a write, a click in a signed-in site. */
+export interface AuditEntry {
+  readonly toolUseId: string;
+  readonly sessionId: string;
+  readonly agent: string | null;
+  readonly tool: string;
+  readonly summary: string;
+  readonly input: string;
+  readonly result: string | null;
+  /** null while the call has not answered. */
+  readonly ok: boolean | null;
+  readonly ts: number;
 }

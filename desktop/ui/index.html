@@ -5,12 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>pai</title>
     <link rel="icon" type="image/png" href="./pai-icon.png" />
+    <script>
+      // The last theme's canvas, before any stylesheet or module: no flash of the wrong mode.
+      try {
+        const boot = JSON.parse(localStorage.getItem("pai.theme.boot") || "null");
+        if (boot) {
+          document.documentElement.dataset.theme = boot.kind;
+          document.documentElement.style.setProperty("--bg", boot.bg);
+          document.documentElement.style.colorScheme = boot.kind;
+        }
+      } catch {}
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
     <link rel="stylesheet" href="./xterm.css" />
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
+    <div id="progress" class="progress" role="progressbar" aria-hidden="true"><span class="progress-bar"></span></div>
     <nav id="nav" class="nav"></nav>
     <section id="home" class="home" hidden></section>
     <main id="main" hidden>

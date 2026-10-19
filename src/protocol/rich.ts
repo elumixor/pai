@@ -19,9 +19,26 @@ export const MAX_PAYLOAD_CHARS = 2048;
  * `user`: what the user typed somewhere else (a terminal), shown as their own message.
  * The rest come from the message log (pai and its agents): `event` is one service row, `events`
  * a folded run of them; `delegation` a card for work handed to an agent, with its live status;
- * `report` what an agent said back; `ask` a question with buttons; `notice` something to know.
+ * `report` what an agent said back; `ask` a question with buttons; `notice` something to know;
+ * `place` a map pin, whose point rides as structure so our clients draw a card and a stock one
+ * still reads the name, the coordinates and a link it can open.
  */
-export type RichKind = "turn" | "status" | "question" | "result" | "user" | "event" | "events" | "delegation" | "report" | "ask" | "notice";
+export type RichKind = "turn" | "status" | "question" | "result" | "user" | "event" | "events" | "delegation" | "report" | "ask" | "notice" | "place";
+
+/** A point on the map, with the name and address a venue card shows when they are known. */
+export interface RichPlace {
+  readonly latitude: number;
+  readonly longitude: number;
+  readonly title?: string;
+  readonly address?: string;
+}
+
+/** Five decimals is about a metre; more is noise in a line someone reads. */
+const COORDS = (p: RichPlace) => `${p.latitude.toFixed(5)},${p.longitude.toFixed(5)}`;
+export const mapsUrl = (p: RichPlace) => `https://www.google.com/maps/search/?api=1&query=${COORDS(p)}`;
+
+/** The pin as one line of text: what a client with no idea of places shows, and what the model reads. */
+export const placeText = (p: RichPlace) => [p.title, p.address, COORDS(p), mapsUrl(p)].filter(Boolean).join(" · ");
 
 export type RichState = "starting" | "busy" | "idle" | "waiting" | "dead" | "error";
 
@@ -66,6 +83,7 @@ export const EVENT_ICONS: Readonly<Record<string, string>> = {
   question: "questionmark.circle",
   /** A turn's thinking and tool calls, folded into one line. */
   tools: "gearshape",
+  place: "mappin.and.ellipse",
 };
 
 /** The colour family each kind of row is tinted with, named so every client picks its own shade of the same thing. */
@@ -81,6 +99,7 @@ export const ROW_TINTS: Readonly<Record<string, RowTint>> = {
   question: "warn",
   answer: "ok",
   notice: "muted",
+  place: "accent",
   event: "muted",
   tools: "muted",
   error: "hot",
@@ -119,6 +138,8 @@ export interface RichMeta {
   readonly options?: readonly string[];
   readonly answer?: string;
   readonly priority?: string;
+  /** A map pin. */
+  readonly place?: RichPlace;
   /** The forum topic the agent's chat is in, so a client can open it. */
   readonly thread?: number;
 }

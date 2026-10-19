@@ -1,3 +1,4 @@
+import { remember } from "./storage.ts";
 import { THEMES, themeById, type Theme } from "./themes.ts";
 
 /**
@@ -19,8 +20,8 @@ interface Choice {
 // Nord Light became the light theme once, whatever was picked before it existed; a pick after that stays.
 try {
   const stored = JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<Choice>;
-  if (stored.light && !localStorage.getItem(`${KEY}.nord-light`)) localStorage.setItem(KEY, JSON.stringify({ ...stored, light: "nord-light" }));
-  localStorage.setItem(`${KEY}.nord-light`, "1");
+  if (stored.light && !localStorage.getItem(`${KEY}.nord-light`)) remember(KEY, JSON.stringify({ ...stored, light: "nord-light" }));
+  remember(`${KEY}.nord-light`, "1");
 } catch {}
 
 const read = (): Choice => {
@@ -44,7 +45,7 @@ export const current = (): Theme => {
 };
 
 export function choose(changes: Partial<Choice>) {
-  localStorage.setItem(KEY, JSON.stringify({ ...read(), ...changes }));
+  remember(KEY, JSON.stringify({ ...read(), ...changes }));
   apply();
 }
 
@@ -65,6 +66,10 @@ function apply() {
   for (const [name, value] of Object.entries(theme.home ?? {})) root.style.setProperty(name, value);
   root.style.colorScheme = theme.kind;
   root.dataset.theme = theme.kind;
+  // What the page paints before this module runs (see the inline script in index.html).
+  try {
+    remember(`${KEY}.boot`, JSON.stringify({ kind: theme.kind, bg: theme.home?.["--canvas"] ?? theme.ui.bg }));
+  } catch {}
   window.dispatchEvent(new Event("pai:theme"));
 }
 

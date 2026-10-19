@@ -6,6 +6,8 @@ import { config } from "../core/config.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as agents from "./agents.ts";
+import { attach, type Image } from "./attachments.ts";
+import type { RichPlace } from "../protocol/rich.ts";
 import * as asks from "./asks.ts";
 import * as gate from "./gate.ts";
 import * as journal from "./journal.ts";
@@ -73,16 +75,18 @@ function fresh(reason: string): Session {
 }
 
 /** A message from the user to pai. Open asks ride along, so a plain reply can answer one. */
-export function send(text: string, opts: { images?: { media_type: string; data: string }[] } = {}) {
+export function send(text: string, opts: { images?: readonly Image[]; place?: RichPlace } = {}) {
   const s = session();
-  messages.log({ from: "user", to: agents.PAI, kind: "chat", body: text });
+  // Kept before the turn: the row carries their names, so every client draws what he attached.
+  const pictures = attach(opts.images);
+  messages.log({ from: "user", to: agents.PAI, kind: "chat", body: text, meta: { ...pictures.meta, ...(opts.place ? { place: opts.place } : {}) } });
   if (s.pending) {
     s.answer(text);
     return s;
   }
   const open = asks.open();
   if (open.length) s.inject(`[open asks — if the user's next message answers one, call answer_ask]\n${open.map((a) => `#${a.id} ${agents.breadcrumb(a.agent)}: ${a.question}${a.options.length ? ` (${a.options.join(" / ")})` : ""}`).join("\n")}`);
-  s.send(text, { images: opts.images, origin: "user" });
+  s.send(text, { images: opts.images ? [...opts.images] : undefined, origin: "user" });
   return s;
 }
 

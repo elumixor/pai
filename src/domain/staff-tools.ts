@@ -294,14 +294,15 @@ export function staffTools(me: string | undefined) {
     out.push(
       tool(
         "configure_agent",
-        "Change an agent: brief (rewrites its CLAUDE.md), tools, model, daily turn budget, minutes per turn, its notices' priority (-2 quieter … +2 louder), or where it sits in the tree (parent — a standing agent still reports to you wherever it sits).",
-        { agent: z.string(), name: z.string().optional(), brief: z.string().optional(), parent: z.string().optional(), tools: z.array(z.string()).nullable().optional(), model: model.nullable().optional(), turns_per_day: z.number().optional(), turn_minutes: z.number().optional(), priority: z.number().optional() },
-        guard((a: { agent: string; name?: string; brief?: string; parent?: string; tools?: string[] | null; model?: string | null; turns_per_day?: number; turn_minutes?: number; priority?: number }) =>
+        "Change an agent: brief (rewrites its CLAUDE.md), tools, model, daily turn budget, minutes per turn, its notices' priority (-2 quieter … +2 louder), where it sits in the tree (parent: the agent its reports go to), or whether reports it receives from those under it go on up to its own parent (bubble, on by default).",
+        { agent: z.string(), name: z.string().optional(), brief: z.string().optional(), parent: z.string().optional(), bubble: z.boolean().optional(), tools: z.array(z.string()).nullable().optional(), model: model.nullable().optional(), turns_per_day: z.number().optional(), turn_minutes: z.number().optional(), priority: z.number().optional() },
+        guard((a: { agent: string; name?: string; brief?: string; parent?: string; bubble?: boolean; tools?: string[] | null; model?: string | null; turns_per_day?: number; turn_minutes?: number; priority?: number }) =>
           agentSummary(
             agents.configure(a.agent, {
               name: a.name,
               brief: a.brief,
               parent: a.parent,
+              bubble: a.bubble,
               tools: a.tools,
               model: a.model,
               priority: a.priority,

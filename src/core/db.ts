@@ -237,6 +237,8 @@ if (!sessionColumns.includes("origin")) {
   // A row no process of ours ever ran (no model answered, nothing spent, nobody started it) is a terminal's, followed by the mirror.
   db.exec("UPDATE sessions SET origin = 'terminal' WHERE model IS NULL AND cost_usd = 0 AND agent IS NULL AND parent_id IS NULL AND kind != 'main'");
 }
+// Whether reports an agent receives from those under it go on up to its own parent; it decides, per agent.
+if (!(db.query("PRAGMA table_info(agents)").all() as { name: string }[]).some((c) => c.name === "bubble")) db.exec("ALTER TABLE agents ADD COLUMN bubble INTEGER NOT NULL DEFAULT 1");
 // Routines: a schedule next to the event, an agent next to the action, a check in code before any model runs.
 const automationColumns = (db.query("PRAGMA table_info(automations)").all() as { name: string }[]).map((c) => c.name);
 if (!automationColumns.includes("schedule")) db.exec("ALTER TABLE automations ADD COLUMN schedule TEXT NOT NULL DEFAULT ''");

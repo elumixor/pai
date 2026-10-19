@@ -1,3 +1,4 @@
+import { remember } from "./storage.ts";
 /** Small per-browser preferences beyond the theme: which usage rings the status bar shows. */
 const KEY = "pai.prefs";
 
@@ -19,6 +20,6 @@ const read = (): Prefs => {
 export const prefs = read;
 
 export function setPrefs(changes: Partial<Prefs>) {
-  localStorage.setItem(KEY, JSON.stringify({ ...read(), ...changes }));
+  remember(KEY, JSON.stringify({ ...read(), ...changes }));
   window.dispatchEvent(new Event("pai:prefs"));
 }

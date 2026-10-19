@@ -33,6 +33,7 @@ import * as audit from "../domain/audit.ts";
 import * as requests from "../domain/requests.ts";
 import * as tasks from "../domain/tasks.ts";
 import * as sync from "../domain/sync.ts";
+import { importPrompt, snapshot } from "../domain/snapshot.ts";
 
 const log = logger("api");
 
@@ -391,10 +392,10 @@ export async function handle(req: Request): Promise<Response> {
       if (!a) return json({ error: "no such agent" }, 404);
       try {
         if (agentPath[2] === "message" && req.method === "POST") {
-          const { text, taskId } = await body<{ text: string; taskId?: number }>(req);
-          if (!text?.trim()) return json({ error: "text required" }, 400);
-          if (slug === agents.PAI) return json({ session: main.send(text).shortId });
-          return json(agents.fromUser(slug, text, taskId));
+          const { text, taskId, images } = await body<{ text: string; taskId?: number; images?: { media_type: string; data: string }[] }>(req);
+          if (!text?.trim() && !images?.length) return json({ error: "text required" }, 400);
+          if (slug === agents.PAI) return json({ session: main.send(text ?? "", { images }).shortId });
+          return json(agents.fromUser(slug, text ?? "", taskId, images));
         }
         // Stopping pai is stopping its one session; an agent stops with everything below it.
         if (agentPath[2] === "stop" && req.method === "POST") {
@@ -422,16 +423,17 @@ export async function handle(req: Request): Promise<Response> {
     // The message log: one agent's chat (`agent`), paged back with `before`, caught up with `after`.
     if (path === "/messages") {
       const num = (k: string) => (url.searchParams.get(k) ? Number(url.searchParams.get(k)) : undefined);
-      return json(messages.list({ agent: url.searchParams.get("agent") ?? undefined, task: num("task"), before: num("before"), after: num("after"), limit: num("limit") }));
+      const kinds = url.searchParams.get("kinds")?.split(",").filter(Boolean) as messages.MessageKind[] | undefined;
+      return json(messages.list({ agent: url.searchParams.get("agent") ?? undefined, task: num("task"), before: num("before"), after: num("after"), limit: num("limit"), kinds }));
     }
 
     // A message to pai, the one chat; `wait` holds the response until pai has answered.
     if (path === "/pai" && req.method === "POST") {
-      const { text, wait } = await body<{ text: string; wait?: boolean }>(req);
-      if (!text?.trim()) return json({ error: "text required" }, 400);
+      const { text, wait, images } = await body<{ text: string; wait?: boolean; images?: { media_type: string; data: string }[] }>(req);
+      if (!text?.trim() && !images?.length) return json({ error: "text required" }, 400);
       const s = main.session();
       const done = wait ? waitFor("session.turn_end", s.id, TURN_TIMEOUT) : undefined;
-      main.send(text);
+      main.send(text ?? "", { images });
       return json(done ? { session: s.shortId, ...(await done).payload } : s.summary());
     }
     if (path === "/pai/rotate" && req.method === "POST") {
@@ -569,6 +571,13 @@ export async function handle(req: Request): Promise<Response> {
     if (path === "/mutes" && req.method === "DELETE") return json({ removed: asks.unmute(Number(url.searchParams.get("id"))) });
     if (path === "/mutes") return json(asks.mutes());
     // What the sessions did outside the daemon: sends, posts, writes, clicks in signed-in sites.
+    // The state of things as one markdown document; posted back (to this or another pai), it becomes pai's turn to rebuild from.
+    if (path === "/snapshot" && req.method === "POST") {
+      const { text } = await body<{ text: string }>(req);
+      if (!text?.trim()) return json({ error: "text required" }, 400);
+      return json({ session: main.send(importPrompt(text)).shortId });
+    }
+    if (path === "/snapshot") return json({ text: snapshot() });
     if (path === "/audit") {
       const p = url.searchParams;
       return json(audit.list({ agent: p.get("agent") ?? undefined, search: p.get("q") ?? undefined, since: Number(p.get("since")) || undefined, limit: Number(p.get("limit") ?? 50) }));

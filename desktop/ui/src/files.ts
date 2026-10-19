@@ -48,13 +48,14 @@ async function level(parent: HTMLElement, path: string, open: (path: string) => 
   const sorted = [...listing].sort((a, b) => Number(b.directory) - Number(a.directory) || a.name.localeCompare(b.name));
   for (const entry of sorted) {
     if (entry.name.startsWith(".") && entry.name !== ".env") continue;
-    const children = el("div.children", { hidden: true });
+    const inner = el("div.children-inner");
+    const children = el("div.children", {}, inner);
     const chevron = entry.directory ? icon("chevron", 12) : undefined;
     let loading: Promise<void> | undefined;
     const expand = async () => {
-      children.removeAttribute("hidden");
+      children.classList.add("open");
       chevron?.classList.add("open");
-      if (!children.childElementCount) await (loading ??= level(children, entry.path, open, depth + 1, current, branches));
+      if (!inner.childElementCount) await (loading ??= level(inner, entry.path, open, depth + 1, current, branches));
     };
     const row = el(
       "button.file",
@@ -68,10 +69,9 @@ async function level(parent: HTMLElement, path: string, open: (path: string) => 
             row.classList.add("current");
             return open(entry.path);
           }
-          const collapsed = children.hasAttribute("hidden");
-          if (collapsed) await expand();
+          if (!children.classList.contains("open")) await expand();
           else {
-            children.setAttribute("hidden", "");
+            children.classList.remove("open");
             chevron?.classList.remove("open");
           }
         },

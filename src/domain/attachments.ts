@@ -33,6 +33,18 @@ export function keep(image: Image): string {
   return name;
 }
 
+/** Where a kept image lives, for a session that can open the file itself. */
+export const pathOf = (name: string) => join(dir, name);
+
+/**
+ * Images on their way into a message: each kept once, the row remembering the names (which is
+ * what a client turns back into urls) and the model getting the pictures themselves.
+ */
+export function attach(images: readonly Image[] | undefined) {
+  const names = (images ?? []).map(keep);
+  return { names, meta: names.length ? { images: names } : undefined, refs: names.map((n) => `[image: ${pathOf(n)}]`).join("\n") };
+}
+
 /** A kept image as a response, or undefined for a name that is not one. */
 export function serve(name: string): Response | undefined {
   if (!NAME.test(name)) return undefined;

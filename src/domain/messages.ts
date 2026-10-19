@@ -1,4 +1,5 @@
 import { bus } from "../core/bus.ts";
+import type { RichPlace } from "../protocol/rich.ts";
 import { db, now } from "../core/db.ts";
 
 /** The orchestrator's slug; its chat is the user's one chat. */
@@ -54,6 +55,10 @@ export interface MessageMeta {
   /** For a delegation or a report: the agent the row is about, when neither end says it. */
   agent?: string;
   link?: string;
+  /** Attachment names (`attachments.ts`) for the pictures the message came with. */
+  images?: string[];
+  /** A map pin: a client draws it as a place, Telegram as a venue. */
+  place?: RichPlace;
   options?: string[];
   breadcrumb?: string;
   /** An answer's reply to the ask it answers: who asked, the ask's first line, and its row. */

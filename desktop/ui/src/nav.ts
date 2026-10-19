@@ -1,14 +1,14 @@
 import { syncReports } from "./api.ts";
 import { el } from "./dom.ts";
 import { icon, type IconName } from "./icons.ts";
+import { noticesBell } from "./notices.ts";
 import { current, linkTo, onRoute, type RouteName } from "./router.ts";
 import type { SyncReport } from "./types.ts";
 
 /**
- * The four icons in the corner: the chat, the board, the editor, and settings (which also
- * holds the modules, the routines, the projects, the context and the agents). The settings
- * icon carries how many things wait on the user. After them, a dot for whether the Macs'
- * files have reached the box.
+ * The icons in the corner: the chat, the board, the editor, and settings (which also holds the
+ * modules, the routines, the projects, the context and the agents); then the bell with what
+ * happened and how much of it is new, and a dot for whether the Macs' files have reached the box.
  */
 
 const ITEMS: readonly { name: RouteName; title: string; icon: IconName; active: (name: RouteName) => boolean }[] = [
@@ -20,7 +20,9 @@ const ITEMS: readonly { name: RouteName; title: string; icon: IconName; active: 
 
 export function nav(root: HTMLElement) {
   const links = ITEMS.map((item) => linkTo(item.name, el("a.nav-item", { title: item.title }, icon(item.icon, 15)) as HTMLAnchorElement));
-  root.replaceChildren(...links, syncDot());
+  const bell = el("span.nav-bell-slot");
+  noticesBell(bell);
+  root.replaceChildren(...links, bell, syncDot());
   const draw = () => {
     const route = current();
     ITEMS.forEach((item, i) => links[i]!.classList.toggle("on", item.active(route.name)));

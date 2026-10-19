@@ -13,7 +13,7 @@ import { linter, lintGutter, type Diagnostic as LintDiagnostic } from "@codemirr
 import { diagnostics as fetchDiagnostics } from "./api.ts";
 import { Vim, vim } from "@replit/codemirror-vim";
 import { file, saveFile } from "./api.ts";
-import { basename, clear, el } from "./dom.ts";
+import { basename, clear, el, skeleton } from "./dom.ts";
 import { icon } from "./icons.ts";
 import { editorTheme } from "./highlight.ts";
 import { current, onTheme } from "./theme.ts";
@@ -99,7 +99,7 @@ export async function editor(pane: HTMLElement, path: string) {
   const isMarkdown = /\.(md|markdown|mdx)$/i.test(path);
   const previewButton = isMarkdown ? el("button.iconbtn", { title: "preview (⌘⇧P)" }, icon("book", 13)) : undefined;
   const head = el("header.panel-head", {}, icon("file", 13), el("h2", {}, basename(path)), el("span.dim.ellipsis", { title: path }, path), el("span.grow"), status, previewButton);
-  const host = el("div.cm-host");
+  const host = el("div.cm-host", {}, skeleton("lines", 16));
   const preview = el("div.md-preview.scroll", { hidden: true });
   clear(pane, head, host, preview);
   // Markdown can be read rendered; the editor keeps its state underneath and comes back on toggle.
@@ -122,6 +122,7 @@ export async function editor(pane: HTMLElement, path: string) {
     return;
   }
 
+  clear(host);
   let dirty = false;
   const mark = () => {
     status.textContent = dirty ? "modified" : "";

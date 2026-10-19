@@ -7,12 +7,12 @@ import { inDesktop } from "./api.ts";
  * daemon the path is under `/ui/`; the desktop app has no server behind its window, so there
  * the route lives in the hash.
  */
-export type RouteName = "home" | "chat" | "agents" | "board" | "dashboard" | "modules" | "automations" | "projects" | "context" | "editor" | "settings" | "task" | "thread";
-const NAMES: readonly RouteName[] = ["home", "chat", "agents", "board", "dashboard", "modules", "automations", "projects", "context", "editor", "settings", "task", "thread"];
+export type RouteName = "home" | "chat" | "agents" | "board" | "dashboard" | "modules" | "automations" | "projects" | "context" | "editor" | "settings" | "task" | "thread" | "project";
+const NAMES: readonly RouteName[] = ["home", "chat", "agents", "board", "dashboard", "modules", "automations", "projects", "context", "editor", "settings", "task", "thread", "project"];
 
 export interface Route {
   readonly name: RouteName;
-  /** `chat/<slug>` (an agent's thread) and `board/<slug>` carry the slug, `task/<id>` the task, `thread/<session>` a plain thread, `editor/<session>` a thread to open in the editor. */
+  /** `chat/<slug>` (an agent's page), `project/<slug>` (a repo's) and `board/<slug>` carry the slug, `task/<id>` the task, `thread/<session>` a plain thread, `editor/<session>` a thread to open in the editor. */
   readonly param?: string;
 }
 
@@ -23,7 +23,7 @@ const parse = (raw: string): Route => {
   const [first = "", second] = raw.replace(/^[/#]+|\/+$/g, "").split("/");
   // The work view used to be the root; its old address still opens it.
   if (first === "work") return { name: "editor" };
-  if (!(NAMES as readonly string[]).includes(first) || first === "home" || ((first === "chat" || first === "thread") && !second) || (first === "task" && !Number(second))) return { name: "home" };
+  if (!(NAMES as readonly string[]).includes(first) || first === "home" || ((first === "chat" || first === "thread" || first === "project") && !second) || (first === "task" && !Number(second))) return { name: "home" };
   return second ? { name: first as RouteName, param: decodeURIComponent(second) } : { name: first as RouteName };
 };
 

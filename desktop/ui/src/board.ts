@@ -1,5 +1,5 @@
 import { allTasks, createTask, follow, messages as listMessages, task as fetchTask, updateTask } from "./api.ts";
-import { ago, clear, el } from "./dom.ts";
+import { ago, clear, el, fresh, skeleton } from "./dom.ts";
 import { icon } from "./icons.ts";
 import { kindIcon } from "./kinds.ts";
 import { markdown } from "./markdown.ts";
@@ -57,8 +57,11 @@ export function board(initial: string | undefined, ctx: BoardContext): Board {
 
   const treePane = el("aside.board-tree");
   const main = el("section.board-main");
-  const panel = el("aside.board-panel", { hidden: true });
+  const panel = el("aside.board-panel");
   const node = el("div.board-view", {}, treePane, main, panel);
+  /** Tasks that arrived since the last draw: their cards come in. */
+  const arrived = new Set<number>();
+  let loaded = false;
 
   // ---- the tree ---------------------------------------------------------------------------
 
@@ -178,6 +181,7 @@ export function board(initial: string | undefined, ctx: BoardContext): Board {
           : undefined,
       ),
     );
+    if (arrived.delete(t.id)) fresh(node);
     node.addEventListener("dragstart", (event) => {
       (event as DragEvent).dataTransfer?.setData("text/plain", String(t.id));
       node.classList.add("dragging");
@@ -235,8 +239,8 @@ export function board(initial: string | undefined, ctx: BoardContext): Board {
       const column = el(
         "section.board-column",
         { class: `board-column col-${c.id}` },
-        el("h3.section-title", {}, c.label, el("span.dim", {}, String(items.length))),
-        el("div.board-cards", {}, ...items.map((t) => card(t, childrenOf(t.id)))),
+        el("h3.section-title", {}, el("span", {}, c.label), el("span.col-count", {}, String(items.length))),
+        el("div.board-cards", {}, ...(!loaded ? [skeleton("lines", 3)] : items.length ? items.map((t) => card(t, childrenOf(t.id))) : [el("p.col-empty", {}, "Nothing here")])),
       );
       column.addEventListener("dragover", (event) => {
         event.preventDefault();
@@ -258,9 +262,9 @@ export function board(initial: string | undefined, ctx: BoardContext): Board {
 
   async function openPanel(id: number) {
     openTask = id;
-    panel.hidden = false;
+    node.classList.add("with-panel");
     main.querySelectorAll(".board-card").forEach((c) => c.classList.toggle("on", Number((c as HTMLElement).dataset.task) === id));
-    clear(panel, el("p.hint", {}, "…"));
+    clear(panel, el("header.panel-head", {}, el("span.dim", {}, `#${id}`), el("span.grow"), el("button.iconbtn", { title: "close", onclick: closePanel }, icon("x", 13))), el("div.panel-body", {}, skeleton("lines", 6)));
     const [full, log] = await Promise.all([fetchTask(id).catch(() => undefined), Promise.resolve(byId(id)).then((t) => (t ? listMessages(t.owner, { limit: 300 }).catch(() => []) : []))]);
     if (openTask !== id) return;
     const t = full ?? byId(id);
@@ -327,8 +331,7 @@ export function board(initial: string | undefined, ctx: BoardContext): Board {
 
   function closePanel() {
     openTask = undefined;
-    panel.hidden = true;
-    clear(panel);
+    node.classList.remove("with-panel");
     main.querySelectorAll(".board-card.on").forEach((c) => c.classList.remove("on"));
   }
 
@@ -337,13 +340,17 @@ export function board(initial: string | undefined, ctx: BoardContext): Board {
   function upsert(t: TaskItem) {
     const index = tasks.findIndex((x) => x.id === t.id);
     if (index >= 0) tasks[index] = { ...tasks[index]!, ...t };
-    else tasks.push(t);
+    else {
+      tasks.push(t);
+      arrived.add(t.id);
+    }
     drawTree();
     drawBoard();
   }
 
   async function load() {
     tasks = await allTasks().catch(() => []);
+    loaded = true;
     drawTree();
     drawBoard();
   }
@@ -357,7 +364,7 @@ export function board(initial: string | undefined, ctx: BoardContext): Board {
   );
 
   drawTree();
-  clear(main, el("p.hint", {}, "…"));
+  drawBoard();
   void load();
 
   return {

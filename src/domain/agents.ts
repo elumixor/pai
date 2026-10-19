@@ -5,6 +5,7 @@ import { config } from "../core/config.ts";
 import { db, kv, now } from "../core/db.ts";
 import { logger } from "../core/log.ts";
 import { day } from "../core/time.ts";
+import { attach, type Image } from "./attachments.ts";
 import { narrowed, unresolved } from "./capabilities.ts";
 import { get as getProject } from "./catalog.ts";
 import * as journal from "./journal.ts";
@@ -53,6 +54,8 @@ export interface Agent {
   readonly effort: Effort | null;
   readonly budget: Budget;
   readonly priority: number;
+  /** Reports that reach it from the agents and threads under it go on to its own parent too. */
+  readonly bubble: boolean;
   readonly status: AgentStatus;
   readonly sessionId: string | null;
   readonly threadId: number | null;
@@ -84,6 +87,7 @@ const toAgent = (r: Record<string, any>): Agent => ({
   effort: r.effort ?? null,
   budget: { ...DEFAULT_BUDGET, ...(JSON.parse(r.budget || "{}") as Partial<Budget>) },
   priority: r.priority ?? 0,
+  bubble: r.bubble !== 0,
   status: r.status,
   sessionId: r.session_id ?? null,
   threadId: r.thread_id ?? null,
@@ -251,7 +255,7 @@ function roleFile(name: string, brief: string) {
 }
 
 /** Changes what an agent runs with; its session restarts on the next message. */
-export function configure(slug: string, changes: { brief?: string; tools?: string[] | null; model?: string | null; effort?: Effort | null; budget?: Partial<Budget>; priority?: number; name?: string; parent?: string }) {
+export function configure(slug: string, changes: { brief?: string; tools?: string[] | null; model?: string | null; effort?: Effort | null; budget?: Partial<Budget>; priority?: number; name?: string; parent?: string; bubble?: boolean }) {
   const a = get(slug);
   if (!a || a.kind === "orchestrator") throw new AgentError(`no agent ${slug}`);
   const fields: Record<string, string | number | null> = {};
@@ -272,6 +276,7 @@ export function configure(slug: string, changes: { brief?: string; tools?: strin
   if (changes.effort !== undefined) fields.effort = changes.effort;
   if (changes.budget) fields.budget = JSON.stringify({ ...a.budget, ...changes.budget });
   if (changes.priority !== undefined) fields.priority = Math.max(-2, Math.min(2, Math.round(changes.priority)));
+  if (changes.bubble !== undefined) fields.bubble = changes.bubble ? 1 : 0;
   const updated = set(slug, fields);
   if (changes.tools !== undefined && updated) warnUnresolved(updated);
   // Tools and model are fixed when a process starts; the next message starts one with these.
@@ -389,6 +394,8 @@ export interface MessageOptions {
   taskId?: number | null;
   requestId?: number;
   meta?: messages.MessageMeta;
+  /** What the chat shows, when the text the agent is woken with carries more (attachment paths). */
+  body?: string;
   /** The caller logged this hop already. */
   logged?: boolean;
 }
@@ -402,7 +409,7 @@ export function message(slug: string, text: string, opts: MessageOptions): messa
   if (!a) throw new AgentError(`no agent ${slug}`);
   if (a.status === "closed") throw new AgentError(`${a.name} is closed`);
   if (a.kind === "orchestrator") throw new AgentError("pai is reached through main.ts");
-  const row = opts.logged ? undefined : messages.log({ from: opts.from, to: slug, kind: opts.kind ?? "chat", body: text, taskId: opts.taskId, meta: { ...opts.meta, requestId: opts.requestId } });
+  const row = opts.logged ? undefined : messages.log({ from: opts.from, to: slug, kind: opts.kind ?? "chat", body: opts.body ?? text, taskId: opts.taskId, meta: { ...opts.meta, requestId: opts.requestId } });
   const prefix = opts.from === "user" ? "[the user, writing to you directly]" : opts.from === PAI ? "[pai]" : `[${get(opts.from)?.name ?? opts.from}]`;
   wake(slug, `${prefix} ${text}${opts.taskId ? `\n\n(task #${opts.taskId})` : ""}`, opts.requestId, opts.taskId);
   return row;
@@ -483,10 +490,12 @@ export function noteTo(slug: string, text: string) {
 }
 
 /** The user wrote in an agent's own chat: that is a message to the agent, and pai gets a line about it. */
-export function fromUser(slug: string, text: string, taskId?: number | null) {
+export function fromUser(slug: string, text: string, taskId?: number | null, images?: readonly Image[]) {
   const a = get(slug);
   if (!a) throw new AgentError(`no agent ${slug}`);
-  const row = message(slug, text, { from: "user", kind: "chat", taskId });
+  // An agent is woken with text, so its pictures travel as the file paths it can open itself.
+  const pictures = attach(images);
+  const row = message(slug, pictures.refs ? `${text}\n\n${pictures.refs}`.trim() : text, { from: "user", kind: "chat", taskId, meta: pictures.meta, body: text });
   notePai(`[the user stepped into ${breadcrumb(slug)}'s chat] ${text.replace(/\s+/g, " ").slice(0, 200)}`);
   return row;
 }
@@ -535,20 +544,39 @@ export function onRequestAnswered(fn: typeof onAnswered) {
 }
 
 /**
- * Who an agent's work answers to. A sub-agent was started by its parent for one job, so its report belongs
- * in that session. A standing or service agent's parent is only where it sits in the tree: its work is pai's,
- * and a report relayed to another standing agent lands in a session with neither the context nor the tools
- * for it — at best a wasted turn, at worst one acted on by the wrong hands.
+ * Who an agent's work answers to: the agent above it, whoever that is. From there it goes on up only as
+ * far as each agent in the chain lets it (`bubble`); pai is the top. A report delivered to an agent that
+ * cannot act on it is a wasted turn, so an agent that holds its own area turns bubbling off.
  */
-function reportsTo(a: Agent): string {
-  return a.kind === "sub" ? (a.parent ?? PAI) : PAI;
+function reportChain(a: Agent): string[] {
+  const chain: string[] = [];
+  for (let to = a.parent ?? PAI; ; ) {
+    chain.push(to);
+    const p = get(to);
+    if (to === PAI || !p || !p.bubble) return chain;
+    to = p.parent ?? PAI;
+  }
+}
+
+/** The first stop of a report: the agent above. */
+function reportsTo(a: Agent) {
+  return reportChain(a)[0]!;
+}
+
+/** Hands something to each agent in a chain: pai as a batched turn, another as a line in its session. */
+function reportUp(chain: readonly string[], forPai: string, forAgent: (parent: Agent) => void) {
+  for (const to of chain) {
+    if (to === PAI) {
+      toPai(forPai);
+      continue;
+    }
+    const p = get(to);
+    if (p && p.status !== "closed") forAgent(p);
+  }
 }
 
 function tellOwner(a: Agent, text: string) {
-  const to = reportsTo(a);
-  if (to === PAI) return toPai(`[${a.name}] ${text}`);
-  const p = get(to);
-  if (p && p.status !== "closed") sessionOf(p)?.inject(`[${a.name}] ${text}`);
+  reportUp(reportChain(a), `[${a.name}] ${text}`, (p) => sessionOf(p)?.inject(`[${a.name}] ${text}`));
 }
 
 /** An agent marks itself waiting on the user (a blocking ask); its next turn end is not a report. */
@@ -587,14 +615,9 @@ function turnEnded(a: Agent, payload: Record<string, unknown>) {
       const closed = close(a.slug, report.split("\n")[0]!.slice(0, 200));
       if (closed.folder !== a.folder) report = report.replaceAll(a.folder, closed.folder);
     }
-    const to = reportsTo(current);
-    messages.log({ from: a.slug, to, kind: "report", body: report, taskId, meta: { agent: a.slug } });
-    if (to === PAI) {
-      toPai(`[${a.name} reported]\n${report}`);
-    } else {
-      const parent = get(to);
-      if (parent && parent.status !== "closed") message(parent.slug, `${a.name} reported:\n${report}`, { from: a.slug, kind: "report", taskId, meta: { agent: a.slug } });
-    }
+    const chain = reportChain(current);
+    messages.log({ from: a.slug, to: chain[0]!, kind: "report", body: report, taskId, meta: { agent: a.slug } });
+    reportUp(chain, `[${a.name} reported]\n${report}`, (parent) => message(parent.slug, `${a.name} reported:\n${report}`, { from: a.slug, kind: "report", taskId, meta: { agent: a.slug } }));
   }
   drain();
 }

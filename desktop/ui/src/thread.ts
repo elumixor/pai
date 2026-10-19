@@ -1,6 +1,6 @@
 import { follow, isOnline, send, transcript, type Transcript, type TranscriptTool } from "./api.ts";
 import { compose, type Compose } from "./compose.ts";
-import { clear, el, modelName } from "./dom.ts";
+import { clear, el, fresh, modelName, skeleton } from "./dom.ts";
 import { icon } from "./icons.ts";
 import { markdown } from "./markdown.ts";
 import type { Question, SessionSummary } from "./types.ts";
@@ -15,9 +15,9 @@ export interface ThreadHandlers {
 
 export function thread(pane: HTMLElement, session: SessionSummary, handlers: ThreadHandlers): () => void {
   const id = session.sessionId;
-  const log = el("div.tui");
+  const log = el("div.tui", {}, skeleton("lines", 10));
   const stateTag = el("span.tag", {}, session.state);
-  const modelTag = el("span.tag.model", { title: "the model answering this thread" }, modelName(session.model));
+  const modelTag = el("span.tag.model", { title: "the model answering this thread", hidden: !session.model }, modelName(session.model));
   const idButton = el(
     "button.iconbtn.slim.session-id",
     {
@@ -44,7 +44,7 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
     foot: () => session.project ?? (session.kind === "main" ? "workspace" : (session.cwd?.replace(/^.*\//, "") ?? "")),
     submit: async (text, images) => {
       log.querySelector(".hint")?.remove();
-      log.append(userLine(text || "(image)"));
+      log.append(fresh(userLine(text || "(image)")));
       scroll();
       // A thread nobody named takes its name from the first message, as the daemon does.
       if (heading.textContent === "new thread" && text) heading.textContent = text.replace(/\s+/g, " ").slice(0, 60);
@@ -85,10 +85,12 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
   void (async () => {
     try {
       const history = await transcript(id, session.cwd);
+      log.querySelector(":scope > .skeleton")?.remove();
       // Prepended: something may already have been typed while the transcript was on its way.
       log.prepend(...history.flatMap(render));
       if (!history.length && !log.childElementCount) log.append(el("p.hint", {}, "Nothing here yet."));
     } catch {
+      log.querySelector(":scope > .skeleton")?.remove();
       if (!log.childElementCount) log.append(el("p.hint", {}, "No transcript cached for this thread yet."));
     }
     if (!isOnline()) note.textContent = "offline — showing the last transcript this app saw";
@@ -113,10 +115,11 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
         break;
       case "session.model":
         modelTag.textContent = modelName(payload.model);
+        modelTag.hidden = !payload.model;
         break;
       case "session.delta":
         if (!liveText) {
-          liveText = el("div.entry.assistant.live", {}, el("span.mark", {}, "⏺"), el("div.body"));
+          liveText = fresh(el("div.entry.assistant.live", {}, el("span.mark", {}, "⏺"), el("div.body")));
           log.append(liveText);
         }
         liveText.querySelector(".body")!.replaceChildren(markdown(payload.text ?? ""));
@@ -125,7 +128,7 @@ export function thread(pane: HTMLElement, session: SessionSummary, handlers: Thr
       case "session.tool": {
         // A tool call closes the text entry before it; the next delta starts a fresh one.
         liveText = undefined;
-        const entry = toolLine({ id: payload.id, name: payload.name ?? "tool", input: payload.summary });
+        const entry = fresh(toolLine({ id: payload.id, name: payload.name ?? "tool", input: payload.summary }));
         entry.classList.add("live");
         if (payload.id) liveTools.set(payload.id, entry);
         // A subagent's calls sit under the Agent call that runs it.

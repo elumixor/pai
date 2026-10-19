@@ -27,6 +27,7 @@ const SYMBOLS: Readonly<Record<string, IconName>> = {
   archivebox: "archive",
   person: "user",
   gearshape: "gear",
+  "mappin.and.ellipse": "pin",
 };
 
 /** The icon for a row kind or an event name; a lightning bolt for anything the protocol has no symbol for. */

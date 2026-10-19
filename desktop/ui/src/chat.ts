@@ -1,10 +1,12 @@
 import { answerAsk, answerQuestion, asks as listAsks, dropAsk, follow, messages as listMessages, messageHeadline, needs as listNeeds, attachmentUrl, toolCall, transcript, type Transcript, type TranscriptTool } from "./api.ts";
 import { compose, type Compose, type Prefs } from "./compose.ts";
 import { contextMenu } from "./context-menu.ts";
-import { clear, el } from "./dom.ts";
+import { clear, el, fresh, STAGGER_MAX, STAGGER_MS, topLoader } from "./dom.ts";
 import { icon, type IconName } from "./icons.ts";
 import { EVENT_ICONS } from "../../../src/protocol/rich.ts";
 import { kindIcon, kindTint } from "./kinds.ts";
+import { remember } from "./storage.ts";
+import { mapsUrl, placeText } from "../../../src/protocol/rich.ts";
 import { inline, markdown } from "./markdown.ts";
 import type { Agent, AgentStatus, LogMessage, Need, Question } from "./types.ts";
 
@@ -21,6 +23,8 @@ const PAGE = 100;
 const PAI = "pai";
 /** A message of the user's longer than this folds to three lines with "Show more". */
 const MINE_FOLD_CHARS = 240;
+/** The folded bubble's height, as the stylesheet has it. */
+const FOLDED_HEIGHT = "calc(var(--body-lh) * 3)";
 
 export interface ChatContext {
   readonly agents: () => readonly Agent[];
@@ -35,8 +39,6 @@ export interface ChatOptions {
   readonly task?: number;
   /** The side the other party of the log sits on: the user for pai, the parent for an agent. */
   readonly parent: string;
-  /** What the column is headed with: "General" for pai, the agent's name for a thread. */
-  readonly title: string;
   /** The live session, when there is one: its stream and its transcript's tool calls. */
   readonly live?: () => Promise<string | undefined>;
   readonly send: (text: string, images: { media_type: string; data: string }[]) => Promise<{ error?: string; queued?: boolean; data?: unknown }>;
@@ -72,8 +74,6 @@ export interface Chat {
   readonly refreshAgents: () => void;
   /** Where the host puts what sits above the box: the hand with what waits. */
   readonly slot: HTMLElement;
-  /** The title over the column and, under it, a line of tags. */
-  readonly setHead: (title: string | HTMLElement, sub?: HTMLElement) => void;
   readonly refreshPrefs: () => void;
   /** The box, for a host that changes what it says. */
   readonly box: Compose;
@@ -210,10 +210,14 @@ function toolArgument(tool: TranscriptTool) {
   return text.replace(/^(\$|search|fetch|agent:)\s+/, "").replace(/^"(.*)"$/, "$1");
 }
 
+/** A kept attachment is a name on the row (`a1b2….jpg`); a local preview is already a data url. */
+const KEPT = /^[0-9a-f]{16}\.\w+$/;
+const pictureUrl = (src: string) => (KEPT.test(src) ? attachmentUrl(src) : src);
+
 /** The pictures a message came with, each opening full size in a new tab. */
 function pictures(urls: readonly string[] | undefined) {
   if (!urls?.length) return undefined;
-  return el("div.row-images", {}, ...urls.map((src) => el("a", { href: src, target: "_blank", rel: "noopener" }, el("img", { src, alt: "attached image", loading: "lazy" }))));
+  return el("div.row-images", {}, ...urls.map(pictureUrl).map((src) => el("a", { href: src, target: "_blank", rel: "noopener" }, el("img", { src, alt: "attached image", loading: "lazy" }))));
 }
 
 /** A preview the daemon cut ends in "… +N lines". */
@@ -276,6 +280,11 @@ function toolRow(tool: TranscriptTool, session?: string) {
 
 export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   const log = el("div.chat-log") as HTMLElement;
+  /** Which chat this is, for the two things remembered about it between visits: his draft and where he was reading. */
+  const chatKey = options.session ?? (options.task !== undefined ? `task${options.task}` : options.agent);
+  /** The rows and day marks drawn once already: a redraw lets only the others in, one by one, bottom to top. */
+  const drawn = new Set<string>();
+  const earlier = topLoader(log, loadEarlier);
   const items: Item[] = [];
   const seen = new Set<number>();
   let more = false;
@@ -343,6 +352,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
 
   const box: Compose = compose({
     placeholder: options.placeholder,
+    draftKey: chatKey,
     projectPath: options.projectPath,
     session: () => liveSession,
     prefs: options.prefs,
@@ -393,6 +403,56 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
 
   const nearBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 80;
   const scroll = () => (log.scrollTop = log.scrollHeight);
+
+  /**
+   * Opening a chat lands at the bottom, and stays there while the rows settle: images, code
+   * blocks and fonts arrive after the first paint, so one `scrollTop = scrollHeight` anchored
+   * against a document that was still short left him somewhere up the transcript. The bottom is
+   * held for a moment instead, and let go the instant he scrolls away from it himself.
+   */
+  const placeKey = `pai.scroll:${chatKey}`;
+  let holding: number | undefined;
+  function holdBottom(forMs = 2000) {
+    const until = Date.now() + forMs;
+    const tick = () => {
+      // Deliberately not checking nearBottom: the rows growing is what moves the bottom away.
+      scroll();
+      holding = Date.now() < until ? requestAnimationFrame(tick) : undefined;
+    };
+    if (holding !== undefined) cancelAnimationFrame(holding);
+    scroll();
+    holding = requestAnimationFrame(tick);
+  }
+  /** The topmost row he can see, so returning to the chat resumes where he stopped reading. */
+  function rememberPlace() {
+    const top = log.getBoundingClientRect().top;
+    const row = [...log.querySelectorAll<HTMLElement>("[data-message]")].find((r) => r.getBoundingClientRect().bottom > top);
+    if (nearBottom() || !row?.dataset.message) localStorage.removeItem(placeKey);
+    else remember(placeKey, row.dataset.message);
+  }
+
+  /** Back where he left off, if that row is still on screen; the bottom otherwise. */
+  function restorePlace() {
+    const id = localStorage.getItem(placeKey);
+    const row = id && log.querySelector<HTMLElement>(`[data-message="${id}"]`);
+    if (!row) return holdBottom();
+    row.scrollIntoView({ block: "start" });
+    // The rows above it settle too, so the anchor is held for the same moment the bottom would be.
+    const until = Date.now() + 2000;
+    const tick = () => {
+      row.scrollIntoView({ block: "start" });
+      if (Date.now() < until) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  let placing: ReturnType<typeof setTimeout> | undefined;
+  log.addEventListener("scroll", () => {
+    if (placing) clearTimeout(placing);
+    placing = setTimeout(rememberPlace, 200);
+  });
+  log.addEventListener("wheel", () => holding !== undefined && (cancelAnimationFrame(holding), (holding = undefined)), { passive: true });
+  log.addEventListener("touchstart", () => holding !== undefined && (cancelAnimationFrame(holding), (holding = undefined)), { passive: true });
 
   // ---- rows ------------------------------------------------------------------------------
 
@@ -445,9 +505,9 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         if (node.scrollWidth > node.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(node).overflowX)) return;
       const row = (event.target as HTMLElement).closest<HTMLElement>("[data-message]");
       const m = row && rowMessage(row);
-      // Sideways over the chat never goes back in history, whatever is under the fingers.
-      event.preventDefault();
+      // Over a row the swipe is a reply; over the rest of the chat it is the browser's, back and forward as ever.
       if (!row || !m) return;
+      event.preventDefault();
       if (swipe && swipe.row !== row) endSwipe();
       if (!swipe) {
         swipe = { row, m, dx: 0, timer: setTimeout(endSwipe, 0) };
@@ -474,10 +534,11 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   };
 
   /** The time at the end of a bubble's last line when it fits there, else on a line of its own, right-aligned. */
-  function timed(bubble: HTMLElement, at: number) {
+  function timed(bubble: HTMLElement, at: number, after?: HTMLElement) {
     const last = bubble.lastElementChild;
     const stamp = time(at);
     stamp.classList.add("inline-time");
+    if (after) stamp.append(after);
     if (last?.classList.contains("md-p")) last.append(stamp);
     else bubble.append(el("p.md-p.only-time", {}, stamp));
     return bubble;
@@ -506,11 +567,33 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       from ? el("div.row-from", {}, el("b", {}, from), m.taskId ? el("span.tag", {}, `#${m.taskId}`) : undefined) : undefined,
       quoted ? quoteBlock(quoted) : undefined,
       pictures(m.meta.images),
-      bodyText.trim() ? (long ? el("div.bubble", {}, markdown(bodyText)) : timed(el("div.bubble", {}, markdown(bodyText)), m.createdAt)) : undefined,
+      bodyText.trim() ? (long ? el("div.bubble", {}, markdown(bodyText)) : timed(el("div.bubble", {}, markdown(bodyText)), m.createdAt, m.from === "user" ? receipt() : undefined)) : undefined,
     );
-    // Folded, the last line is hidden, so the time and the toggle share a line under it.
-    const toggle = long ? el("button.more", { onclick: () => (row.classList.toggle("folded"), (toggle!.textContent = row.classList.contains("folded") ? "Show more" : "Show less")) }, "Show more") : undefined;
-    if (long || !bodyText.trim()) row.append(el("div.row-foot", {}, toggle, el("span.grow"), time(m.createdAt)));
+    // Folded, the last line is hidden, so the time and the toggle share a line under it. Unfolding grows the bubble to its height, folding shrinks it back.
+    const toggle = long
+      ? el(
+          "button.more",
+          {
+            onclick: () => {
+              const bubble = row.querySelector<HTMLElement>(".bubble")!;
+              const folding = !row.classList.contains("folded");
+              bubble.style.maxHeight = `${bubble.scrollHeight}px`;
+              void bubble.offsetHeight;
+              row.classList.toggle("folded", folding);
+              bubble.style.maxHeight = folding ? FOLDED_HEIGHT : `${bubble.scrollHeight}px`;
+              const settle = (event: TransitionEvent) => {
+                if (event.propertyName !== "max-height") return;
+                bubble.style.maxHeight = "";
+                bubble.removeEventListener("transitionend", settle);
+              };
+              bubble.addEventListener("transitionend", settle);
+              toggle!.textContent = folding ? "Show more" : "Show less";
+            },
+          },
+          "Show more",
+        )
+      : undefined;
+    if (long || !bodyText.trim()) row.append(el("div.row-foot", {}, toggle, el("span.grow"), time(m.createdAt), m.from === "user" ? receipt() : undefined));
     return row;
   }
 
@@ -674,7 +757,23 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     );
   }
 
+  /** The tick on his own message: the row exists, so the daemon has it and the turn is its problem now. */
+  const receipt = () => el("span.tick", { title: "pai has it" }, icon("check", 9));
+
+  /** A map pin — his own or pai's: the name, the address, and a tap that opens maps. */
+  function placeRow(m: LogMessage) {
+    const place = m.meta.place!;
+    const where = place.title ?? "Location";
+    return el(
+      "a.row.pill.place.tint-accent",
+      { href: mapsUrl(place), target: "_blank", rel: "noopener", "data-message": m.id, "data-at": m.createdAt, title: placeText(place) },
+      el("span.pill-line", {}, kindIcon("place", 10), el("b", {}, where), place.address ? el("span.ellipsis", {}, place.address) : undefined, el("span.when", {}, clock(m.createdAt))),
+    );
+  }
+
   function renderMessage(m: LogMessage): HTMLElement {
+    // A pin reads as a place whoever sent it, so it is drawn before the kind is even looked at.
+    if (m.meta.place) return placeRow(m);
     switch (m.kind) {
       case "chat":
         return mine(m) ? mineRow(m) : replyRow(m);
@@ -817,18 +916,22 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   /** Everything, in order, a day separator where the day changes, runs of events compacted. */
   function drawAll() {
     items.sort((a, b) => a.at - b.at);
-    const nodes: HTMLElement[] = [];
+    /** Each top-level node with whether anything in it is drawn for the first time. */
+    const nodes: { node: HTMLElement; isNew: boolean }[] = [];
+    const keyOf = (item: Item) => item.key;
     let day = "";
     let run: Row[] = [];
     const flush = () => {
-      if (run.length) nodes.push(...renderRun(run));
+      if (!run.length) return;
+      const isNew = run.some((r) => !drawn.has(keyOf(r)));
+      for (const node of renderRun(run)) nodes.push({ node, isNew });
       run = [];
     };
     for (const item of items) {
       if (dayOf(item.at) !== day) {
         flush();
         day = dayOf(item.at);
-        nodes.push(el("div.day", {}, el("span", {}, dayLabel(item.at))));
+        nodes.push({ node: el("div.day", {}, el("span", {}, dayLabel(item.at))), isNew: !drawn.has(`day:${day}`) });
       }
       if (isEvent(item)) {
         run.push(item);
@@ -836,13 +939,23 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       }
       flush();
       item.node = render(item);
-      nodes.push(item.node);
+      nodes.push({ node: item.node, isNew: !drawn.has(keyOf(item)) });
     }
     flush();
-    const earlier = more ? el("button.btn.chat-more", { onclick: () => void loadEarlier() }, "Load earlier") : undefined;
-    clear(log, earlier, ...nodes, ...(items.length ? [] : [el("p.hint", {}, loading ? "…" : "Nothing said here yet.")]));
+    // The rows not seen before come in one after another, the lowest first.
+    let step = 0;
+    for (let i = nodes.length - 1; i >= 0; i -= 1) {
+      const entry = nodes[i]!;
+      if (!entry.isNew) continue;
+      fresh(entry.node, Math.min(step, STAGGER_MAX) * STAGGER_MS);
+      step += 1;
+    }
+    for (const item of items) drawn.add(keyOf(item));
+    for (const item of items) drawn.add(`day:${dayOf(item.at)}`);
+    clear(log, more && earlier.node, ...nodes.map((n) => n.node), ...(items.length || loading ? [] : [el("p.hint", {}, "Nothing said here yet.")]));
     if (liveText) log.append(liveText);
     if (working) log.append(working.node);
+    requestAnimationFrame(drawBar);
   }
 
   /** A row that arrived now goes last, before the streaming reply and the working line. */
@@ -861,10 +974,12 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       for (const node of log.querySelectorAll<HTMLElement>(":scope > .row.event, :scope > .row.group")) if (run.some((r) => r.node === node || node.contains(r.node))) node.remove();
       for (const node of renderRun(run)) log.insertBefore(node, before);
     } else {
-      item.node = render(item);
+      item.node = fresh(render(item));
       log.insertBefore(item.node, before);
     }
+    drawn.add(item.key);
     if (stick) scroll();
+    requestAnimationFrame(drawBar);
   }
 
   function append(m: LogMessage) {
@@ -987,7 +1102,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     if (options.task === undefined) items.push(...addQuestions(needs));
     loading = false;
     drawAll();
-    scroll();
+    restorePlace();
   }
 
   /** Questions a session is waiting on, not yet in the chat: the live one's, and for pai those of its earlier sessions too (a rotation does not answer them); an agent's own. */
@@ -1084,7 +1199,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         switch (event.kind) {
           case "session.delta":
             if (!liveText) {
-              liveText = el("div.row.reply.live", {}, el("div.bubble"));
+              liveText = fresh(el("div.row.reply.live", {}, el("div.bubble")));
               log.insertBefore(liveText, working?.node ?? null);
             }
             liveRaw = payload.text ?? "";
@@ -1179,12 +1294,10 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     working = undefined;
   }
 
-  // ---- the head: the title, and the day of the row at the top of the view -------------------
+  // ---- the head: the day of the row at the top of the view (the crumbs are the room's, over every chat) ----
 
-  const title = el("span.chat-title", {}, options.title);
-  const sub = el("span.chat-title.sub", { hidden: true });
   const dayPill = el("span.chat-daypill");
-  const head = el("div.chat-head", {}, title, sub, dayPill);
+  const head = el("div.chat-head", {}, dayPill);
   let dayTimer: ReturnType<typeof setTimeout> | undefined;
   const showDay = () => {
     const top = log.getBoundingClientRect().top + 60;
@@ -1197,10 +1310,58 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   };
   log.addEventListener("scroll", showDay, { passive: true });
 
+  // The scrollbar: the log's own is hidden (it reaches past the column for the swipe), so a thin
+  // thumb beside the column stands for it — draggable, brighter while the log moves.
+  const thumb = el("div.thumb") as HTMLDivElement;
+  const scrollbar = el("div.chat-scrollbar", { hidden: true }, thumb) as HTMLDivElement;
+  let barTimer: ReturnType<typeof setTimeout> | undefined;
+  const drawBar = () => {
+    // Shown first: a hidden track has no height to measure.
+    scrollbar.hidden = false;
+    const track = scrollbar.clientHeight;
+    const room = log.scrollHeight - log.clientHeight;
+    if (room <= 0 || !track) return void (scrollbar.hidden = true);
+    const height = Math.max(28, (log.clientHeight / log.scrollHeight) * track);
+    thumb.style.height = `${height}px`;
+    thumb.style.transform = `translateY(${(log.scrollTop / room) * (track - height)}px)`;
+  };
+  const barMoved = () => {
+    drawBar();
+    scrollbar.classList.add("moving");
+    clearTimeout(barTimer);
+    barTimer = setTimeout(() => scrollbar.classList.remove("moving"), 800);
+  };
+  log.addEventListener("scroll", barMoved, { passive: true });
+  new ResizeObserver(drawBar).observe(log);
+  thumb.addEventListener("pointerdown", (down) => {
+    down.preventDefault();
+    thumb.setPointerCapture(down.pointerId);
+    scrollbar.classList.add("dragging");
+    const startY = down.clientY;
+    const startTop = log.scrollTop;
+    const move = (event: PointerEvent) => {
+      const track = scrollbar.clientHeight - thumb.offsetHeight;
+      if (track > 0) log.scrollTop = startTop + ((event.clientY - startY) / track) * (log.scrollHeight - log.clientHeight);
+    };
+    const up = () => {
+      scrollbar.classList.remove("dragging");
+      thumb.removeEventListener("pointermove", move);
+      thumb.removeEventListener("pointerup", up);
+    };
+    thumb.addEventListener("pointermove", move);
+    thumb.addEventListener("pointerup", up);
+  });
+  // The track beside the thumb pages towards the press, as a native bar does; it never teleports.
+  scrollbar.addEventListener("pointerdown", (event) => {
+    if (event.target !== scrollbar) return;
+    const above = event.clientY < thumb.getBoundingClientRect().top;
+    log.scrollBy({ top: (above ? -1 : 1) * log.clientHeight * 0.9, behavior: "smooth" });
+  });
+
   const slot = el("div.chat-slot");
   const toBottom = el("button.to-bottom", { title: "to the latest", hidden: true, onclick: () => log.scrollTo({ top: log.scrollHeight, behavior: "smooth" }) }, icon("chevron", 13));
   log.addEventListener("scroll", () => (toBottom.hidden = nearBottom()), { passive: true });
-  const node = el("section.chat", {}, el("div.chat-view", {}, head, log, el("div.chat-foot", {}, el("div.chat-foot-side", {}, toBottom, slot), box.node)));
+  const node = el("section.chat", {}, el("div.chat-view", {}, head, log, scrollbar, el("div.chat-foot", {}, el("div.chat-foot-side", {}, toBottom, slot), box.node)));
 
   void load().then(async () => {
     if (liveSession) followLive(liveSession);
@@ -1210,6 +1371,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     node,
     dispose: () => {
       stopLog();
+      earlier.dispose();
       stopLive?.();
       stopWorking();
     },
@@ -1220,7 +1382,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       let found = find();
       // As far back as it takes: a need always has its row, however old.
       while (!found && more) {
-        await loadEarlier();
+        await earlier.pull();
         found = find();
       }
       if (!found) return false;
@@ -1234,10 +1396,5 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     refreshPrefs: () => box.refreshPrefs(),
     box,
     slot,
-    setHead(text, extra) {
-      clear(title, text);
-      sub.hidden = !extra;
-      clear(sub, extra);
-    },
   };
 }

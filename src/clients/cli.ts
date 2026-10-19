@@ -184,7 +184,11 @@ async function userCommand() {
     // The MCP server `claude` starts in a terminal (see channel.ts); `install` makes `claude` in this shell load it.
     case "channel": {
       const channel = await import("./channel.ts");
-      if (positional[0] === "install") return console.log(`claude in ${channel.install()} now loads the pai channel; open a new shell`);
+      if (positional[0] === "install") {
+        const { rc, sudo } = channel.install();
+        if (sudo) return console.log(`claude in ${rc} loads the pai channel behind a warning on every start; to skip it, allowlist the channel and install again:\n  ${sudo} && pai channel install`);
+        return console.log(`claude in ${rc} now loads the pai channel; open a new shell`);
+      }
       return channel.run({ base, auth });
     }
     case "status": {
@@ -447,6 +451,21 @@ async function userCommand() {
     case "routines": {
       const data = await api("/routines");
       out(data, () => data.map((r: any) => `${String(r.id).padStart(3)}  ${r.enabled ? "on " : "off"} ${(r.schedule || r.event).padEnd(18)} ${r.action.padEnd(6)} ${(r.agent || "").padEnd(12)} ${r.name}  · ${r.runs} runs`).join("\n"));
+      break;
+    }
+    case "snapshot": {
+      const [what = "export", file] = positional;
+      if (what === "import") {
+        if (!file) throw new Error("pai snapshot import <file>");
+        const data = await post("/snapshot", { text: await Bun.file(String(file)).text() });
+        out(data, () => data.error ?? `handed to pai (session ${data.session})`);
+        break;
+      }
+      const data = await api("/snapshot");
+      if (file) {
+        await Bun.write(String(file), data.text);
+        console.log(`written ${file}`);
+      } else out(data, () => data.text);
       break;
     }
     case "audit": {

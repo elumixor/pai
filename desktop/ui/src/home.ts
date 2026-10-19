@@ -1,32 +1,57 @@
-import { agent as fetchAgent, agentInstructions, agents as listAgents, follow, messageAgent, needs as listNeeds, pai as paiStatus, reconfigure, sendPai, sendThread, startThread, status, task as fetchTask, taskItems } from "./api.ts";
+import { agentTasks } from "./agent-tasks.ts";
+import { agent as fetchAgent, agentInstructions, agents as listAgents, configureAgent, file as readFile, follow, projects as listProjects, messageAgent, needs as listNeeds, pai as paiStatus, reconfigure, sendPai, sendThread, startThread, status, task as fetchTask, taskItems } from "./api.ts";
 import { board, type Board } from "./board.ts";
 import { chat, type Chat, type RevealTarget } from "./chat.ts";
-import { basename, clear, el, modelName, stamp } from "./dom.ts";
+import { crumbBar, type Crumb } from "./crumbs.ts";
+import { basename, clear, el, modelName, skeleton, swap } from "./dom.ts";
 import { icon, type IconName } from "./icons.ts";
 import { markdown } from "./markdown.ts";
 import { needsButton } from "./needs.ts";
 import { projectPeek } from "./peek.ts";
-import { projectTree, threadList, type ThreadRow, type TreeRow } from "./ptree.ts";
+import { sideTree, type TreeRow } from "./ptree.ts";
 import { navigate } from "./router.ts";
-import type { Agent, AgentStatus, AgentThread, Effort, LogMessage, Need, SessionSummary, TaskItem, TaskStatus } from "./types.ts";
+import { save as saveState, state } from "./state.ts";
+import { remember } from "./storage.ts";
+import type { Agent, AgentStatus, AgentThread, Effort, LogMessage, Need, ProjectSummary, SessionSummary, TaskItem } from "./types.ts";
 
 /**
- * The main view: General and the projects on the left (each one an agent, nested as the agents are)
- * and under them the threads, newest first — an agent's job on one task (a sub-agent), a thread an
- * agent started, a builder thread, a terminal's `claude`, one from the phone, one started on its own
- * from pai's box. The chat in the middle — pai's own, an agent's, a thread's, a task's, or the board —
- * with the hand above the box, and on the right who is talking: the agent and what it is told.
- * Usage sits in the box, the rest in settings.
+ * The main view: on the left the tree — General, under it the agents as they report (each under the
+ * one its reports go to), under each agent its sub-agents and the threads it is running; code threads
+ * under Dev, a folder per project; and whatever runs for General itself. A thread that is not running
+ * is not there: ⌘K finds it, and a message brings it back. The chat in the middle — pai's own, an
+ * agent's, a thread's, a task's, or the board — with the hand above the box, and on the right who is
+ * talking: the agent and what it is told. Usage sits in the box, the rest in settings.
  */
 
 const PAI = "pai";
 const STATUS: Record<AgentStatus, string> = { working: "working", waiting: "waiting on you", queued: "queued", idle: "idle", closed: "closed" };
 const KIND_ORDER: Record<Agent["kind"], number> = { orchestrator: 0, standing: 1, service: 2, sub: 3 };
+/** The tree's icon for an agent that none of the names below fit. */
+const KIND_ICON: Record<Agent["kind"], IconName> = { orchestrator: "home", standing: "bot", service: "zap", sub: "branch" };
+/** An agent's icon from what it is called: the first that fits. */
+const AGENT_ICONS: readonly (readonly [RegExp, IconName])[] = [
+  [/\b(dev|code|coder|build|engineer)/i, "code"],
+  [/hir|recruit|people|team|candidate/i, "users"],
+  [/search|find|scout|research/i, "search"],
+  [/admin|ops|office|paper/i, "wrench"],
+  [/balance|calendar|plan|schedul/i, "calendar"],
+  [/mail|inbox/i, "mail"],
+  [/budget|financ|invoice|money|account/i, "list"],
+  [/voice|speak/i, "message"],
+];
+/** The agent code threads are listed under; without one, a folder of that name. */
+const DEV_SLUGS = ["dev", "pai-dev"];
+const DEV_LABEL = "Dev";
+/** What a project's notes are: the files of its own that say what it is and how to work in it. */
+const PROJECT_NOTES = ["CLAUDE.md", "README.md"];
+/** The editor, on a project: its files and a terminal there. */
+const openEditor = (project: string) => {
+  state.project = project;
+  saveState();
+  navigate("editor");
+};
 /** What a session thinks at when nothing was asked for: Claude Code's own default. */
 const DEFAULT_EFFORT: Effort = "high";
-/** A closed sub-agent stays in the threads this long: a finished job is still worth a look. */
-const CLOSED_SHOWN_MS = 3 * 86_400_000;
-const TASK_STATUS: Record<TaskStatus, string> = { inbox: "inbox", active: "active", waiting_user: "waiting on you", waiting_other: "waiting on someone", scheduled: "scheduled", done: "done", dropped: "dropped" };
 /** Where a thread was started, as a row says it and the icon it is drawn with; `agent` is the agent's own name. */
 const ORIGIN: Record<string, readonly [string, IconName]> = {
   general: ["General", "message"],
@@ -38,10 +63,30 @@ const ORIGIN: Record<string, readonly [string, IconName]> = {
   agent: ["", "bot"],
 };
 
-export type Centre = { kind: "chat" } | { kind: "agent"; slug: string } | { kind: "task"; id: number } | { kind: "thread"; id: string } | { kind: "board"; slug?: string };
+/** What an agent's page shows: its tasks (the desk), its notes (STATE.md and the files it runs with), or the chat with it. */
+export type AgentView = "tasks" | "notes" | "chat";
+const AGENT_VIEWS: readonly { readonly view: AgentView; readonly icon: IconName; readonly title: string }[] = [
+  { view: "tasks", icon: "list", title: "Tasks" },
+  { view: "notes", icon: "book", title: "Notes: what it knows and runs with" },
+  { view: "chat", icon: "message", title: "Chat with it" },
+];
+const VIEW_KEY = "pai.agent.view";
+/** The remembered views, by slug; a browser with none, or with an older shape under the key, starts with the defaults. */
+function storedViews(): Record<string, AgentView> {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "{}");
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, AgentView>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export type Centre = { kind: "chat" } | { kind: "agent"; slug: string } | { kind: "project"; slug: string } | { kind: "task"; id: number } | { kind: "thread"; id: string } | { kind: "board"; slug?: string };
 
 export function home(root: HTMLElement) {
   let agents: Agent[] = [];
+  /** Every repo and context pai knows: each is a folder under Dev, threads or none. */
+  let projects: ProjectSummary[] = [];
   let tasks: TaskItem[] = [];
   let needs: Need[] = [];
   /** pai's live session as last seen: its id, model and effort. */
@@ -55,6 +100,15 @@ export function home(root: HTMLElement) {
   let mainChat: Chat | undefined;
   /** The chat in the centre other than pai's: an agent's (`agent:<slug>`) or a task's (`task:<id>`), with the agent it is with. */
   let agentChat: { key: string; slug: string; chat: Chat } | undefined;
+  /** An agent's desk or notes in the centre, when its page is not on the chat. */
+  let agentPage: { key: string; dispose?: () => void } | undefined;
+  /** Which view each agent's page is on; General opens on its chat, an agent on its desk. */
+  const views = new Map<string, AgentView>(Object.entries(storedViews()));
+  const viewOf = (slug: string): AgentView => views.get(slug) ?? (slug === PAI ? "chat" : "tasks");
+  const setView = (slug: string, view: AgentView) => {
+    views.set(slug, view);
+    remember(VIEW_KEY, JSON.stringify(Object.fromEntries(views)));
+  };
   /** The task whose thread is open, closed ones included (the tree only holds open ones). */
   let openTask: TaskItem | undefined;
   let theBoard: Board | undefined;
@@ -65,12 +119,13 @@ export function home(root: HTMLElement) {
   let seed: { id: string; text: string } | undefined;
 
   const sidePane = el("aside.home-side");
-  const projectsList = el("div.side-list");
-  const threadsList = el("div.side-list.threads");
-  clear(sidePane, projectsList, threadsList);
+  const treeList = el("div.ptree");
+  clear(sidePane, treeList);
   const centrePane = el("section.home-centre");
-  const infoPane = el("aside.home-info");
-  clear(root, sidePane, centrePane, infoPane);
+  const crumbs = crumbBar();
+  clear(root, sidePane, centrePane, crumbs.node);
+  // The shape of the page before the daemon has answered: a tree, a chat.
+  clear(treeList, skeleton("list", 9));
 
   const bySlug = (slug: string) => agents.find((a) => a.slug === slug);
   const nameOf = (slug: string) => (slug === "user" ? "you" : slug === PAI ? "General" : (bySlug(slug)?.name ?? slug));
@@ -78,8 +133,16 @@ export function home(root: HTMLElement) {
   const ctx = {
     agents: () => agents,
     openAgent: (slug: string, at?: number) => {
-      if (slug === PAI) return void navigate("home");
       if (at !== undefined) pendingReveal = { messageId: at };
+      if (slug === PAI) {
+        navigate("home");
+        if (pendingReveal && mainChat) {
+          const target = pendingReveal;
+          pendingReveal = undefined;
+          void mainChat.reveal(target);
+        }
+        return;
+      }
       navigate({ name: "chat", param: slug });
       if (pendingReveal && agentChat?.key === `agent:${slug}`) {
         const target = pendingReveal;
@@ -90,6 +153,7 @@ export function home(root: HTMLElement) {
     openBoard: (slug: string) => navigate(slug === PAI ? "board" : { name: "board", param: slug }),
     openTask: (id: number) => navigate({ name: "task", param: String(id) }),
     openThread: (id: string) => navigate({ name: "thread", param: id }),
+    openProject: (slug: string) => navigate({ name: "project", param: slug }),
   };
 
   // ---- the hand ------------------------------------------------------------------------------
@@ -101,64 +165,85 @@ export function home(root: HTMLElement) {
     const target: RevealTarget = n.kind === "ask" ? { askId: n.askId } : n.kind === "task" ? { taskId: n.taskId } : { question: true };
     if ((centre.kind === "agent" || centre.kind === "task") && agentChat?.slug === n.agent && (await agentChat.chat.reveal(target))) return;
     if (centre.kind !== "chat") navigate("home");
+    if (viewOf(PAI) !== "chat") toChat(PAI);
     await mainChat?.reveal(target);
   }
 
   // ---- the tree ------------------------------------------------------------------------------
 
-  const selectedSlug = () => (centre.kind === "agent" ? centre.slug : centre.kind === "board" ? (centre.slug ?? PAI) : centre.kind === "task" ? (openTask?.owner ?? PAI) : centre.kind === "thread" ? (threadOf(centre.id)?.owner.slug ?? PAI) : PAI);
-  /** Standing and service agents are projects; a sub-agent is a job inside one and folds into its nearest shown ancestor. */
-  const shown = (a: Agent) => a.slug !== PAI && a.kind !== "sub" && (a.status !== "closed" || a.slug === selectedSlug());
+  const selectedSlug = () => (centre.kind === "agent" ? centre.slug : centre.kind === "project" ? (devAgent()?.slug ?? PAI) : centre.kind === "board" ? (centre.slug ?? PAI) : centre.kind === "task" ? (openTask?.owner ?? PAI) : centre.kind === "thread" ? (threadOf(centre.id)?.owner.slug ?? PAI) : PAI);
+  /** An agent has a row while it is open; the one whose chat is open keeps its row whatever its state. */
+  const shown = (a: Agent) => a.slug !== PAI && (a.status !== "closed" || a.slug === selectedSlug());
+  const agentIcon = (a: Agent): IconName => AGENT_ICONS.find(([re]) => re.test(`${a.slug} ${a.name}`))?.[1] ?? KIND_ICON[a.kind];
+  const devAgent = () => agents.find((a) => DEV_SLUGS.includes(a.slug) && a.status !== "closed");
+  /** A thread of Claude Code in a repo: it is listed under Dev, in its project's folder. */
+  const isCode = (t: AgentThread) => t.kind === "code" || Boolean(t.project);
+  const projectName = (t: AgentThread) => t.project ?? (t.cwd ? basename(t.cwd) : "") ?? "";
+  const threadOpen = (t: AgentThread) => centre.kind === "thread" && (centre.id === t.sessionId || centre.id === t.shortId);
+  const threadNeeds = (t: AgentThread) => needs.filter((n) => n.session === t.sessionId).length;
+  /** A thread is in the tree while it runs, waits on the user, or is open; done, it leaves. */
+  const running = (t: AgentThread) => t.state === "busy" || t.state === "starting" || threadNeeds(t) > 0 || threadOpen(t);
+  const waitingOn = (slug: string) => needs.filter((n) => n.agent === slug).length;
+
+  const threadRow = (t: AgentThread, depth: number, project = ""): TreeRow => ({
+    id: `thread:${t.sessionId}`,
+    label: t.title || t.shortId,
+    depth,
+    thread: true,
+    working: t.state === "busy" || t.state === "starting",
+    waiting: threadNeeds(t),
+    on: threadOpen(t),
+    icon: ORIGIN[originOf(t)]?.[1] ?? "message",
+    title: `${t.title || t.shortId} · ${project || ORIGIN[originOf(t)]?.[0] || "agent"} · ${t.state}${t.cwd ? `\n${t.cwd}` : ""}`,
+  });
+  const byActivity = (x: AgentThread, y: AgentThread) => y.lastActivity - x.lastActivity;
 
   function treeRows(): TreeRow[] {
-    const known = new Map(agents.map((a) => [a.slug, a]));
-    const anchor = (a: Agent): string | null => {
-      for (let p = a.parent ? known.get(a.parent) : undefined; p; p = p.parent ? known.get(p.parent) : undefined) if (shown(p)) return p.slug;
-      return null;
-    };
     const children = new Map<string | null, Agent[]>();
-    const folded = new Map<string, Agent[]>();
-    for (const a of agents) {
-      if (shown(a)) children.set(anchor(a), [...(children.get(anchor(a)) ?? []), a]);
-      else if (a.kind === "sub" && a.status !== "closed") {
-        const into = anchor(a);
-        if (into) folded.set(into, [...(folded.get(into) ?? []), a]);
-      }
-    }
-    const waitingOn = (slug: string) => needs.filter((n) => n.agent === slug).length;
-    const out: TreeRow[] = [{ id: PAI, label: "General", depth: 0, working: bySlug(PAI)?.status === "working", waiting: needs.filter((n) => (n.agent ?? PAI) === PAI && !(n.session && threadOf(n.session))).length, on: centre.kind === "chat", group: true, title: "pai, the orchestrator" }];
-    const walk = (parent: string | null, depth: number) => {
+    for (const a of agents) if (shown(a)) children.set(a.parent, [...(children.get(a.parent) ?? []), a]);
+    const dev = devAgent();
+    // Code threads come from every agent's list (a terminal's belong to pai) and gather under Dev by project.
+    const code = agents.flatMap((a) => a.threads ?? []).filter((t) => isCode(t) && running(t));
+    const projectRows = (depth: number) => {
+      const byProject = new Map<string, AgentThread[]>(projects.map((p) => [p.slug, []]));
+      for (const t of code) byProject.set(projectName(t), [...(byProject.get(projectName(t)) ?? []), t]);
+      return [...byProject.entries()]
+        .sort(([x], [y]) => x.localeCompare(y))
+        .flatMap(([project, threads]): TreeRow[] => [{ id: `project:${project}`, label: project, depth, working: false, waiting: 0, on: centre.kind === "project" && centre.slug === project, icon: "folder", title: `${project} · a repo: its threads, its notes, its files` }, ...threads.sort(byActivity).map((t) => threadRow(t, depth + 1, project))]);
+    };
+    const out: TreeRow[] = [{ id: PAI, label: "General", depth: 0, working: bySlug(PAI)?.status === "working", waiting: needs.filter((n) => (n.agent ?? PAI) === PAI && !(n.session && threadOf(n.session))).length, on: centre.kind === "chat", icon: "home", title: "pai, the orchestrator" }];
+    const walk = (parent: string, depth: number) => {
       const list = (children.get(parent) ?? []).sort((x, y) => KIND_ORDER[x.kind] - KIND_ORDER[y.kind] || x.name.localeCompare(y.name));
       for (const a of list) {
-        const subs = folded.get(a.slug) ?? [];
-        const working = a.status === "working" || subs.some((s) => s.status === "working");
-        const waiting = waitingOn(a.slug) + subs.reduce((n, s) => n + waitingOn(s.slug), 0);
         const open = tasks.filter((t) => t.owner === a.slug).length;
         out.push({
           id: a.slug,
           label: a.name,
           depth,
-          working,
-          waiting,
+          thread: a.kind === "sub",
+          working: a.status === "working",
+          waiting: waitingOn(a.slug),
           on: a.slug === selectedSlug() && centre.kind !== "board",
-          group: depth === 0,
+          icon: agentIcon(a),
           title: [`${a.name} · ${a.kind}`, STATUS[a.status] + (a.queued ? ` · ${a.queued} queued` : ""), open ? `${open} open task${open === 1 ? "" : "s"}` : "", a.model ? modelName(a.model) : ""].filter(Boolean).join("\n"),
         });
         walk(a.slug, depth + 1);
+        if (a.slug === dev?.slug) out.push(...projectRows(depth + 1));
+        for (const t of (a.threads ?? []).filter((t) => !isCode(t) && running(t)).sort(byActivity)) out.push(threadRow(t, depth + 1));
       }
     };
-    walk(null, 0);
+    walk(PAI, 1);
+    if (!dev && (code.length || projects.length)) out.push({ id: "dev", label: DEV_LABEL, depth: 1, working: false, waiting: 0, on: false, icon: "code", inert: true }, ...projectRows(2));
+    // What runs for General itself: a thread of no agent's, started from the box, the phone, the CLI or a routine.
+    for (const t of (bySlug(PAI)?.threads ?? []).filter((t) => !isCode(t) && running(t)).sort(byActivity)) out.push(threadRow(t, 1));
     return out;
   }
 
-  /** The decisions a project holds: its own and those of the sub-agents folded into it. */
+  /** The decisions an agent holds: its own and those of the sub-agents under it. */
   const needsOf = (slug: string) => {
     const known = new Map(agents.map((a) => [a.slug, a]));
     const under = (s: string): boolean => {
-      for (let a = known.get(s); a; a = a.parent ? known.get(a.parent) : undefined) {
-        if (a.slug === slug) return true;
-        if (a.slug !== s && shown(a)) return false;
-      }
+      for (let a = known.get(s); a; a = a.parent ? known.get(a.parent) : undefined) if (a.slug === slug) return true;
       return false;
     };
     return needs.filter((n) => n.agent && under(n.agent));
@@ -170,8 +255,6 @@ export function home(root: HTMLElement) {
     reveal: (need) => void reveal(need),
     answered: () => void refreshNeeds(),
   });
-
-  // ---- the threads: every conversation that is not a project's own chat, newest first ----------
 
   /** A thread by its session id, with the agent it is listed under. */
   function threadOf(id: string): { thread: AgentThread; owner: Agent } | undefined {
@@ -185,65 +268,15 @@ export function home(root: HTMLElement) {
   /** How a thread was started; a daemon that does not say: a project means Claude Code in its folder, else an agent. */
   const originOf = (thread: AgentThread) => thread.origin ?? (thread.project || thread.kind === "code" ? "terminal" : "agent");
 
-  /** Where a thread belongs, in a word: its project (the folder it runs in), else the agent that started it, else how it was started. */
-  function contextOf(thread: AgentThread, owner: { slug: string; name: string }) {
-    const where = thread.project ?? (thread.kind === "code" && thread.cwd ? basename(thread.cwd) : "");
-    if (where) return where;
-    const origin = originOf(thread);
-    if (origin === "agent") return owner.slug === PAI ? "General" : owner.name;
-    return ORIGIN[origin]?.[0] ?? origin;
-  }
-
-  /** The project a sub-agent's job is in: its nearest ancestor that is one, else General. */
-  const projectOf = (a: Agent) => {
-    for (let p = a.parent ? bySlug(a.parent) : undefined; p; p = p.parent ? bySlug(p.parent) : undefined) if (p.slug !== PAI && p.kind !== "sub") return p.name;
-    return "General";
+  const openRow = (id: string) => {
+    if (id.startsWith("thread:")) ctx.openThread(id.slice("thread:".length));
+    else if (id.startsWith("project:")) ctx.openProject(id.slice("project:".length));
+    else ctx.openAgent(id);
   };
-
-  function threadRows(): ThreadRow[] {
-    const rows: ThreadRow[] = [];
-    for (const a of agents) {
-      if (a.kind !== "sub" || (a.status === "closed" && a.slug !== selectedSlug() && Date.now() - (a.closedAt ?? a.lastActive ?? 0) > CLOSED_SHOWN_MS)) continue;
-      rows.push({
-        id: `agent:${a.slug}`,
-        title: a.name,
-        context: projectOf(a),
-        at: a.lastActive ?? a.createdAt ?? 0,
-        working: a.status === "working",
-        waiting: needs.filter((n) => n.agent === a.slug).length,
-        on: centre.kind === "agent" && centre.slug === a.slug,
-        icon: "bot",
-        faint: a.status === "closed",
-        tip: [`${a.name} · ${STATUS[a.status]}`, a.brief.split("\n")[0]].filter(Boolean).join("\n"),
-      });
-    }
-    for (const a of agents)
-      for (const t of a.threads ?? [])
-        rows.push({
-          id: `thread:${t.sessionId}`,
-          title: t.title || t.shortId,
-          context: contextOf(t, a),
-          at: t.lastActivity,
-          working: t.state === "busy" || t.state === "starting",
-          waiting: needs.filter((n) => n.session === t.sessionId).length,
-          on: centre.kind === "thread" && (centre.id === t.sessionId || centre.id === t.shortId),
-          icon: ORIGIN[originOf(t)]?.[1] ?? "message",
-          faint: t.state === "dead",
-          tip: `${t.title || t.shortId} · ${ORIGIN[originOf(t)]?.[0] || "agent"} · ${t.state}${t.cwd ? `\n${t.cwd}` : ""}`,
-        });
-    return rows.sort((x, y) => y.at - x.at);
-  }
-
-  const openThreadRow = (id: string) => {
-    const [kind, rest = ""] = id.split(/:(.*)/s);
-    if (kind === "agent") ctx.openAgent(rest);
-    else ctx.openThread(rest);
-  };
-
+  const tree = sideTree(treeList, openRow, (row, id) => !id.includes(":") && id !== PAI && bySlug(id) && peek.attach(row, id));
   const drawTree = () => {
-    projectTree(projectsList, treeRows(), (slug) => ctx.openAgent(slug), (row, id) => id !== PAI && peek.attach(row, id));
+    tree.draw(treeRows());
     peek.redraw();
-    threadList(threadsList, threadRows(), openThreadRow);
   };
 
   // ---- the centre ----------------------------------------------------------------------------
@@ -263,6 +296,8 @@ export function home(root: HTMLElement) {
   function disposeCentre() {
     agentChat?.chat.dispose();
     agentChat = undefined;
+    agentPage?.dispose?.();
+    agentPage = undefined;
     theBoard?.dispose();
     theBoard = undefined;
   }
@@ -276,7 +311,8 @@ export function home(root: HTMLElement) {
     detachSwitch.classList.toggle("on", on);
     centrePane.classList.toggle("detached", on);
     mainChat?.box.placeholder(on ? "Start a new thread…" : undefined);
-    mainChat?.setHead(on ? "New thread" : "General");
+    drawHead();
+    drawViewSwitch();
     if (on) mainChat?.focus();
   }
   const startDetached = async (text: string, images: { media_type: string; data: string }[]) => {
@@ -292,13 +328,21 @@ export function home(root: HTMLElement) {
   };
 
   function showMain() {
+    const view = viewOf(PAI);
+    if (view !== "chat") return void showPage(PAI, view);
     mainChat ??= chat(
-      { agent: PAI, parent: "user", title: "General", live: liveSession, prefs: paiPrefs, setPrefs: setPaiPrefs, send: (text) => sendPai(text), placeholder: "Message pai…", boxExtra: detachSwitch, divert: () => (detached ? startDetached : undefined) },
+      { agent: PAI, parent: "user", live: liveSession, prefs: paiPrefs, setPrefs: setPaiPrefs, send: (text, images) => sendPai(text, images), placeholder: "Message pai…", boxExtra: detachSwitch, divert: () => (detached ? startDetached : undefined) },
       ctx,
     );
     mainChat.slot.append(hand.node);
-    clear(centrePane, mainChat.node);
+    swap(centrePane, mainChat.node);
     mainChat.focus();
+    if (pendingReveal) {
+      const target = pendingReveal;
+      pendingReveal = undefined;
+      const chat = mainChat;
+      setTimeout(() => void chat.reveal(target), 400);
+    }
   }
 
   const lineage = (slug: string) => {
@@ -307,33 +351,160 @@ export function home(root: HTMLElement) {
     return chain;
   };
 
-  /** General › parent › … › this agent (› the task): every step before the last takes you back there. */
-  function crumbsOf(agent: Agent, task?: TaskItem) {
-    const chain = lineage(agent.slug);
-    const crumbs = el("span.crumbs", {}, el("button.crumb", { onclick: () => navigate("home") }, "General"));
-    for (const a of chain) {
-      crumbs.append(el("span.crumb-sep", {}, "›"));
-      crumbs.append(a.slug === agent.slug && !task ? el("span.crumb.here", {}, a.name) : el("button.crumb", { onclick: () => ctx.openAgent(a.slug) }, a.name));
+  /** General › parent › … › the agent (› the task | › the thread): the way here, each step before the last a way back. */
+  function headCrumbs(): Crumb[] {
+    if (centre.kind === "board") return [];
+    if (centre.kind === "chat") return [detached ? { key: "new", label: "New thread" } : { key: PAI, label: "General" }];
+    const general: Crumb = { key: PAI, label: "General", open: () => navigate("home") };
+    const agentCrumb = (a: Agent): Crumb => ({ key: `agent:${a.slug}`, label: a.name, open: () => ctx.openAgent(a.slug) });
+    const projectCrumb = (slug: string): Crumb => ({ key: `project:${slug}`, label: slug, open: () => ctx.openProject(slug) });
+    if (centre.kind === "project") {
+      const dev = devAgent();
+      return [general, dev ? agentCrumb(dev) : { key: "dev", label: DEV_LABEL }, projectCrumb(centre.slug)];
     }
-    if (!chain.length && agent.slug !== PAI) crumbs.append(el("span.crumb-sep", {}, "›"), el("span.crumb.here", {}, agent.name));
-    if (task) crumbs.append(el("span.crumb-sep", {}, "›"), el("span.crumb.here", { title: task.title }, `#${task.id} ${task.title}`));
-    return crumbs;
+    if (centre.kind === "thread") {
+      const id = centre.id;
+      const found = threadOf(id);
+      const owner = found?.owner;
+      const title = found ? found.thread.title || found.thread.shortId : "New thread";
+      const dev = devAgent();
+      const way: Crumb[] = !found
+        ? []
+        : isCode(found.thread)
+          ? [dev ? agentCrumb(dev) : { key: "dev", label: DEV_LABEL }, projectCrumb(projectName(found.thread))]
+          : owner && owner.slug !== PAI && found.thread.origin === "agent"
+            ? [agentCrumb(owner)]
+            : [];
+      return [general, ...way, { key: `thread:${id}`, label: title, title }];
+    }
+    const slug = centre.kind === "agent" ? centre.slug : (openTask?.owner ?? PAI);
+    const chain = lineage(slug).map(agentCrumb);
+    const known = bySlug(slug);
+    if (!chain.length && slug !== PAI) chain.push({ key: `agent:${slug}`, label: known?.name ?? slug, open: () => ctx.openAgent(slug) });
+    const task = centre.kind === "task" ? [{ key: `task:${centre.id}`, label: openTask ? `#${centre.id} ${openTask.title}` : `#${centre.id}`, title: openTask?.title }] : [];
+    return [general, ...chain, ...task];
   }
+  const drawHead = () => crumbs.set(headCrumbs());
 
+  /** The slug whose page the centre is: General's or an agent's. */
+  const pageSlug = () => (centre.kind === "chat" && !detached ? PAI : centre.kind === "agent" ? centre.slug : centre.kind === "project" ? `project:${centre.slug}` : undefined);
+  /** Whose tasks are on a desk: the agent's own and those of the sub-agents working under it, not a standing agent's below. */
+  const underDesk = (slug: string, owner: string) => {
+    for (let a = bySlug(owner); a; a = a.parent ? bySlug(a.parent) : undefined) {
+      if (a.slug === slug) return true;
+      if (a.kind !== "sub") return false;
+    }
+    return false;
+  };
+  /** The chat with an agent (General's own for pai), with its box focused: where a task is asked for. */
+  const toChat = (slug: string) => {
+    setView(slug, "chat");
+    disposeCentre();
+    showSlug(slug);
+    drawViewSwitch();
+    setTimeout(() => (slug === PAI ? mainChat?.focus() : agentChat?.chat.focus()), 50);
+  };
+  /** The page of a slug: General's, a project's (`project:<slug>`) or an agent's. */
+  const showSlug = (slug: string) => {
+    if (slug === PAI) showMain();
+    else if (slug.startsWith("project:")) void showProject(slug.slice("project:".length));
+    else void showAgent(slug);
+  };
+
+  /** Whose tasks a project's desk holds: the agents that work in that repo, and their sub-agents. */
+  const underProject = (project: string, owner: string) => {
+    for (let a = bySlug(owner); a; a = a.parent ? bySlug(a.parent) : undefined) {
+      if (a.project === project) return true;
+      if (a.kind !== "sub") return false;
+    }
+    return false;
+  };
+
+  /** A page's desk — the tasks it holds, grouped by state — or its notes: an agent's or a project's. */
+  async function showPage(slug: string, view: Exclude<AgentView, "chat">) {
+    const key = `agent:${slug}:${view}`;
+    const project = slug.startsWith("project:") ? slug.slice("project:".length) : undefined;
+    if (view === "tasks") {
+      const desk = agentTasks(slug, { under: (owner) => (project ? underProject(project, owner) : underDesk(slug, owner)), nameOf, working: (owner) => bySlug(owner)?.status === "working", openTask: ctx.openTask, selected: () => undefined, newTask: () => toChat(slug) });
+      agentPage = { key, dispose: desk.dispose };
+      swap(centrePane, el("div.agent-view", {}, desk.node));
+      return;
+    }
+    const page = el("div.agent-view", {}, el("div.agent-notes", {}, skeleton("lines", 6)));
+    agentPage = { key };
+    swap(centrePane, page);
+    const files = project ? await projectNotes(project) : await agentNotes(slug);
+    if (agentPage?.key !== key) return;
+    const a = project ? undefined : bySlug(slug);
+    const head = a && slug !== PAI ? reportsLine(a) : undefined;
+    clear(
+      page,
+      el("div.agent-notes", {}, head, ...(files.length ? files.map((f) => el("section.agent-note", {}, el("h3.agent-note-name", {}, f.name === "STATE.md" ? "Where things stand" : f.name), el("div.agent-note-body", {}, markdown(f.text)))) : [el("p.info-dim", {}, "Nothing written yet.")])),
+    );
+  }
+  const agentNotes = async (slug: string) => {
+    const notes = await agentInstructions(slug).catch(() => undefined);
+    return notes ? [...notes.files].sort((x, y) => Number(y.name === "STATE.md") - Number(x.name === "STATE.md")) : [];
+  };
+  /** A repo's own notes: its CLAUDE.md and README, read from the box. */
+  const projectNotes = async (slug: string) => {
+    const project = projects.find((p) => p.slug === slug) ?? (await listProjects().catch(() => [] as ProjectSummary[])).find((p) => p.slug === slug);
+    if (!project) return [];
+    const reads = await Promise.all(PROJECT_NOTES.map((name) => readFile(`${project.path}/${name}`).then((f) => ({ name, text: f.text }), () => undefined)));
+    return reads.filter((f): f is { name: string; text: string } => Boolean(f?.text.trim()));
+  };
+  /** Over an agent's notes: whom it reports to, and whether what it hears goes on up. */
+  const reportsLine = (a: Agent) =>
+    el(
+      "p.agent-reports",
+      {},
+      `Reports to ${nameOf(a.parent ?? PAI)} · `,
+      el("button.info-link", { title: "whether reports it receives from the agents under it go on up to its own parent", onclick: () => void configureAgent(a.slug, { bubble: a.bubble === false }).then(refreshAgents).then(() => (disposeCentre(), showSlug(a.slug))) }, a.bubble === false ? "keeps what it hears" : "passes reports up"),
+    );
+
+  /** A project's page: the desk of the agents working in it, its notes, or a box that starts a thread in it. The editor is one icon away. */
+  async function showProject(slug: string) {
+    const view = viewOf(`project:${slug}`);
+    if (view !== "chat") {
+      await showPage(`project:${slug}`, view);
+      drawHead();
+      return;
+    }
+    const key = `project:${slug}`;
+    const thread = chat({ agent: "thread", parent: "user", send: async () => ({ error: "start the thread first" }), placeholder: `Start a thread in ${slug}…`, divert: () => startInProject(slug) }, ctx);
+    agentChat = { key, slug: devAgent()?.slug ?? PAI, chat: thread };
+    swap(centrePane, thread.node);
+    drawHead();
+  }
+  const startInProject = (project: string) => async (text: string, images: { media_type: string; data: string }[]) => {
+    const result = await startThread(text, images, project);
+    const started = result.data as SessionSummary | undefined;
+    if (result.error || !started?.sessionId) {
+      if (agentChat) agentChat.chat.box.note.textContent = result.error ?? (result.queued ? "offline — start it again once the daemon answers" : "no thread came back");
+      return;
+    }
+    seed = { id: started.sessionId, text: text || "(image)" };
+    ctx.openThread(started.sessionId);
+  };
+
+  /** An agent's page: by default its desk, else its notes or the chat with it. */
   async function showAgent(slug: string) {
     const existing = bySlug(slug);
+    const view = viewOf(slug);
+    if (view !== "chat") {
+      await showPage(slug, view);
+      drawHead();
+      return;
+    }
     const key = `agent:${slug}`;
-    const thread = chat({ agent: slug, parent: existing?.parent ?? PAI, title: existing?.name ?? slug, prefs: () => (bySlug(slug)?.model ? { model: bySlug(slug)!.model, effort: DEFAULT_EFFORT } : undefined), send: (text) => messageAgent(slug, text), placeholder: `Message ${existing?.name ?? slug}…` }, ctx);
+    const thread = chat({ agent: slug, parent: existing?.parent ?? PAI, prefs: () => (bySlug(slug)?.model ? { model: bySlug(slug)!.model, effort: DEFAULT_EFFORT } : undefined), send: (text, images) => messageAgent(slug, text, undefined, images), placeholder: `Tell ${existing?.name ?? slug}…` }, ctx);
     agentChat = { key, slug, chat: thread };
     thread.slot.append(hand.node);
-    clear(centrePane, thread.node);
-    const draw = (agent: Agent) => {
-      thread.setHead(crumbsOf(agent));
-      if (agent.status === "closed") thread.node.querySelector<HTMLElement>(".input")?.setAttribute("contenteditable", "false");
-    };
-    if (existing) draw(existing);
+    swap(centrePane, thread.node);
+    if (existing?.status === "closed") thread.node.querySelector<HTMLElement>(".input")?.setAttribute("contenteditable", "false");
+    drawHead();
     const full = await fetchAgent(slug).catch(() => undefined);
-    if (full && agentChat?.key === key) draw(full);
+    if (full && agentChat?.key === key) drawHead();
     if (agentChat?.key !== key) return;
     if (pendingReveal) {
       const target = pendingReveal;
@@ -342,6 +513,38 @@ export function home(root: HTMLElement) {
     }
   }
 
+  /** The switch after the name in the crumbs: tasks, notes, chat — for General and for an agent. */
+  const viewSwitch = el("span.view-switch");
+  const drawViewSwitch = () => {
+    const slug = pageSlug();
+    viewSwitch.hidden = !slug;
+    if (!slug) return;
+    const view = viewOf(slug);
+    const project = slug.startsWith("project:") ? slug.slice("project:".length) : undefined;
+    clear(
+      viewSwitch,
+      ...(project ? [el("button.view-btn.files", { title: "its files and a terminal: the editor", onclick: () => openEditor(project) }, icon("terminal", 13))] : []),
+      ...AGENT_VIEWS.map((v) =>
+        el(
+          "button.view-btn",
+          {
+            class: `view-btn${v.view === view ? " on" : ""}`,
+            title: v.title,
+            onclick: () => {
+              if (v.view === view) return;
+              setView(slug, v.view);
+              disposeCentre();
+              showSlug(slug);
+              drawViewSwitch();
+            },
+          },
+          icon(v.icon, 13),
+        ),
+      ),
+    );
+  };
+  crumbs.tail.append(viewSwitch);
+
   /** A task's thread: what was said about it, to and by the agent that owns it; what is written here reaches that agent about this task. */
   async function showTask(id: number) {
     const key = `task:${id}`;
@@ -349,24 +552,21 @@ export function home(root: HTMLElement) {
     if (centre.kind !== "task" || centre.id !== id) return;
     const owner = openTask?.owner ?? PAI;
     const agent = bySlug(owner);
-    const title = openTask ? `#${id} ${openTask.title}` : `#${id}`;
     const thread = chat(
       {
         agent: owner,
         task: id,
         parent: owner === PAI ? "user" : (agent?.parent ?? PAI),
-        title,
-        send: (text) => (owner === PAI ? sendPai(`${text}\n\n(task #${id})`) : messageAgent(owner, text, id)),
+        send: (text, images) => (owner === PAI ? sendPai(`${text}\n\n(task #${id})`, images) : messageAgent(owner, text, id, images)),
         placeholder: `Message ${owner === PAI ? "pai" : (agent?.name ?? owner)} about this task…`,
       },
       ctx,
     );
     agentChat = { key, slug: owner, chat: thread };
     thread.slot.append(hand.node);
-    clear(centrePane, thread.node);
-    if (agent && openTask) thread.setHead(crumbsOf(agent, openTask));
+    swap(centrePane, thread.node);
+    drawHead();
     drawTree();
-    drawInfo();
   }
 
   /** A plain thread: its own transcript, its own session; General › (the agent that started it ›) its title. */
@@ -381,7 +581,6 @@ export function home(root: HTMLElement) {
         parent: "user",
         session: id,
         seed: first,
-        title: found?.thread.title ?? "New thread",
         projectPath: () => threadOf(id)?.thread.cwd ?? undefined,
         prefs: () => {
           const t = threadOf(id)?.thread;
@@ -395,28 +594,17 @@ export function home(root: HTMLElement) {
     );
     agentChat = { key, slug: found?.owner.slug ?? PAI, chat: thread };
     thread.slot.append(hand.node);
-    clear(centrePane, thread.node);
-    drawThreadHead();
-  }
-
-  function drawThreadHead() {
-    if (centre.kind !== "thread" || !agentChat?.key.startsWith("thread:")) return;
-    const found = threadOf(centre.id);
-    const crumbs = el("span.crumbs", {}, el("button.crumb", { onclick: () => navigate("home") }, "General"));
-    const owner = found?.owner;
-    if (owner && owner.slug !== PAI && found?.thread.origin === "agent") crumbs.append(el("span.crumb-sep", {}, "›"), el("button.crumb", { onclick: () => ctx.openAgent(owner.slug) }, owner.name));
-    const title = found ? found.thread.title || found.thread.shortId : "New thread";
-    crumbs.append(el("span.crumb-sep", {}, "›"), el("span.crumb.here", { title }, title));
-    agentChat.chat.setHead(crumbs);
+    swap(centrePane, thread.node);
+    drawHead();
   }
 
   function showBoard(slug?: string) {
     theBoard = board(slug, { agents: () => agents, openAgent: ctx.openAgent, onSelect: (s) => navigate(s === PAI ? "board" : { name: "board", param: s }, true) });
-    clear(centrePane, theBoard.node);
+    swap(centrePane, theBoard.node);
   }
 
   function show(next: Centre) {
-    const sameChat = (next.kind === "agent" && agentChat?.key === `agent:${next.slug}`) || (next.kind === "task" && agentChat?.key === `task:${next.id}`) || (next.kind === "thread" && agentChat?.key === `thread:${next.id}`);
+    const sameChat = (next.kind === "agent" && (agentChat?.key === `agent:${next.slug}` || agentPage?.key === `agent:${next.slug}:${viewOf(next.slug)}`)) || (next.kind === "project" && (agentChat?.key === `project:${next.slug}` || agentPage?.key === `agent:project:${next.slug}:${viewOf(`project:${next.slug}`)}`)) || (next.kind === "task" && agentChat?.key === `task:${next.id}`) || (next.kind === "thread" && agentChat?.key === `thread:${next.id}`);
     if (next.kind !== "chat" && detached) setDetached(false);
     const sameBoard = next.kind === "board" && theBoard;
     centre = next;
@@ -426,97 +614,15 @@ export function home(root: HTMLElement) {
       disposeCentre();
       if (next.kind === "chat") showMain();
       else if (next.kind === "agent") void showAgent(next.slug);
+      else if (next.kind === "project") void showProject(next.slug);
       else if (next.kind === "task") void showTask(next.id);
       else if (next.kind === "thread") showThread(next.id);
       else showBoard(next.slug);
     }
-    if (next.kind !== "chat" && mainChat) mainChat.node.remove();
     root.classList.toggle("board-mode", next.kind === "board");
+    drawHead();
+    drawViewSwitch();
     drawTree();
-    if (!sameChat) drawInfo();
-  }
-
-  // ---- the right: who this chat is with, and what it is told -----------------------------------
-
-  let infoFor = "";
-  /** The agent behind the open chat (and the task, in a task's thread): its setup, its brief, its files, the instructions it runs with. */
-  function drawInfo() {
-    if (centre.kind === "board") return void clear(infoPane);
-    if (centre.kind === "thread") return drawThreadInfo(centre.id);
-    const slug = centre.kind === "agent" ? centre.slug : centre.kind === "task" ? (openTask?.owner ?? "") : PAI;
-    const key = `${centre.kind}:${slug}:${openTask?.id ?? ""}`;
-    if (!slug || key === infoFor) return;
-    infoFor = key;
-    const a = bySlug(slug);
-    const fact = (label: string, value: string | Node | undefined | null | false) => (value ? el("div.info-fact", {}, el("span.info-key", {}, label), el("span.info-val", {}, value)) : undefined);
-    const head: (Node | undefined)[] = [];
-    if (openTask) {
-      const t = openTask;
-      head.push(
-        el("div.info-title", {}, icon("list", 11), el("span", {}, `#${t.id} ${t.title}`)),
-        fact("Status", TASK_STATUS[t.status]),
-        fact("Next", t.nextAction),
-        fact("Due", t.due),
-        fact("Source", t.source ? el("a", { href: t.source, target: "_blank", rel: "noreferrer" }, t.source.replace(/^https?:\/\//, "").slice(0, 40)) : undefined),
-        t.notes ? el("div.info-text", {}, markdown(t.notes)) : undefined,
-        el("div.info-sep"),
-      );
-    }
-    const name = slug === PAI ? "General" : (a?.name ?? slug);
-    head.push(
-      el("div.info-title", {}, icon(slug === PAI ? "home" : "bot", 11), slug === PAI || !openTask ? el("span", {}, name) : el("button.info-link", { onclick: () => ctx.openAgent(slug) }, name)),
-      fact("Kind", a ? `${a.kind}${a.status ? ` · ${STATUS[a.status]}` : ""}` : "orchestrator"),
-      fact("Model", slug === PAI ? modelName(paiSession?.modelPref ?? paiSession?.model ?? mainModel ?? "") : a?.model ? modelName(a.model) : "default"),
-      fact("Effort", slug === PAI ? (paiSession?.effort ?? undefined) : (a?.effort ?? undefined)),
-      fact("Project", a?.project),
-      fact("Tools", a?.tools?.length ? a.tools.join(", ") : slug === PAI ? undefined : "all"),
-      fact("Today", a && slug !== PAI ? `${a.turnsToday}${a.budget ? ` / ${a.budget.turnsPerDay}` : ""} turns · $${a.costUsd.toFixed(2)}` : undefined),
-      a?.unresolvedTools?.length ? fact("Missing", a.unresolvedTools.join(", ")) : undefined,
-      a?.brief && slug !== PAI ? el("div.info-text", {}, markdown(a.brief)) : undefined,
-    );
-    const files = el("div.info-files", {}, el("p.info-dim", {}, "…"));
-    clear(infoPane, el("div.info", {}, ...head, el("div.info-sep"), el("div.info-head", {}, "Instructions"), files));
-    void agentInstructions(slug)
-      .then((ins) => {
-        if (infoFor !== key) return;
-        const section = (title: string, body: Node, open = false) => el("details.info-doc", { open }, el("summary", {}, title), el("div.info-doc-body", {}, body));
-        clear(
-          files,
-          ...ins.files.map((f, i) => section(f.name, markdown(f.text), i === 0)),
-          section("Appended to Claude Code's prompt", el("pre.info-pre", {}, ins.system)),
-          el("p.info-dim", { title: ins.folder }, ins.folder.replace(/^.*\/workspace/, "workspace")),
-        );
-      })
-      .catch(() => infoFor === key && clear(files, el("p.info-dim", {}, "Instructions unavailable.")));
-  }
-
-  /** A plain thread's facts: where it came from, where it runs, what it runs with, what it cost. */
-  function drawThreadInfo(id: string) {
-    const found = threadOf(id);
-    const t = found?.thread;
-    const key = `thread:${id}:${t?.title ?? ""}:${t?.state ?? ""}:${t?.turns ?? ""}`;
-    if (key === infoFor) return;
-    infoFor = key;
-    const fact = (label: string, value: string | undefined | null | false) => (value ? el("div.info-fact", {}, el("span.info-key", {}, label), el("span.info-val", {}, value)) : undefined);
-    if (!t || !found) return void clear(infoPane, el("div.info", {}, el("div.info-title", {}, icon("message", 11), el("span", {}, "New thread")), el("p.info-dim", {}, "Starting…")));
-    clear(
-      infoPane,
-      el(
-        "div.info",
-        {},
-        el("div.info-title", {}, icon(ORIGIN[originOf(t)]?.[1] ?? "message", 11), el("span", {}, t.title || t.shortId)),
-        fact("From", contextOf(t, found.owner)),
-        fact("State", t.state),
-        fact("Project", t.project),
-        fact("Folder", t.cwd?.replace(/^\/(Users|home)\/[^/]+/, "~")),
-        fact("Model", modelName(t.modelPref ?? t.model ?? "") || undefined),
-        fact("Effort", t.effort),
-        fact("Turns", t.turns ? `${t.turns}${t.costUsd ? ` · $${t.costUsd.toFixed(2)}` : ""}` : undefined),
-        fact("Started", t.startedAt ? stamp(t.startedAt) : undefined),
-        fact("Active", stamp(t.lastActivity)),
-        fact("Session", t.shortId),
-      ),
-    );
   }
 
   // ---- loading and following -----------------------------------------------------------------
@@ -528,12 +634,25 @@ export function home(root: HTMLElement) {
   }
 
   async function load() {
-    [agents, tasks, needs] = await Promise.all([listAgents().catch(() => [] as Agent[]), taskItems().catch(() => [] as TaskItem[]), listNeeds().catch(() => [] as Need[])]);
+    [agents, tasks, needs, projects] = await Promise.all([listAgents().catch(() => [] as Agent[]), taskItems().catch(() => [] as TaskItem[]), listNeeds().catch(() => [] as Need[]), listProjects().catch(() => [] as ProjectSummary[])]);
     drawTree();
     hand.draw(needs);
   }
 
   let threadsTimer: ReturnType<typeof setTimeout> | undefined;
+  const refreshAgents = () => listAgents().then((all) => ((agents = all), drawTree(), drawHead()));
+  /** The bell's press: a task, or a chat (at a row of it). */
+  const openNotice = (event: Event) => {
+    const { agent, id, task } = (event as CustomEvent<{ agent?: string; id?: number; task?: number }>).detail;
+    if (task) return ctx.openTask(task);
+    const slug = agent && bySlug(agent) ? agent : PAI;
+    if (viewOf(slug) !== "chat") {
+      setView(slug, "chat");
+      if (pageSlug() === slug) disposeCentre();
+    }
+    ctx.openAgent(slug, id);
+  };
+  window.addEventListener("pai:open", openNotice);
   const stop = follow(
     undefined,
     (event) => {
@@ -548,11 +667,11 @@ export function home(root: HTMLElement) {
         case "agent.created": {
           const changed = payload as unknown as Agent;
           const index = agents.findIndex((a) => a.slug === changed.slug);
-          if (index < 0) void listAgents().then((all) => ((agents = all), drawTree(), mainChat?.refreshAgents(), theBoard?.refreshAgents()));
+          if (index < 0) void listAgents().then((all) => ((agents = all), drawTree(), drawHead(), mainChat?.refreshAgents(), theBoard?.refreshAgents()));
           else {
             agents[index] = { ...agents[index]!, ...changed };
             drawTree();
-            if (infoFor.includes(`:${changed.slug}:`)) (infoFor = ""), drawInfo();
+            drawHead();
             mainChat?.refreshAgents();
             agentChat?.chat.refreshAgents();
             theBoard?.refreshAgents();
@@ -570,20 +689,20 @@ export function home(root: HTMLElement) {
           } else if (open) tasks.push(t);
           if (openTask?.id === t.id) {
             openTask = { ...openTask, ...t };
-            infoFor = "";
-            drawInfo();
+            drawHead();
           }
           drawTree();
           if (t.status === "waiting_user" || (payload as { previous?: string }).previous === "waiting_user") void refreshNeeds();
           break;
         }
-        // A thread started or ended: the threads under each agent follow.
+        // A thread started, answered or ended: the threads under each agent follow.
         case "session.started":
         case "session.exit":
         case "session.titled":
+        case "session.turn_end":
         case "task.created":
           clearTimeout(threadsTimer);
-          threadsTimer = setTimeout(() => void listAgents().then((all) => ((agents = all), drawTree(), drawThreadHead(), centre.kind === "thread" && drawInfo())), event.kind === "session.titled" ? 200 : 1500);
+          threadsTimer = setTimeout(() => void refreshAgents(), event.kind === "session.started" || event.kind === "task.created" ? 1500 : 200);
           break;
         case "session.question":
         case "session.answer":
@@ -613,6 +732,7 @@ export function home(root: HTMLElement) {
     focus: () => (centre.kind === "chat" ? mainChat?.focus() : agentChat?.chat.focus()),
     dispose() {
       stop();
+      window.removeEventListener("pai:open", openNotice);
       disposeCentre();
       mainChat?.dispose();
     },

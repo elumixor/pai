@@ -3,6 +3,7 @@ import { el, modelName } from "./dom.ts";
 import { icon } from "./icons.ts";
 import { menu } from "./menu.ts";
 import { miniRings } from "./rings.ts";
+import { remember } from "./storage.ts";
 import type { Effort, SlashCommand, Usage } from "./types.ts";
 
 /** The model and effort a conversation runs with, resolved: what was asked for, else what it runs with anyway. */
@@ -37,6 +38,7 @@ const readImage = (file: File) =>
   });
 
 // A paste longer than this collapses into a chip instead of filling the box with raw text.
+const DRAFT_PREFIX = "pai.draft:";
 const CHUNK_CHARS = 400;
 const CHUNK_LINES = 8;
 
@@ -65,6 +67,8 @@ export interface ComposeOptions {
   readonly setPrefs?: (changes: Prefs) => Promise<{ error?: string }>;
   /** A control of the host's in the chat look's foot, after the effort (pai's "new thread" switch). */
   readonly extra?: HTMLElement;
+  /** Identifies this box's draft, so what he typed and did not send survives a reload. */
+  readonly draftKey?: string;
 }
 
 export interface Compose {
@@ -249,8 +253,8 @@ export function compose(options: ComposeOptions): Compose {
     closeMenu();
   });
 
-  const submit = async () => {
-    if (input.getAttribute("contenteditable") === "false") return;
+  /** What is in the box right now: the text with its pasted chunks in place, and the pictures. */
+  const contents = () => {
     let text = "";
     const images: { media_type: string; data: string }[] = [];
     const walk = (node: Node) => {
@@ -262,11 +266,31 @@ export function compose(options: ComposeOptions): Compose {
       node.childNodes.forEach(walk);
     };
     input.childNodes.forEach(walk);
-    text = text.replace(/ /g, " ").trim();
+    text = text.replace(/ /g, " ");
+    return { text: text.trim(), images };
+  };
+
+  /**
+   * The draft outlives a reload: the text only, because an attached picture is base64 and the
+   * browser's storage is small — a lost chip is visible in the box, lost words are not.
+   */
+  const draftKey = options.draftKey ? `${DRAFT_PREFIX}${options.draftKey}` : undefined;
+  const keepDraft = () => {
+    if (!draftKey) return;
+    const { text } = contents();
+    if (text) remember(draftKey, text);
+    else localStorage.removeItem(draftKey);
+  };
+  input.addEventListener("input", keepDraft);
+
+  const submit = async () => {
+    if (input.getAttribute("contenteditable") === "false") return;
+    const { text, images } = contents();
     if (!text && !images.length) return;
     input.replaceChildren();
     settle();
     closeMenu();
+    if (draftKey) localStorage.removeItem(draftKey);
     await options.submit(text, images);
   };
 
@@ -363,6 +387,15 @@ export function compose(options: ComposeOptions): Compose {
     el("div.compose-row", {}, options.mono ? el("span.prompt-char", {}, "❯") : undefined, input),
     foot,
   );
+
+  // What he typed last time and never sent, put back line by line (a `<br>` is the box's newline).
+  const draft = draftKey ? localStorage.getItem(draftKey) : null;
+  if (draft) {
+    draft.split("\n").forEach((line, i) => {
+      if (i) input.append(el("br"));
+      if (line) input.append(document.createTextNode(line));
+    });
+  }
 
   return {
     node,

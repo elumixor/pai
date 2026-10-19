@@ -1,5 +1,5 @@
-import { asks, baseUrl, fileIndex, flush, follow, inDesktop, isOnline, lastError, onConnection, outbox, projects, resolveBase, send, status, usage } from "./api.ts";
-import { clear, el, sheet } from "./dom.ts";
+import { baseUrl, fileIndex, flush, follow, inDesktop, isOnline, lastError, onConnection, outbox, projects, resolveBase, send, status, usage } from "./api.ts";
+import { clear, el, motionMs, sheet } from "./dom.ts";
 import "./theme.ts";
 import { editor, emptyEditor } from "./editor.ts";
 import { current as currentRoute, navigate, onRoute, type Route } from "./router.ts";
@@ -50,10 +50,25 @@ const openFile = (path: string) => {
 const homeRoot = $("home");
 let homePage: ReturnType<typeof homeView> | undefined;
 type View = "home" | "work";
+let view: View | undefined;
+/** The view that was showing fades over the one coming in, which settles in under it. */
 function showView(next: View) {
-  main.hidden = next !== "work";
-  homeRoot.hidden = next !== "home";
+  if (view === next) return;
+  const leaving = view === "home" ? homeRoot : view === "work" ? main : undefined;
+  const entering = next === "home" ? homeRoot : main;
+  view = next;
   document.body.classList.toggle("in-home", next === "home");
+  const ms = motionMs();
+  if (leaving && ms) {
+    leaving.classList.add("view-leave");
+    setTimeout(() => {
+      leaving.hidden = true;
+      leaving.classList.remove("view-leave");
+    }, ms);
+  } else if (leaving) leaving.hidden = true;
+  entering.hidden = false;
+  entering.classList.add("view-enter");
+  setTimeout(() => entering.classList.remove("view-enter"), ms);
   if (next === "home") homePage ??= homeView(homeRoot);
   else window.dispatchEvent(new Event("resize"));
 }
@@ -90,7 +105,7 @@ function applyRoute(route: Route) {
   if (route.name === "dashboard") return navigate("home", true);
   if (route.name === "settings") return showSettings();
   if (route.name === "agents" || route.name === "modules" || route.name === "automations" || route.name === "projects" || route.name === "context") {
-    if (homeRoot.hidden && main.hidden) showView("home");
+    if (!view) showView("home");
     return showSettings(route.name);
   }
   if (route.name === "editor") {
@@ -101,7 +116,7 @@ function applyRoute(route: Route) {
     if (session && state.threadA !== session.sessionId && state.threadB !== session.sessionId) openThread(session, "a");
     return;
   }
-  if (route.name === "home" || route.name === "board" || route.name === "chat" || route.name === "task" || route.name === "thread") {
+  if (route.name === "home" || route.name === "board" || route.name === "chat" || route.name === "task" || route.name === "thread" || route.name === "project") {
     showView("home");
     const centre: Centre =
       route.name === "home"
@@ -112,7 +127,9 @@ function applyRoute(route: Route) {
             ? { kind: "task", id: Number(route.param) }
             : route.name === "thread"
               ? { kind: "thread", id: route.param! }
-              : { kind: "agent", slug: route.param! };
+              : route.name === "project"
+                ? { kind: "project", slug: route.param! }
+                : { kind: "agent", slug: route.param! };
     homePage!.show(centre);
   }
 }
@@ -239,28 +256,14 @@ async function refreshUsage() {
   clear(statusLeft, connection, ...stats);
 }
 
+/** The views themselves are in the nav; here only what the nav has no room for. */
 function renderStatusRight(editorUrl?: string) {
   clear(
     statusRight,
     el("span.stat.dim", { title: `daemon at ${baseUrl()}` }, baseUrl().replace(/^https?:\/\//, "")),
-    navButton("zap", "Search everything (⌘K)", openPalette),
-    navButton("message", "The chat (⌘1)", () => navigate("home")),
-    staffButton,
-    navButton("code", "Editor (⌘3)", () => navigate("editor")),
-    navButton("layout", "Modules (⌘4)", () => navigate("modules")),
+    navButton("zap", "Search everything (⌘K)", () => openPalette()),
     editorUrl ? el("a.iconbtn.slim", { title: "VS Code in the browser", href: editorUrl, target: "_blank", rel: "noreferrer" }, icon("external", 13)) : undefined,
-    navButton("settings", "Settings", () => navigate("settings")),
   );
-}
-
-/** The way to the staff, with how many questions the agents are waiting on you for. */
-const asksBadge = el("span.badge.ask", { hidden: true });
-const staffButton = el("button.iconbtn.slim.staff-nav", { title: "Board (⌘2)", onclick: () => navigate("board") }, icon("board", 13), asksBadge);
-async function refreshAsks() {
-  const open = await asks().catch(() => []);
-  asksBadge.textContent = String(open.length);
-  asksBadge.hidden = !open.length;
-  staffButton.title = open.length ? `Board (⌘2) · ${open.length} question${open.length === 1 ? "" : "s"} for you` : "Board (⌘2)";
 }
 
 function unreachable() {
@@ -319,7 +322,8 @@ async function commands(): Promise<Command[]> {
   const fileCommands = files.map<Command>((path) => ({ id: `file:${path}`, title: path, group: "file", icon: "file", run: () => openFile(`${project!.path}/${path}`) }));
   return [...actions, ...settingCommands, ...projectCommands, ...threadCommands, ...fileCommands];
 }
-const openPalette = () => palette(commands);
+const openPalette = (filters: string[] = []) => palette(commands, { filters });
+window.addEventListener("pai:palette", (event) => openPalette((event as CustomEvent<{ filters?: string[] }>).detail?.filters ?? []));
 
 document.addEventListener("keydown", (event) => {
   const meta = event.metaKey || event.ctrlKey;
@@ -333,6 +337,9 @@ document.addEventListener("keydown", (event) => {
   } else if (meta && (event.key === "1" || event.key === "2" || event.key === "3" || event.key === "4")) {
     event.preventDefault();
     navigate(event.key === "1" ? "home" : event.key === "2" ? "board" : event.key === "3" ? "editor" : "modules");
+  } else if (meta && event.key === "." && !event.shiftKey) {
+    event.preventDefault();
+    window.dispatchEvent(new CustomEvent("pai:notices"));
   } else if (event.metaKey && event.key === "," && event.shiftKey === !inDesktop) {
     // ⌘, in the app; a browser keeps that one for itself, so ⌘⇧, on the web.
     event.preventDefault();
@@ -371,7 +378,6 @@ async function refreshAll() {
   await refreshRail();
   void terminals.refresh();
   void refreshUsage();
-  void refreshAsks();
 }
 
 document.body.classList.toggle("desktop", inDesktop);
@@ -381,6 +387,9 @@ renderStatusRight();
 emptyEditor(viewerPane);
 emptySlot("a");
 emptySlot("b");
+
+// The view the address names is on screen before the daemon has answered anything: what loads, loads into it.
+applyRoute(currentRoute());
 
 void (async () => {
   await resolveBase();
@@ -392,8 +401,9 @@ void (async () => {
     /* offline is a normal way to start */
   }
   await refreshAll();
-  applyRoute(currentRoute());
-  if (state.file && !main.hidden) openFile(state.file);
+  // `editor/<session>` needs the sessions, which are only here now.
+  const route = currentRoute();
+  if (route.name === "editor" && route.param) applyRoute(route);
   for (const slot of ["a", "b"] as const) {
     const remembered = sessions.find((s) => s.sessionId === slotState[slot]());
     if (remembered) openThread(remembered, slot);
@@ -407,6 +417,5 @@ void (async () => {
     if (event.kind.startsWith("session.started") || event.kind === "session.resumed" || event.kind === "session.turn_end" || event.kind === "session.exit" || event.kind === "task.created" || event.kind === "session.question")
       void refreshRail();
     if (event.kind.startsWith("terminal.")) void terminals.refresh();
-    if (event.kind === "ask.created" || event.kind === "ask.answered") void refreshAsks();
   });
 })();

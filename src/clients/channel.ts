@@ -18,6 +18,19 @@ export const CHANNEL_CONFIG = join(homedir(), ".config", "pai", "channel.json");
 const SESSIONS = join(homedir(), ".claude", "sessions");
 const MARK = "# pai channel";
 
+/**
+ * The same server as a plugin from a marketplace of its own: an allowlisted plugin channel loads
+ * through `--channels` without the development-channels warning that `server:pai` asks about on
+ * every start. The allowlist is a managed setting, so it is a root-owned file put there once.
+ * The plugin is installed disabled and switched on per launch, so sessions that are not a
+ * terminal's (the box's, which share `~/.claude`) never start it.
+ */
+const PLUGIN = "pai@pai";
+const PLUGIN_ROOT = join(homedir(), ".config", "pai", "channel-plugin");
+const INSTALLED = join(homedir(), ".claude", "plugins", "installed_plugins.json");
+const MANAGED = join(process.platform === "darwin" ? "/Library/Application Support/ClaudeCode" : "/etc/claude-code", "managed-settings.d", "pai.json");
+const ALLOWLIST = { channelsEnabled: true, allowedChannelPlugins: [{ marketplace: "pai", plugin: "pai" }] };
+
 const INSTRUCTIONS =
   'Messages in <channel source="pai"> are the user writing to this conversation from their phone (Paigram, the chat app pai runs in). ' +
   "Treat each one as the user's own next message, exactly as if they had typed it in this terminal, and answer it the same way. " +
@@ -34,10 +47,49 @@ function saveImage(image: { name: string; data: string }) {
   return `[image: ${path}]`;
 }
 
-/** What `claude` needs to load the channel: the server's definition and the switch that lets an unlisted channel push messages. */
+/**
+ * What `claude` needs to load the channel: the allowlisted plugin when both it and the allowlist are
+ * in place, else the server's definition and the switch that lets an unlisted channel push messages.
+ */
 export function channelArgs(): string[] {
+  if (existsSync(MANAGED) && pluginInstalled()) return ["--settings", JSON.stringify({ enabledPlugins: { [PLUGIN]: true } }), "--channels", `plugin:${PLUGIN}`];
   ensureConfig();
   return ["--mcp-config", CHANNEL_CONFIG, "--dangerously-load-development-channels", "server:pai"];
+}
+
+function pluginInstalled() {
+  try {
+    return Boolean(JSON.parse(readFileSync(INSTALLED, "utf8")).plugins?.[PLUGIN]);
+  } catch {
+    return false;
+  }
+}
+
+/** Writes the plugin's marketplace and (re)installs it, disabled, when it is new or changed. */
+function ensurePlugin() {
+  const pai = Bun.which("pai") ?? join(homedir(), ".local", "bin", "pai");
+  const files: Record<string, unknown> = {
+    ".claude-plugin/marketplace.json": { name: "pai", owner: { name: "pai" }, plugins: [{ name: "pai", source: "./pai", description: "Paigram messages reach this terminal" }] },
+    "pai/.claude-plugin/plugin.json": { name: "pai", version: "1.0.0", description: "Paigram messages reach this terminal" },
+    "pai/.mcp.json": { mcpServers: { pai: { command: pai, args: ["channel"] } } },
+  };
+  let changed = false;
+  for (const [name, content] of Object.entries(files)) {
+    const path = join(PLUGIN_ROOT, name);
+    const want = JSON.stringify(content, null, 2);
+    if (existsSync(path) && readFileSync(path, "utf8") === want) continue;
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, want);
+    changed = true;
+  }
+  const installed = pluginInstalled();
+  if (installed && !changed) return;
+  const claude = (...args: string[]) => Bun.spawnSync(["claude", "plugin", ...args], { stdout: "ignore", stderr: "inherit" });
+  if (installed) claude("uninstall", PLUGIN);
+  claude("marketplace", "add", PLUGIN_ROOT);
+  claude("marketplace", "update", "pai");
+  claude("install", PLUGIN);
+  claude("disable", PLUGIN);
 }
 
 function ensureConfig() {
@@ -52,15 +104,16 @@ function ensureConfig() {
  * `claude` typed in a shell gets the channel too: a function in the shell's rc that adds it,
  * except for claude's own subcommands and one-shot prints, which have no conversation to reach.
  */
-export function install(): string {
-  ensureConfig();
+export function install(): { rc: string; sudo?: string } {
+  ensurePlugin();
+  const quote = (arg: string) => (/^[\w./:@-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, "'\\''")}'`);
   const rc = join(homedir(), process.env.SHELL?.endsWith("bash") ? ".bashrc" : ".zshrc");
   const block = [
     MARK,
     "claude() {",
     '  case "$1" in',
     "    mcp|plugin|plugins|update|upgrade|doctor|config|install|setup-token|auth|migrate-installer|-p|--print|-v|--version|-h|--help) command claude \"$@\" ;;",
-    `    *) command claude --mcp-config "${CHANNEL_CONFIG}" --dangerously-load-development-channels server:pai "$@" ;;`,
+    `    *) command claude ${channelArgs().map(quote).join(" ")} "$@" ;;`,
     "  esac",
     "}",
     `${MARK} end`,
@@ -70,7 +123,9 @@ export function install(): string {
   const end = current.indexOf(`${MARK} end`);
   const next = start >= 0 && end > start ? current.slice(0, start) + block + current.slice(end + `${MARK} end`.length) : `${current.replace(/\n*$/, "\n")}\n${block}\n`;
   if (next !== current) writeFileSync(rc, next);
-  return rc;
+  if (existsSync(MANAGED)) return { rc };
+  const dir = dirname(MANAGED);
+  return { rc, sudo: `sudo mkdir -p "${dir}" && echo '${JSON.stringify(ALLOWLIST)}' | sudo tee "${MANAGED}" >/dev/null` };
 }
 
 /** The conversation of the `claude` that started this process: the nearest ancestor with a session file. */

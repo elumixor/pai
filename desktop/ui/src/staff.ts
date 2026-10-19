@@ -1,7 +1,7 @@
 import {
   agents as listAgents, answerAsk, asks as listAsks, closeAgent, createTask, follow, messageAgent, messages as listMessages, routines as listRoutines, taskItems, updateTask,
 } from "./api.ts";
-import { ago, clear, el, modelName } from "./dom.ts";
+import { ago, clear, el, modelName, topLoader } from "./dom.ts";
 import { icon, type IconName } from "./icons.ts";
 import { markdown } from "./markdown.ts";
 import { navigate } from "./router.ts";
@@ -225,6 +225,7 @@ export function staff(root: HTMLElement) {
   const head = el("header.panel-head.staff-head");
   const briefBar = el("div.staff-brief");
   const log = el("div.staff-log");
+  const earlier = topLoader(log, loadEarlier);
   const input = el("textarea", { rows: 1, placeholder: "Message…", spellcheck: false }) as HTMLTextAreaElement;
   const note = el("span.note");
   const sendButton = el("button.iconbtn", { title: "send (enter)", onclick: () => void submit() }, icon("send", 14));
@@ -430,8 +431,7 @@ export function staff(root: HTMLElement) {
         group.open = true;
         group.node = renderGroup(group);
       }
-    const earlier = more ? el("button.btn.staff-more", { onclick: () => void loadEarlier() }, "Load earlier") : undefined;
-    clear(log, earlier, ...groups.map((g) => g.node), ...(rows.length ? [] : [el("p.hint", {}, "Nothing said here yet.")]));
+    clear(log, more && earlier.node, ...groups.map((g) => g.node), ...(rows.length ? [] : [el("p.hint", {}, "Nothing said here yet.")]));
   }
 
   /** A live row: joins the run of events before it, or starts a group of its own. */
@@ -483,7 +483,9 @@ export function staff(root: HTMLElement) {
   async function loadEarlier() {
     const first = rows[0];
     if (!first) return;
+    const token = chatToken;
     const older = await listMessages(selected, { before: first.id, limit: PAGE }).catch(() => []);
+    if (token !== chatToken) return;
     const fresh = older.filter((m) => !seen.has(m.id));
     for (const m of fresh) seen.add(m.id);
     more = older.length >= PAGE;

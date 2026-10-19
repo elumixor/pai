@@ -1,3 +1,4 @@
+import { remember } from "./storage.ts";
 /** What the window remembers between opens: which project, which threads, the panel sizes. */
 const KEY = "pai.state";
 
@@ -26,10 +27,4 @@ const read = (): Layout => {
 
 export const state: Layout = read();
 
-export function save() {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(state));
-  } catch {
-    /* a full quota does not matter here */
-  }
-}
+export const save = () => remember(KEY, JSON.stringify(state));

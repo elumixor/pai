@@ -177,7 +177,7 @@ describe("agents", () => {
     finish("hiring", "");
   });
 
-  it("sends a standing agent's report to pai even when it sits under another agent", () => {
+  it("sends a report to the agent above, and on up while each one lets it bubble", () => {
     const atma = agents.create({ name: "Atma", kind: "standing", brief: "Run the services." });
     const nested = agents.create({ name: "Hiring two", kind: "standing", brief: "Hire people for Hypocrisy." });
     expect(agents.configure(nested.slug, { parent: atma.slug }).parent).toBe(atma.slug);
@@ -185,11 +185,20 @@ describe("agents", () => {
     const before = pai.turns.length;
     finish(nested.slug, "Keyur passed the screen.");
     agents.flushReports();
-    expect(messages.list({ agent: nested.slug, kinds: ["report"] }).at(-1)!.to).toBe("pai");
+    expect(messages.list({ agent: nested.slug, kinds: ["report"] }).at(-1)!.to).toBe(atma.slug);
+    expect(sessionOf(atma.slug).sent.at(-1)).toContain("Keyur passed the screen.");
+    // Atma passes what it hears up by default, so pai got it too.
     expect(pai.turns.length).toBe(before + 1);
     expect(pai.turns.at(-1)).toContain("Keyur passed the screen.");
-    // Nothing reached Atma at all: a report it was never meant to read cannot even wake it.
-    expect(agents.get(atma.slug)!.sessionId).toBeNull();
+    finish(atma.slug, "");
+    // Atma told to keep its area to itself: the next report stops there.
+    expect(agents.configure(atma.slug, { bubble: false }).bubble).toBe(false);
+    agents.message(nested.slug, "And Mira?", { from: "pai" });
+    finish(nested.slug, "Mira declined.");
+    agents.flushReports();
+    expect(sessionOf(atma.slug).sent.at(-1)).toContain("Mira declined.");
+    expect(pai.turns.length).toBe(before + 1);
+    finish(atma.slug, "");
   });
 
   it("queues past the working limit and drains as agents finish", () => {
