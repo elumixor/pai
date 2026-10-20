@@ -17,7 +17,14 @@ export interface Crumb {
 const SHIFT_PX = 10;
 
 export function crumbBar() {
-  const node = el("nav.crumbs.home-crumbs", { "aria-label": "Where you are" });
+  /** The crumbs themselves; `node` is the header band that holds them and whatever sits under them. */
+  const line = el("div.crumb-line");
+  /**
+   * Under the crumbs, centred: where the open chat puts its find bar. It belongs to the header
+   * rather than floating over the conversation, and the band grows by its height when it is used.
+   */
+  const under = el("div.crumb-under");
+  const node = el("nav.crumbs.home-crumbs", { "aria-label": "Where you are" }, line, under);
   /** After the last crumb: the views of the place, when it has more than one. */
   const tail = el("span.crumb-tail");
   const shown = new Map<string, HTMLElement>();
@@ -41,7 +48,7 @@ export function crumbBar() {
     const ms = motionMs();
     const keys = new Set(crumbs.map((c) => c.key));
     const before = new Map([...shown].map(([key, element]) => [key, element.getBoundingClientRect()]));
-    const barBefore = node.getBoundingClientRect();
+    const barBefore = line.getBoundingClientRect();
 
     // What leaves stays where it was, over the others, while it fades.
     for (const [key, element] of shown) {
@@ -81,10 +88,10 @@ export function crumbBar() {
     });
     // The same crumbs in the same order: the words may have changed, nothing moves. Re-inserting
     // a node restarts its animation, so a redraw with nothing new must not touch the tree.
-    const current = [...node.children].filter((c) => !c.classList.contains("out") && c !== tail);
+    const current = [...line.children].filter((c) => !c.classList.contains("out") && c !== tail);
     if (current.length === ordered.length && current.every((c, i) => c === ordered[i])) return;
-    const leaving = [...node.querySelectorAll<HTMLElement>(".crumb-item.out")];
-    node.replaceChildren(...ordered, tail, ...leaving);
+    const leaving = [...line.querySelectorAll<HTMLElement>(".crumb-item.out")];
+    line.replaceChildren(...ordered, tail, ...leaving);
 
     if (!ms) return;
     // The ones that stayed: from where they were (mid-move included) to where they now sit (FLIP).
@@ -92,7 +99,7 @@ export function crumbBar() {
       element.style.transition = "none";
       element.style.transform = "";
     }
-    const barAfter = node.getBoundingClientRect();
+    const barAfter = line.getBoundingClientRect();
     for (const element of ordered) {
       const key = element.dataset.key!;
       if (fresh.has(key)) {
@@ -121,5 +128,15 @@ export function crumbBar() {
     node.style.setProperty("--shift", `${SHIFT_PX}px`);
   }
 
-  return { node, set, tail };
+  /**
+   * What the open place hangs under the crumbs. The band grows only while that thing is actually
+   * showing (the find bar is `hidden` until ⌘F), which the stylesheet decides — holding a hidden
+   * bar must not leave a gap under the crumbs.
+   */
+  const hold = (content?: HTMLElement) => {
+    if (content && under.firstElementChild === content) return;
+    under.replaceChildren(...(content ? [content] : []));
+  };
+
+  return { node, set, tail, hold };
 }

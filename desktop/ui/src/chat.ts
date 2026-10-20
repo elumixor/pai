@@ -77,6 +77,8 @@ export interface Chat {
   readonly refreshAgents: () => void;
   /** Where the host puts what sits above the box: the hand with what waits. */
   readonly slot: HTMLElement;
+  /** The find bar, for the host to hang under its crumbs; it reads as part of the header there. */
+  readonly findBar: HTMLElement;
   readonly refreshPrefs: () => void;
   /** The box, for a host that changes what it says. */
   readonly box: Compose;
@@ -1353,7 +1355,9 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     if (event.key !== "f" || !(event.metaKey || event.ctrlKey) || event.altKey) return;
     if (!owns()) return;
     event.preventDefault();
-    find.open();
+    // Held down, it walks: open the first time, then next (shift for previous).
+    if (find.showing) void find.step(event.shiftKey ? -1 : 1);
+    else find.open();
   };
   window.addEventListener("keydown", onFind);
 
@@ -1578,7 +1582,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   const slot = el("div.chat-slot");
   const toBottom = el("button.to-bottom", { title: "to the latest", hidden: true, onclick: () => log.scrollTo({ top: log.scrollHeight, behavior: "smooth" }) }, icon("chevron", 13));
   log.addEventListener("scroll", () => (toBottom.hidden = nearBottom()), { passive: true });
-  const node = el("section.chat", {}, el("div.chat-view", {}, head, find.node, log, scrollbar, el("div.chat-foot", {}, el("div.chat-foot-side", {}, toBottom, slot), box.node)));
+  const node = el("section.chat", {}, el("div.chat-view", {}, head, log, scrollbar, el("div.chat-foot", {}, el("div.chat-foot-side", {}, toBottom, slot), box.node)));
 
   void load().then(async () => {
     if (liveSession) followLive(liveSession);
@@ -1586,6 +1590,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
 
   return {
     node,
+    findBar: find.node,
     dispose: () => {
       stopLog();
       earlier.dispose();

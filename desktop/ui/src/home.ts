@@ -443,7 +443,13 @@ export function home(root: HTMLElement) {
     const task = centre.kind === "task" ? [{ key: `task:${centre.id}`, label: openTask ? `#${centre.id} ${openTask.title}` : `#${centre.id}`, title: openTask?.title }] : [];
     return [general, ...chain, ...task];
   }
-  const drawHead = () => crumbs.set(headCrumbs());
+  const drawHead = () => {
+    crumbs.set(headCrumbs());
+    // The find bar belongs to the chat that is open, under the crumbs rather than over the column.
+    crumbs.hold(openChat()?.findBar);
+  };
+  /** The chat in the centre right now, whichever kind of page it is. */
+  const openChat = () => (centre.kind === "chat" ? mainChat : agentChat?.chat);
 
   /** The slug whose page the centre is: General's or an agent's. */
   const pageSlug = () => (centre.kind === "chat" && !detached ? PAI : centre.kind === "agent" ? centre.slug : centre.kind === "project" ? `project:${centre.slug}` : undefined);

@@ -71,9 +71,12 @@ interface Hit {
 
 export interface FindBar {
   readonly node: HTMLElement;
+  /** Opens it, or steps to the next match when it is already open: ⌘F held walks the thread. */
   open(): void;
+  /** `1` next, `-1` previous. */
+  step(by: number): Promise<void>;
   close(): void;
-  readonly open_: boolean;
+  readonly showing: boolean;
 }
 
 const MARK = "find-hit";
@@ -194,6 +197,11 @@ export function findBar(options: FindOptions): FindBar {
   }
 
   function open() {
+    // Already open: ⌘F again is "next", so the shortcut alone walks the matches.
+    if (shown && query() && hits.length) {
+      void step(1);
+      return;
+    }
     shown = true;
     node.hidden = false;
     input.focus();
@@ -262,8 +270,9 @@ export function findBar(options: FindOptions): FindBar {
   return {
     node,
     open,
+    step,
     close,
-    get open_() {
+    get showing() {
       return shown;
     },
   };

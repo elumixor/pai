@@ -882,7 +882,7 @@ body.in-home .statusbar { display: none; }
 /* a small dot at the message's top-left corner: it says "new" without drawing a margin down the chat */
 .row.unread:not(.mine)::before { content: ""; position: absolute; left: -9px; top: 7px; width: 6px; height: 6px; border-radius: 50%; background: var(--hand); opacity: 0.85; }
 /* find in this conversation: a bar over the column, matches marked where they are */
-.find-bar { position: absolute; top: 8px; right: 16px; z-index: 6; display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 10px; border-radius: 10px; background: color-mix(in srgb, var(--ink) 4%, var(--canvas)); box-shadow: var(--soft-shadow), 0 0 0 1px var(--ink-10); }
+.find-bar { display: flex; align-items: center; gap: 8px; padding: 5px 8px 5px 10px; border-radius: 10px; background: color-mix(in srgb, var(--ink) 4%, var(--canvas)); box-shadow: var(--soft-shadow), 0 0 0 1px var(--ink-10); pointer-events: auto; }
 .find-bar .icon { color: var(--ink-30); flex: 0 0 auto; }
 .find-input { width: 220px; padding: 2px 0; border: 0; background: none; color: var(--ink-70); font: 400 var(--body)/var(--body-lh) var(--font-ui); outline: none; }
 .find-input::-webkit-search-cancel-button { display: none; }
@@ -980,7 +980,11 @@ mark.find-hit.current { background: var(--busy); color: var(--canvas); }
 .chat-view { position: relative; width: 100%; max-width: var(--chat-w); flex: 1; min-height: 0; height: 100%; display: flex; flex-direction: column; }
 .chat-head { position: absolute; top: 0; left: 0; right: 0; z-index: 4; display: flex; flex-direction: column; align-items: center; pointer-events: none; }
 /* the way here, level with the nav, centred over the chat: General › Hiring › #75 … */
-.home-crumbs { position: absolute; top: 23px; left: var(--side-w); right: 50px; height: 27px; z-index: 3; display: flex; align-items: center; justify-content: center; font: 400 12px/14px var(--font-ui); color: var(--ink-45); white-space: nowrap; pointer-events: none; }
+/* The band sizes itself: the crumbs' line, and under them whatever the open place hangs there.
+   The holder is `display: contents`, so a hidden find bar is not a box and the band is one line. */
+.home-crumbs { position: absolute; top: 23px; left: var(--side-w); right: 50px; height: auto; min-height: 27px; z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 5px; font: 400 12px/14px var(--font-ui); color: var(--ink-45); white-space: nowrap; pointer-events: none; }
+.crumb-line { display: flex; align-items: center; justify-content: center; height: 27px; max-width: 100%; }
+.crumb-under { display: contents; }
 .home.board-mode .home-crumbs { display: none; }
 .crumb-item { position: relative; display: inline-flex; align-items: center; pointer-events: auto; will-change: transform, opacity; transition: transform var(--dur-slow) var(--ease), opacity var(--dur-base) var(--ease); }
 .crumb-item.out { position: absolute; opacity: 0; transform: translateX(calc(var(--shift, 10px) * -1)); pointer-events: none; }
