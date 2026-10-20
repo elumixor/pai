@@ -5,7 +5,10 @@ app, the desktop app) and from Telegram. The core here is the daemon: sessions (
 session each, over the Agent SDK), the HTTP API, the client, files, hosting. Everything else is
 a module from its own repository (`pai.config.ts`): `pai-browser` (a signed-in headless browser on the
 box, one session per site, logins captured from the Mac's Arc), `pai-builder` (coding threads),
-`pai-telegram` (the chat and the user's account), `pai-linkedin` (requires browser). A module's
+`pai-telegram` (the chat and the user's account), `pai-linkedin` (requires browser),
+`pai-whatsapp` (his own number over the WhatsApp Web protocol, linked by QR — unofficial, so the
+risk is a ban on his number and the module never sends in bulk; a send is read back out of the chat
+and answers `verified`/`unverified`/`not_sent`). A module's
 `requires` orders loading; `ctx.use(name)` hands it another module's `api`. pai is one chat (the
 orchestrator, `main.ts`): Telegram's pai topic, Paigram's bot chat, `pai dev say`. Its staff are agents
 (`agents.ts`): standing (own an area, own topic), sub (one job, reports once, closes), service (answers

@@ -10,5 +10,6 @@ export default {
     builder: "github:elumixor/pai-builder",
     telegram: "github:elumixor/pai-telegram",
     linkedin: "github:elumixor/pai-linkedin",
+    whatsapp: "github:elumixor/pai-whatsapp",
   },
 } satisfies PaiConfig;
