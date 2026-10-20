@@ -1,5 +1,5 @@
 import { config } from "../core/config.ts";
-import { serve as serveAttachment } from "../domain/attachments.ts";
+import { MAX_FILES, readable, serve as serveAttachment, type Upload } from "../domain/attachments.ts";
 import { mapResponse } from "../domain/maps.ts";
 import { ratesResponse } from "../domain/rates.ts";
 import * as reads from "../domain/reads.ts";
@@ -39,6 +39,20 @@ import * as sync from "../domain/sync.ts";
 import { importPrompt, snapshot } from "../domain/snapshot.ts";
 
 const log = logger("api");
+
+/**
+ * What a client may attach, checked at the door. A file the model cannot read is refused here with
+ * the reason, so he hears it while he is attaching rather than from a turn that gave up on it.
+ */
+function refuse(uploads: readonly Upload[] | undefined): string | undefined {
+  if (!uploads?.length) return undefined;
+  if (uploads.length > MAX_FILES) return `${uploads.length} files at once; ${MAX_FILES} is the limit`;
+  for (const upload of uploads) {
+    const why = readable(upload);
+    if (why) return why;
+  }
+  return undefined;
+}
 
 const TURN_TIMEOUT = 15 * 60 * 1000;
 
@@ -115,7 +129,8 @@ export async function handle(req: Request): Promise<Response> {
     if (path === "/roots") return json(files.roots());
 
     // A picture someone attached, by the name the transcript gives it.
-    if (path.startsWith("/attachments/")) return serveAttachment(path.slice("/attachments/".length)) ?? json({ error: "no such attachment" }, 404);
+    if (path.startsWith("/attachments/"))
+      return serveAttachment(path.slice("/attachments/".length), url.searchParams.get("name") ?? undefined) ?? json({ error: "no such attachment" }, 404);
 
     // How far he has read, per chat: the box holds it, so every client agrees.
     if (path === "/reads" && req.method === "POST") {
@@ -408,10 +423,13 @@ export async function handle(req: Request): Promise<Response> {
       if (!a) return json({ error: "no such agent" }, 404);
       try {
         if (agentPath[2] === "message" && req.method === "POST") {
-          const { text, taskId, images } = await body<{ text: string; taskId?: number; images?: { media_type: string; data: string }[] }>(req);
-          if (!text?.trim() && !images?.length) return json({ error: "text required" }, 400);
-          if (slug === agents.PAI) return json({ session: main.send(text ?? "", { images }).shortId });
-          return json(agents.fromUser(slug, text ?? "", taskId, images));
+          const { text, taskId, images, files } = await body<{ text: string; taskId?: number; images?: Upload[]; files?: Upload[] }>(req);
+          const attached = [...(images ?? []), ...(files ?? [])];
+          const no = refuse(attached);
+          if (no) return json({ error: no }, 400);
+          if (!text?.trim() && !attached.length) return json({ error: "text required" }, 400);
+          if (slug === agents.PAI) return json({ session: main.send(text ?? "", { images: attached }).shortId });
+          return json(agents.fromUser(slug, text ?? "", taskId, attached));
         }
         // Stopping pai is stopping its one session; an agent stops with everything below it.
         if (agentPath[2] === "stop" && req.method === "POST") {
@@ -452,11 +470,14 @@ export async function handle(req: Request): Promise<Response> {
 
     // A message to pai, the one chat; `wait` holds the response until pai has answered.
     if (path === "/pai" && req.method === "POST") {
-      const { text, wait, images } = await body<{ text: string; wait?: boolean; images?: { media_type: string; data: string }[] }>(req);
-      if (!text?.trim() && !images?.length) return json({ error: "text required" }, 400);
+      const { text, wait, images, files } = await body<{ text: string; wait?: boolean; images?: Upload[]; files?: Upload[] }>(req);
+      const attached = [...(images ?? []), ...(files ?? [])];
+      const no = refuse(attached);
+      if (no) return json({ error: no }, 400);
+      if (!text?.trim() && !attached.length) return json({ error: "text required" }, 400);
       const s = main.session();
       const done = wait ? waitFor("session.turn_end", s.id, TURN_TIMEOUT) : undefined;
-      main.send(text ?? "", { images });
+      main.send(text ?? "", { images: attached });
       return json(done ? { session: s.shortId, ...(await done).payload } : s.summary());
     }
     if (path === "/pai/rotate" && req.method === "POST") {

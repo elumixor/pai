@@ -1,4 +1,5 @@
 import { track } from "./progress.ts";
+import type { Attached } from "./compose.ts";
 import type { AuditEntry, Effort, Agent, AgentInstructions, Ask, Automation, Need, ContextItem, LogMessage, Routine, TaskItem, TaskStatus, Diagnostic, SlashCommand, DiskSession, Entry, ModuleInfo, PaiEvent, ProjectSummary, SessionSummary, Status, SyncReport, TerminalSummary, Usage } from "./types.ts";
 import { CACHE_PREFIX, remember } from "./storage.ts";
 
@@ -300,9 +301,9 @@ export const attachmentUrl = (name: string) => withToken(`${baseUrl()}/attachmen
 /** One tool call in full, from the session's transcript: the input and the output the previews cut. */
 export const toolCall = (session: string, tool: string) => get<{ name: string; input: unknown; result?: string }>(`/transcript/tool?session=${session}&tool=${encodeURIComponent(tool)}`);
 /** A new plain thread, on its own: no agent, no project; its first message goes with it. */
-export const startThread = (text: string, images: { media_type: string; data: string }[] = [], project?: string) => send("/task", { title: "", text, images, project, origin: project ? undefined : "general" });
+export const startThread = (text: string, images: readonly Attached[] = [], project?: string) => send("/task", { title: "", text, images, project, origin: project ? undefined : "general" });
 /** A turn in a plain thread, a terminal's included (into the terminal while its channel is connected). */
-export const sendThread = (id: string, text: string, images: { media_type: string; data: string }[] = []) => send("/send", { id, text, images });
+export const sendThread = (id: string, text: string, images: readonly Attached[] = []) => send("/send", { id, text, images });
 export const threadsIn = (cwd: string, limit?: number) => get<DiskSession[]>(`/threads?cwd=${encodeURIComponent(cwd)}${limit ? `&limit=${limit}` : ""}`);
 
 // ---- the staff: pai and its agents, the message log, tasks, asks, routines ----------------
@@ -319,7 +320,7 @@ export const importSnapshot = (text: string) => send("/snapshot", { text });
 export const auditTrail = (limit = 40) => get<AuditEntry[]>(`/audit?limit=${limit}`, true);
 export const messageHeadline = (id: number) => get<{ headline: string | null; enabled: boolean }>(`/messages/${id}/headline`);
 export const messageTldr = (id: number) => get<{ tldr: string | null; enabled: boolean }>(`/messages/${id}/tldr`);
-export const messageAgent = (slug: string, text: string, taskId?: number, images: { media_type: string; data: string }[] = []) => send(`/agents/${slug}/message`, { text, taskId, images });
+export const messageAgent = (slug: string, text: string, taskId?: number, images: readonly Attached[] = []) => send(`/agents/${slug}/message`, { text, taskId, images });
 /** What an agent is told: its own files and the instructions appended to Claude Code's. */
 export const agentInstructions = (slug: string) => get<AgentInstructions>(`/agents/${slug}/instructions`);
 export const configureAgent = (slug: string, changes: { bubble?: boolean; name?: string; parent?: string }) => send(`/agents/${slug}`, changes, "PATCH");
@@ -337,7 +338,7 @@ export const task = (id: number) => get<TaskItem & { children: TaskItem[] }>(`/t
 /** Every task, closed ones included. */
 export const allTasks = async () => (await get<{ items?: TaskItem[] }>("/tasks?all=1")).items ?? [];
 export const pai = () => get<{ session: SessionSummary; thread: number | null; lastRotation: unknown }>("/pai");
-export const sendPai = (text: string, images: { media_type: string; data: string }[] = []) => send("/pai", { text, images });
+export const sendPai = (text: string, images: readonly Attached[] = []) => send("/pai", { text, images });
 export const answerQuestion = (session: string, text: string) => send("/answer", { id: session, text });
 export const answerAsk = (id: number, text: string) => send(`/asks/${id}/answer`, { text });
 export const routines = () => get<Routine[]>("/routines");

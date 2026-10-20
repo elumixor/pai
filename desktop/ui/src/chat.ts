@@ -1,5 +1,5 @@
 import { answerAsk, answerQuestion, asks as listAsks, dropAsk, follow, messages as listMessages, messageHeadline, needs as listNeeds, attachmentUrl, mapUrl, toolCall, transcript, type Transcript, type TranscriptTool } from "./api.ts";
-import { compose, type Compose, type Prefs } from "./compose.ts";
+import { compose, type Attached, type Compose, type Prefs } from "./compose.ts";
 import { contextMenu } from "./context-menu.ts";
 import { clear, el, fresh, STAGGER_MAX, STAGGER_MS, topLoader } from "./dom.ts";
 import { icon, type IconName } from "./icons.ts";
@@ -44,7 +44,7 @@ export interface ChatOptions {
   readonly parent: string;
   /** The live session, when there is one: its stream and its transcript's tool calls. */
   readonly live?: () => Promise<string | undefined>;
-  readonly send: (text: string, images: { media_type: string; data: string }[]) => Promise<{ error?: string; queued?: boolean; data?: unknown }>;
+  readonly send: (text: string, images: readonly Attached[]) => Promise<{ error?: string; queued?: boolean; data?: unknown }>;
   readonly placeholder: string;
   readonly projectPath?: () => string | undefined;
   /** The model and effort shown in the box's foot, and how to change them. */
@@ -55,7 +55,7 @@ export interface ChatOptions {
   /** What a plain thread was started with, shown until its transcript has it. */
   readonly seed?: string;
   /** While it returns something, what is written goes there instead of into this chat (a new thread from pai's box). */
-  readonly divert?: () => ((text: string, images: { media_type: string; data: string }[]) => Promise<void>) | undefined;
+  readonly divert?: () => ((text: string, images: readonly Attached[]) => Promise<void>) | undefined;
   /** A control for the box's foot (see `compose`). */
   readonly boxExtra?: HTMLElement;
 }
@@ -219,6 +219,30 @@ function toolArgument(tool: TranscriptTool) {
   for (const prefix of [short, tool.name]) if (text.startsWith(prefix)) text = text.slice(prefix.length).trim();
   if (tool.name === "ToolSearch") text = text.replace(/^select:/, "").replace(/mcp__[^_]+(?:_[^_]+)*?__/g, "").replace(/,/g, ", ");
   return text.replace(/^(\$|search|fetch|agent:)\s+/, "").replace(/^"(.*)"$/, "$1");
+}
+
+/** How big a file is, as a row says it. */
+const fileSize = (bytes: number) => (bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+
+/**
+ * The files a message came with, each a named row that opens the kept copy. A PDF is not a picture
+ * and not a path either: it reads as the thing he attached, with its own name and size.
+ */
+function papers(files: readonly { file: string; name: string; size: number }[] | undefined) {
+  if (!files?.length) return undefined;
+  return el(
+    "div.row-files",
+    {},
+    ...files.map((f) =>
+      el(
+        "a.row-file",
+        { href: `${attachmentUrl(f.file)}&name=${encodeURIComponent(f.name)}`, target: "_blank", rel: "noopener", title: `${f.name} · ${fileSize(f.size)}` },
+        icon("file", 13),
+        el("span.row-file-name.ellipsis", {}, f.name),
+        el("span.row-file-size", {}, fileSize(f.size)),
+      ),
+    ),
+  );
 }
 
 /** A kept attachment is a name on the row (`a1b2….jpg`); a local preview is already a data url. */
@@ -694,6 +718,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       "div.row.mine",
       { class: `row mine${long ? " folded" : ""}`, "data-message": m.id, "data-task": m.taskId ?? "", "data-at": m.createdAt },
       pictures(m.meta.images),
+      papers(m.meta.files),
       words,
     );
     // Folded, the last line is hidden, so the time and the toggle share a line under it. Unfolding grows the bubble to its height, folding shrinks it back.

@@ -37,6 +37,14 @@ Changing pai itself:
  * trailing code, `k`/`M` multipliers, ranges and `/mo`; what it cannot take is an amount with
  * nothing to mark it as one, so a currency is always written when it is not the main one.
  */
+/** What an attached file looks like in a turn, and what to do with it. */
+export const ATTACHMENTS = `# Files he attached
+
+A line like \`[file: Lease.pdf, 1.2 MB — read it at /home/pai/pai/data/attachments/ab12….pdf]\` is a
+file he attached: open it with the Read tool at that path (a PDF, a text file, a csv — Read handles
+them). Pictures arrive as pictures and need nothing. The file is kept, so the path stays valid; say
+what is in it rather than that you received it.`;
+
 export const MONEY_FORMAT = `# Writing money
 
 Amounts are rendered and converted, so write them in a form that parses:
@@ -137,7 +145,7 @@ export function instructionsFor(kind: SessionKind, project?: string, agent?: Age
       ? `${COMMON}\n- Facts about a person go into people/<name>.md here (search before creating one); a day's events into journal/; MEMORY.md is the profile, kept under about 150 lines.`
       : COMMON;
   // Money is rendered and converted in every client, so everyone who writes an amount writes it the same way.
-  return [`${common}\n${role}`, ...(kind === "code" && agent ? [CODE.trim()] : []), MONEY_FORMAT, missingTools(agent), ...sections].filter(Boolean).join("\n\n");
+  return [`${common}\n${role}`, ...(kind === "code" && agent ? [CODE.trim()] : []), ATTACHMENTS, MONEY_FORMAT, missingTools(agent), ...sections].filter(Boolean).join("\n\n");
 }
 
 /**
@@ -161,6 +169,7 @@ export function missingTools(agent?: AgentSetup): string {
 export function sections(): [name: string, text: string, kinds: SessionKind[]][] {
   return [
     ["general", COMMON.trim(), ["chat", "code"]],
+    ["files he attached", ATTACHMENTS.trim(), ["chat", "code"]],
     ["writing money", MONEY_FORMAT.trim(), ["chat", "code"]],
     ["conversation", CHAT.trim(), ["chat"]],
     ["coding session", CODE.trim(), ["code"]],

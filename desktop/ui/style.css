@@ -1139,6 +1139,13 @@ time, .pill-line .when { color: inherit; font: 400 var(--meta)/var(--meta-lh) va
 .row.mine { align-self: flex-end; width: auto; max-width: 500px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; color: var(--ink-70); }
 .row.mine .mine-text { align-self: stretch; display: flex; flex-direction: column; gap: 12px; padding: 10px 12px; border-radius: 19px; background: var(--mine-bg); box-shadow: 0 5px 5px rgba(0, 0, 0, 0.012); transition: background-color 0.18s ease, box-shadow 0.18s ease; }
 .row.mine .bubble { align-self: stretch; }
+/* a file he attached: its name and size, opening the copy the box kept */
+.row-files { display: flex; flex-direction: column; gap: 4px; align-self: stretch; }
+.row-file { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 10px; border: 1px solid var(--line-2); border-radius: 10px; color: inherit; text-decoration: none; }
+.row-file:hover { border-color: var(--ink-20); background: color-mix(in srgb, var(--ink) 4%, transparent); }
+.row-file .icon { flex: 0 0 auto; color: var(--ink-45); }
+.row-file-name { font: 400 var(--body)/var(--body-lh) var(--font-ui); }
+.row-file-size { flex: 0 0 auto; color: var(--ink-30); font: 400 var(--meta)/var(--meta-lh) var(--font-ui); }
 /* one picture keeps its own shape; several become a grid, where a tile may crop to keep rows even */
 .row-images { display: grid; gap: 3px; align-self: flex-end; max-width: 100%; border-radius: 16px; overflow: hidden; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1); }
 .row-images a { position: relative; display: block; min-width: 0; }

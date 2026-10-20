@@ -9,7 +9,7 @@
 export type DraftPart =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "paste"; readonly text: string }
-  | { readonly kind: "image"; readonly media_type: string; readonly data: string; readonly preview: string };
+  | { readonly kind: "image"; readonly media_type: string; readonly data: string; readonly preview: string; readonly name?: string; readonly size?: number };
 
 interface Draft {
   readonly key: string;

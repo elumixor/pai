@@ -7,6 +7,7 @@ import { conversions, fillMoney, moneyRates, type Amount } from "./money.ts";
 import { agent as fetchAgent, agentInstructions, agents as listAgents, allTasks, configureAgent, message as fetchMessage, rates, file as readFile, follow, projects as listProjects, messageAgent, needs as listNeeds, pai as paiStatus, reconfigure, sendPai, sendThread, startThread, status, task as fetchTask, taskItems } from "./api.ts";
 import { board, type Board } from "./board.ts";
 import { chat, type Chat, type RevealTarget } from "./chat.ts";
+import type { Attached } from "./compose.ts";
 import { crumbBar, type Crumb } from "./crumbs.ts";
 import { basename, clear, el, modelName, skeleton, swap } from "./dom.ts";
 import { icon, type IconName } from "./icons.ts";
@@ -374,7 +375,7 @@ export function home(root: HTMLElement) {
     drawViewSwitch();
     if (on) mainChat?.focus();
   }
-  const startDetached = async (text: string, images: { media_type: string; data: string }[]) => {
+  const startDetached = async (text: string, images: readonly Attached[]) => {
     const result = await startThread(text, images);
     const started = result.data as SessionSummary | undefined;
     if (result.error || !started?.sessionId) {
@@ -551,7 +552,7 @@ export function home(root: HTMLElement) {
     swap(centrePane, thread.node);
     drawHead();
   }
-  const startInProject = (project: string) => async (text: string, images: { media_type: string; data: string }[]) => {
+  const startInProject = (project: string) => async (text: string, images: readonly Attached[]) => {
     const result = await startThread(text, images, project);
     const started = result.data as SessionSummary | undefined;
     if (result.error || !started?.sessionId) {

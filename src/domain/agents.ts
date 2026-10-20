@@ -5,7 +5,7 @@ import { config } from "../core/config.ts";
 import { db, kv, now } from "../core/db.ts";
 import { logger } from "../core/log.ts";
 import { day } from "../core/time.ts";
-import { attach, type Image } from "./attachments.ts";
+import { attach, type Upload } from "./attachments.ts";
 import { narrowed, unresolved } from "./capabilities.ts";
 import { isLimit, limitLine, resetAt } from "./limits.ts";
 import { get as getProject } from "./catalog.ts";
@@ -542,7 +542,7 @@ export function noteTo(slug: string, text: string) {
 }
 
 /** The user wrote in an agent's own chat: that is a message to the agent, and pai gets a line about it. */
-export function fromUser(slug: string, text: string, taskId?: number | null, images?: readonly Image[]) {
+export function fromUser(slug: string, text: string, taskId?: number | null, images?: readonly Upload[]) {
   const a = get(slug);
   if (!a) throw new AgentError(`no agent ${slug}`);
   // An agent is woken with text, so its pictures travel as the file paths it can open itself.

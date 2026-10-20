@@ -275,6 +275,8 @@ export interface LogMessage {
     readonly tldr?: string;
     /** Pictures that came with it: attachment names, or urls an `<img>` loads directly. */
     readonly images?: readonly string[];
+    /** Files that came with it: the kept name, his name for it, and how big it is. */
+    readonly files?: readonly { readonly file: string; readonly name: string; readonly size: number; readonly media_type: string }[];
     /** A map pin, drawn as a place card. */
     readonly place?: { readonly latitude: number; readonly longitude: number; readonly title?: string; readonly address?: string };
     /** A six-word line for the row, written once by a small model. */

@@ -19,30 +19,55 @@ const MODELS: readonly { value: string; label: string }[] = [
 const EFFORTS: readonly Effort[] = ["low", "medium", "high", "xhigh", "max"];
 const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
+/** An attachment as every route takes it: base64, its type, and the name he knows it by. */
+export interface Attached {
+  readonly media_type: string;
+  readonly data: string;
+  readonly name?: string;
+}
+
 export interface Attachment {
   readonly media_type: string;
   readonly data: string;
+  /** A data URL for a picture's thumbnail; a document has none. */
   readonly preview: string;
+  /** What he calls it, which is what the row and the turn say. */
+  readonly name?: string;
+  readonly size?: number;
 }
 
-/** A pasted image as the API takes it, plus a data URL for the chip's thumbnail. */
-const readImage = (file: File) =>
+/** Anything he attaches, as the API takes it: base64, with its name, and a preview for a picture. */
+const readFile = (file: File) =>
   new Promise<Attachment>((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(reader.error);
     reader.onload = () => {
       const url = String(reader.result);
-      resolve({ media_type: file.type, data: url.slice(url.indexOf(",") + 1), preview: url });
+      const picture = file.type.startsWith("image/");
+      resolve({ media_type: file.type, data: url.slice(url.indexOf(",") + 1), preview: picture ? url : "", name: file.name, size: file.size });
     };
     reader.readAsDataURL(file);
   });
+
+/** The limits the daemon enforces, said here too so he hears them while attaching. */
+const MAX_BYTES = 25 * 1024 * 1024;
+const UNREADABLE = /\.(zip|rar|7z|tar|gz|tgz|bz2|exe|dmg|pkg|app|iso|bin|so|dylib|dll|xls|xlsx|doc|docx|ppt|pptx|key|numbers|pages|mp4|mov|avi|mkv|mp3|wav|m4a)$/i;
+export const sizeOf = (bytes: number) => (bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+
+/** Why this file cannot go, in his words, or nothing when it can. */
+export function refuseFile(file: File): string | undefined {
+  if (file.size > MAX_BYTES) return `${file.name} is ${sizeOf(file.size)} — the limit is ${sizeOf(MAX_BYTES)}`;
+  if (!file.size) return `${file.name} is empty`;
+  if (UNREADABLE.test(file.name)) return `${file.name} is a kind the model cannot read — put it in a repo and say where`;
+  return undefined;
+}
 
 // A paste longer than this collapses into a chip instead of filling the box with raw text.
 const DRAFT_PREFIX = "pai.draft:";
 const CHUNK_CHARS = 400;
 const CHUNK_LINES = 8;
 
-type Chip = { kind: "image"; attachment: Attachment } | { kind: "text"; text: string };
+type Chip = { kind: "image"; attachment: Attachment } | { kind: "file"; attachment: Attachment } | { kind: "text"; text: string };
 
 /** `plaintext-only` keeps formatting out (no bold/links pasted in) while still letting line breaks through; older engines fall back to plain editing. */
 const PLAINTEXT_EDITABLE = (() => {
@@ -57,7 +82,7 @@ export interface ComposeOptions {
   readonly projectPath?: () => string | undefined;
   /** The session whose slash commands `/` offers; none means no command menu. */
   readonly session?: () => string | undefined;
-  readonly submit: (text: string, images: { media_type: string; data: string }[]) => Promise<void> | void;
+  readonly submit: (text: string, images: readonly Attached[]) => Promise<void> | void;
   /** What the foot says on the left: the project, the recipient. */
   readonly foot?: () => string;
   /** The terminal look (`❯`, monospace) or the chat look. */
@@ -125,12 +150,26 @@ export function compose(options: ComposeOptions): Compose {
     const body =
       chip.kind === "image"
         ? [el("img", { src: chip.attachment.preview, alt: "" })]
-        : [icon("file", 11), el("span", {}, `Pasted text · ${chip.text.length.toLocaleString()} chars`)];
+        : chip.kind === "file"
+          ? [icon("file", 11), el("span", {}, `${chip.attachment.name ?? "file"} · ${sizeOf(chip.attachment.size ?? 0)}`)]
+          : [icon("file", 11), el("span", {}, `Pasted text · ${chip.text.length.toLocaleString()} chars`)];
     const span = el("span.chip.inline-chip", { class: `chip inline-chip ${chip.kind}`, contenteditable: "false" }, ...body, el("button.chip-remove", { type: "button", tabindex: -1, title: "remove", onmousedown: (e: Event) => e.preventDefault(), onclick: () => removeChip(span) }, icon("x", 10)));
     chips.set(span, chip);
     return span;
   };
   /** Drops a chip at the caret (or the end, when nothing is focused there), with room for the caret right after it. */
+  /** One file he chose or dropped: refused with a reason, or a chip of the right kind. */
+  const offer = async (file: File) => {
+    const why = refuseFile(file);
+    if (why) {
+      note.textContent = why;
+      return;
+    }
+    note.textContent = "";
+    const attachment = await readFile(file);
+    insertChip({ kind: file.type.startsWith("image/") ? "image" : "file", attachment });
+  };
+
   const insertChip = (chip: Chip) => {
     const range = selectionRange() ?? endRange();
     range.deleteContents();
@@ -155,7 +194,7 @@ export function compose(options: ComposeOptions): Compose {
     const files = [...(event.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
     if (files.length) {
       event.preventDefault();
-      for (const file of files) insertChip({ kind: "image", attachment: await readImage(file) });
+      for (const file of files) await offer(file);
       return;
     }
     const text = event.clipboardData?.getData("text/plain") ?? "";
@@ -256,12 +295,13 @@ export function compose(options: ComposeOptions): Compose {
   /** What is in the box right now: the text with its pasted chunks in place, and the pictures. */
   const contents = () => {
     let text = "";
-    const images: { media_type: string; data: string }[] = [];
+    const images: Attached[] = [];
     const walk = (node: Node) => {
       if (node.nodeType === Node.TEXT_NODE) return void (text += node.textContent ?? "");
       if (node.nodeName === "BR") return void (text += "\n");
       const chip = node instanceof HTMLElement ? chips.get(node) : undefined;
-      if (chip?.kind === "image") return void images.push({ media_type: chip.attachment.media_type, data: chip.attachment.data });
+      if (chip?.kind === "image" || chip?.kind === "file")
+        return void images.push({ media_type: chip.attachment.media_type, data: chip.attachment.data, name: chip.attachment.name });
       if (chip?.kind === "text") return void (text += chip.text);
       node.childNodes.forEach(walk);
     };
@@ -277,7 +317,7 @@ export function compose(options: ComposeOptions): Compose {
       if (node.nodeType === Node.TEXT_NODE) return void out.push({ kind: "text", text: node.textContent ?? "" });
       if (node.nodeName === "BR") return void out.push({ kind: "text", text: "\n" });
       const chip = node instanceof HTMLElement ? chips.get(node) : undefined;
-      if (chip?.kind === "image") return void out.push({ kind: "image", ...chip.attachment });
+      if (chip?.kind === "image" || chip?.kind === "file") return void out.push({ kind: "image", ...chip.attachment });
       if (chip?.kind === "text") return void out.push({ kind: "paste", text: chip.text });
       node.childNodes.forEach(walk);
     };
@@ -331,9 +371,9 @@ export function compose(options: ComposeOptions): Compose {
   });
 
   // The foot: attach, the model, the effort, the rings; the note; enter.
-  const picker = el("input", { type: "file", accept: "image/*", multiple: true, hidden: true }) as HTMLInputElement;
+  const picker = el("input", { type: "file", multiple: true, hidden: true }) as HTMLInputElement;
   picker.addEventListener("change", async () => {
-    for (const file of picker.files ?? []) insertChip({ kind: "image", attachment: await readImage(file) });
+    for (const file of picker.files ?? []) await offer(file);
     picker.value = "";
   });
   const modelButton = el("button.compose-tool.model", { title: "the model this conversation runs with" }) as HTMLButtonElement;

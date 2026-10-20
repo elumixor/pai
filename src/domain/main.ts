@@ -6,7 +6,7 @@ import { config } from "../core/config.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as agents from "./agents.ts";
-import { attach, type Image } from "./attachments.ts";
+import { attach, type Upload } from "./attachments.ts";
 import type { RichPlace } from "../protocol/rich.ts";
 import * as asks from "./asks.ts";
 import * as gate from "./gate.ts";
@@ -79,19 +79,24 @@ function fresh(reason: string): Session {
 }
 
 /** A message from the user to pai. Open asks ride along, so a plain reply can answer one. */
-export function send(text: string, opts: { images?: readonly Image[]; place?: RichPlace } = {}) {
+export function send(text: string, opts: { images?: readonly Upload[]; place?: RichPlace } = {}) {
   const s = session();
-  // Kept before the turn: the row carries their names, so every client draws what he attached.
+  // Kept before the turn: the row carries what he attached, so every client draws it.
   kv.set(LAST_USER, text);
-  const pictures = attach(opts.images);
-  messages.log({ from: "user", to: agents.PAI, kind: "chat", body: text, meta: { ...pictures.meta, ...(opts.place ? { place: opts.place } : {}) } });
+  const attached = attach(opts.images);
+  messages.log({ from: "user", to: agents.PAI, kind: "chat", body: text, meta: { ...attached.meta, ...(opts.place ? { place: opts.place } : {}) } });
   if (s.pending) {
     s.answer(text);
     return s;
   }
   const open = asks.open();
   if (open.length) s.inject(`[open asks — if the user's next message answers one, call answer_ask]\n${open.map((a) => `#${a.id} ${agents.breadcrumb(a.agent)}: ${a.question}${a.options.length ? ` (${a.options.join(" / ")})` : ""}`).join("\n")}`);
-  s.send(text, { images: opts.images ? [...opts.images] : undefined, origin: "user" });
+  // Pictures go to the model as pictures; a file goes as a line naming it, its size and where to
+  // read it — a PDF reaches Claude through the Read tool, not as bytes in the turn.
+  s.send(attached.fileRefs ? `${text}\n\n${attached.fileRefs}`.trim() : text, {
+    images: attached.images.map((i) => ({ media_type: i.media_type, data: i.data })),
+    origin: "user",
+  });
   return s;
 }
 
