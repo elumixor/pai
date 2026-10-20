@@ -1139,6 +1139,34 @@ time, .pill-line .when { color: inherit; font: 400 var(--meta)/var(--meta-lh) va
 .row.mine { align-self: flex-end; width: auto; max-width: 500px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; color: var(--ink-70); }
 .row.mine .mine-text { align-self: stretch; display: flex; flex-direction: column; gap: 12px; padding: 10px 12px; border-radius: 19px; background: var(--mine-bg); box-shadow: 0 5px 5px rgba(0, 0, 0, 0.012); transition: background-color 0.18s ease, box-shadow 0.18s ease; }
 .row.mine .bubble { align-self: stretch; }
+/* a draft as the thing it will become: its own fields, editable, with Send on it */
+.draft-card { align-self: flex-start; width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px 11px; border: 1px solid var(--line-2); border-radius: 14px; background: color-mix(in srgb, var(--ink) 2%, transparent); }
+.draft-card.sending { border-color: color-mix(in srgb, var(--busy) 45%, transparent); }
+.draft-card.sent { border-color: color-mix(in srgb, var(--idle) 45%, transparent); }
+.draft-card.failed { border-color: color-mix(in srgb, var(--hot) 45%, transparent); }
+.draft-card.dropped { opacity: 0.6; }
+.draft-head { display: flex; align-items: center; gap: 7px; font: 700 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-70); }
+.draft-head .icon { color: var(--ink-45); }
+.draft-who, .draft-id { font-weight: 400; color: var(--ink-30); }
+.draft-field { display: flex; align-items: baseline; gap: 8px; }
+.draft-label { flex: 0 0 56px; color: var(--ink-30); font: 400 var(--meta)/var(--meta-lh) var(--font-ui); }
+.draft-input { flex: 1; min-width: 0; padding: 3px 6px; border: 1px solid transparent; border-radius: 6px; background: color-mix(in srgb, var(--ink) 4%, transparent); color: var(--ink-70); font: 400 var(--body)/var(--body-lh) var(--font-ui); }
+.draft-input:focus { border-color: var(--ink-20); outline: none; }
+.draft-input:disabled { background: none; color: var(--ink-45); }
+.draft-body { width: 100%; min-height: 120px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--canvas); color: var(--ink-70); font: 400 var(--body)/var(--body-lh) var(--font-body); resize: vertical; }
+.draft-body:focus { border-color: var(--ink-20); outline: none; }
+.draft-read { font: 400 var(--body)/var(--body-lh) var(--font-body); color: var(--ink-70); }
+.draft-foot { display: flex; align-items: center; gap: 8px; }
+.draft-send { font-weight: 700; }
+.draft-note { color: var(--ink-30); font: 400 var(--meta)/var(--meta-lh) var(--font-ui); }
+.draft-state { font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-45); }
+.draft-state.verified { color: var(--idle); }
+.draft-state.unverified { color: var(--busy); }
+.draft-state.not_sent { color: var(--hot); }
+/* a quote inside a message: `> like this`, which used to render as literal angle brackets */
+.md-quote { margin: 6px 0; padding: 2px 0 2px 12px; border-left: 2px solid var(--ink-10); color: var(--ink-45); }
+.md-quote > :first-child { margin-top: 0; }
+.md-quote > :last-child { margin-bottom: 0; }
 /* a file he attached: its name and size, opening the copy the box kept */
 .row-files { display: flex; flex-direction: column; gap: 4px; align-self: stretch; }
 .row-file { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 10px; border: 1px solid var(--line-2); border-radius: 10px; color: inherit; text-decoration: none; }

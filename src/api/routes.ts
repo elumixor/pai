@@ -3,6 +3,7 @@ import { MAX_FILES, readable, serve as serveAttachment, type Upload } from "../d
 import { mapResponse } from "../domain/maps.ts";
 import { ratesResponse } from "../domain/rates.ts";
 import * as reads from "../domain/reads.ts";
+import * as drafts from "../domain/drafts.ts";
 import { all as allProjects, clone, CloneError, createContext, refresh } from "../domain/catalog.ts";
 import * as automations from "../domain/automations.ts";
 import { context, save as saveContext } from "../domain/context.ts";
@@ -131,6 +132,31 @@ export async function handle(req: Request): Promise<Response> {
     // A picture someone attached, by the name the transcript gives it.
     if (path.startsWith("/attachments/"))
       return serveAttachment(path.slice("/attachments/".length), url.searchParams.get("name") ?? undefined) ?? json({ error: "no such attachment" }, 404);
+
+    // A draft he is approving: the card's fields, his edits, his Send and his Discard.
+    if (path === "/drafts") return json({ drafts: drafts.open(), shape: drafts.SHAPE });
+    const draftPath = /^\/drafts\/(\d+)(?:\/(send|discard))?$/.exec(path);
+    if (draftPath?.[1]) {
+      const id = Number(draftPath[1]);
+      try {
+        if (draftPath[2] === "send" && req.method === "POST") {
+          // What he edited goes with it: the body arrives on the Send, so the card he is looking at
+          // is what is sent even if the last keystroke never reached a PATCH.
+          const edits = await body<Partial<drafts.Fields>>(req).catch(() => ({}) as Partial<drafts.Fields>);
+          if (Object.keys(edits).length) drafts.edit(id, edits);
+          return json(drafts.send(id));
+        }
+        if (draftPath[2] === "discard" && req.method === "POST") {
+          const { why } = await body<{ why?: string }>(req).catch(() => ({ why: "" }));
+          return json(drafts.discard(id, why ?? ""));
+        }
+        if (req.method === "PATCH") return json(drafts.edit(id, await body<Partial<drafts.Fields>>(req)));
+        const found = drafts.get(id);
+        return found ? json(found) : json({ error: "no such draft" }, 404);
+      } catch (err) {
+        return json({ error: (err as Error).message }, 400);
+      }
+    }
 
     // How far he has read, per chat: the box holds it, so every client agrees.
     if (path === "/reads" && req.method === "POST") {
@@ -528,6 +554,22 @@ export async function handle(req: Request): Promise<Response> {
           createdAt: summary.lastActivity,
         }];
       });
+      // A draft waiting on him is a decision with a card of its own: Send or Discard, after editing.
+      const fromDrafts = drafts.open().map((d) => ({
+        kind: "draft" as const,
+        id: `draft:${d.id}`,
+        draftId: d.id,
+        taskId: d.taskId ?? undefined,
+        agent: area(d.agent),
+        from: agents.get(d.agent)?.name ?? d.agent,
+        question: `${drafts.labelFor(d.channel)}${d.fields.to ? ` to ${d.fields.to}` : ""}${d.fields.subject ? `: ${d.fields.subject}` : ""}`,
+        options: d.status === "sending" ? [] : ["Send", "Discard"],
+        freeText: false,
+        priority: "normal",
+        draft: { channel: d.channel, fields: d.fields, status: d.status, state: d.state, note: d.note },
+        createdAt: d.createdAt,
+      }));
+
       // A task waiting on the user is a decision too: done, dropped, or a word to whoever owns it.
       // A task with an open ask on it is that ask's card already.
       const asked = new Set(open.map((a) => a.taskId));
@@ -544,7 +586,7 @@ export async function handle(req: Request): Promise<Response> {
         link: tasks.firstUrl(t.nextAction, t.source, t.notes),
         createdAt: t.updatedAt,
       }));
-      return json([...fromSessions, ...fromAsks, ...fromTasks].sort((a, b) => b.createdAt - a.createdAt));
+      return json([...fromSessions, ...fromDrafts, ...fromAsks, ...fromTasks].sort((a, b) => b.createdAt - a.createdAt));
     }
 
     // One answer for any of them, by the id `/needs` gave it — what a notification's button sends.

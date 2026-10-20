@@ -6,6 +6,7 @@ import { icon, type IconName } from "./icons.ts";
 import { EVENT_ICONS } from "../../../src/protocol/rich.ts";
 import { kindIcon, kindTint } from "./kinds.ts";
 import { remember } from "./storage.ts";
+import { draftCard } from "./draft-card.ts";
 import { findBar, type FindTarget } from "./find.ts";
 import { flushReads, loadReads, markRead, readAt } from "./reads.ts";
 import { bodyPeek } from "./body-peek.ts";
@@ -115,7 +116,8 @@ interface Row {
   readonly kind: "message";
   readonly key: string;
   readonly at: number;
-  readonly m: LogMessage;
+  /** The row it draws; a draft card changes in place, so this one is not frozen. */
+  m: LogMessage;
   node: HTMLElement;
 }
 
@@ -936,6 +938,13 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   function renderMessage(m: LogMessage): HTMLElement {
     // A pin reads as a place whoever sent it, so it is drawn before the kind is even looked at.
     if (m.meta.place) return placeRow(m);
+    // A draft is the card, not a row about one: the card is what he edits and approves.
+    if (m.meta.draftId && m.meta.draft) {
+      const row = draftCard({ id: m.meta.draftId, ...m.meta.draft, from: nameOf(m.from) }, { changed: () => void refreshDrafts() });
+      row.dataset.message = String(m.id);
+      row.dataset.at = String(m.createdAt);
+      return row;
+    }
     switch (m.kind) {
       case "chat":
         return mine(m) ? mineRow(m) : replyRow(m);
@@ -1176,6 +1185,17 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     requestAnimationFrame(drawBar);
   }
 
+  /** A draft settled or changed elsewhere: the rows that draw it are told. */
+  const refreshDrafts = async () => {
+    const fresh = await listMessages(options.agent, { limit: 20, task: options.task }).catch(() => []);
+    for (const m of fresh) {
+      const item = items.find((i): i is Row => i.kind === "message" && i.m.id === m.id);
+      if (!item || JSON.stringify(item.m.meta) === JSON.stringify(m.meta)) continue;
+      item.m = m;
+      redraw(item);
+    }
+  };
+
   /** The rows that count: the unseen ones dotted, each watched for its half second on screen. */
   function watch() {
     if (!watcher) return;
@@ -1391,6 +1411,15 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     (event) => {
       const payload = event.payload;
       switch (event.kind) {
+        case "message.updated": {
+          const m = payload as unknown as LogMessage;
+          const item = items.find((i): i is Row => i.kind === "message" && i.m.id === m.id);
+          if (item) {
+            item.m = m;
+            redraw(item);
+          }
+          break;
+        }
         case "message.new": {
           const m = payload as unknown as LogMessage;
           if (concerns(m)) append(m);

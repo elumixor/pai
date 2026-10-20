@@ -158,6 +158,20 @@ CREATE TABLE IF NOT EXISTS routes (
 );
 
 -- Questions for the user from agents; see domain/asks.ts.
+CREATE TABLE IF NOT EXISTS drafts (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  agent       TEXT NOT NULL,                   -- who wrote it and who will send it
+  channel     TEXT NOT NULL,                   -- email | telegram | whatsapp | linkedin | post
+  fields      TEXT NOT NULL DEFAULT '{}',      -- to, cc, subject, body / text: what the channel has
+  status      TEXT NOT NULL DEFAULT 'pending', -- pending | sending | sent | failed | dropped
+  state       TEXT,                            -- verified | unverified | not_sent, once it has gone
+  note        TEXT NOT NULL DEFAULT '',
+  task_id     INTEGER,
+  message_id  INTEGER,                         -- its row in the chat, which draws the card
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS asks (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   agent       TEXT NOT NULL,

@@ -724,12 +724,23 @@ export function start() {
       drain();
     }
   };
+  // His Send on a draft card: the agent that offered it sends it, with the fields as they stand.
+  const onDraft = (e: PaiEvent) => {
+    if (e.kind !== "draft.sending") return;
+    const slug = String(e.payload.agent ?? "");
+    const text = String(e.payload.text ?? "");
+    if (!slug || !text || !get(slug)) return;
+    message(slug, text, { from: "user", kind: "chat", logged: true });
+  };
+  bus.on("event", onDraft);
+
   bus.on("event", handler);
   setTimeout(drain, 5_000);
   const settling = setInterval(() => (settle(), drainHeld()), SETTLE_EVERY_MS);
   return () => {
     clearInterval(settling);
     bus.off("event", handler);
+    bus.off("event", onDraft);
   };
 }
 

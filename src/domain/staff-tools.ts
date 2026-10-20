@@ -11,6 +11,7 @@ import { repeatOf } from "./repeats.ts";
 import * as requests from "./requests.ts";
 import * as settings from "./settings.ts";
 import * as tasks from "./tasks.ts";
+import * as drafts from "./drafts.ts";
 import { conversationDigest, conversations } from "./transcript.ts";
 
 /**
@@ -194,6 +195,43 @@ export function staffTools(me: string | undefined) {
       }),
     ),
   );
+  // ---- a draft he approves on its own card ---------------------------------
+  out.push(
+    tool(
+      "offer_draft",
+      "Offer an outbound message as a card he can edit and send himself: email (to, cc, subject, body, and which mailbox), a Telegram or WhatsApp message (to = the person, body = the words), a LinkedIn reply (to = the conversation), or a LinkedIn post (body only). Use this instead of writing a draft into the chat and asking him to approve it in words — the card is the approval, and what goes out is what it holds when he presses Send, which may not be what you wrote. End your turn after offering: he answers, and you are woken to send it with your own channel tool, after which you report with draft_result.",
+      {
+        channel: z.enum(["email", "telegram", "whatsapp", "linkedin", "post"]),
+        body: z.string().min(1).describe("the words themselves"),
+        to: z.string().optional().describe("the address, the person, or the conversation; a post has none"),
+        cc: z.string().optional(),
+        subject: z.string().optional(),
+        account: z.string().optional().describe("which mailbox an email leaves from (gmail_list_accounts)"),
+        task_id: z.number().optional(),
+      },
+      guard(async (a: { channel: drafts.Channel; body: string; to?: string; cc?: string; subject?: string; account?: string; task_id?: number }) => {
+        const draft = drafts.offer({ agent: self, channel: a.channel, taskId: a.task_id, fields: { body: a.body, to: a.to, cc: a.cc, subject: a.subject, account: a.account } });
+        return {
+          draft: draft.id,
+          waiting: "on him",
+          note: `Offered as a card. End your turn; when he presses Send you are woken with what the card holds then, to send with ${drafts.toolFor(a.channel)} and report with draft_result.`,
+        };
+      }),
+    ),
+    tool(
+      "draft_result",
+      "What your channel tool concluded about a draft you were woken to send. `verified` means you read it back where it went; `unverified` means it was taken but could not be read back — it may already have arrived, so it must never be sent again; `not_sent` means nothing left. The card shows this, so it is the one place the answer belongs.",
+      { draft_id: z.number(), state: z.enum(["verified", "unverified", "not_sent"]), note: z.string().max(300).optional() },
+      guard(async (a: { draft_id: number; state: drafts.SendState; note?: string }) => {
+        const draft = drafts.get(a.draft_id);
+        if (!draft) throw new Error(`no draft #${a.draft_id}`);
+        if (draft.agent !== self) throw new Error(`draft #${a.draft_id} is ${draft.agent}'s, not yours`);
+        const settled = drafts.result(a.draft_id, a.state, a.note);
+        return { draft: settled.id, status: settled.status, state: settled.state };
+      }),
+    ),
+  );
+
   if (!isPai)
     out.push(
       tool(

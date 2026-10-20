@@ -293,6 +293,10 @@ export const transcript = (session: string, cwd?: string, limit = 300) =>
   get<Transcript[]>(`/transcript?session=${session}&limit=${limit}${cwd ? `&cwd=${encodeURIComponent(cwd)}` : ""}`);
 /** A picture from a transcript, as an `<img>` can load it (it cannot carry the header). */
 export const message = (id: number) => get<LogMessage>(`/messages/${id}`);
+export const drafts = () => get<{ drafts: unknown[] }>("/drafts");
+export const editDraft = (id: number, fields: Record<string, string>) => send(`/drafts/${id}`, fields, "PATCH");
+export const sendDraft = (id: number, fields: Record<string, string>) => send(`/drafts/${id}/send`, fields);
+export const discardDraft = (id: number, why = "") => send(`/drafts/${id}/discard`, { why });
 export const readMarks = async () => (await get<{ marks: Record<string, number> }>("/reads")).marks ?? {};
 export const markRead = (place: string, at: number) => send("/reads", { place, at });
 export const rates = () => get<{ base: string; date: string; rates: Record<string, number>; currencies: string[] }>("/rates");

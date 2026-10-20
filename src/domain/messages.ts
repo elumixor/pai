@@ -161,6 +161,21 @@ export function list(opts: ListOptions = {}): Message[] {
   return opts.after ? rows : rows.reverse();
 }
 
+/**
+ * A row whose content really does change: a draft card he edits is the same row, not a new one, so
+ * every client redraws it in place. Only the few rows that are a live thing use this.
+ */
+export function update(id: number, patch: { body?: string; meta?: MessageMeta }): Message | undefined {
+  const m = get(id);
+  if (!m) return undefined;
+  const body = patch.body ?? m.body;
+  const meta = patch.meta ? { ...m.meta, ...patch.meta } : m.meta;
+  db.prepare("UPDATE messages SET body = ?, meta = ? WHERE id = ?").run(body, JSON.stringify(meta), id);
+  const updated = { ...m, body, meta };
+  bus.emitEvent("message.updated", updated as unknown as Record<string, unknown>);
+  return updated;
+}
+
 /** Adds to a message's metadata (a summary written later, say) and tells the bus the row changed. */
 export function patchMeta(id: number, patch: MessageMeta): Message | undefined {
   const m = get(id);

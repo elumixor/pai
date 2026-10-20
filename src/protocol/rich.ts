@@ -21,9 +21,20 @@ export const MAX_PAYLOAD_CHARS = 2048;
  * a folded run of them; `delegation` a card for work handed to an agent, with its live status;
  * `report` what an agent said back; `ask` a question with buttons; `notice` something to know;
  * `place` a map pin, whose point rides as structure so our clients draw a card and a stock one
- * still reads the name, the coordinates and a link it can open.
+ * still reads the name, the coordinates and a link it can open; `draft` an outbound message he
+ * approves on its own card — the fields ride as structure, and the body is what a stock client sees.
  */
-export type RichKind = "turn" | "status" | "question" | "result" | "user" | "event" | "events" | "delegation" | "report" | "ask" | "notice" | "place";
+export type RichKind = "turn" | "status" | "question" | "result" | "user" | "event" | "events" | "delegation" | "report" | "ask" | "notice" | "place" | "draft";
+
+/** An outbound message waiting on him: the fields the channel has, and what became of it. */
+export interface RichDraft {
+  readonly id: number;
+  readonly channel: "email" | "telegram" | "whatsapp" | "linkedin" | "post";
+  readonly fields: { readonly to?: string; readonly cc?: string; readonly subject?: string; readonly body: string; readonly account?: string };
+  readonly status: "pending" | "sending" | "sent" | "failed" | "dropped";
+  readonly state?: "verified" | "unverified" | "not_sent" | null;
+  readonly note?: string;
+}
 
 /** A point on the map, with the name and address a venue card shows when they are known. */
 export interface RichPlace {
@@ -85,6 +96,7 @@ export const EVENT_ICONS: Readonly<Record<string, string>> = {
   /** A turn's thinking and tool calls, folded into one line. */
   tools: "gearshape",
   place: "mappin.and.ellipse",
+  draft: "square.and.pencil",
 };
 
 /** The colour family each kind of row is tinted with, named so every client picks its own shade of the same thing. */
@@ -101,6 +113,7 @@ export const ROW_TINTS: Readonly<Record<string, RowTint>> = {
   answer: "ok",
   notice: "muted",
   place: "accent",
+  draft: "accent",
   rate_limited: "muted",
   event: "muted",
   tools: "muted",
@@ -142,6 +155,8 @@ export interface RichMeta {
   readonly priority?: string;
   /** A map pin. */
   readonly place?: RichPlace;
+  /** A draft card: the outbound message as it stands, which is what Send will send. */
+  readonly draft?: RichDraft;
   /** The forum topic the agent's chat is in, so a client can open it. */
   readonly thread?: number;
 }

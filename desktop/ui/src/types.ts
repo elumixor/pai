@@ -277,6 +277,15 @@ export interface LogMessage {
     readonly images?: readonly string[];
     /** Files that came with it: the kept name, his name for it, and how big it is. */
     readonly files?: readonly { readonly file: string; readonly name: string; readonly size: number; readonly media_type: string }[];
+    /** A draft he approves on its own card: the fields as they stand, and what became of it. */
+    readonly draftId?: number;
+    readonly draft?: {
+      readonly channel: "email" | "telegram" | "whatsapp" | "linkedin" | "post";
+      readonly fields: { readonly to?: string; readonly cc?: string; readonly subject?: string; readonly body: string; readonly account?: string };
+      readonly status: "pending" | "sending" | "sent" | "failed" | "dropped";
+      readonly state?: "verified" | "unverified" | "not_sent" | null;
+      readonly note?: string;
+    };
     /** A map pin, drawn as a place card. */
     readonly place?: { readonly latitude: number; readonly longitude: number; readonly title?: string; readonly address?: string };
     /** A six-word line for the row, written once by a small model. */

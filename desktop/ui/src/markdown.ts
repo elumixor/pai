@@ -56,6 +56,14 @@ export function markdown(source: string): DocumentFragment {
       index += 1;
       continue;
     }
+    // `> quoted` is a quote, not a line that starts with an angle bracket.
+    if (/^\s*>\s?/.test(line)) {
+      const quoted: string[] = [];
+      while (index < lines.length && /^\s*>\s?/.test(lines[index]!)) quoted.push(lines[index++]!.replace(/^\s*>\s?/, ""));
+      // A quote can hold anything a message can, so it is rendered as one.
+      out.append(el("blockquote.md-quote", {}, markdown(quoted.join("\n"))));
+      continue;
+    }
     if (/^\s*([-*+]|\d+[.)])\s+/.test(line)) {
       const ordered = /^\s*\d+[.)]\s+/.test(line);
       const list = el(ordered ? "ol.md-list" : "ul.md-list");
