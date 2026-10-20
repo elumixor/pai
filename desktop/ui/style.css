@@ -879,7 +879,8 @@ body.in-home .statusbar { display: none; }
 .new-line::before, .new-line::after { content: ""; flex: 1; height: 1px; background: color-mix(in srgb, var(--hand) 35%, transparent); }
 .new-line span { flex: 0 0 auto; }
 .row.unread { position: relative; }
-.row.unread:not(.mine)::before { content: ""; position: absolute; left: -10px; top: 6px; width: 3px; height: calc(100% - 12px); border-radius: 2px; background: color-mix(in srgb, var(--hand) 55%, transparent); }
+/* a small dot at the message's top-left corner: it says "new" without drawing a margin down the chat */
+.row.unread:not(.mine)::before { content: ""; position: absolute; left: -9px; top: 7px; width: 6px; height: 6px; border-radius: 50%; background: var(--hand); opacity: 0.85; }
 /* a task's own page: what it is, over the conversation about it */
 .task-view { display: flex; flex-direction: column; min-height: 0; height: 100%; width: 100%; max-width: var(--chat-w); }
 .task-view .chat-view { flex: 1; min-height: 0; }
