@@ -874,6 +874,12 @@ body.in-home .statusbar { display: none; }
 .info-link { padding: 0; border: 0; background: none; font: inherit; color: inherit; text-decoration: underline; text-decoration-color: var(--ink-20); cursor: pointer; }
 .info-link:hover { text-decoration-color: var(--ink-45); }
 .info-dim { color: var(--ink-30); }
+/* what he has not read yet: the line he left off at, and the rows above it marked until they are seen */
+.new-line { display: flex; align-items: center; gap: 10px; margin: 6px 0; font: 700 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--hand); }
+.new-line::before, .new-line::after { content: ""; flex: 1; height: 1px; background: color-mix(in srgb, var(--hand) 35%, transparent); }
+.new-line span { flex: 0 0 auto; }
+.row.unread { position: relative; }
+.row.unread:not(.mine)::before { content: ""; position: absolute; left: -10px; top: 6px; width: 3px; height: calc(100% - 12px); border-radius: 2px; background: color-mix(in srgb, var(--hand) 55%, transparent); }
 /* a task's own page: what it is, over the conversation about it */
 .task-view { display: flex; flex-direction: column; min-height: 0; height: 100%; width: 100%; max-width: var(--chat-w); }
 .task-view .chat-view { flex: 1; min-height: 0; }

@@ -6,6 +6,7 @@ import { icon, type IconName } from "./icons.ts";
 import { EVENT_ICONS } from "../../../src/protocol/rich.ts";
 import { kindIcon, kindTint } from "./kinds.ts";
 import { remember } from "./storage.ts";
+import { flushReads, loadReads, markRead, readAt } from "./reads.ts";
 import { bodyPeek } from "./body-peek.ts";
 import { mapsUrl, placeText } from "../../../src/protocol/rich.ts";
 import { inline, markdown } from "./markdown.ts";
@@ -307,8 +308,15 @@ function toolRow(tool: TranscriptTool, session?: string) {
 
 export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   const log = el("div.chat-log") as HTMLElement;
-  /** Which chat this is, for the two things remembered about it between visits: his draft and where he was reading. */
+  /** Which chat this is, for the three things remembered about it: his draft, his place, what he has read. */
   const chatKey = options.session ?? (options.task !== undefined ? `task${options.task}` : options.agent);
+  /** Where the daemon keeps how far he has read in this chat. */
+  const readPlace = `chat:${chatKey}`;
+  /**
+   * The mark as it stood when the chat opened. The divider is drawn against this one and not
+   * against the live mark, so the line stays where he left off instead of sliding down as he reads.
+   */
+  let openedAt = 0;
   /** What a hover over a row shows: its body, rendered, in the one card every row shares. */
   const peek = bodyPeek();
   /** The rows and day marks drawn once already: a redraw lets only the others in, one by one, bottom to top. */
@@ -993,6 +1001,43 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   }
 
   /** Everything, in order, a day separator where the day changes, runs of events compacted. */
+  /** His own message is never unread: he wrote it. */
+  const mineItem = (item: Item) => item.kind === "message" && (item.m.from === "user" || mine(item.m));
+
+  /**
+   * Read means seen: a row counts once it has been in the viewport for half a second, not when it
+   * was rendered and not when it was scrolled past. The newest such row moves the mark, which the
+   * daemon holds, so a reload and the app agree on where he stopped.
+   */
+  const DWELL_MS = 500;
+  const dwelling = new Map<Element, ReturnType<typeof setTimeout>>();
+  const watcher =
+    typeof IntersectionObserver === "undefined"
+      ? undefined
+      : new IntersectionObserver(
+          (entries) => {
+            for (const entry of entries) {
+              const at = Number((entry.target as HTMLElement).dataset.at ?? 0);
+              if (!at) continue;
+              if (!entry.isIntersecting) {
+                clearTimeout(dwelling.get(entry.target));
+                dwelling.delete(entry.target);
+                continue;
+              }
+              if (dwelling.has(entry.target)) continue;
+              dwelling.set(
+                entry.target,
+                setTimeout(() => {
+                  dwelling.delete(entry.target);
+                  markRead(readPlace, at);
+                  (entry.target as HTMLElement).classList.remove("unread");
+                }, DWELL_MS),
+              );
+            }
+          },
+          { root: log, threshold: 0.6 },
+        );
+
   function drawAll() {
     items.sort((a, b) => a.at - b.at);
     /** Each top-level node with whether anything in it is drawn for the first time. */
@@ -1006,11 +1051,19 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       for (const node of renderRun(run)) nodes.push({ node, isNew });
       run = [];
     };
+    // "New" goes over the oldest row he has not read, once, and only when there is something above it.
+    const firstUnread = openedAt ? items.find((i) => i.at > openedAt && !mineItem(i)) : undefined;
+    const divided = firstUnread && items.some((i) => i.at <= openedAt);
     for (const item of items) {
       if (dayOf(item.at) !== day) {
         flush();
         day = dayOf(item.at);
         nodes.push({ node: el("div.day", {}, el("span", {}, dayLabel(item.at))), isNew: !drawn.has(`day:${day}`) });
+      }
+      if (divided && item === firstUnread) {
+        flush();
+        nodes.push({ node: el("div.new-line", {}, el("span", {}, "New")), isNew: !drawn.has("new-line") });
+        drawn.add("new-line");
       }
       if (isEvent(item)) {
         run.push(item);
@@ -1034,7 +1087,19 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     clear(log, more && earlier.node, ...nodes.map((n) => n.node), ...(items.length || loading ? [] : [el("p.hint", {}, "Nothing said here yet.")]));
     if (liveText) log.append(liveText);
     if (working) log.append(working.node);
+    watch();
     requestAnimationFrame(drawBar);
+  }
+
+  /** Every row drawn: the unseen ones marked as such, and each watched for its half second on screen. */
+  function watch() {
+    if (!watcher) return;
+    for (const row of log.querySelectorAll<HTMLElement>("[data-at]")) {
+      const at = Number(row.dataset.at ?? 0);
+      if (!at) continue;
+      row.classList.toggle("unread", at > openedAt && at > readAt(readPlace) && !row.classList.contains("mine"));
+      watcher.observe(row);
+    }
   }
 
   /** A row that arrived now goes last, before the streaming reply and the working line. */
@@ -1180,6 +1245,8 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     if (liveSession) await loadTools(liveSession);
     if (options.task === undefined) items.push(...addQuestions(needs));
     loading = false;
+    await loadReads();
+    openedAt = readAt(readPlace);
     drawAll();
     restorePlace();
     restoreReply();
@@ -1454,6 +1521,11 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       earlier.dispose();
       stopLive?.();
       stopWorking();
+      // What he read on the way out goes now, rather than waiting for a timer this page will not see.
+      for (const timer of dwelling.values()) clearTimeout(timer);
+      dwelling.clear();
+      watcher?.disconnect();
+      flushReads();
     },
     async reveal(target) {
       const selector = target.messageId !== undefined ? `[data-message="${target.messageId}"]` : target.askId !== undefined ? `[data-ask="${target.askId}"]` : target.taskId !== undefined ? `[data-task="${target.taskId}"]` : target.question ? ".row.question.open" : "";

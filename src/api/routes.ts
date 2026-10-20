@@ -2,6 +2,7 @@ import { config } from "../core/config.ts";
 import { serve as serveAttachment } from "../domain/attachments.ts";
 import { mapResponse } from "../domain/maps.ts";
 import { ratesResponse } from "../domain/rates.ts";
+import * as reads from "../domain/reads.ts";
 import { all as allProjects, clone, CloneError, createContext, refresh } from "../domain/catalog.ts";
 import * as automations from "../domain/automations.ts";
 import { context, save as saveContext } from "../domain/context.ts";
@@ -115,6 +116,13 @@ export async function handle(req: Request): Promise<Response> {
 
     // A picture someone attached, by the name the transcript gives it.
     if (path.startsWith("/attachments/")) return serveAttachment(path.slice("/attachments/".length)) ?? json({ error: "no such attachment" }, 404);
+
+    // How far he has read, per chat: the box holds it, so every client agrees.
+    if (path === "/reads" && req.method === "POST") {
+      const { place, at } = await body<{ place?: string; at?: number }>(req);
+      return json({ marks: reads.mark(String(place ?? ""), Number(at ?? 0)) });
+    }
+    if (path === "/reads") return json({ marks: reads.marks() });
 
     // What a currency is worth, for showing an amount in the ones he thinks in.
     if (path === "/rates") return await ratesResponse();

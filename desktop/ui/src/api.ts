@@ -292,6 +292,8 @@ export const transcript = (session: string, cwd?: string, limit = 300) =>
   get<Transcript[]>(`/transcript?session=${session}&limit=${limit}${cwd ? `&cwd=${encodeURIComponent(cwd)}` : ""}`);
 /** A picture from a transcript, as an `<img>` can load it (it cannot carry the header). */
 export const message = (id: number) => get<LogMessage>(`/messages/${id}`);
+export const readMarks = async () => (await get<{ marks: Record<string, number> }>("/reads")).marks ?? {};
+export const markRead = (place: string, at: number) => send("/reads", { place, at });
 export const rates = () => get<{ base: string; date: string; rates: Record<string, number>; currencies: string[] }>("/rates");
 export const mapUrl = (lat: number, lon: number, width = 600, height = 220) => withToken(`${baseUrl()}/map?lat=${lat}&lon=${lon}&w=${width}&h=${height}`);
 export const attachmentUrl = (name: string) => withToken(`${baseUrl()}/attachments/${encodeURIComponent(name)}`);

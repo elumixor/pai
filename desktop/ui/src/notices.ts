@@ -1,7 +1,7 @@
 import { allTasks, auditTrail, follow, notices as fetchMessages } from "./api.ts";
 import { ago, clear, el } from "./dom.ts";
 import { icon, type IconName } from "./icons.ts";
-import { remember } from "./storage.ts";
+import { loadReads, markRead, readAt } from "./reads.ts";
 import type { AuditEntry, LogMessage, TaskItem } from "./types.ts";
 
 /**
@@ -17,7 +17,8 @@ import type { AuditEntry, LogMessage, TaskItem } from "./types.ts";
  */
 
 const SHOWN = 40;
-const SEEN_KEY = "pai.notices.seen";
+/** The bell's own place in the daemon's read marks: the same notion every chat uses. */
+const BELL = "notices";
 /** The log rows that are news: asks to the user, and agents starting and closing. */
 const MESSAGE_KINDS = ["ask", "event"] as const;
 const AGENT_EVENTS = new Set(["agent.spawned", "agent.closed"]);
@@ -41,7 +42,7 @@ interface Notice {
   readonly open: { readonly agent?: string; readonly id?: number; readonly task?: number };
 }
 
-const seen = () => Number(localStorage.getItem(SEEN_KEY) ?? 0);
+const seen = () => readAt(BELL);
 const firstLine = (text: string) => text.replace(/^\[[^\]]+\]\s*/, "").split("\n").find((l) => l.trim()) ?? "";
 const nameOf = (slug: string | null | undefined) => (!slug || slug === "pai" ? "pai" : slug === "user" ? "you" : slug.replace(/^(routine|watcher):/, ""));
 
@@ -81,6 +82,9 @@ export function noticesBell(root: HTMLElement) {
     if (open) drawList();
   };
   const unread = () => rows.filter((n) => n.at > seen()).length;
+  // The count is against the daemon's mark, so the marks are asked for and the count drawn again.
+  void loadReads().then(() => drawCount());
+
   const drawCount = () => {
     const n = unread();
     count.textContent = n > 99 ? "99+" : String(n);
@@ -120,7 +124,7 @@ export function noticesBell(root: HTMLElement) {
     open = true;
     drawList();
     // Everything on screen now has been seen; what comes while it is open is new until the next opening.
-    if (rows.length) remember(SEEN_KEY, String(Math.max(seen(), rows[0]!.at)));
+    if (rows.length) markRead(BELL, Math.max(seen(), rows[0]!.at));
     pop.hidden = false;
     button.classList.add("on");
     drawCount();
