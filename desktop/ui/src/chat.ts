@@ -1005,6 +1005,16 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   const mineItem = (item: Item) => item.kind === "message" && (item.m.from === "user" || mine(item.m));
 
   /**
+   * What unread is about: something an agent *said*. A reply or a report with text in it counts; an
+   * event, a delegation, a notice, an ask, a pin and his own messages do not — a dot on a service
+   * row would make the chat look unread whenever anything happened, which is not the same thing as
+   * something being said to him. What does not count also does not move the mark.
+   */
+  const SAID: readonly string[] = ["chat", "report", "response"];
+  const said = (item: Item): item is Row =>
+    item.kind === "message" && SAID.includes(item.m.kind) && !mineItem(item) && !item.m.meta.place && Boolean(item.m.body.trim());
+
+  /**
    * Read means seen: a row counts once it has been in the viewport for half a second, not when it
    * was rendered and not when it was scrolled past. The newest such row moves the mark, which the
    * daemon holds, so a reload and the app agree on where he stopped.
@@ -1052,7 +1062,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       run = [];
     };
     // "New" goes over the oldest row he has not read, once, and only when there is something above it.
-    const firstUnread = openedAt ? items.find((i) => i.at > openedAt && !mineItem(i)) : undefined;
+    const firstUnread = openedAt ? items.find((i) => i.at > openedAt && said(i)) : undefined;
     const divided = firstUnread && items.some((i) => i.at <= openedAt);
     for (const item of items) {
       if (dayOf(item.at) !== day) {
@@ -1091,14 +1101,13 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     requestAnimationFrame(drawBar);
   }
 
-  /** Every row drawn: the unseen ones marked as such, and each watched for its half second on screen. */
+  /** The rows that count: the unseen ones dotted, each watched for its half second on screen. */
   function watch() {
     if (!watcher) return;
-    for (const row of log.querySelectorAll<HTMLElement>("[data-at]")) {
-      const at = Number(row.dataset.at ?? 0);
-      if (!at) continue;
-      row.classList.toggle("unread", at > openedAt && at > readAt(readPlace) && !row.classList.contains("mine"));
-      watcher.observe(row);
+    for (const item of items) {
+      if (!said(item) || !item.node?.isConnected) continue;
+      item.node.classList.toggle("unread", item.at > openedAt && item.at > readAt(readPlace));
+      watcher.observe(item.node);
     }
   }
 
