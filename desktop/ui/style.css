@@ -881,6 +881,19 @@ body.in-home .statusbar { display: none; }
 .row.unread { position: relative; }
 /* a small dot at the message's top-left corner: it says "new" without drawing a margin down the chat */
 .row.unread:not(.mine)::before { content: ""; position: absolute; left: -9px; top: 7px; width: 6px; height: 6px; border-radius: 50%; background: var(--hand); opacity: 0.85; }
+/* find in this conversation: a bar over the column, matches marked where they are */
+.find-bar { position: absolute; top: 8px; right: 16px; z-index: 6; display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 10px; border-radius: 10px; background: color-mix(in srgb, var(--ink) 4%, var(--canvas)); box-shadow: var(--soft-shadow), 0 0 0 1px var(--ink-10); }
+.find-bar .icon { color: var(--ink-30); flex: 0 0 auto; }
+.find-input { width: 220px; padding: 2px 0; border: 0; background: none; color: var(--ink-70); font: 400 var(--body)/var(--body-lh) var(--font-ui); outline: none; }
+.find-input::-webkit-search-cancel-button { display: none; }
+.find-count { min-width: 64px; color: var(--ink-45); font: 400 var(--meta)/var(--meta-lh) var(--font-ui); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.find-count.none { color: var(--hot); }
+.find-step, .find-close { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--ink-30); cursor: pointer; }
+.find-step:hover, .find-close:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink-70); }
+.find-step { transform: rotate(-90deg); }
+.find-step.next { transform: rotate(90deg); }
+mark.find-hit { padding: 0 1px; border-radius: 3px; background: color-mix(in srgb, var(--busy) 35%, transparent); color: inherit; }
+mark.find-hit.current { background: var(--busy); color: var(--canvas); }
 /* a task's own page: what it is, over the conversation about it */
 .task-view { display: flex; flex-direction: column; min-height: 0; height: 100%; width: 100%; max-width: var(--chat-w); }
 .task-view .chat-view { flex: 1; min-height: 0; }

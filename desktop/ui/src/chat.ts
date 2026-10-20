@@ -6,6 +6,7 @@ import { icon, type IconName } from "./icons.ts";
 import { EVENT_ICONS } from "../../../src/protocol/rich.ts";
 import { kindIcon, kindTint } from "./kinds.ts";
 import { remember } from "./storage.ts";
+import { findBar, type FindTarget } from "./find.ts";
 import { flushReads, loadReads, markRead, readAt } from "./reads.ts";
 import { bodyPeek } from "./body-peek.ts";
 import { mapsUrl, placeText } from "../../../src/protocol/rich.ts";
@@ -459,6 +460,53 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
         const row = result.data as LogMessage | undefined;
         if (row && typeof row.id === "number" && row.kind) append(row);
       }
+    },
+  });
+
+  /**
+   * What ⌘F searches: the conversation as data, a target per thing that was said. A row that is
+   * not drawn yet is still searched — `reveal` draws it, unfolds it (a long bubble of his, a run of
+   * tool calls, an event behind a chevron) and hands it over — so the count never promises a match
+   * he cannot get to.
+   */
+  const findTargets = (): FindTarget[] => {
+    const out: FindTarget[] = [];
+    for (const item of items) {
+      const text = item.kind === "message" ? (parseReply(item.m.body)?.text ?? item.m.body) : item.kind === "tools" ? describeTools(item.tools) : item.questions.map((q) => q.question).join("\n");
+      if (!text.trim()) continue;
+      out.push({
+        key: item.key,
+        text,
+        reveal: () => {
+          if (!item.node?.isConnected) drawAll();
+          const row = item.node;
+          if (!row?.isConnected) return undefined;
+          // Folded is as good as absent: a match inside one has to open it.
+          row.classList.remove("folded");
+          row.classList.add("open");
+          const bubble = row.querySelector<HTMLElement>(".bubble");
+          if (bubble) bubble.style.maxHeight = "";
+          if (item.kind === "tools") item.open = true;
+          return row;
+        },
+      });
+    }
+    return out;
+  };
+
+  const find = findBar({
+    scope: log,
+    targets: findTargets,
+    // Where he is looking: the first row whose bottom is inside the column.
+    anchorKey: () => {
+      const top = log.getBoundingClientRect().top;
+      return items.find((i) => i.node?.isConnected && i.node.getBoundingClientRect().bottom > top)?.key;
+    },
+    canLoadMore: () => more,
+    loadMore: async () => {
+      const before = items.length;
+      await loadEarlier();
+      return items.length > before;
     },
   });
 
@@ -1296,6 +1344,19 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       ? false
       : options.task !== undefined ? m.taskId === options.task : m.from === options.agent || m.to === options.agent || m.meta.agent === options.agent || (options.agent === PAI && (m.kind === "ask" || m.kind === "answer") && (m.to === "user" || m.from === "user"));
 
+  /**
+   * ⌘F belongs to the chat only while the chat is what he is looking at: another view (or another
+   * chat of the same page) must not take the browser's own find away from him.
+   */
+  const owns = () => node.isConnected && node.offsetParent !== null;
+  const onFind = (event: KeyboardEvent) => {
+    if (event.key !== "f" || !(event.metaKey || event.ctrlKey) || event.altKey) return;
+    if (!owns()) return;
+    event.preventDefault();
+    find.open();
+  };
+  window.addEventListener("keydown", onFind);
+
   const stopLog = follow(
     undefined,
     (event) => {
@@ -1517,7 +1578,7 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
   const slot = el("div.chat-slot");
   const toBottom = el("button.to-bottom", { title: "to the latest", hidden: true, onclick: () => log.scrollTo({ top: log.scrollHeight, behavior: "smooth" }) }, icon("chevron", 13));
   log.addEventListener("scroll", () => (toBottom.hidden = nearBottom()), { passive: true });
-  const node = el("section.chat", {}, el("div.chat-view", {}, head, log, scrollbar, el("div.chat-foot", {}, el("div.chat-foot-side", {}, toBottom, slot), box.node)));
+  const node = el("section.chat", {}, el("div.chat-view", {}, head, find.node, log, scrollbar, el("div.chat-foot", {}, el("div.chat-foot-side", {}, toBottom, slot), box.node)));
 
   void load().then(async () => {
     if (liveSession) followLive(liveSession);
@@ -1531,6 +1592,8 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
       stopLive?.();
       stopWorking();
       // What he read on the way out goes now, rather than waiting for a timer this page will not see.
+      window.removeEventListener("keydown", onFind);
+      find.close();
       for (const timer of dwelling.values()) clearTimeout(timer);
       dwelling.clear();
       watcher?.disconnect();
