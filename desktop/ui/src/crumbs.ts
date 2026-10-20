@@ -25,6 +25,23 @@ export function crumbBar() {
    */
   const under = el("div.crumb-under");
   const node = el("nav.crumbs.home-crumbs", { "aria-label": "Where you are" }, line, under);
+
+  /**
+   * The band's height, published as `--band-h` and `--band-extra` (what it grew by), because three
+   * other things are measured from it: the chat's own fade, the day pill that floats over it, and
+   * what may be clipped. They used to carry the old number each, so opening the find bar left the
+   * bar cropped, the fade ending above it and the pill at the wrong height — one value, decided
+   * here, rather than three copies of it.
+   */
+  const BASE = 27;
+  const publish = () => {
+    const height = Math.round(node.getBoundingClientRect().height) || BASE;
+    const root = document.documentElement.style;
+    root.setProperty("--band-h", `${height}px`);
+    root.setProperty("--band-extra", `${Math.max(0, height - BASE)}px`);
+  };
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(publish).observe(node);
+  publish();
   /** After the last crumb: the views of the place, when it has more than one. */
   const tail = el("span.crumb-tail");
   const shown = new Map<string, HTMLElement>();

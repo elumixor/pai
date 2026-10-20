@@ -1355,8 +1355,8 @@ export function chat(options: ChatOptions, ctx: ChatContext): Chat {
     if (event.key !== "f" || !(event.metaKey || event.ctrlKey) || event.altKey) return;
     if (!owns()) return;
     event.preventDefault();
-    // Held down, it walks: open the first time, then next (shift for previous).
-    if (find.showing) void find.step(event.shiftKey ? -1 : 1);
+    // One key: open and focus the first time; after that focus, select and step to the next match.
+    if (find.showing && event.shiftKey) void find.step(-1);
     else find.open();
   };
   window.addEventListener("keydown", onFind);

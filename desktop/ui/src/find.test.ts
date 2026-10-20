@@ -94,3 +94,31 @@ describe("the first result arrives before the whole thread is scanned", () => {
     expect(log.innerHTML).toBe(before);
   });
 });
+
+describe("one key does the lot", () => {
+  const bar = () => {
+    const log = document.createElement("div");
+    const node = document.createElement("div");
+    node.textContent = "ahoj daniel";
+    log.append(node);
+    document.body.append(log);
+    const made = findBar({ scope: log, targets: () => [{ key: "k", text: node.textContent!, reveal: () => node }] });
+    document.body.append(made.node);
+    return made;
+  };
+
+  test("open focuses the box; open again selects it, so typing replaces the query", async () => {
+    const find = bar();
+    find.open();
+    const input = find.node.querySelector("input")!;
+    expect(document.activeElement).toBe(input);
+    input.value = "daniel";
+    input.dispatchEvent(new Event("input"));
+    for (let i = 0; i < 5; i += 1) await tick();
+    input.blur();
+    find.open();
+    expect(document.activeElement).toBe(input);
+    expect(input.selectionStart).toBe(0);
+    expect(input.selectionEnd).toBe("daniel".length);
+  });
+});

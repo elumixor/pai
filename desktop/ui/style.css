@@ -618,7 +618,9 @@ dialog.palette { width: min(640px, 92vw); margin-top: 14vh; border-radius: 16px;
 .badge.ask { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 
 .staff-head { gap: 6px; }
-.crumbs { display: flex; align-items: center; gap: 2px; min-width: 0; overflow: hidden; }
+.crumbs { display: flex; align-items: center; gap: 2px; min-width: 0; }
+/* The crumbs themselves clip, the band does not: it has to be able to hold a taller thing. */
+.crumbs > .crumb-line { overflow: hidden; }
 .crumb { padding: 1px 4px; border: 0; border-radius: 5px; background: none; color: var(--dim); font-size: 12px; white-space: nowrap; }
 .crumb:hover { background: var(--panel-2); color: var(--text); }
 .crumb.on { color: var(--text); font-weight: 600; }
@@ -978,7 +980,7 @@ mark.find-hit.current { background: var(--busy); color: var(--canvas); }
 
 /* the chat column */
 .chat-view { position: relative; width: 100%; max-width: var(--chat-w); flex: 1; min-height: 0; height: 100%; display: flex; flex-direction: column; }
-.chat-head { position: absolute; top: 0; left: 0; right: 0; z-index: 4; display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+.chat-head { position: absolute; top: var(--band-extra, 0px); left: 0; right: 0; z-index: 4; display: flex; flex-direction: column; align-items: center; pointer-events: none; transition: top var(--dur-base) var(--ease); }
 /* the way here, level with the nav, centred over the chat: General › Hiring › #75 … */
 /* The band sizes itself: the crumbs' line, and under them whatever the open place hangs there.
    The holder is `display: contents`, so a hidden find bar is not a box and the band is one line. */
@@ -1046,7 +1048,8 @@ body.in-home .chat { max-width: none; margin: 0; }
 /* The log reaches 120px past the column on both sides, so a row swiped sideways is not cut at the column's edge.
    Rows fade out by the log's own mask, not a canvas-coloured cover: nothing to show its edges over a gradient. */
 .chat-log { position: absolute; inset: 0 -120px -20px; overflow-y: auto; overflow-x: hidden; min-height: 0; padding: 120px 120px 240px;
-  --fade: linear-gradient(180deg, transparent 0, transparent 28px, #000 96px, #000 calc(100% - 200px), rgba(0, 0, 0, 0.45) 100%);
+  /* The clear part starts below the band, whatever the band's height is now. */
+  --fade: linear-gradient(180deg, transparent 0, transparent calc(28px + var(--band-extra, 0px)), #000 calc(96px + var(--band-extra, 0px)), #000 calc(100% - 200px), rgba(0, 0, 0, 0.45) 100%);
   -webkit-mask-image: var(--fade); mask-image: var(--fade); display: flex; flex-direction: column; align-items: flex-end; gap: 12px; background: transparent; }
 .chat-log { scrollbar-width: none; }
 .chat-log::-webkit-scrollbar { display: none; }

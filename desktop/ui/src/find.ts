@@ -197,9 +197,12 @@ export function findBar(options: FindOptions): FindBar {
   }
 
   function open() {
-    // Already open: ⌘F again is "next", so the shortcut alone walks the matches.
-    if (shown && query() && hits.length) {
-      void step(1);
+    // Already open: the key focuses the box and selects it (so typing replaces the query) and
+    // still steps — one press has to be both "let me type" and "next", or he reaches for the mouse.
+    if (shown) {
+      input.focus();
+      input.select();
+      if (query() && hits.length) void step(1);
       return;
     }
     shown = true;
