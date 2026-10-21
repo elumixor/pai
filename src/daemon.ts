@@ -24,6 +24,8 @@ import * as triage from "./domain/triage.ts";
 import * as briefs from "./domain/briefs.ts";
 import * as recall from "./domain/recall.ts";
 import * as summaries from "./domain/summaries.ts";
+import * as spend from "./domain/spend.ts";
+import * as models from "./domain/models.ts";
 import { flush as flushNotices } from "./domain/asks.ts";
 import { startClaudeLoginCheck } from "./domain/claude-login.ts";
 
@@ -60,6 +62,8 @@ await external.startAll();
 const stopMirror = startMirror();
 const stopRecall = recall.start();
 const stopSummaries = summaries.start();
+const stopSpend = spend.start();
+const stopModels = models.start();
 // Notices and asks held through quiet hours go out when they end.
 const noticeTimer = setInterval(flushNotices, 60 * 1000);
 
@@ -77,6 +81,8 @@ function shutdown(signal: string) {
   stopBrowserCheck();
   stopRecall();
   stopSummaries();
+  stopSpend();
+  stopModels();
   stopMain();
   stopAgents();
   stopRates();

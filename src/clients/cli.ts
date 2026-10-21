@@ -12,7 +12,7 @@ if (dev && cmd === "daemon" && foreground) process.env.PAI_VERBOSE ??= "1";
 const { config } = await import("../core/config.ts");
 const jsonOut = args.includes("--json");
 /** Flags that take a value: the word after one is its value, not a positional argument. */
-const VALUED = new Set(["--id", "--project", "--limit", "--owner", "--due", "--q"]);
+const VALUED = new Set(["--id", "--project", "--limit", "--owner", "--due", "--q", "--by"]);
 const positional = args.filter((a, i) => !a.startsWith("--") && !VALUED.has(args[i - 1] ?? ""));
 const r = await import("../host/remote.ts");
 const box = r.remote();
@@ -303,7 +303,8 @@ async function userCommand() {
     case "cost": {
       const claude = await usageWithLogin();
       const box = await api("/cost");
-      out({ claude, box }, () => [...usageLines(claude), "", ...costLines(box)].join("\n"));
+      const spend = await api(`/spend?days=${Number(positional[0]) || 30}`);
+      out({ claude, box, spend }, () => [...usageLines(claude), "", ...costLines(box), "", ...spendLines(spend, flag("by") ?? "agent")].join("\n"));
       break;
     }
     case "menubar": {
@@ -568,6 +569,32 @@ function usageLines(data: any) {
 function costLines(data: any) {
   if (data.error) return ["box", `  ${data.error}`];
   return ["box", ...data.lines.map((l: any) => `  ${l.name.padEnd(26)} ${l.monthly.toFixed(2)} ${data.currency}/mo`), `  ${"total".padEnd(26)} ${data.monthlyTotal.toFixed(2)} ${data.currency}/mo`];
+}
+
+const usd = (n: number) => `$${n < 10 ? n.toFixed(2) : Math.round(n).toLocaleString("en-US")}`;
+const tokens = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
+const hours = (ms: number) => (ms >= 3_600_000 ? `${(ms / 3_600_000).toFixed(1)}h` : `${Math.round(ms / 60_000)}m`);
+
+/** Where it went: API price beside the real one (the plan spread by use, plus what was metered), then one group. */
+function spendLines(data: any, by: string) {
+  if (data.error) return ["spend", `  ${data.error}`];
+  const t = data.total;
+  const box = data.box?.periodUsd ?? 0;
+  const metered = data.by.source.filter((b: any) => b.key === "gateway").reduce((sum: number, b: any) => sum + b.realUsd, 0);
+  const lines = [
+    `spend, last ${data.days} days`,
+    `  ${"at API prices".padEnd(18)} ${usd(t.apiUsd)}`,
+    `  ${"actually paid".padEnd(18)} ${usd(t.realUsd + box)}  (Claude ${data.plan.tier?.replace(/^default_claude_/, "").replace(/_/g, " ") ?? "plan"} ${usd(data.plan.periodUsd)} of ${usd(data.plan.monthlyUsd)}/mo, metered ${usd(metered)}${data.box ? `, box ${usd(box)}` : ""})`,
+    `  ${"saved".padEnd(18)} ${usd(t.savedUsd)}`,
+    ...(data.credits?.monthlyUsd ? [`  ${"API credits".padEnd(18)} ${usd(data.credits.usedUsd)} of ${usd(data.credits.monthlyUsd)}/mo (included in the plan)`] : []),
+    `  ${"tokens".padEnd(18)} ${tokens(t.input + t.cacheWrite)} in · ${tokens(t.cacheRead)} cached · ${tokens(t.output)} out · ${t.calls} calls · ${hours(t.ms)} in turns`,
+  ];
+  const rows = by === "day" ? [...data.daily].reverse() : data.by[by];
+  if (!rows) return [...lines, `  (no grouping "${by}": agent, project, model, source, day)`];
+  lines.push("", `by ${by}`.padEnd(30) + "api".padStart(9) + "real".padStart(9) + "tokens".padStart(9) + "time".padStart(8));
+  for (const b of rows.slice(0, 25))
+    lines.push(`  ${String(b.key).slice(0, 26).padEnd(28)}${usd(b.apiUsd).padStart(9)}${usd(b.realUsd).padStart(9)}${tokens(b.input + b.output + b.cacheRead + b.cacheWrite).padStart(9)}${(b.ms ? hours(b.ms) : "").padStart(8)}`);
+  return lines;
 }
 
 function statusLines(data: any, label: string) {

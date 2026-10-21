@@ -25,9 +25,9 @@ export const EDITABLE = [
   "PAI_TIMEZONE",
   "PAI_QUIET_HOURS",
   "PAI_MAX_AGENTS",
-  "PAI_TRIAGE_MODEL",
   "PAI_ROTATE_HOUR",
   "PAI_CURRENCIES",
+  "PAI_CLAUDE_PLAN_USD",
 ] as const;
 
 export type Editable = (typeof EDITABLE)[number];
@@ -43,6 +43,7 @@ export function effective() {
     PAI_BIND: config.host,
     PAI_BASE_URL: config.baseUrl,
     PAI_CURRENCIES: config.currencies.join(","),
+    PAI_CLAUDE_PLAN_USD: config.claudePlanUsd ? String(config.claudePlanUsd) : "",
     PAI_MAIN_MODEL: config.models.main,
     PAI_TASK_MODEL: config.models.task,
     PAI_UPDATE_CHANNEL: config.updateChannel,
@@ -59,7 +60,6 @@ export function effective() {
     PAI_TIMEZONE: config.timezone,
     PAI_QUIET_HOURS: config.quietHours,
     PAI_MAX_AGENTS: String(config.maxWorkingAgents),
-    PAI_TRIAGE_MODEL: config.models.triage,
     PAI_ROTATE_HOUR: String(config.rotateHour),
   } satisfies Record<Editable, string>;
 }

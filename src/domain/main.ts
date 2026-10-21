@@ -33,7 +33,8 @@ const THREAD_KEY = "main_thread_id";
 const ROTATED_DAY = "main_rotated_day";
 /** His last message, kept only so a turn the account's limit killed can be asked again. */
 const LAST_USER = "main_last_user";
-const ROTATE_AT_PERCENT = 50;
+/** Rotated a little before the session would compact on its own (`compactWindow`), so the journal is written by a session that still remembers the day. */
+const ROTATE_AT_TOKENS = () => config.compactWindow * 0.75;
 const BRIEFING_MESSAGES = 20;
 
 let rotating: Promise<void> | undefined;
@@ -229,7 +230,7 @@ export function start() {
       .find(e.sessionId!)
       ?.contextUsage()
       .then((u) => {
-        if (u && u.percentage >= ROTATE_AT_PERCENT && !rotating) void rotate(`context at ${Math.round(u.percentage)}%`);
+        if (u && u.totalTokens >= ROTATE_AT_TOKENS() && !rotating) void rotate(`context at ${Math.round(u.totalTokens / 1000)}k tokens`);
       });
   };
   bus.on("event", handler);

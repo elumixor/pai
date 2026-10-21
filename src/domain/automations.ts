@@ -17,7 +17,7 @@ const log = logger("routines");
  * 15-minute inbox routine costs one API call per check, not one Claude turn.
  *
  * Actions: `notify` tells the user; `turn` gives pai a turn; `wake` gives an agent one;
- * `triage` adds the item to the next batch the small model routes (triage.ts); `task` starts a
+ * `triage` adds the item to the next batch the decision model routes (triage.ts); `task` starts a
  * thread in a project (the original action, capped). The 6-per-hour cap on task starts stays as
  * a global fuse; agents have their own turn budgets under it.
  */

@@ -1,12 +1,12 @@
 import {
   automations as listAutomations, baseUrl, contextItems, createAutomation, createContextProject, deleteAutomation, modules as listModules, patchModule, pollModule,
-  projects as listProjects, send, updateAutomation,
+  projects as listProjects, send, spend as loadSpend, updateAutomation,
 } from "./api.ts";
 import { ago, clear, dialog, el } from "./dom.ts";
 import { editor } from "./editor.ts";
 import { icon, type IconName } from "./icons.ts";
 import { staff } from "./staff.ts";
-import type { Automation, ContextItem, ModuleInfo, ProjectSummary } from "./types.ts";
+import type { Automation, ContextItem, ModuleInfo, ProjectSummary, SpendBucket } from "./types.ts";
 
 /**
  * The pages that describe the daemon, shown inside settings: what pai is made of (modules),
@@ -21,13 +21,19 @@ export interface DashboardHandlers {
   readonly selectProject: (slug: string) => void;
 }
 
-export type Page = "agents" | "modules" | "automations" | "projects" | "context";
+export type Page = "agents" | "modules" | "automations" | "projects" | "context" | "spend";
 /** Draws one page into `body`; `again` redraws it after a change. May return a way to tear it down. */
 export type PageRenderer = (body: HTMLElement, again: () => void) => Promise<(() => void) | void>;
 
 const kv = (label: string, value: string | Node | undefined) => (value ? el("div.kv", {}, el("span.k", {}, label), el("span.v", {}, value)) : undefined);
 const link = (href: string, label = href) => el("a", { href, target: "_blank", rel: "noreferrer" }, label, icon("external", 12));
 const note = (text: string) => el("p.hint", {}, text);
+const usd = (n: number) => `$${n < 10 ? n.toFixed(2) : Math.round(n).toLocaleString("en-US")}`;
+const tokens = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
+const hours = (ms: number) => (ms >= 3_600_000 ? `${(ms / 3_600_000).toFixed(1)}h` : `${Math.round(ms / 60_000)}m`);
+/** `default_claude_max_5x` → `Max 5x`. */
+const tierName = (tier?: string) => (tier ? tier.replace(/^default_claude_/, "").replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()) : "plan");
+const allTokens = (b: SpendBucket) => b.input + b.output + b.cacheRead + b.cacheWrite;
 
 export function dashboardPages(handlers: DashboardHandlers): Record<Page, PageRenderer> {
   // ---- modules --------------------------------------------------------------------------
@@ -325,7 +331,77 @@ export function dashboardPages(handlers: DashboardHandlers): Record<Page, PageRe
     return () => disposeEditor();
   }
 
+  // ---- spend ----------------------------------------------------------------------------
+
+  /** Where the time, tokens and money went: what it would cost at API prices, beside what it actually costs. */
+  let spendDays = 30;
+  let spendBy: "agent" | "project" | "model" | "source" = "agent";
+  async function spend(body: HTMLElement, again: () => void) {
+    const r = await loadSpend(spendDays);
+    const t = r.total;
+    const box = r.box?.periodUsd ?? 0;
+    const segmented = <T extends string | number>(options: readonly T[], current: T, label: (v: T) => string, pick: (v: T) => void) =>
+      el("div.segmented", {}, ...options.map((v) => el("button.seg", { class: `seg${v === current ? " on" : ""}`, onclick: () => (pick(v), again()) }, label(v))));
+    const tile = (label: string, value: string, hint?: string) => el("div.spend-tile", {}, el("span.dim", {}, label), el("strong", {}, value), hint ? el("span.dim", {}, hint) : undefined);
+
+    const peak = Math.max(...r.daily.map((d) => d.apiUsd), 0.01);
+    const chart = el(
+      "div.spend-days",
+      {},
+      ...r.daily.map((d) =>
+        el(
+          "div.spend-day",
+          { title: `${d.key}\n${usd(d.apiUsd)} at API prices · ${usd(d.realUsd)} paid\n${tokens(allTokens(d))} tokens${d.ms ? ` · ${hours(d.ms)} in turns` : ""}` },
+          el("span.bar.api", { style: `height:${(d.apiUsd / peak) * 100}%` }),
+          el("span.bar.real", { style: `height:${(d.realUsd / peak) * 100}%` }),
+        ),
+      ),
+    );
+
+    const rows = r.by[spendBy];
+    const top = Math.max(...rows.map((b) => b.apiUsd), 0.01);
+    const table = el(
+      "div.spend-table",
+      {},
+      el("div.spend-row.head", {}, el("span", {}, spendBy), el("span", {}, ""), el("span", {}, "API price"), el("span", {}, "paid"), el("span", {}, "tokens"), el("span", {}, "time")),
+      ...rows.map((b) =>
+        el(
+          "div.spend-row",
+          { title: `${tokens(b.input + b.cacheWrite)} in · ${tokens(b.cacheRead)} cached · ${tokens(b.output)} out · ${b.calls} calls` },
+          el("span.ellipsis", {}, b.key),
+          el("span.spend-share", {}, el("span", { style: `width:${(b.apiUsd / top) * 100}%` })),
+          el("span.num", {}, usd(b.apiUsd)),
+          el("span.num", {}, usd(b.realUsd)),
+          el("span.num.dim", {}, tokens(allTokens(b))),
+          el("span.num.dim", {}, b.ms ? hours(b.ms) : ""),
+        ),
+      ),
+    );
+
+    clear(
+      body,
+      el("h2.dash-title.wrap", {}, "Spend", el("span.dim", {}, "every Claude Code call, terminals included"), el("span.grow"), segmented([7, 30, 90] as const, spendDays as 7 | 30 | 90, (d) => `${d}d`, (d) => (spendDays = d))),
+      el(
+        "div.spend-tiles",
+        {},
+        tile("At API prices", usd(t.apiUsd), "what this would cost without the plan"),
+        tile("Actually paid", usd(t.realUsd + box), `Claude ${tierName(r.plan.tier)} ${usd(r.plan.periodUsd)} (${usd(r.plan.monthlyUsd)}/mo)${box ? ` · box ${usd(box)}` : ""}`),
+        tile("Saved", usd(t.savedUsd), t.realUsd ? `${(t.apiUsd / t.realUsd).toFixed(1)}× the plan's worth` : undefined),
+        tile("Tokens", tokens(allTokens(t)), `${tokens(t.output)} out · ${t.calls} calls`),
+        tile("Time in turns", hours(t.ms)),
+        r.credits.monthlyUsd ? tile("API credits", usd(r.credits.usedUsd), `of ${usd(r.credits.monthlyUsd)} a month, included in the plan`) : undefined,
+      ),
+      chart,
+      r.daily.length ? el("div.spend-axis.dim", {}, el("span", {}, r.daily[0]!.key), el("span", {}, r.daily.at(-1)!.key)) : undefined,
+      el("div.spend-legend.dim", {}, el("span.key.api"), "API price", el("span.key.real"), "paid"),
+      el("div.row-inline", {}, segmented(["agent", "project", "model", "source"] as const, spendBy, (v) => v, (v) => (spendBy = v))),
+      table,
+      note("Paid is the plan's fee for the period, shared out by each one's API price, plus what the gateway metered. The plan's price comes from the login's tier; PAI_CLAUDE_PLAN_USD overrides it."),
+    );
+  }
+
   return {
+    spend: (body, again) => spend(body, again),
     agents: async (body) => {
       body.classList.add("full");
       return staff(body);

@@ -7,8 +7,8 @@ import { inDesktop } from "./api.ts";
  * daemon the path is under `/ui/`; the desktop app has no server behind its window, so there
  * the route lives in the hash.
  */
-export type RouteName = "home" | "chat" | "agents" | "board" | "dashboard" | "modules" | "automations" | "projects" | "context" | "editor" | "settings" | "task" | "thread" | "project";
-const NAMES: readonly RouteName[] = ["home", "chat", "agents", "board", "dashboard", "modules", "automations", "projects", "context", "editor", "settings", "task", "thread", "project"];
+export type RouteName = "home" | "chat" | "agents" | "board" | "dashboard" | "modules" | "automations" | "projects" | "context" | "spend" | "editor" | "settings" | "task" | "thread" | "project";
+const NAMES: readonly RouteName[] = ["home", "chat", "agents", "board", "dashboard", "modules", "automations", "projects", "context", "spend", "editor", "settings", "task", "thread", "project"];
 
 export interface Route {
   readonly name: RouteName;

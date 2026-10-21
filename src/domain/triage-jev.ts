@@ -9,7 +9,7 @@ const log = logger("triage");
 /**
  * Triage on the decision model instead of a small LLM: each item is one call with a few typed
  * questions — the action, which agent owns it, which open task it belongs to, whether it is
- * urgent — and code combines the answers. The generative pass stays as the fallback. A choice
+ * urgent — and code combines the answers. A choice
  * leans to its first option, so "none" goes first everywhere: an item has to earn an owner.
  */
 

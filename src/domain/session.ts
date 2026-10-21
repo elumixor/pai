@@ -14,6 +14,7 @@ import { mcpServers as externalMcpServers } from "../modules/external.ts";
 import { knownServers, noteInit } from "./inventory.ts";
 import { serverAllowed } from "./capabilities.ts";
 import { describeServers } from "./mcp-describe.ts";
+import { resolve as resolveModel } from "./models.ts";
 
 /** Subprocesses spawned and initialised ahead of time, keyed by kind. Only kinds with a fixed cwd can be warmed. */
 interface Warm {
@@ -59,7 +60,7 @@ function build(kind: SessionKind, cwd: string, ref: SessionRef, project?: string
   if (agent?.slug === "pai") disallowedTools.push("Agent", "Task", ...PAI_THREAD_TOOLS);
   return {
     cwd,
-    model: prefs?.model ?? (kind === "chat" ? config.models.main : config.models.task),
+    model: resolveModel(prefs?.model ?? (kind === "chat" ? config.models.main : config.models.task)),
     ...(prefs?.effort ? { effort: prefs.effort } : {}),
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
@@ -90,7 +91,9 @@ function build(kind: SessionKind, cwd: string, ref: SessionRef, project?: string
 
 function sessionEnv(): Record<string, string> {
   const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) if (value !== undefined && key !== "CLAUDE_CODE_OAUTH_TOKEN") env[key] = value;
+  for (const [key, value] of Object.entries(process.env)) if (value !== undefined && key !== "CLAUDE_CODE_OAUTH_TOKEN" && key !== "ANTHROPIC_API_KEY") env[key] = value;
+  // Compact long before a 1M window fills: every tool step re-reads the whole context.
+  env.CLAUDE_CODE_AUTO_COMPACT_WINDOW ??= String(config.compactWindow);
   return env;
 }
 

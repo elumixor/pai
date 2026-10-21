@@ -368,3 +368,26 @@ export interface AuditEntry {
   readonly ok: boolean | null;
   readonly ts: number;
 }
+
+/** One group in `GET /spend`: API list price beside what was actually paid, tokens and time. */
+export interface SpendBucket {
+  readonly key: string;
+  readonly apiUsd: number;
+  readonly realUsd: number;
+  readonly input: number;
+  readonly output: number;
+  readonly cacheRead: number;
+  readonly cacheWrite: number;
+  readonly ms: number;
+  readonly calls: number;
+}
+
+export interface SpendReport {
+  readonly days: number;
+  readonly plan: { readonly monthlyUsd: number; readonly periodUsd: number; readonly tier?: string };
+  readonly credits: { readonly usedUsd: number; readonly monthlyUsd: number };
+  readonly box?: { readonly periodUsd: number };
+  readonly total: SpendBucket & { readonly savedUsd: number };
+  readonly by: Record<"agent" | "project" | "model" | "source", SpendBucket[]>;
+  readonly daily: SpendBucket[];
+}

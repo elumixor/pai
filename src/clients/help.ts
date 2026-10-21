@@ -24,7 +24,7 @@ export const CORE: readonly Command[] = [
   { name: "sync", description: "watch the files sync until in step" },
   { name: "files", args: "[command]", description: "files here and on the box (`fs` too); `pai files help`" },
   { name: "update", description: "update pai here and on the box" },
-  { name: "cost", description: "Claude limits and what the box costs" },
+  { name: "cost", args: "[days] [--by agent|project|model|source|day]", description: "Claude limits, the box, and where the tokens went: API price beside the real one" },
   { name: "menubar", args: "[install|uninstall]", description: "the menu bar app on this Mac" },
   { name: "channel", args: "[install]", description: "Paigram reaches `claude` in a terminal; `install` makes `claude` in your shell load it" },
   { name: "threads", args: "[project]", description: "every conversation by project; pick one to continue it here (`projects` is the same)" },

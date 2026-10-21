@@ -48,6 +48,7 @@ const PAGES: { id: Page; label: string; icon: IconName }[] = [
   { id: "projects", label: "Projects", icon: "folder" },
   { id: "context", label: "Context", icon: "book" },
   { id: "agents", label: "Agents", icon: "users" },
+  { id: "spend", label: "Spend", icon: "hourglass" },
 ];
 const isPage = (section: SettingsSection): section is Page => PAGES.some((p) => p.id === section);
 

@@ -1,4 +1,4 @@
-import { commands as listCommands, fileIndex, usage } from "./api.ts";
+import { commands as listCommands, fileIndex, latestModels, usage } from "./api.ts";
 import { el, modelName } from "./dom.ts";
 import { icon } from "./icons.ts";
 import { menu } from "./menu.ts";
@@ -11,11 +11,14 @@ export interface Prefs {
   readonly model?: string | null;
   readonly effort?: Effort | null;
 }
-const MODELS: readonly { value: string; label: string }[] = [
-  { value: "opus", label: "Opus" },
-  { value: "sonnet", label: "Sonnet" },
-  { value: "haiku", label: "Haiku" },
-];
+/** Families, not versions: the daemon resolves each to its newest model, which `GET /models` names. */
+const FAMILIES = ["fable", "opus", "sonnet", "haiku"] as const;
+let newest: Promise<Record<string, { id: string; name: string }>> | undefined;
+const models = async () => {
+  newest ??= latestModels().catch(() => ((newest = undefined), {}));
+  const latest = await newest;
+  return FAMILIES.filter((f) => latest[f] || f !== "fable").map((f) => ({ value: f, label: latest[f]?.name.replace(/^Claude /, "") ?? capital(f) }));
+};
 const EFFORTS: readonly Effort[] = ["low", "medium", "high", "xhigh", "max"];
 const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
@@ -397,7 +400,7 @@ export function compose(options: ComposeOptions): Compose {
   };
   modelButton.addEventListener("click", () => {
     const current = options.prefs?.()?.model;
-    menu(modelButton, MODELS.map((m) => ({ label: m.label, on: Boolean(current) && modelName(current).split(" ")[0] === m.value, pick: () => void choose({ model: m.value }) })));
+    void models().then((list) => menu(modelButton, list.map((m) => ({ label: m.label, on: Boolean(current) && modelName(current).split(" ")[0] === m.value, pick: () => void choose({ model: m.value }) }))));
   });
   effortButton.addEventListener("click", () => {
     const current = options.prefs?.()?.effort;

@@ -72,7 +72,7 @@ function showView(next: View) {
   if (next === "home") homePage ??= homeView(homeRoot);
   else window.dispatchEvent(new Event("resize"));
 }
-const SETTINGS_ROUTES: readonly Route["name"][] = ["settings", "agents", "modules", "automations", "projects", "context"];
+const SETTINGS_ROUTES: readonly Route["name"][] = ["settings", "agents", "modules", "automations", "projects", "context", "spend"];
 const showSettings = (section?: SettingsSection) => {
   if (document.querySelector("dialog.settings")) return;
   const { body, close } = sheet("settings");
@@ -104,7 +104,7 @@ function applyRoute(route: Route) {
   // The dashboard's overview is gone: the chat is the front page now.
   if (route.name === "dashboard") return navigate("home", true);
   if (route.name === "settings") return showSettings();
-  if (route.name === "agents" || route.name === "modules" || route.name === "automations" || route.name === "projects" || route.name === "context") {
+  if (route.name === "agents" || route.name === "modules" || route.name === "automations" || route.name === "projects" || route.name === "context" || route.name === "spend") {
     if (!view) showView("home");
     return showSettings(route.name);
   }
@@ -293,6 +293,7 @@ async function commands(): Promise<Command[]> {
     { id: "automations", title: "Automations", group: "view", icon: "play", run: () => navigate("automations") },
     { id: "projects", title: "Projects", group: "view", icon: "folder", run: () => navigate("projects") },
     { id: "context", title: "Context", group: "view", icon: "book", run: () => navigate("context") },
+    { id: "spend", title: "Spend", group: "view", icon: "hourglass", hint: "time, tokens and money, at API prices and as paid", run: () => navigate("spend") },
     { id: "editor", title: "Editor", group: "view", icon: "code", hint: "files, threads, terminals", run: () => navigate("editor") },
     { id: "settings", title: "Settings", group: "view", icon: "settings", run: () => navigate("settings") },
     { id: "new-thread", title: `New thread${state.project ? ` in ${state.project}` : ""}`, group: "action", icon: "message", run: () => void newThread(state.project) },

@@ -1,6 +1,6 @@
 import { track } from "./progress.ts";
 import type { Attached } from "./compose.ts";
-import type { AuditEntry, Effort, Agent, AgentInstructions, Ask, Automation, Need, ContextItem, LogMessage, Routine, TaskItem, TaskStatus, Diagnostic, SlashCommand, DiskSession, Entry, ModuleInfo, PaiEvent, ProjectSummary, SessionSummary, Status, SyncReport, TerminalSummary, Usage } from "./types.ts";
+import type { Agent, AgentInstructions, Ask, AuditEntry, Automation, ContextItem, Diagnostic, DiskSession, Effort, Entry, LogMessage, ModuleInfo, Need, PaiEvent, ProjectSummary, Routine, SessionSummary, SlashCommand, SpendReport, Status, SyncReport, TaskItem, TaskStatus, TerminalSummary, Usage } from "./types.ts";
 import { CACHE_PREFIX, remember } from "./storage.ts";
 
 /**
@@ -270,6 +270,8 @@ export const automations = () => get<Automation[]>("/automations");
 export const createAutomation = (input: Partial<Automation>) => send("/automations", input);
 export const updateAutomation = (id: number, changes: Partial<Automation>) => send(`/automations/${id}`, changes, "PATCH");
 export const deleteAutomation = (id: number) => send(`/automations/${id}`, {}, "DELETE");
+export const latestModels = () => get<{ latest: Record<string, { id: string; name: string }> }>("/models").then((r) => r.latest);
+export const spend = (days: number) => get<SpendReport>(`/spend?days=${days}`);
 export const contextItems = () => get<{ surfaces: string[]; items: ContextItem[] }>("/context");
 export const createContextProject = (name: string, about: string) => send("/projects", { name, about });
 export const recentEvents = (limit = 60) => get<PaiEvent[]>(`/events?limit=${limit}`);

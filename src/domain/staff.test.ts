@@ -369,7 +369,6 @@ describe("routines and triage", () => {
     expect(messages.list({ kinds: ["notice"] }).at(-1)!.body).toContain("Mom lands");
     // The item the model skipped is filed, not lost.
     expect(tasks.list().length).toBe(before + 1);
-    expect(triage.prompt(items)).toContain("hiring: Hiring");
   });
 });
 

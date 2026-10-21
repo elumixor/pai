@@ -5,11 +5,14 @@ import * as agents from "./agents.ts";
 import * as asks from "./asks.ts";
 import * as messages from "./messages.ts";
 import * as sessions from "./sessions.ts";
+import * as credits from "./credits.ts";
+import * as spend from "./spend.ts";
 
 /**
  * The gist of a long message, in a sentence or two, so a chat can show what a reply or a
- * report amounts to and keep the rest behind "details". Written once by a small model through
- * the Vercel AI Gateway (`AI_GATEWAY_API_KEY`), kept in the message's `meta.tldr`.
+ * report amounts to and keep the rest behind "details". Written once by Haiku on the plan's API
+ * credits (`credits.ts`), or a small model through the Vercel AI Gateway when they are spent;
+ * kept in the message's `meta.tldr`.
  */
 
 const log = logger("tldr");
@@ -27,7 +30,7 @@ const HEADLINED = new Set(["event", "report", "request", "response", "ask", "not
 /** How many recent rows a starting daemon headlines. */
 const BACKFILL = 100;
 
-export const enabled = () => Boolean(config.aiGatewayKey);
+export const enabled = () => Boolean(config.aiGatewayKey || config.anthropicKey);
 
 /** The summary for a message: what it has, else one written now; undefined when there is no key or the model fails. */
 export function tldr(id: number): Promise<string | undefined> {
@@ -100,7 +103,20 @@ async function write(m: messages.Message): Promise<string> {
   return text;
 }
 
+/** On the plan's API credits while they last; the gateway when there is no key or they are spent. */
 async function complete(system: string, user: string, maxTokens: number): Promise<string> {
+  if (credits.enabled())
+    try {
+      return await credits.complete(system, user, maxTokens, "summaries");
+    } catch (err) {
+      if (!config.aiGatewayKey) throw err;
+      if (!credits.exhausted(err)) log.warn(`credits: ${(err as Error).message}`);
+    }
+  return gateway(system, user, maxTokens);
+}
+
+async function gateway(system: string, user: string, maxTokens: number): Promise<string> {
+  const started = Date.now();
   const response = await fetch(GATEWAY, {
     method: "POST",
     headers: { authorization: `Bearer ${config.aiGatewayKey}`, "content-type": "application/json" },
@@ -108,7 +124,8 @@ async function complete(system: string, user: string, maxTokens: number): Promis
     signal: AbortSignal.timeout(30_000),
   });
   if (!response.ok) throw new Error(`gateway ${response.status}: ${(await response.text()).slice(0, 200)}`);
-  const data = (await response.json()) as { choices?: { message?: { content?: string } }[] };
+  const data = (await response.json()) as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number } };
+  spend.recordGateway(MODEL, data.usage, Date.now() - started, "summaries");
   const text = data.choices?.[0]?.message?.content?.trim();
   if (!text) throw new Error("gateway answered without text");
   return text;

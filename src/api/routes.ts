@@ -27,6 +27,8 @@ import * as files from "../domain/files.ts";
 import * as settings from "../domain/settings.ts";
 import { allThreads, ensureTranscriptAt, sessionsIn, toolCall, transcript, transcriptPath } from "../domain/transcript.ts";
 import { cost as hostingCost } from "../domain/hetzner.ts";
+import * as models from "../domain/models.ts";
+import * as spend from "../domain/spend.ts";
 import * as agents from "../domain/agents.ts";
 import * as asks from "../domain/asks.ts";
 import * as main from "../domain/main.ts";
@@ -403,6 +405,12 @@ export async function handle(req: Request): Promise<Response> {
 
     if (path === "/cost")
       return json(await hostingCost().catch((err: Error) => ({ error: err.message })));
+
+    // Claude's models as the API lists them, and the newest of each family (what `opus`, `sonnet`… resolve to).
+    if (path === "/models") return json({ latest: models.latest(), all: models.list() });
+
+    // Where the time, tokens and money went over the last `days`: API price next to the real one.
+    if (path === "/spend") return json(await spend.report(Math.max(1, Math.min(365, Number(url.searchParams.get("days") ?? 30) || 30))));
 
     if (path === "/sessions") return json({ live: sessions.list(), recent: sessions.recent(30) });
 

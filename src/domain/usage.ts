@@ -180,3 +180,42 @@ export async function usage(): Promise<Usage> {
   const { windows: known, fetchedAt, via, error } = cached!;
   return { windows: known, fetchedAt, via, error, costUsd: sessionCost() };
 }
+
+/**
+ * The subscription itself: the login's tier, read from its profile and priced. Like the limits,
+ * a machine whose token cannot read it (the box's setup token) uses another machine's reading.
+ */
+export interface Plan {
+  readonly tier: string;
+  readonly monthlyUsd: number;
+}
+
+const PLAN_SNAPSHOT = join(dirname(SNAPSHOT), "plan.json");
+/** Monthly list price per tier; a tier not listed is priced as the nearest by name. */
+const TIER_USD: [match: RegExp, usd: number][] = [
+  [/max_20x/, 200],
+  [/max/, 100],
+  [/pro/, 20],
+];
+let planCache: { at: number; plan?: Plan } | undefined;
+
+export async function plan(): Promise<Plan | undefined> {
+  if (planCache && Date.now() - planCache.at < 24 * 3600 * 1000 && planCache.plan) return planCache.plan;
+  let found: Plan | undefined;
+  const token = await accessToken();
+  if (token && Date.now() >= tokenRefusedUntil) {
+    const response = await fetch("https://api.anthropic.com/api/oauth/profile", {
+      headers: { authorization: `Bearer ${token}`, accept: "application/json", "anthropic-beta": "oauth-2025-04-20" },
+      signal: AbortSignal.timeout(10_000),
+    }).catch(() => undefined);
+    const tier = response?.ok ? ((await response.json()) as { organization?: { rate_limit_tier?: string } }).organization?.rate_limit_tier : undefined;
+    const usd = tier ? TIER_USD.find(([match]) => match.test(tier))?.[1] : undefined;
+    if (tier && usd) {
+      found = { tier, monthlyUsd: usd };
+      await Bun.write(PLAN_SNAPSHOT, JSON.stringify(found)).catch(() => undefined);
+    }
+  }
+  found ??= await Bun.file(PLAN_SNAPSHOT).json().catch(() => undefined);
+  planCache = { at: Date.now(), plan: found };
+  return found;
+}

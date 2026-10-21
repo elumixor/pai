@@ -78,6 +78,13 @@ export const config = {
   hcloudToken: env.HCLOUD_TOKEN ?? "",
   /** Vercel AI Gateway, for the small jobs around the sessions: the gist of a long message. */
   aiGatewayKey: env.AI_GATEWAY_API_KEY ?? "",
+  /**
+   * An Anthropic API key of the Console org that receives the Max plan's monthly API credits. Never
+   * `ANTHROPIC_API_KEY`: Claude Code prefers that over the Max login, and every session would bill it.
+   */
+  anthropicKey: env.PAI_ANTHROPIC_API_KEY ?? "",
+  /** Sessions compact once their context reaches this many tokens; a 1M window re-read on every step is what made agents expensive. */
+  compactWindow: Number(setting("PAI_COMPACT_WINDOW")) || 200_000,
 
   /**
    * The box, as `user@host`, for `pai ssh` and `pai claude` from a laptop. Defaults to the
@@ -122,8 +129,6 @@ export const config = {
   models: {
     main: setting("PAI_MAIN_MODEL") ?? "sonnet",
     task: setting("PAI_TASK_MODEL") ?? "sonnet",
-    /** The cheap pass that routes batches of incoming events (watchers → triage). */
-    triage: setting("PAI_TRIAGE_MODEL") ?? "haiku",
     /** The decision model (System One, over the Vercel AI Gateway) that screens agents' reports before they cost pai a turn. */
     gate: setting("PAI_GATE_MODEL") ?? "typesafe-ai/jev",
   },
@@ -131,6 +136,8 @@ export const config = {
   /** The user's time zone: schedules, quiet hours, the journal's dates and the 04:00 rotation are read in it. */
   timezone: setting("PAI_TIMEZONE") ?? "Europe/Prague",
   /** The currencies he thinks in: the first is what a bare amount means, the rest are what a hover shows. */
+  /** What the Claude subscription costs a month in USD, when the login's own tier should not decide it (`usage.ts` reads that). */
+  claudePlanUsd: Number(setting("PAI_CLAUDE_PLAN_USD")) || undefined,
   currencies: (setting("PAI_CURRENCIES") ?? "CZK,USD,EUR,UAH").split(",").map((c) => c.trim().toUpperCase()).filter(Boolean),
 
   /** `HH:MM-HH:MM` in that zone: notices other than urgent ones are held; agents keep working. */

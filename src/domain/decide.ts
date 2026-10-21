@@ -1,4 +1,5 @@
 import { config } from "../core/config.ts";
+import * as spend from "./spend.ts";
 
 /**
  * The decision model: Jev, a System One model (TypeSafe), reached through the Vercel AI Gateway's
@@ -32,6 +33,8 @@ export interface ChoiceAnswer {
 }
 export type Answer = NoulAnswer | ChoiceAnswer;
 
+/** What one call costs; the endpoint reports no usage of its own. */
+const CALL_USD = 0.00002;
 const ENDPOINT = "https://ai-gateway.vercel.sh/typesafe/v1/systemone";
 
 export const enabled = () => Boolean(config.aiGatewayKey);
@@ -46,6 +49,7 @@ export async function ask<Q extends Record<string, Question>>(state: unknown, qu
 /** The call itself; tests replace it. */
 let impl: (state: unknown, questions: Record<string, Question>) => Promise<Record<string, Answer>> = async (state, questions) => {
   if (!config.aiGatewayKey) throw new Error("no AI_GATEWAY_API_KEY");
+  const started = Date.now();
   const res = await fetch(ENDPOINT, {
     method: "POST",
     headers: { Authorization: `Bearer ${config.aiGatewayKey}`, "Content-Type": "application/json" },
@@ -54,6 +58,7 @@ let impl: (state: unknown, questions: Record<string, Question>) => Promise<Recor
   });
   if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 200)}`);
   const out = (await res.json()) as { answers: Record<string, Answer> };
+  spend.recordGateway(config.models.gate, { cost: CALL_USD }, Date.now() - started, "gate");
   return out.answers;
 };
 export function setAsk(fn: typeof impl) {

@@ -1,12 +1,9 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { PaiEvent } from "../core/bus.ts";
-import { config } from "../core/config.ts";
 import { db, now } from "../core/db.ts";
 import { logger } from "../core/log.ts";
 import * as agents from "./agents.ts";
 import * as asks from "./asks.ts";
-import * as jev from "./decide.ts";
-import * as jevTriage from "./triage-jev.ts";
+import { decideItems } from "./triage-jev.ts";
 import type { Automation } from "./automations.ts";
 import * as messages from "./messages.ts";
 import * as tasks from "./tasks.ts";
@@ -15,9 +12,10 @@ const log = logger("triage");
 
 /**
  * What the watchers bring in (new mail, messages, meetings coming up) is batched for five
- * minutes, then a small model routes each item: ignore it, file it under a task, wake the agent
- * that owns it, or tell the user now. Only the last two spend real quota. Muted senders and
- * subjects never reach the model.
+ * minutes, then the decision model (`triage-jev.ts`) routes each item: ignore it, file it under a
+ * task, wake the agent that owns it, or tell the user now. Only the last two spend real quota.
+ * Muted senders and subjects never reach the model; when it cannot answer, the batch goes to the
+ * user as one notice.
  */
 
 const WINDOW_MS = 5 * 60_000;
@@ -126,7 +124,7 @@ export async function flush() {
   if (!items.length) return;
   let decisions: Decision[];
   try {
-    decisions = await decide(items);
+    decisions = await decideItems(items);
   } catch (err) {
     // Without a decision nothing is lost: the items go to the user as one quiet notice.
     log.warn(`triage failed, passing ${items.length} items on: ${(err as Error).message}`);
@@ -135,87 +133,6 @@ export async function flush() {
   }
   apply(items, decisions);
   if (batch.length) timer = setTimeout(() => void flush(), 1000);
-}
-
-/** What the small model is told: the items, who does what, what is open. */
-export function prompt(items: Item[]) {
-  const staff = agents.list().filter((a) => a.kind === "standing" || a.kind === "orchestrator");
-  const open = tasks.list({ limit: 60 });
-  const mutes = asks.mutes();
-  return [
-    "You route incoming items for a personal assistant (pai) and its agents. For each item pick one action:",
-    "- ignore: newsletters, notifications, receipts, spam, anything nobody needs to act on.",
-    "- file: worth keeping on the task list but nobody has to act now (give an existing task id, or a title and owner for a new one).",
-    "- wake: the agent that owns this area should act on it now (give its slug and a one-line note).",
-    "- tell: the user should know now (a person writing to them personally, something time-sensitive); give a one-line note; urgent only if they have minutes to act.",
-    "Prefer ignore and file; wake and tell spend real effort. Never invent agents or tasks.",
-    "A message in a group or channel is almost never anyone's job. Unless the user wrote it himself, was addressed in it, or an agent's brief names that chat, pick ignore or file — waking an agent over group chatter is wrong even when the topic looks related to its work.",
-    "An item that starts with \"you\" is the user's own message: he already knows and already decided. Never tell him about it — file it so the task list says what he said, and wake the agent whose open task it settles.",
-    "",
-    `Agents:\n${staff.map((a) => `- ${a.slug}: ${a.name} — ${a.brief.split("\n")[0]!.slice(0, 160)}`).join("\n")}`,
-    `Open tasks:\n${open.map((t) => `- #${t.id} ${t.title} (owner ${t.owner})`).join("\n") || "none"}`,
-    mutes.length ? `The user muted: ${mutes.map((m) => m.pattern).join(", ")}` : "",
-    "",
-    "Items:",
-    ...items.map((it, i) => `[${i}] ${it.source} · ${it.title}\n${it.body.replace(/\s+/g, " ").slice(0, 600)}`),
-  ]
-    .filter((l) => l !== "")
-    .join("\n");
-}
-
-const SCHEMA = {
-  type: "object",
-  properties: {
-    decisions: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          i: { type: "integer" },
-          action: { type: "string", enum: ["ignore", "file", "wake", "tell"] },
-          agent: { type: "string" },
-          task: { type: "integer" },
-          title: { type: "string" },
-          owner: { type: "string" },
-          note: { type: "string" },
-          urgent: { type: "boolean" },
-          reason: { type: "string" },
-        },
-        required: ["i", "action"],
-      },
-    },
-  },
-  required: ["decisions"],
-};
-
-/** The decision model when there is a key for it; else (or when it fails) one small-model turn, no tools, structured output. */
-async function decide(items: Item[]): Promise<Decision[]> {
-  if (jev.enabled()) {
-    try {
-      return await jevTriage.decideItems(items);
-    } catch (err) {
-      log.warn(`decision model failed, using ${config.models.triage}: ${(err as Error).message}`);
-    }
-  }
-  const q = query({
-    prompt: prompt(items),
-    options: {
-      model: config.models.triage,
-      maxTurns: 3,
-      tools: [],
-      settingSources: [],
-      persistSession: false,
-      outputFormat: { type: "json_schema", schema: SCHEMA },
-      env: Object.fromEntries(Object.entries(process.env).filter(([k, v]) => v !== undefined && k !== "CLAUDE_CODE_OAUTH_TOKEN")) as Record<string, string>,
-    },
-  });
-  for await (const m of q) {
-    if (m.type !== "result") continue;
-    if (m.subtype !== "success") throw new Error(m.subtype);
-    const out = (m.structured_output ?? JSON.parse(m.result)) as { decisions?: Decision[] };
-    return out.decisions ?? [];
-  }
-  throw new Error("no result");
 }
 
 /** Carries the decisions out. An item the model skipped is filed under pai's inbox, not dropped. */
