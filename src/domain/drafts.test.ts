@@ -108,3 +108,40 @@ describe("what became of it", () => {
     expect(drafts.open()).toEqual([]);
   });
 });
+
+describe("two drafts of the same message", () => {
+  test("the same words to the same person collide, and the existing card comes back", () => {
+    const first = offer();
+    const clash = drafts.clash({ agent: "job-search-2", channel: "email", fields: { to: "someone@example.com", subject: "Interview", body: "Ahoj, můžeme ve čtvrtek?" } });
+    expect(clash?.id).toBe(first.id);
+    expect(clash?.agent).toBe("hiring");
+  });
+
+  test("the same subject to the same person collides even when the words differ", () => {
+    offer();
+    const clash = drafts.clash({ agent: "pai", channel: "email", fields: { to: "SOMEONE@Example.com", subject: "interview", body: "Something else entirely, written from scratch." } });
+    expect(clash).toBeDefined();
+  });
+
+  test("a different person, a different channel or a different message is not a collision", () => {
+    offer();
+    expect(drafts.clash({ agent: "pai", channel: "email", fields: { to: "elsewhere@example.com", subject: "Interview", body: "Ahoj, můžeme ve čtvrtek?" } })).toBeUndefined();
+    expect(drafts.clash({ agent: "pai", channel: "telegram", fields: { to: "someone@example.com", body: "Ahoj, můžeme ve čtvrtek?" } })).toBeUndefined();
+    expect(
+      drafts.clash({ agent: "pai", channel: "email", fields: { to: "someone@example.com", subject: "Something new", body: "A completely unrelated note about the invoice for September." } }),
+    ).toBeUndefined();
+  });
+
+  test("a draft that is gone cannot be collided with", () => {
+    const first = offer();
+    drafts.discard(first.id, "withdrawn");
+    expect(drafts.clash({ agent: "pai", channel: "email", fields: { to: "someone@example.com", subject: "Interview", body: "Ahoj, můžeme ve čtvrtek?" } })).toBeUndefined();
+  });
+
+  test("how alike two messages are", () => {
+    expect(drafts.similar("Ahoj, můžeme ve čtvrtek?", "Ahoj, můžeme ve čtvrtek?")).toBe(1);
+    expect(drafts.similar("Ahoj, můžeme ve čtvrtek v devět?", "Ahoj, můžeme ve čtvrtek?")).toBeGreaterThan(drafts.SAME_ENOUGH);
+    expect(drafts.similar("Thanks for yesterday — here is the project I would present.", "Please find the September invoice attached.")).toBeLessThan(0.2);
+    expect(drafts.similar("", "anything")).toBe(0);
+  });
+});

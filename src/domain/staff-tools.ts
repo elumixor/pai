@@ -210,12 +210,42 @@ export function staffTools(me: string | undefined) {
         task_id: z.number().optional(),
       },
       guard(async (a: { channel: drafts.Channel; body: string; to?: string; cc?: string; subject?: string; account?: string; task_id?: number }) => {
-        const draft = drafts.offer({ agent: self, channel: a.channel, taskId: a.task_id, fields: { body: a.body, to: a.to, cc: a.cc, subject: a.subject, account: a.account } });
+        const input = { agent: self, channel: a.channel, taskId: a.task_id, fields: { body: a.body, to: a.to, cc: a.cc, subject: a.subject, account: a.account } };
+        /** What is already waiting on him for this channel and recipient: the answer always says. */
+        const pending = drafts
+          .open()
+          .filter((d) => d.channel === a.channel)
+          .map((d) => ({ draft: d.id, by: d.agent, to: d.fields.to, subject: d.fields.subject, status: d.status, offered: new Date(d.createdAt).toISOString() }));
+        // Two pending drafts of the same message would put the same words in his recipient's inbox
+        // twice: the existing card comes back instead, so the collision can be reported, not guessed.
+        const already = drafts.clash(input);
+        if (already)
+          return {
+            draft: already.id,
+            duplicate: true,
+            by: already.agent,
+            pending,
+            note: `Not offered: ${already.agent === self ? "you" : already.agent} already ${already.agent === self ? "have" : "has"} draft #${already.id} pending to the same recipient (${already.fields.subject ?? "no subject"}). Say so rather than offering a second card; edit or withdraw that one instead (withdraw_draft) if the text should change.`,
+          };
+        const draft = drafts.offer(input);
         return {
           draft: draft.id,
           waiting: "on him",
+          pending: pending.filter((p) => p.draft !== draft.id),
           note: `Offered as a card. End your turn; when he presses Send you are woken with what the card holds then, to send with ${drafts.toolFor(a.channel)} and report with draft_result.`,
         };
+      }),
+    ),
+    tool(
+      "withdraw_draft",
+      "Take back a draft you offered and he has not sent: a second copy of one already pending, or an offer you have changed your mind about. Only your own, and only while it is still pending — once he has pressed Send it belongs to the send, and `draft_result` is how that ends.",
+      { draft_id: z.number(), why: z.string().max(200).optional() },
+      guard(async (a: { draft_id: number; why?: string }) => {
+        const draft = drafts.get(a.draft_id);
+        if (!draft) throw new Error(`no draft #${a.draft_id}`);
+        if (draft.agent !== self && !isPai) throw new Error(`draft #${a.draft_id} is ${draft.agent}'s; ask pai, or tell it why it should go`);
+        const dropped = drafts.discard(a.draft_id, a.why ?? `withdrawn by ${self}`);
+        return { draft: dropped.id, status: dropped.status, note: "Withdrawn; its card says so and nothing was sent." };
       }),
     ),
     tool(

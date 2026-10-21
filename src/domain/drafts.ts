@@ -109,6 +109,64 @@ export function asText(d: Draft): string {
   return `${LABEL[d.channel]} draft #${d.id}${head.length ? `\n${head.join("\n")}` : ""}\n\n${f.body}${state}`;
 }
 
+/**
+ * Two drafts of the same message, both pending, is the one failure the card was built to prevent:
+ * a Send on each puts the same mail in a founder's inbox twice. It happened on 21 October — pai
+ * offered the Amin follow-up and Job search offered the identical text — so the check is in the
+ * tool rather than in an instruction nobody could obey.
+ */
+
+/** Addresses compared as addresses: case and the display name around them are noise. */
+const sameWho = (a = "", b = "") => {
+  const plain = (text: string) => (text.match(/<([^>]+)>/)?.[1] ?? text).trim().toLowerCase().replace(/^@/, "").replace(/\s+/g, "");
+  return Boolean(plain(a)) && plain(a) === plain(b);
+};
+const sameLine = (a = "", b = "") => a.trim().toLowerCase().replace(/\s+/g, " ") === b.trim().toLowerCase().replace(/\s+/g, " ");
+
+const words = (text: string) =>
+  new Set(
+    text
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, " ")
+      .split(/\s+/)
+      .filter((w) => w.length > 2),
+  );
+
+/**
+ * How alike two messages are, as the share of words they have in common (Jaccard). Enough to catch
+ * the same message written twice by two agents, and not so eager that two different messages to the
+ * same person collide: a greeting and a follow-up share little beyond the name.
+ */
+export function similar(a: string, b: string): number {
+  const left = words(a);
+  const right = words(b);
+  if (!left.size || !right.size) return 0;
+  let shared = 0;
+  for (const word of left) if (right.has(word)) shared += 1;
+  return shared / (left.size + right.size - shared);
+}
+
+/**
+ * Alike enough to be the same message said twice. Measured against the real case: the identical
+ * Amin text scores 1, the same message with one clause added scores 0.75 (and is still the same
+ * message — it should be an edit of the pending card, not a second one), and two genuinely
+ * different notes to the same person score under 0.1. So the line sits at 0.7.
+ */
+export const SAME_ENOUGH = 0.7;
+
+/**
+ * The pending draft this one would duplicate, if any: the same channel and recipient, and either
+ * the same subject or a body that is the same message in other words.
+ */
+export function clash(input: OfferInput): Draft | undefined {
+  return open().find((d) => {
+    if (d.channel !== input.channel) return false;
+    if (!sameWho(d.fields.to, input.fields.to) && !(d.channel === "post" && !input.fields.to)) return false;
+    if (input.fields.subject && d.fields.subject && sameLine(d.fields.subject, input.fields.subject)) return true;
+    return similar(d.fields.body, input.fields.body) >= SAME_ENOUGH;
+  });
+}
+
 export interface OfferInput {
   readonly agent: string;
   readonly channel: Channel;
@@ -214,7 +272,12 @@ export function result(id: number, state: SendState, note = ""): Draft {
   return settled;
 }
 
-/** His Discard. The agent hears it, so it does not sit waiting for an answer that will not come. */
+/**
+ * Discard: his, or the agent's own withdrawal. An agent that offered a draft by mistake — a second
+ * copy of one already pending — has to be able to take it back; a rule that can only be obeyed with
+ * a database write is not a rule, which is how draft 2 had to be withdrawn by hand on 21 October.
+ * Who may is decided by the caller (the tool checks ownership); what is possible is decided here.
+ */
 export function discard(id: number, why = ""): Draft {
   const draft = get(id);
   if (!draft) throw new DraftError(`no draft #${id}`);
