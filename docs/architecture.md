@@ -84,17 +84,15 @@ a session-lifetime cap and scrollback kept server-side so a reconnect resumes.
 
 ### Phase 3 — the box
 
-pai-dev's `infra/cloud-init.yaml` builds the host from nothing: users, Tailscale, Bun, Node, git,
+dev's `infra/cloud-init.yaml` builds the host from nothing: users, Tailscale, Bun, Node, git,
 the checkout, the systemd unit, borg. `infra/provision.ts` drives the hcloud API.
 Cutover copies `.env`, `pai.db` and `workspace/memory`, then the GCP instance is deleted.
 
 ### Phase 4 — the clients
 
 The web app gains the session views and the terminal. The VS Code extension follows:
-pai-dev's `vscode/` is threads, projects and terminals as views over the same endpoints. It is
-served by pai-dev inside the daemon, through code-server on port 8788, so the editor is a URL on the
-tailnet rather than something installed on a laptop, and an update of the daemon is an update
-of the editor — the fallback surface for a machine with nothing installed.
+The editor is dev's (a separate system, https://dev.desk.atmagaming.com): the old pai editor's experience
+— files, CodeMirror with vim, terminals — plus Claude Code sessions per project, over dev's own API.
 
 The desktop app (`desktop/`) is the client the work actually happens in: a Tauri window over
 the same API, with threads grouped by project, a thread's conversation from its transcript, a

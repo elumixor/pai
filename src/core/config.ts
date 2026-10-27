@@ -47,8 +47,11 @@ export const config = {
   /** Where the assistant keeps its own files: persona (CLAUDE.md), downloads, notes. */
   workspace: resolve(setting("PAI_WORKSPACE") ?? join(repo, "workspace")),
 
-  /** Where the user's repositories live (pai-dev indexes them). */
+  /** Where the user's repositories live (dev, the separate system, indexes them). */
   devRoot: resolve(setting("PAI_DEV_ROOT") ?? join(homedir(), "dev")),
+
+  /** dev, the development platform on the same box: its API (projects, sessions, the terminals' channels) and token. */
+  dev: { url: (setting("PAI_DEV_URL") ?? "http://127.0.0.1:8790").replace(/\/$/, ""), token: env.PAI_DEV_TOKEN ?? "" },
 
   /** The HTTP API. Loopback by default; the tailnet address when other devices need it. */
   port: Number(setting("PAI_PORT") ?? 8787),
@@ -111,7 +114,7 @@ export const config = {
   /** What Keep signs its webhooks with (`/keep/events`), one secret per workspace hook; without one they are refused. */
   keepWebhookSecrets: (env.PAI_KEEP_WEBHOOK_SECRETS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
 
-  /** Published on the internet (pai-dev runs Caddy on 80/443 for it); core only reads it for `baseUrl`. */
+  /** Published on the internet (dev's gateway runs Caddy on 80/443 for it); core only reads it for `baseUrl`. */
   public: bool(setting("PAI_PUBLIC")),
 
   /** A domain of your own pointing at this host. Empty means `<public ip>.sslip.io`. */

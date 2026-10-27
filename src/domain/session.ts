@@ -35,8 +35,8 @@ export interface AgentSetup {
   readonly additionalDirectories?: readonly string[];
 }
 
-/** The builder's tools that start or feed a thread; pai keeps the ones that read threads, to answer about terminal work. */
-const PAI_THREAD_TOOLS = ["mcp__builder__find_or_create_thread", "mcp__builder__send_to_thread"];
+/** dev's tools that start or feed a session: pai hands coding to its agents, which use them; pai itself only reads. */
+const PAI_THREAD_TOOLS = ["mcp__dev__start_session", "mcp__dev__send_to_session"];
 
 /** The prefix Claude Code gives a server's tools, so a deny rule can remove a whole connector. */
 const toolPrefix = (server: string) => `mcp__${server.replace(/[^A-Za-z0-9_-]/g, "_")}`;

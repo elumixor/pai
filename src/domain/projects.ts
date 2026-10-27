@@ -5,7 +5,7 @@ import { config } from "../core/config.ts";
 /**
  * The projects a session can run in. Core knows only its own **contexts** — directories under
  * `workspace/projects/` with a `CLAUDE.md` (a voice and rules for work that is not code). Repositories
- * come from a module that registers a `ProjectSource` (pai-dev: the repos under the dev root); without
+ * come from a `ProjectSource`: dev's (the separate system: the repos under the dev root, `dev.ts`); without
  * one there are none, and a session runs in the workspace or the cwd it was given.
  */
 
@@ -95,7 +95,7 @@ export function createContext(name: string, about = ""): Project {
 /** Clones a repository through the module that keeps repositories. */
 export function clone(url: string, name?: string): Project {
   const source = [...sources.values()].find((s) => s.clone);
-  if (!source?.clone) throw new ProjectError("no module keeps repositories here (pai-dev is not loaded)");
+  if (!source?.clone) throw new ProjectError("repositories are cloned in dev (its POST /projects), not here");
   return source.clone(url, name);
 }
 

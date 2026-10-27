@@ -13,7 +13,7 @@ const log = logger("sessions");
 
 const live = new Map<string, Session>();
 
-/** Conversations a terminal holds (pai-dev's mirror): busy or idle by their transcripts, though no process of ours runs them. */
+/** Conversations a terminal holds (the mirror): busy or idle by their transcripts, though no process of ours runs them. */
 export const terminalStates = new Map<string, "busy" | "idle">();
 
 export interface SpawnTask {

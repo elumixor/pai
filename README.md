@@ -33,7 +33,7 @@ over HTTP; Telegram, the web app, the CLI and the menu bar are all clients of it
   **Threads** (every session, its live event stream, a compose box and an interrupt),
   **Terminals**, **Files** (projects, workspace and the repo, read-only), and
   **Library** (the instruction documents and long-term memory).
-- A menu bar item on macOS (from [pai-dev](https://github.com/elumixor/pai-dev)) shows what is running and opens the dashboard. It reads its base
+- A menu bar item on macOS (from [dev](https://github.com/elumixor/desk-dev), `dev menubar install`) shows what is running and opens the dashboard. It reads its base
   URL from `~/.config/pai/menubar`, so it works against a daemon on another machine. Next to
   it sit two rings for the Claude subscription, read with the Claude Code login on the Mac:
   the five-hour session window and the model-scoped weekly limit. The thin outer arc is the
@@ -54,27 +54,28 @@ over HTTP; Telegram, the web app, the CLI and the menu bar are all clients of it
 | `modules/` | the modules `pai.config.ts` names, each its own repository |
 
 `docs/architecture.md` is the decision record. Everything about the machine and writing code — the
-repositories, coding threads, terminal threads, the editor, Caddy, files sync, the menu bar app,
-install, release and `infra/` — is the [pai-dev](https://github.com/elumixor/pai-dev) module; its
-`docs/host.md` is the runbook for the box.
+repositories, the editor, terminals, Claude Code sessions and their channel, Caddy, files sync, the menu bar
+app and `infra/` — is [dev](https://github.com/elumixor/desk-dev), a separate system at
+https://dev.desk.atmagaming.com that pai reads and asks things of over its API and MCP; its `docs/host.md` is
+the runbook for the box.
 
 ## Setup
 
 ```sh
 cp .env.example .env               # TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID
-bun run setup                      # pai-dev's install: the web client, `pai` on PATH, the service (box) or the menu bar app (Mac)
+bun run setup                      # the web client, `pai` on PATH, the service (box)
 bun run daemon                     # or: the daemon in the foreground
 bun run dev                        # the web client, rebuilt on every save
 ```
 
-A release (a `v*` tag) tells the host to update itself. The editor (code-server with the pai
-extension), the public address and the rest of the host are pai-dev's; see its README.
+A release (`bun run release`, a `v*` tag) tells the host to update itself. The editor, the public
+address and the rest of the host are dev's; see its README.
 
 ## Modules, automations, context
 
 The dashboard (⌘2 in the client) is where pai is put together. **Modules** are what it is made
 of — the Telegram bot, your own Telegram account, the browser, memory, tasks, LinkedIn, the
-editor, the public address, sync — each with the tools it gives sessions, the paragraph it adds
+browser — each with the tools it gives sessions, the paragraph it adds
 to the prompt, the events it emits and its switches. **Automations** are `on <event> →
 <action>` rules: notify you on Telegram, open a conversation with the text, or start a task in a
 project — the LinkedIn module's `linkedin.message` into a notification is the two-click case.
@@ -86,16 +87,16 @@ in place.
 
 ## The same files on two machines
 
-`pai files` (pai-dev) keeps `~/dev` and `~/.claude` on a Mac in step with the box, two-way over ssh
+`dev files` (dev) keeps `~/dev` and `~/.claude` on a Mac in step with the box, two-way over ssh
 with Mutagen; its README has the commands.
 
 ## A conversation in a terminal
 
 ```sh
 pai claude                     # a new conversation with the assistant, on the box; --resume picks an old one
-pai ssh                        # a shell on the box (pai-dev); `pai ssh <command>` runs one thing there
-pai status | sync | update     # this machine and the box (sync and update are pai-dev's)
-pai dev infra                  # the box itself, from nothing: Hetzner server + bootstrap (pai-dev)
+dev ssh                        # a shell on the box (dev's CLI); `dev ssh <command>` runs one thing there
+pai status | update            # this machine and the box
+dev infra                      # the box itself, from nothing: Hetzner server + bootstrap
 ```
 
 `pai claude` from a laptop goes to the box (`PAI_REMOTE`, `user@host`; by default the Hetzner

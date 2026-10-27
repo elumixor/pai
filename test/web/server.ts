@@ -17,9 +17,10 @@ Object.assign(process.env, {
   PAI_PORT: String(DAEMON_PORT),
   PAI_BIND: "127.0.0.1",
   PAI_NO_TELEGRAM: "1",
-  PAI_NO_EDITOR: "1",
   PAI_CONFIG: join(scratch, "config.json"),
   PAI_CLAUDE_PROJECTS: join(scratch, "claude-projects"),
+  // Agents the specs create get folders: in the scratch directory, never the real workspace.
+  PAI_WORKSPACE: join(scratch, "workspace"),
   PAI_TOKEN: TOKEN,
   PAI_KEEP_URL: `http://127.0.0.1:${CONTROL_PORT}`,
   // An ask made at night would otherwise wait for the morning instead of reaching the chat.

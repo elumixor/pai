@@ -44,6 +44,7 @@ export const CORE: readonly Command[] = [
   { name: "modules", args: "[update|restart]", description: "the modules: state, health" },
   { name: "completion", args: "[zsh]", description: "install shell completion (zsh); `zsh` prints the script" },
   { name: "version", description: "pai here and on the box" },
+  { name: "update", args: "[--check] [--force]", description: "update pai on the box, and here when this is a laptop" },
 ];
 
 export const DEV: readonly Command[] = [
@@ -60,6 +61,9 @@ export const DEV: readonly Command[] = [
   { name: "settings", args: "[KEY=value…]", description: "the daemon's settings" },
   { name: "restart", description: "restart the daemon" },
   { name: "daemon", args: "[--foreground]", description: "start the daemon" },
+  { name: "install", args: "[--uninstall]", description: "this machine: `pai` on PATH, the box's systemd service" },
+  { name: "release", args: "[patch|minor|major]", description: "tag, push, wait for the box to report it" },
+  { name: "update", args: "[--check] [--force]", description: "update pai on the box, and here when this is a laptop" },
 ];
 
 const colour = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR && process.env.TERM !== "dumb";

@@ -133,10 +133,7 @@ export function agentInstructions(a: Pick<Agent, "kind" | "name" | "slug">, own:
 
 export function instructionsFor(kind: SessionKind, _project?: string, agent?: AgentSetup): string {
   const role = agent ? agent.instructions : kind === "code" ? CODE : CHAT;
-  // pai-dev's coding-thread paragraph tells a conversation to start threads; pai hands coding to agents instead.
-  const sections = moduleSections(kind)
-    .filter((m) => !(agent?.slug === "pai" && m.module === "dev"))
-    .map((m) => m.section);
+  const sections = moduleSections(kind).map((m) => m.section);
   // pai's staff ask through ask_user rather than AskUserQuestion, and leave the profile to pai.
   const staff = agent && agent.slug !== "pai";
   const common = staff

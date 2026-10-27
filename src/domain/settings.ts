@@ -1,4 +1,4 @@
-import { config, setting } from "../core/config.ts";
+import { config } from "../core/config.ts";
 
 /**
  * The settings a client may change, kept in `data/config.json` and merged over the
@@ -20,10 +20,7 @@ export const EDITABLE = [
   "PAI_PUBLIC",
   "PAI_DOMAIN",
   "PAI_REMOTE",
-  "PAI_NO_EDITOR",
-  "PAI_EDITOR_PORT",
-  "PAI_EDITOR_BIND",
-  "PAI_EDITOR_DOMAIN",
+  "PAI_DEV_URL",
   "PAI_TIMEZONE",
   "PAI_QUIET_HOURS",
   "PAI_MAX_AGENTS",
@@ -57,11 +54,7 @@ export function effective() {
     PAI_PUBLIC: config.public ? "1" : "0",
     PAI_DOMAIN: config.domain,
     PAI_REMOTE: config.remote,
-    // pai-dev's (the editor): core only keeps them editable, as they are written.
-    PAI_NO_EDITOR: setting("PAI_NO_EDITOR") ?? "",
-    PAI_EDITOR_PORT: setting("PAI_EDITOR_PORT") ?? "",
-    PAI_EDITOR_BIND: setting("PAI_EDITOR_BIND") ?? "",
-    PAI_EDITOR_DOMAIN: setting("PAI_EDITOR_DOMAIN") ?? "",
+    PAI_DEV_URL: config.dev.url,
     PAI_TIMEZONE: config.timezone,
     PAI_QUIET_HOURS: config.quietHours,
     PAI_MAX_AGENTS: String(config.maxWorkingAgents),

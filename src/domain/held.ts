@@ -3,7 +3,7 @@ import type { Image } from "./attachments.ts";
 
 /**
  * Conversations the daemon does not run but a message can still reach: a terminal's `claude`
- * (pai-dev's mirror follows their transcripts). A module that holds such threads registers a
+ * (the mirror, `mirror.ts`, follows their transcripts). A module that holds such threads registers a
  * `HeldThreads`; the frontends route a message to one before they fall back to a daemon session.
  */
 

@@ -24,12 +24,21 @@ import * as spend from "./domain/spend.ts";
 import * as models from "./domain/models.ts";
 import { flush as flushNotices } from "./domain/asks.ts";
 import { startClaudeLoginCheck } from "./domain/claude-login.ts";
+import * as dev from "./domain/dev.ts";
+import * as held from "./domain/held.ts";
+import * as mirror from "./domain/mirror.ts";
+import * as projects from "./domain/projects.ts";
+import { startReleaseCheck } from "./domain/release-check.ts";
 
 const log = logger("daemon");
 
 mkdirSync(config.workspace, { recursive: true });
 // Before anything spawns a session: their tools, prompt and projects come from the modules too.
 await external.load();
+// The repositories are dev's (a separate system on this box); terminals' conversations are followed here.
+projects.provide("dev", dev.source);
+held.provide("mirror", mirror.held);
+const stopDev = await dev.start();
 relayToParent();
 // pai and its staff: the agents' turns, the one chat, routines feeding both.
 const stopAgents = agents.start();
@@ -51,6 +60,9 @@ const stopBrowserCheck = startBrowserCheck();
 const stopAutomations = startAutomations();
 const stopModules = startModules();
 await external.startAll();
+// After the modules: the chat is listening when terminal threads are announced.
+const stopMirror = mirror.start();
+const stopReleaseCheck = startReleaseCheck();
 const stopRecall = recall.start();
 const stopSummaries = summaries.start();
 const stopSpend = spend.start();
@@ -80,6 +92,9 @@ function shutdown(signal: string) {
   stopMemoryWatch();
   stopClaudeLoginCheck();
   stopModules();
+  stopMirror();
+  stopReleaseCheck();
+  stopDev();
   void external.stopAll();
   noteInterrupted();
   killAll();

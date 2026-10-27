@@ -225,7 +225,7 @@ export interface PaiModule {
    * `cliHere` is checked against the verb). Listed in `pai --help` beside core's own commands.
    */
   readonly verbs?: readonly ModuleVerb[];
-  /** Extra arguments for `claude` started by `pai claude` (pai-dev's channel, so Paigram reaches that terminal). */
+  /** Extra arguments for `claude` started by `pai claude` (dev's channel is added by core, so Paigram reaches that terminal). */
   readonly claudeArgs?: () => readonly string[];
   /** Projects sessions can run in (repositories), beside the workspace's own contexts. */
   readonly projects?: ProjectSource;

@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS kv (
   value TEXT NOT NULL
 );
 
--- How far each transcript has been read by pai-dev's mirror, so a restart does not repeat it.
+-- How far each transcript has been read by the mirror, so a restart does not repeat it.
 CREATE TABLE IF NOT EXISTS transcript_offsets (
   path    TEXT PRIMARY KEY,
   offset  INTEGER NOT NULL

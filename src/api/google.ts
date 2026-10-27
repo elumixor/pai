@@ -1,8 +1,7 @@
 import { config } from "../core/config.ts";
 import { clerkConfigured } from "./clerk.ts";
 import { logger } from "../core/log.ts";
-import { clearSession, identified, origin, sessionCookie, sessionFromRequest, sign, verify } from "./auth.ts";
-import { handoff, handoffFrom, redeem } from "./handoff.ts";
+import { clearSession, origin, sessionCookie, sessionFromRequest, sign, verify } from "./auth.ts";
 import type { GoogleCallback } from "../modules/sdk.ts";
 
 const log = logger("google");
@@ -10,8 +9,7 @@ const log = logger("google");
 /**
  * Sign in with Google for the browser surfaces: `/auth/google` sends the browser to Google,
  * `/auth/google/callback` turns the code into an email, and an email on the allowlist gets a
- * signed session cookie that every later request carries. `/auth/check` is what Caddy asks
- * before letting a request through to the editor.
+ * signed session cookie that every later request carries.
  *
  * The confidential-client flow: the id token comes straight from Google over TLS in exchange
  * for the code, so its claims are trusted without checking its signature, as Google's own
@@ -45,16 +43,6 @@ export async function handleAuth(req: Request, url: URL): Promise<Response | und
   if (path === "/auth/logout") {
     return redirect("/", { "set-cookie": clearSession() });
   }
-  if (path === "/auth/check") {
-    // Caddy's forward_auth: 2xx lets the request through, anything else is sent to the browser as is.
-    if (await identified(req, url)) return new Response(null, { status: 204 });
-    const redeemed = redeem(req);
-    if (redeemed) return redeemed;
-    const wanted = req.headers.get("x-forwarded-uri") ?? "/editor/";
-    if (!wantsHtml(req)) return json({ error: "sign in first" }, 401);
-    return redirect(handoffFrom(req) ?? (clerkConfigured() ? SIGN_IN : loginUrl(wanted)));
-  }
-  if (path === "/auth/handoff") return handoff(req, url, clerkConfigured() ? SIGN_IN : "/auth/google");
   if (path === "/auth/config") {
     return json({ clerkPublishableKey: clerkConfigured() ? config.clerk.publishableKey : null, keepUrl: config.keepUrl || null });
   }

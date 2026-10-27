@@ -4,7 +4,7 @@ Personal assistant that runs on a box (Hetzner) and is used from a browser (the 
 a Mac (`pai …`, the menu bar app) and from Telegram. The core here is the daemon: sessions (one Claude Code
 session each, over the Agent SDK), the HTTP API, the client. Everything else is
 a module from its own repository (`pai.config.ts`): `pai-browser` (a signed-in headless browser on the
-box, one session per site, logins captured from the Mac's Arc), `pai-dev` (the machine and writing code),
+box, one session per site, logins captured from the Mac's Arc),
 `pai-telegram` (the chat and the user's account), `pai-email` (Gmail mailboxes), `pai-linkedin` (requires browser),
 `pai-whatsapp` (his own number over the WhatsApp Web protocol, linked by QR — unofficial, so the
 risk is a ban on his number and the module never sends in bulk; a send is read back out of the chat
@@ -19,11 +19,16 @@ a builder thread in a repo is `code`.
 
 pai core is the assistant only: sessions over the Agent SDK, `main.ts` and the agents, tasks, asks, drafts,
 requests, automations, triage, recall, memory, journal, spend/usage/models, the HTTP API + SSE, auth, the module
-SDK and loader, the CLI, and the self-update. Everything about the host machine or writing code is the `pai-dev`
-module (`elumixor/pai-dev`, `modules/dev`): Mutagen files sync, code-server + its `vscode/` extension, the catalog of
-repos, the terminal mirror and channel, the menu bar app, the release check, install, release, `infra/`, Caddy, and
-the coding threads (pai-builder, archived). Core runs without it: no repos, loopback + token. Projects, tasks and docs live in Keep
-(`elumixor/keep`, `keep:page/<id>` URNs, an MCP); pai knows Keep, Keep never knows pai.
+SDK and loader, the CLI, and the self-update. Everything about the host machine or writing code is **dev**, a
+separate system (`elumixor/desk-dev`, `~/dev/@desk/dev`, service `dev` on the box at `~/desk/dev`, https://dev.desk.atmagaming.com):
+the catalog of repos, the web editor, terminals, Claude Code sessions and the terminals' channel (`dev channel`),
+Mutagen files sync, the menu bar app, `infra/`, and Caddy for every host on the box. pai is dev's client: its
+projects come from dev's API (`src/domain/dev.ts`, `PAI_DEV_URL`/`PAI_DEV_TOKEN`), a message for a terminal's
+conversation goes through dev (`POST /sessions/:id/deliver`), and sessions use dev's MCP server (`dev`, added on
+the box with `claude mcp add -s user`): list_projects, get_project, get_diff, read/write_file, run_command,
+list/read/start_session, send_to_session. pai never imports dev and dev never imports pai. pai keeps the terminal
+mirror (`mirror.ts`: terminal conversations shown as threads), the release check, install/release/update. Projects,
+tasks and docs live in Keep (`elumixor/keep`, `keep:page/<id>` URNs, an MCP); pai knows Keep, Keep never knows pai.
 
 pai is the AI part of the desk suite: every repo under `~/dev/@desk/` (package `@desk/<name>`, never published — the npm
 scope is not ours), every app under `*.desk.atmagaming.com` — hub `desk.` (`@desk/desk`, which also serves `bar.js`:
@@ -37,7 +42,7 @@ Modules come in two kinds (`sdk.ts`): a **connector** (`kind: "connector"`, a si
 `pai-telegram`, `pai-email`, `pai-linkedin`, `pai-whatsapp`) exposes `connector.status(ctx)` (signed in / signed out /
 broken, with the link that fixes it), its `events`, its `tools`, and `connector.send` answering
 `verified | unverified | not_sent`; `GET /connectors` lists them in that one shape for the clients. A
-**capability** (`kind: "capability"`: `pai-browser`, `pai-dev`) is something the box can do. Each
+**capability** (`kind: "capability"`: `pai-browser`) is something the box can do. Each
 module repo has the same layout: `index.ts` default export, a one-paragraph `CLAUDE.md`, `README.md`, tests next to
 the code, `bun.lock`, `biome.json` extending `@desk/pai/biome.json` (resolved through the module's `node_modules/@desk/pai`).
 The order of `pai.config.ts` is the order clients list modules; loading follows `requires`.
@@ -55,7 +60,8 @@ pai threads [project]      # every conversation by project; in a terminal a list
                            # `pai claude --resume <id>` (that thread's directory and model). `projects` = same
 pai tools | skills | instructions | memories [name]   # what sessions are given (`GET /context`); a name prints one
 pai completion                      # installs zsh completion (src/clients/help.ts is the one table: help + completion)
-# pai-dev's verbs: ssh|connect, files|fs, sync, update, menubar, channel; `pai dev install|release|infra|code|editor`
+pai update [--check] [--force]      # the box updates itself; a laptop pulls its checkout too
+# files sync, ssh, menu bar, channel, infra are dev's: `dev files|ssh|menubar|channel|infra` (dev's README)
 
 pai dev daemon [-f]        # detached; -f/--foreground = attached, verbose, telegram off
 pai agents | log [agent] | tasks [add|done|drop] | asks | answer <id> <text> | routines | recall <words> | audit [agent]
@@ -69,13 +75,13 @@ pai dev settings [KEY=value …]      # read or change data/config.json; a chang
 pai dev restart
 bun run dev                # the web client (Vite, port 5180) against the box
 bun run test:web           # Playwright: the web client against a scratch daemon
-bun run setup              # = `pai dev install`: the web client, the service, `pai` on PATH, the menu bar app on macOS
+bun run setup              # = `pai dev install`: the web client, the service, `pai` on PATH (menu bar: `dev menubar install`)
 ```
 
 `--json` on any command. Session ids in full or as the 6-char short form. `pai` is
 `bun run src/clients/cli.ts`; the user-facing commands are the first block, `pai dev` is the
-daemon's own controls and stays out of `pai --help`. A module's `verbs` are top-level words (`pai files`) and a
-`pai dev <sub>` core does not know goes to the module named `dev`.
+daemon's own controls (with `install`, `release`, `update`) and stays out of `pai --help`. A module's `verbs` are
+top-level words.
 
 ## How sessions work
 
@@ -128,20 +134,19 @@ reconnect every account, so say so in the same breath as shipping it.
 - `src/domain/browser.ts` — one Playwright MCP server per daemon over HTTP (pinned version, `--browser chromium`, its build installed at start); sessions connect instead of spawning `npx`.
   The install check costs ~1.6s per start when the browser is there, and needs the network when it is not: a cold box with no network cannot start the browser.
 - `src/domain/prompts.ts` — instructions appended to the Claude Code system prompt, per session kind: the general part, the role, then `# Instructions (from <module>)` per module that adds a paragraph.
-- `src/domain/projects.ts` — the projects sessions run in: the workspace's contexts plus each module's `ProjectSource` (pai-dev: repos under `~/dev`); none without one. `src/domain/held.ts` — threads held outside the daemon (a terminal's) that a message still reaches, from a module's `HeldThreads`.
+- `src/domain/projects.ts` — the projects sessions run in: the workspace's contexts plus `ProjectSource`s (dev's repos under `~/dev`, `dev.ts`, refreshed every 5 min). `src/domain/held.ts` — threads held outside the daemon (a terminal's) that a message still reaches (`mirror.ts`).
+- `src/domain/mirror.ts` — terminal conversations (Mac, box, dev-run `claude -p`) followed through their transcripts and told to the bus as threads; a message for one goes to dev's channel, else the daemon resumes it. `src/domain/release-check.ts` — a `v*` tag older than 15 min with the box behind it becomes one task.
 - `src/api/app.ts` serves `apps/web/build` at `/`: `index.html` `no-cache`, `/_app/immutable/*` (content-hashed) `immutable`, so a release can only arrive whole. `/ui` and `/app` redirect to `/`.
-- `src/api/` — `server.ts` (transport, the terminal websocket, the client), `routes.ts`, `events.ts` (SSE), `port.ts`, `app.ts` (serves the client at `/`), `auth.ts` (`PAI_TOKEN` for programs, a Clerk session (`clerk.ts`) or the Google session cookie for browsers; loopback and the bundles are exempt — a route that answers `401` to curl is not broken for him: with a browser's `Accept: text/html` the same route redirects to Google sign-in and on to where he was going, so check a page with an HTML accept header before calling it unreachable), `handoff.ts` (the editor subdomain signs in with a one-minute ticket from the main host, since Clerk's cookie is per host), `google.ts` (Sign in with Google: `PAI_GOOGLE_CLIENT_ID/SECRET` in `.env`, `PAI_GOOGLE_ALLOWED` emails; `/auth/check` is Caddy's forward_auth for the editor).
-- Caddy (public https, `/editor`, the editor subdomain) is pai-dev's `start`; core only binds its API port and answers `/auth/check`.
-- Files sync (`pai files`, Mutagen), `/sync`, the menu bar app: pai-dev (`files.ts`, `sync.ts`, `menubar/`); its README holds the rules.
+- `src/api/` — `server.ts` (transport, the terminal websocket, the client), `routes.ts`, `events.ts` (SSE), `port.ts`, `app.ts` (serves the client at `/`), `auth.ts` (`PAI_TOKEN` for programs, a Clerk session (`clerk.ts`) or the Google session cookie for browsers; loopback and the bundles are exempt — a route that answers `401` to curl is not broken for him: with a browser's `Accept: text/html` the same route redirects to Google sign-in and on to where he was going, so check a page with an HTML accept header before calling it unreachable), `google.ts` (Sign in with Google: `PAI_GOOGLE_CLIENT_ID/SECRET` in `.env`, `PAI_GOOGLE_ALLOWED` emails).
+- Caddy (public https for pai's and dev's hosts) is run by dev (`DEV_ROUTES` in dev's `.env`); pai only binds its API port.
 - `src/clients/telegram.ts` — grammY frontend: routing by topic / reply, draft streaming, live cards, question keyboards, attachments.
 - `src/clients/tg-user.ts` — the user's own Telegram account (gramjs, `TELEGRAM_USER_SESSION`) as the `tg` MCP server.
 - `src/clients/cli.ts` — the CLI over the HTTP API.
 - `src/domain/transcript.ts` — a thread's conversation read from `~/.claude/projects` (`GET /transcript`).
-- The terminal mirror and `pai channel` (`/channel?session=`) are pai-dev's (`mirror.ts`, `channels.ts`, `channel-server.ts`); core keeps `POST /attach`, `/adopt` and the `code` kind.
+- The terminals' channel (`/channel?session=`, the `dev channel` MCP server, plugin `pai@pai`) is dev's; `pai claude` adds `dev channel args`. Core keeps the mirror, `POST /attach`, `/adopt` and the `code` kind.
 - `src/domain/settings.ts` — the editable settings in `data/config.json`, merged over the environment at import (`GET`/`PATCH /settings`; a change needs a restart).
 - `src/protocol/rich.ts` — metadata trailer: plain text for stock clients, structured for ours.
-- `src/host/remote.ts` — the box as `PAI_REMOTE` (`user@host`, default `pai@$PAI_HOST_IP`), ssh with port 22 opened for this machine's public address on the Hetzner firewall, and `boxApi()` — the box's https address and token learned once over ssh into `~/.config/pai/box.json`, which every CLI command then uses. `pai claude` from a Mac is `pai claude` on the box over ssh; there it is `claude` in the workspace (a new conversation; `--resume` is claude's picker; modules' `claudeArgs` are added). `POST /attach {id, cwd}` hands a daemon session to a terminal; `POST /adopt {id, cwd, title}` makes a conversation held on disk a live session without a turn (Paigram opens synced threads with it). Host install, update of a laptop, the release check and the menu bar are pai-dev's.
-- The browser editor (code-server on `PAI_EDITOR_PORT` 8788 with pai-dev's `vscode/` extension; `PAI_NO_EDITOR`, `PAI_EDITOR_BIND`, `PAI_EDITOR_DOMAIN`) is pai-dev's.
+- `src/host/remote.ts` — the box as `PAI_REMOTE` (`user@host`, default `pai@$PAI_HOST_IP`), ssh with port 22 opened for this machine's public address on the Hetzner firewall, and `boxApi()` — the box's https address and token learned once over ssh into `~/.config/pai/box.json`, which every CLI command then uses. `pai claude` from a Mac is `pai claude` on the box over ssh; there it is `claude` in the workspace (a new conversation; `--resume` is claude's picker; modules' `claudeArgs` are added). `POST /attach {id, cwd}` hands a daemon session to a terminal; `POST /adopt {id, cwd, title}` makes a conversation held on disk a live session without a turn (Paigram opens synced threads with it). Host install, update and release are `pai dev install|update|release` (`src/clients/`).
 - `apps/web/` — the web client (SvelteKit SPA, Svelte 5, Tailwind 4), served by the daemon at `/` with its routes in the hash (`/#/tasks`), so no client route can shadow an API path. Only the chat with pai, in the spirit of Paigram: the chat (`ChatView`: the log for an agent, the turn streaming in with its tool calls folded, asks with their buttons, drafts as editable cards with Send and Discard, `AskUserQuestion` answered in place, pictures attached or pasted), the threads tree (agents under pai, sub-agents under them, each a chat), tasks (waiting on me / working / scheduled / done, with the need's buttons), connectors (`GET /connectors`) and skills (`GET /context`). A `keep:page/<id>` in a message becomes `<keep-pill>` from Keep's own `elements.js` (`PAI_KEEP_URL`). Sign-in: Clerk (the account shared with Keep; `CLERK_SECRET_KEY`/`CLERK_PUBLISHABLE_KEY`, `PAI_ALLOWED` emails) or a `?token=` link. `bun run dev` = Vite on 5180 against the box (`~/.config/pai/box.json`); `bun run test:web` = Playwright against the daemon on a scratch database (`test/web/server.ts`, a control port puts replies, asks and drafts on the bus; no session ever starts).
 - `src/domain/claude-login.ts` — the box's own Claude login. An `authentication_failed` turn is no reply: it raises one `waiting_user` task linking `/claude/login` (runs `claude auth login`, the user pastes the code back), closed by the next turn that gets through; pai then answers what went unanswered.
 - `src/domain/usage.ts` — the Claude subscription's windows (`GET /usage`) with the Claude Code login on the machine, plus what the sessions cost. Never copy a Mac's login to the box: refresh tokens are single-use, so two machines on one login sign each other out.
@@ -165,7 +170,7 @@ reconnect every account, so say so in the same breath as shipping it.
 - `src/domain/capabilities.ts` — where an agent's tools list (capabilities) meets the MCP server names: the aliases (`browser` → `playwright`, `calendar` → Balance), `serverAllowed`, `narrowed` (a sub-agent against its parent), `unresolved` (declared, no server) and `unavailable` (offered but dead — denied or never signed in, each paired through the aliases with the live server that answers the same capability). `prompts.ts`'s `missingTools` turns both into one generated "# Tools you do not have" paragraph in every session; the context view says the same on the server's line. Generated, never a written list, so it cannot go stale.
 - `src/domain/context.ts` — what each session kind is given (instructions, memories, skills, tools) with the surfaces that see it (`GET /context`, `pai tools|skills|instructions|memories`, the dashboard, Paigram's settings). Tools come from the newest session init per kind (`noteInit`: the SDK's tool list and MCP server states), memories from `workspace/MEMORY.md` plus Claude Code's own `~/.claude/projects/<cwd>/memory/`.
 - Projects are repos under `devRoot` or **contexts**: `workspace/projects/<slug>/` with a `CLAUDE.md` (voice, rules, what to remember about it). `POST /projects {name, about}` creates one; a task in it runs with that directory as cwd.
-- `infra/` (Hetzner provision, cloud-init, bootstrap, firewall, borg) and `menubar/` are pai-dev's: `pai dev infra`, `pai menubar`.
+- `infra/` (Hetzner provision, cloud-init, bootstrap, firewall, borg) and `menubar/` are dev's: `dev infra`, `dev menubar`.
 - `workspace/` — the assistant's cwd; `CLAUDE.md` there is the persona, `inbox/` gets attachments.
 
 ## Releasing
@@ -178,7 +183,7 @@ release. The same holds for anything gathering evidence in the background.
 The release restarts the daemon, which kills the session that ran it: finish the report before
 `bun run release`, never after, or it is lost mid-sentence.
 
-`bun run release [patch|minor|major]` (= `pai dev release`, pai-dev's `release.ts`): refuses a dirty tree or a branch other
+`bun run release [patch|minor|major]` (= `pai dev release`, `src/clients/release.ts`): refuses a dirty tree or a branch other
 than main, runs the checks, bumps the version as a commit and a `v*` tag, pushes, then waits for the
 box to report it. The tag runs CI: checks, a GitHub release with the daemon archive (the checkout with
 the web client built), then `POST /update` on the host (`PAI_URL`, `PAI_TOKEN` repository secrets) and a
@@ -197,5 +202,6 @@ over HTTP, including a websocket terminal. No test spends model tokens.
 - Permission prompts: sessions run under `bypassPermissions`, so `canUseTool` only carries `AskUserQuestion`.
 - Concurrency is unbounded and there is no usage readout.
 - Project routing is explicit only — no `@project` prefix, no inference.
-- The Telegram fork is designed but not built; the VS Code extension is unpublished and untested inside a real editor host.
+- The Telegram fork is designed but not built.
+- Cloning a repository is dev's (`POST /projects` there); `projects.clone` here refuses.
 - Documents other than images are saved to `inbox/` and mentioned by path only.

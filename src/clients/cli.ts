@@ -142,6 +142,17 @@ function threadLine(t: ThreadRow) {
   return `${t.shortId}  ${t.state.padEnd(8)} ${age(t.lastActivity).padStart(4)}  ${String(t.title).replace(/\s+/g, " ").slice(0, 60)}`;
 }
 
+/** `dev channel args`: what `claude` needs to load dev's channel, when dev is installed on this machine. */
+function devChannelArgs(): string[] {
+  const bin = Bun.which("dev") ?? `${process.env.HOME}/.local/bin/dev`;
+  const res = Bun.spawnSync([bin, "channel", "args"], { stdout: "pipe", stderr: "ignore" });
+  try {
+    return res.exitCode === 0 ? (JSON.parse(res.stdout.toString()) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 async function claude(args: string[], cwd: string) {
   const bin = Bun.which("claude") ?? `${process.env.HOME}/.local/bin/claude`;
   if (!(await Bun.file(bin).exists())) {
@@ -149,8 +160,8 @@ async function claude(args: string[], cwd: string) {
     const install = Bun.spawn(["sh", "-c", "curl -fsSL https://claude.ai/install.sh | bash"], { stdio: ["ignore", "inherit", "inherit"] });
     if ((await install.exited) !== 0) throw new Error("claude did not install; see https://docs.claude.com/en/docs/claude-code/setup");
   }
-  // What modules add (pai-dev's channel: what is typed for this conversation in Paigram arrives here).
-  const extra = await (await import("../modules/external.ts")).claudeArgs();
+  // What modules add, and dev's channel (what is typed for this conversation in Paigram arrives here).
+  const extra = [...(await (await import("../modules/external.ts")).claudeArgs()), ...devChannelArgs()];
   return Bun.spawn([bin, ...extra, ...args], { cwd, stdio: ["inherit", "inherit", "inherit"] }).exited;
 }
 
@@ -357,6 +368,8 @@ async function userCommand() {
     case "dev":
       console.log(help.section("dev", help.DEV));
       break;
+    case "update":
+      process.exit(await (await import("./update.ts")).updateCommand({ api, post, out }, args));
     case undefined:
     case "help":
     case "--help":
@@ -364,7 +377,7 @@ async function userCommand() {
       console.log(help.usage(await moduleHelp()));
       break;
     default: {
-      // A word a module answers (`pai files`, pai-dev's), else a module's own command line (`pai <module> …`).
+      // A word a module answers, else a module's own command line (`pai <module> …`).
       const owner = await (await import("../modules/external.ts")).verbOwner(cmd!);
       if (!(await (owner ? runModule(owner, [cmd!, ...args], cmd) : runModule(cmd!, args, positional[0])))) {
         console.log(help.usage(await moduleHelp()));
@@ -580,9 +593,14 @@ async function devCommand() {
       out(data, () => "restarting");
       break;
     }
-    // What core does not know is the `dev` module's (pai-dev: update, install, release, …).
+    case "install":
+      process.exit(await (await import("./install.ts")).installCommand(args));
+    case "release":
+      process.exit(await (await import("./release.ts")).releaseCommand(args));
+    case "update":
+      process.exit(await (await import("./update.ts")).updateCommand({ api, post, out }, args));
     default:
-      if (!cmd || !(await runModule("dev", [cmd, ...args], cmd))) console.log(help.section("dev", help.DEV));
+      console.log(help.section("dev", help.DEV));
   }
 }
 

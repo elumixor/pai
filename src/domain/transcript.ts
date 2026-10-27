@@ -34,8 +34,8 @@ export interface TranscriptMessage {
   readonly meta?: boolean;
 }
 
-/** Claude Code names a project directory after its cwd, with the separators flattened. */
-const slug = (cwd: string) => cwd.replace(/[/.]/g, "-");
+/** Claude Code names a project directory after its cwd, every character but letters and digits flattened. */
+const slug = (cwd: string) => cwd.replace(/[^A-Za-z0-9]/g, "-");
 
 /**
  * The transcript directories for a project: the one named after this machine's path, and the
