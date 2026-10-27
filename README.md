@@ -33,7 +33,7 @@ over HTTP; Telegram, the web app, the CLI and the menu bar are all clients of it
   **Threads** (every session, its live event stream, a compose box and an interrupt),
   **Terminals**, **Files** (projects, workspace and the repo, read-only), and
   **Library** (the instruction documents and long-term memory).
-- A menu bar item on macOS shows what is running and opens the dashboard. It reads its base
+- A menu bar item on macOS (from [pai-dev](https://github.com/elumixor/pai-dev)) shows what is running and opens the dashboard. It reads its base
   URL from `~/.config/pai/menubar`, so it works against a daemon on another machine. Next to
   it sit two rings for the Claude subscription, read with the Claude Code login on the Mac:
   the five-hour session window and the model-scoped weekly limit. The thin outer arc is the
@@ -49,46 +49,26 @@ over HTTP; Telegram, the web app, the CLI and the menu bar are all clients of it
 | `src/api` | HTTP routes, the event stream, the terminal socket, the app |
 | `src/clients` | Telegram, the CLI |
 | `src/protocol` | the rich-message codec, shared with every client |
-| `src/host` | service installation and self-update |
-| `app/` | the web app the daemon serves |
-| `infra/` | provisioning, bootstrap and backup for the host |
+| `src/host` | `remote.ts`: the box as seen from a laptop (ssh, its API address) |
+| `apps/web` | the web client the daemon serves |
+| `modules/` | the modules `pai.config.ts` names, each its own repository |
 
-`docs/architecture.md` is the decision record; `docs/host.md` is the runbook for the box.
+`docs/architecture.md` is the decision record. Everything about the machine and writing code — the
+repositories, coding threads, terminal threads, the editor, Caddy, files sync, the menu bar app,
+install, release and `infra/` — is the [pai-dev](https://github.com/elumixor/pai-dev) module; its
+`docs/host.md` is the runbook for the box.
 
 ## Setup
 
 ```sh
 cp .env.example .env               # TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID
-bun run install                    # builds everything, installs the service, `pai` on PATH, the Mac app
+bun run setup                      # pai-dev's install: the web client, `pai` on PATH, the service (box) or the menu bar app (Mac)
 bun run daemon                     # or: the daemon in the foreground
-bun run dev                        # the client in a browser, rebuilt on every save
+bun run dev                        # the web client, rebuilt on every save
 ```
 
-`bun run install --no-app` skips the desktop build, which is the slow part. A release (a
-`v*` tag) publishes the Mac app as `pai-macos.dmg` on GitHub — the client links to it — and
-tells the host to update itself.
-
-The desktop app is the fast client: a Tauri window — a native webview around a small bundle,
-no Electron — laid out like an editor. The file tree of the selected project on the left with
-the subscription's usage under it; a file viewer in the middle with a dock of terminals on
-the box beneath it, each labelled by its directory and what is running in it; a thread and,
-if you want one, a second thread beside it; on the right every project with its threads, a
-link to its repository, a way to start a thread in it and a way to add a project by cloning
-it. Dashboard and settings open in the middle. It opens offline: every read is cached, and a
-message written with the box unreachable waits in an outbox and is sent when it answers.
-Settings live on the daemon, so every client agrees on them.
-
-The daemon also serves an editor: code-server — VS Code in a browser, not a fork — with the
-pai extension in it, on port 8788 of the same address as the API. It is a child of the
-daemon, so it comes up with it, comes back if it dies, and is rebuilt from the checkout on
-every start; a new version needs nothing installed by hand. `http://pai:8788` over the
-tailnet is threads, projects and terminals next to the files they are about. `PAI_NO_EDITOR=1`
-turns it off, `PAI_EDITOR_PASSWORD` puts a password on it, and `bun run editor` serves it
-alone for working on the extension. It is the fallback for a machine with nothing installed;
-the desktop app is the one to reach for.
-
-The same client is a web page: the daemon serves it at `/ui`, so `http://pai:8787/ui/` is the
-whole thing in a browser with nothing installed.
+A release (a `v*` tag) tells the host to update itself. The editor (code-server with the pai
+extension), the public address and the rest of the host are pai-dev's; see its README.
 
 ## Modules, automations, context
 
@@ -106,28 +86,16 @@ in place.
 
 ## The same files on two machines
 
-A Mac keeps `~/dev` and `~/.claude` in step with the box, two-way over ssh with Mutagen:
-`claude` in a project on the box sees the same files, skills and settings as at home.
-
-```sh
-pai files                      # what is in sync and what is not
-pai files watch                # the same, live; `watch off` / `watch on` pauses and resumes
-pai files sync                 # one cycle now; a file changed on both sides is listed and left alone
-pai files sync --local         # …or settled in favour of this machine (--remote: the box)
-pai files diff                 # the conflicts, side by side
-```
-
-Build output (`node_modules`, `target`, `dist`, …), the Claude login and `.git` never travel:
-each machine keeps its own clone of a repository (the box makes one from the Mac's origin),
-only the working trees are shared.
+`pai files` (pai-dev) keeps `~/dev` and `~/.claude` on a Mac in step with the box, two-way over ssh
+with Mutagen; its README has the commands.
 
 ## A conversation in a terminal
 
 ```sh
 pai claude                     # a new conversation with the assistant, on the box; --resume picks an old one
-pai ssh                        # a shell on the box; `pai ssh <command>` runs one thing there
-pai status | sync | update     # this machine and the box
-bun run infra                  # the box itself, from nothing: Hetzner server + bootstrap
+pai ssh                        # a shell on the box (pai-dev); `pai ssh <command>` runs one thing there
+pai status | sync | update     # this machine and the box (sync and update are pai-dev's)
+pai dev infra                  # the box itself, from nothing: Hetzner server + bootstrap (pai-dev)
 ```
 
 `pai claude` from a laptop goes to the box (`PAI_REMOTE`, `user@host`; by default the Hetzner
@@ -146,7 +114,7 @@ pai dev settings PAI_PUBLIC=1 # or the dashboard's settings page
 pai dev restart
 ```
 
-The daemon then runs Caddy as a child of its own: TLS on 80 and 443 with a real certificate,
+pai-dev then runs Caddy as a child of the daemon: TLS on 80 and 443 with a real certificate,
 `/` the client and the API, `/editor` code-server. The hostname is `PAI_DOMAIN` when you have
 a domain pointed at the host, and `https://<public ip with dashes>.sslip.io` when you do not —
 sslip.io resolves any such name to the address inside it, so no DNS of yours is involved. On
@@ -192,7 +160,8 @@ import and the suites point it at different scratch directories.
 
 ## Updating
 
-`pai update` pulls, reinstalls dependencies, rebuilds the web app and restarts the daemon;
+`pai update` (pai-dev, over core's `POST /update`) checks out the new version, reinstalls dependencies,
+rebuilds the web app, pulls every module clone and restarts the daemon;
 `--force` rebuilds without new commits, `--check` only reports. An installed daemon also
 does this on its own every 30 minutes when the working tree is clean and nothing is
 running — set `PAI_AUTO_UPDATE=0` to keep updates manual.
