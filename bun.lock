@@ -39,6 +39,7 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.2.4",
+        "@elumixor/devkit": "^0.11.2",
         "@happy-dom/global-registrator": "^21.0.3",
         "@playwright/test": "^1.64.1",
         "@types/bun": "latest",
@@ -160,6 +161,8 @@
     "@codemirror/view": ["@codemirror/view@6.43.11", "", { "dependencies": { "@codemirror/state": "^6.7.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-2+esucbQX6wB2JYi1eDvdCPFTA31BN8oSy6xCmk3G6CloV11yOvEjYk+gH7kLrP0MuHG94E8WDhjs5oMiu3+Wg=="],
 
     "@desk/connector": ["@desk/connector@github:elumixor/desk-connector#91e1f43", { "dependencies": { "zod": "^4.4.3" } }, "elumixor-desk-connector-91e1f43"],
+
+    "@elumixor/devkit": ["@elumixor/devkit@0.11.2", "", { "dependencies": { "ink": "7.1.1", "react": "19.2.8", "wrap-ansi": "10.0.2" }, "bin": { "devkit": "src/bin/devkit.ts", "free-port": "src/bin/free-port.ts" } }, "sha512-45gHVobwf/97xSJuO1BZvzKn3teUBHEtq45lA74NLNoT91/9uaK2H4mUiBilEMkmz6Rl+YCus9wcm2WkzMV9JQ=="],
 
     "@elumixor/react-message-renderer": ["@elumixor/react-message-renderer@0.3.0", "", { "dependencies": { "react-reconciler": "^0.33.0" }, "peerDependencies": { "react": ">=19" } }, "sha512-47E4HEb8YmnX3ysCid2Dwoy+F2TEvml7hP7tJ9ixKJpDeMSHRJr1sJvw0po23c3B9TqUNtTZyFobBX8rVeu1AQ=="],
 

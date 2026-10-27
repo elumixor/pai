@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "daemon": "bun run src/daemon.ts",
-    "dev": "cd apps/web && bun run dev",
+    "dev": "devkit dev",
+    "dev:box": "cd apps/web && bun run dev",
     "setup": "bun run src/clients/cli.ts dev install",
     "cli": "bun run src/clients/cli.ts",
     "release": "bun run src/clients/cli.ts dev release",
@@ -51,15 +52,35 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.4",
+    "@elumixor/devkit": "^0.11.2",
     "@happy-dom/global-registrator": "^21.0.3",
+    "@playwright/test": "^1.64.1",
     "@types/bun": "latest",
     "@types/react": "^19.2.18",
     "@types/vscode": "^1.90.0",
     "@types/ws": "^8.5.12",
-    "typescript": "^5.6.0",
-    "@playwright/test": "^1.64.1"
+    "typescript": "^5.6.0"
   },
   "trustedDependencies": [
     "node-pty"
-  ]
+  ],
+  "devkit": {
+    "dev": {
+      "web": {
+        "processes": {
+          "daemon": {
+            "command": "bun test/web/server.ts",
+            "port": 8898,
+            "color": "blue"
+          },
+          "client": {
+            "command": "PAI_DEV_API=http://127.0.0.1:8898 PAI_DEV_TOKEN=web-suite-token bun run --cwd apps/web dev",
+            "port": 5180,
+            "color": "magenta",
+            "open": true
+          }
+        }
+      }
+    }
+  }
 }
