@@ -2,6 +2,7 @@ import { bus, type PaiEvent } from "../core/bus.ts";
 import { db, now } from "../core/db.ts";
 import { logger } from "../core/log.ts";
 import { cronMatches, minuteKey, parseCron } from "../core/time.ts";
+import * as external from "../modules/external.ts";
 import * as agents from "./agents.ts";
 import * as asks from "./asks.ts";
 import * as messages from "./messages.ts";
@@ -172,10 +173,17 @@ function render(template: string, event: PaiEvent) {
   return template.replace(/\{(\w+)\}/g, (_, key: string) => (key === "kind" ? event.kind : typeof payload[key] === "object" ? JSON.stringify(payload[key]) : String(payload[key] ?? "")));
 }
 
-/** The user's own addresses' domains, from the connected mailboxes, so "outside" means someone else. */
-function ownDomains(): Set<string> {
-  const rows = db.query("SELECT email FROM gmail_accounts").all() as { email: string }[];
-  return new Set(rows.map((r) => r.email.split("@")[1]?.toLowerCase()).filter((d): d is string => Boolean(d) && d !== "gmail.com"));
+/** What the email module tells about the user's own mailboxes. */
+interface Mailboxes {
+  readonly addresses: () => readonly string[];
+}
+
+/** The user's own addresses, from the connected mailboxes; none when the email module is not loaded. */
+const ownAddresses = () => (external.api<Mailboxes>("email")?.addresses() ?? []).map((a) => a.toLowerCase());
+
+/** Their domains, so "outside" means someone else. */
+function ownDomains(addresses: readonly string[]): Set<string> {
+  return new Set(addresses.map((a) => a.split("@")[1]).filter((d): d is string => Boolean(d) && d !== "gmail.com"));
 }
 
 /** Whether the check in code lets this event through. Nothing here costs a model turn. */
@@ -185,8 +193,9 @@ export function passes(check: Check, event: PaiEvent, agent?: string): boolean {
   if (check.excludes?.some((w) => text.includes(w.toLowerCase()))) return false;
   if (check.not_muted && asks.mutedBy(text, event.kind.split(".")[0])) return false;
   if (check.outside_attendee) {
-    const own = ownDomains();
-    const self = new Set((db.query("SELECT email FROM gmail_accounts").all() as { email: string }[]).map((r) => r.email.toLowerCase()));
+    const addresses = ownAddresses();
+    const own = ownDomains(addresses);
+    const self = new Set(addresses);
     const attendees = (event.payload.attendees as string[] | undefined) ?? [];
     if (!attendees.some((a) => !self.has(a.toLowerCase()) && !own.has(a.split("@")[1]?.toLowerCase() ?? ""))) return false;
   }

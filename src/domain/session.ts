@@ -9,7 +9,6 @@ import * as audit from "./audit.ts";
 import { paiTools, type SessionRef } from "./tools.ts";
 import { browserMcp } from "./browser.ts";
 import { instructionsFor } from "./prompts.ts";
-import { gmailModule, gmailTools } from "../modules/gmail.ts";
 import { mcpServers as externalMcpServers } from "../modules/external.ts";
 import { knownServers, noteInit } from "./inventory.ts";
 import { serverAllowed } from "./capabilities.ts";
@@ -46,7 +45,6 @@ function build(kind: SessionKind, cwd: string, ref: SessionRef, project?: string
   const servers: NonNullable<Options["mcpServers"]> = {
     pai: paiTools(kind, ref, agent?.slug),
     playwright: browserMcp(),
-    ...(gmailModule.enabled() && gmailModule.tools?.kinds.includes(kind) ? { gmail: gmailTools(agent?.slug) } : {}),
     ...externalMcpServers(kind, ref),
   };
   const mcpServers = Object.fromEntries(Object.entries(servers).filter(([name]) => serverAllowed(name, agent?.tools)));

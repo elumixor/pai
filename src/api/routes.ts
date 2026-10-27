@@ -9,7 +9,6 @@ import * as automations from "../domain/automations.ts";
 import { context, save as saveContext } from "../domain/context.ts";
 import { byName as moduleByName, describeModules } from "../modules/index.ts";
 import * as external from "../modules/external.ts";
-import { handleConnect as gmailConnect, listAccounts as gmailAccounts, removeAccount as gmailRemove } from "../modules/gmail.ts";
 import { needsLogin, usage } from "../domain/usage.ts";
 import * as claudeLogin from "../domain/claude-login.ts";
 import { diagnostics } from "../domain/diagnostics.ts";
@@ -25,7 +24,7 @@ import { messagePage } from "./message.ts";
 import { status } from "./status.ts";
 import * as files from "../domain/files.ts";
 import * as settings from "../domain/settings.ts";
-import { allThreads, ensureTranscriptAt, sessionsIn, toolCall, transcript, transcriptPath } from "../domain/transcript.ts";
+import { allThreads, ensureTranscriptAt, sessionsIn, toolCall, transcript } from "../domain/transcript.ts";
 import { cost as hostingCost } from "../domain/hetzner.ts";
 import * as models from "../domain/models.ts";
 import * as spend from "../domain/spend.ts";
@@ -76,13 +75,9 @@ export async function handle(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const path = url.pathname;
   try {
-    // One consent per mailbox; the code comes back through /auth/google/callback.
-    if (path === "/gmail/connect") return gmailConnect(req, url);
-    if (path === "/gmail/accounts" && req.method === "GET") return json(gmailAccounts().map(({ label, email }) => ({ label, email })));
-    if (path === "/gmail/accounts" && req.method === "DELETE") {
-      const label = url.searchParams.get("label") ?? "";
-      return gmailRemove(label) ? json({ removed: label }) : json({ error: `no account labeled ${label}` }, 404);
-    }
+    // Modules' paths outside /m/ (a mailbox's /gmail/connect), behind the same auth as everything here.
+    const mounted = await external.mounted(req, url);
+    if (mounted) return mounted;
 
     if (path === "/health") return json(await status());
 
@@ -332,7 +327,7 @@ export async function handle(req: Request): Promise<Response> {
     if (path === "/commands") {
       const raw = url.searchParams.get("session") ?? "";
       const s = sessions.find(raw);
-      const any = [...sessions.list()].map((x) => sessions.find(x.sessionId)).find((x) => x && x.commands.length);
+      const any = [...sessions.list()].map((x) => sessions.find(x.sessionId)).find((x) => x?.commands.length);
       return json(s?.commands.length ? s.commands : (any?.commands ?? []));
     }
 

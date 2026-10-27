@@ -62,6 +62,8 @@ export interface ModuleContext {
     readonly devRoot: string;
     readonly baseUrl: string;
     readonly token: string;
+    /** The daemon's Google OAuth client, the one `/auth/google/callback` is registered with. */
+    readonly google: { readonly clientId: string; readonly clientSecret: string };
   };
   readonly env: Readonly<Record<string, string | undefined>>;
   /** The daemon's sessions: the main conversation, tasks, lookups. */
@@ -79,7 +81,29 @@ export interface ModuleContext {
   readonly emit: (kind: string, payload: Record<string, unknown>, sessionId?: string) => void;
   /** What another module exports as its `api` (one this module `requires`), typed by the caller. */
   readonly use: <T>(module: string) => T;
+  /** The log every client renders: a module says what it did with `event`. */
+  readonly messages: Pick<typeof import("../domain/messages.ts"), "event">;
+  /** The one task list: what needs the user lands here. */
+  readonly tasks: Pick<typeof import("../domain/tasks.ts"), "list" | "add" | "update">;
+  /** The archive `recall` searches. */
+  readonly recall: Pick<typeof import("../domain/recall.ts"), "put">;
+  /** Where a watcher left off, by key. */
+  readonly cursors: typeof import("../core/db.ts").cursors;
+  readonly auth: {
+    /** A payload signed with the daemon's key: an OAuth `state` that comes back verified. */
+    readonly sign: typeof import("../api/auth.ts").sign;
+    /** Where this daemon is as the browser sees it, through the proxy when there is one. */
+    readonly origin: typeof import("../api/auth.ts").origin;
+    /** `/auth/google/callback` hands a verified state carrying `claim` to `finish`: one redirect URI, several consents. */
+    readonly onGoogleCallback: (claim: string, finish: GoogleCallback) => void;
+  };
 }
+
+/** The second half of a module's Google consent: the callback's request and the state's claims, verified. */
+export type GoogleCallback = (req: Request, url: URL, claims: Readonly<Record<string, unknown>>) => Promise<Response> | Response;
+
+/** A module's http outside `/m/`, behind the daemon's auth; `url.pathname` is the whole path. */
+export type ModuleRoute = (req: Request, url: URL, ctx: ModuleContext) => Promise<Response | undefined> | Response | undefined;
 
 /** What `pai <name> …` is handed: the API of the daemon it runs next to, and the terminal. */
 export interface CliContext {
@@ -141,8 +165,9 @@ export interface SendResult {
  * message is really there.
  */
 export interface Connector {
-  readonly status: () => Promise<ConnectorStatus> | ConnectorStatus;
-  readonly send?: (message: ConnectorSend) => Promise<SendResult>;
+  /** Asked whether or not the module is enabled or started, so a connector that never started still says why. */
+  readonly status: (ctx: ModuleContext) => Promise<ConnectorStatus> | ConnectorStatus;
+  readonly send?: (message: ConnectorSend, ctx: ModuleContext) => Promise<SendResult>;
 }
 
 /**
@@ -166,6 +191,8 @@ export interface PaiModule {
   readonly enabled?: (ctx: ModuleContext) => boolean;
   /** An in-process MCP server per session, built with `createSdkMcpServer` from this file. */
   readonly tools?: {
+    /** The MCP server name sessions see the tools under (`mcp__<server>__…`); default the module's name. */
+    readonly server?: string;
     readonly kinds: readonly SessionKind[];
     readonly names: readonly string[];
     readonly create: (ref: SessionRef, ctx: ModuleContext) => McpServer;
@@ -182,6 +209,19 @@ export interface PaiModule {
   readonly cliHere?: readonly string[];
   /** http under `/m/<name>/`; `path` is what follows that prefix. `undefined` is a 404. */
   readonly routes?: (req: Request, path: string, url: URL, ctx: ModuleContext) => Promise<Response | undefined> | Response | undefined;
+  /** Path prefixes it answers outside `/m/` (`/gmail/`), behind the daemon's auth: links already out in the world. */
+  readonly mounts?: Readonly<Record<string, ModuleRoute>>;
+  /**
+   * Things connected one at a time with their own consent (mailboxes), for the dashboard: what is
+   * connected, where the browser goes to add one (`{label}` is the name asked for), and the DELETE
+   * path that forgets one.
+   */
+  readonly accounts?: {
+    readonly list: (ctx: ModuleContext) => readonly { readonly label: string; readonly detail: string }[];
+    readonly connectPath: string;
+    readonly removePath: string;
+    readonly hint: string;
+  };
   /** A directory served as static files under `/m/<name>/ui/`. */
   readonly ui?: string;
   readonly settings?: readonly ModuleSetting[];

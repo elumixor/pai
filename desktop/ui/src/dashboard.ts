@@ -40,8 +40,8 @@ export function dashboardPages(handlers: DashboardHandlers): Record<Page, PageRe
 
   async function modules(body: HTMLElement, again: () => void) {
     const list = await listModules();
-    const kinds: Record<ModuleInfo["kind"], string> = { channel: "talks to you", tools: "tools for sessions", source: "watches something", service: "infrastructure" };
-    const icons: Record<string, IconName> = { telegram: "send", "tg-user": "user", browser: "globe", tasks: "list", linkedin: "link", gmail: "mail", editor: "code", public: "monitor" };
+    const kinds: Record<ModuleInfo["kind"], string> = { channel: "talks to you", tools: "tools for sessions", source: "watches something", service: "infrastructure", connector: "a signed-in channel", capability: "something the box can do" };
+    const icons: Record<string, IconName> = { telegram: "send", "tg-user": "user", browser: "globe", tasks: "list", linkedin: "link", email: "mail", editor: "code", public: "monitor" };
     const chip = (text: string, title?: string, cls = "") => el("span.chip", { class: `chip ${cls}`, title: title ?? "" }, text);
 
     const moduleCard = (m: ModuleInfo) => {

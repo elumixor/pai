@@ -8,8 +8,13 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSy
 import { join, resolve } from "node:path";
 import { config } from "../core/config.ts";
 import { bus, type PaiEvent } from "../core/bus.ts";
-import { db, kv } from "../core/db.ts";
+import { cursors, db, kv } from "../core/db.ts";
 import { logger } from "../core/log.ts";
+import { origin, sign } from "../api/auth.ts";
+import { onGoogleCallback } from "../api/google.ts";
+import { event } from "../domain/messages.ts";
+import { put } from "../domain/recall.ts";
+import * as tasks from "../domain/tasks.ts";
 import { sdk, type CliContext, type ConnectorStatus, type ModuleContext, type ModuleExport, type ModuleHealth, type PaiConfig, type PaiModule } from "./sdk.ts";
 
 const log = logger("modules");
@@ -26,6 +31,8 @@ export interface Loaded {
 }
 
 const loaded = new Map<string, Loaded>();
+/** The modules as `pai.config.ts` lists them: the order the clients show, not the order they start in. */
+let listing: readonly string[] = [];
 
 /** `pai.config.ts`, with `pai.config.local.ts` (not committed) overriding entries: a path to a checkout while working on a module. */
 export async function readConfig(): Promise<PaiConfig> {
@@ -118,7 +125,14 @@ function contextFor(name: string, dir: string): ModuleContext {
     dataDir,
     log: logger(name),
     db,
-    config: { repo: config.repo, workspace: config.workspace, devRoot: config.devRoot, baseUrl: config.baseUrl, token: config.token },
+    config: {
+      repo: config.repo,
+      workspace: config.workspace,
+      devRoot: config.devRoot,
+      baseUrl: config.baseUrl,
+      token: config.token,
+      google: { clientId: config.google.clientId, clientSecret: config.google.clientSecret },
+    },
     env: process.env,
     sessions: undefined as unknown as ModuleContext["sessions"],
     catalog: undefined as unknown as ModuleContext["catalog"],
@@ -137,6 +151,11 @@ function contextFor(name: string, dir: string): ModuleContext {
       if (!l?.module?.api) throw new Error(`${name}: module ${other} is not loaded or has no api`);
       return l.module.api as T;
     },
+    messages: { event },
+    tasks: { list: tasks.list, add: tasks.add, update: tasks.update },
+    recall: { put },
+    cursors,
+    auth: { sign, origin, onGoogleCallback },
   };
 }
 
@@ -156,6 +175,7 @@ function ordered(modules: Readonly<Record<string, string>>, requiresOf: (name: s
 /** Imports every configured module, installing what is missing. Called once, by the daemon. */
 export async function load() {
   const { modules } = await readConfig();
+  listing = Object.keys(modules);
   const [sessions, catalog, transcript] = await Promise.all([import("../domain/sessions.ts"), import("../domain/catalog.ts"), import("../domain/transcript.ts")]);
   // Import everything first (to know what requires what), then register in dependency order.
   const imported = new Map<string, PaiModule>();
@@ -240,7 +260,11 @@ function linkSkills(module: PaiModule, dir: string) {
 }
 
 export const all = () => [...loaded.values()];
+const listed = () => all().sort((a, b) => listing.indexOf(a.name) - listing.indexOf(b.name));
 export const get = (name: string) => loaded.get(name);
+/** What a loaded module exports as its `api`, for pai's own code; typed by the caller, undefined when it is not loaded. */
+export const api = <T>(name: string): T | undefined => loaded.get(name)?.module?.api as T | undefined;
+const serverOf = (l: Loaded) => l.module?.tools?.server ?? l.name;
 export const active = () => all().filter((l): l is Loaded & { module: PaiModule; ctx: ModuleContext } => Boolean(l.module && l.ctx) && (l.module!.enabled?.(l.ctx!) ?? true));
 
 export async function startAll() {
@@ -267,9 +291,12 @@ export async function health(name: string): Promise<ModuleHealth> {
   return Promise.resolve(l.module.health()).catch((err: Error) => ({ ok: false, detail: err.message }));
 }
 
+/** A module's connected accounts as the dashboard draws them: the list, and where to add or forget one. */
+const accountsOf = ({ list, connectPath, removePath, hint }: NonNullable<PaiModule["accounts"]>, ctx: ModuleContext) => ({ items: list(ctx), connectPath, removePath, hint });
+
 export async function describe() {
   return Promise.all(
-    all().map(async (l) => ({
+    listed().map(async (l) => ({
       name: l.name,
       source: l.source,
       installed: isInstalled(l.name),
@@ -280,7 +307,7 @@ export async function describe() {
       enabled: l.module && l.ctx ? (l.module.enabled?.(l.ctx) ?? true) : false,
       started: Boolean(l.started),
       health: await health(l.name),
-      tools: l.module?.tools ? { server: l.name, names: l.module.tools.names, kinds: l.module.tools.kinds } : undefined,
+      tools: l.module?.tools ? { server: serverOf(l), names: l.module.tools.names, kinds: l.module.tools.kinds } : undefined,
       prompt: l.module ? promptsOf(l.module)[0] : undefined,
       cli: Boolean(l.module?.cli),
       commands: l.module?.commands ?? [],
@@ -289,6 +316,7 @@ export async function describe() {
       ui: l.module?.ui ? `/m/${l.name}/ui/` : undefined,
       settings: l.module?.settings,
       events: l.module?.events,
+      accounts: l.module?.accounts && l.ctx ? accountsOf(l.module.accounts, l.ctx) : undefined,
     })),
   );
 }
@@ -298,14 +326,18 @@ const BROKEN = (detail: string): ConnectorStatus => ({ state: "broken", detail }
 /** Every connector module in one shape: what clients draw a connectors page from. */
 export async function connectors() {
   return Promise.all(
-    all()
+    listed()
       .filter((l) => l.module?.kind === "connector")
       .map(async (l) => {
+        const { ctx } = l;
+        const connector = l.module?.connector;
         const status = l.error
           ? BROKEN(l.error)
-          : !l.module?.connector
+          : !connector || !ctx
             ? BROKEN("declares itself a connector but has no status")
-            : await Promise.resolve(l.module.connector.status()).catch((err: Error) => BROKEN(err.message));
+            : await Promise.resolve()
+                .then(() => connector.status(ctx))
+                .catch((err: Error) => BROKEN(err.message));
         return {
           name: l.name,
           title: l.module?.title ?? l.name,
@@ -322,7 +354,7 @@ export async function connectors() {
 /** The MCP servers external modules add to a session of `kind`. */
 export function mcpServers(kind: "chat" | "code", ref: import("../domain/tools.ts").SessionRef) {
   const out: Record<string, ReturnType<NonNullable<PaiModule["tools"]>["create"]>> = {};
-  for (const l of active()) if (l.module.tools?.kinds.includes(kind)) out[l.name] = l.module.tools.create(ref, l.ctx);
+  for (const l of active()) if (l.module.tools?.kinds.includes(kind)) out[serverOf(l)] = l.module.tools.create(ref, l.ctx);
   return out;
 }
 
@@ -347,6 +379,15 @@ export async function route(req: Request, url: URL): Promise<Response | undefine
     return (await file.exists()) ? new Response(file) : new Response("not found", { status: 404 });
   }
   return (await l.module.routes?.(req, rest, url, l.ctx)) ?? new Response("not found", { status: 404 });
+}
+
+/** A module's path outside `/m/`: the first mount whose prefix the path starts with. */
+export async function mounted(req: Request, url: URL): Promise<Response | undefined> {
+  for (const l of all()) {
+    if (!l.module?.mounts || !l.ctx) continue;
+    for (const [prefix, handle] of Object.entries(l.module.mounts)) if (url.pathname.startsWith(prefix)) return (await handle(req, url, l.ctx)) ?? new Response("not found", { status: 404 });
+  }
+  return undefined;
 }
 
 /** Whether `pai <name> <sub>` is one the module wants run on the laptop. */

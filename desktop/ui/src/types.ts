@@ -88,7 +88,7 @@ export interface ModuleInfo {
   readonly name: string;
   readonly title: string;
   readonly description: string;
-  readonly kind: "channel" | "tools" | "source" | "service";
+  readonly kind: "channel" | "tools" | "source" | "service" | "connector" | "capability";
   readonly enabled: boolean;
   readonly status: Record<string, unknown>;
   readonly tools?: { readonly server: string; readonly names: readonly string[]; readonly kinds: readonly string[] };

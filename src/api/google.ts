@@ -1,7 +1,7 @@
 import { config } from "../core/config.ts";
 import { logger } from "../core/log.ts";
 import { clearSession, identified, origin, sessionCookie, sessionFromRequest, sign, verify } from "./auth.ts";
-import { finishConnect as finishGmail } from "../modules/gmail.ts";
+import type { GoogleCallback } from "../modules/sdk.ts";
 
 const log = logger("google");
 
@@ -19,6 +19,10 @@ const log = logger("google");
 const AUTH = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN = "https://oauth2.googleapis.com/token";
 const STATE_COOKIE = "pai_oauth";
+
+/** Modules' consents that come back through the one redirect URI, by the claim their state carries. */
+const callbacks = new Map<string, GoogleCallback>();
+export const onGoogleCallback = (claim: string, finish: GoogleCallback) => void callbacks.set(claim, finish);
 
 export const googleConfigured = () => Boolean(config.google.clientId && config.google.clientSecret);
 
@@ -64,10 +68,10 @@ export async function handleAuth(req: Request, url: URL): Promise<Response | und
   if (path === "/auth/google/callback") {
     const state = url.searchParams.get("state") ?? "";
     const stored = /(?:^|;\s*)pai_oauth=([^;]+)/.exec(req.headers.get("cookie") ?? "")?.[1];
-    const claims = verify<{ next: string; exp: number; gmail?: string; allow?: string }>(state);
+    const claims = verify<{ next: string; exp: number } & Record<string, unknown>>(state);
     if (!claims || stored !== state || claims.exp < Date.now()) return json({ error: "the sign-in attempt expired; start again" }, 400);
-    // The same redirect URI serves the Gmail module's consent: one registered URI, two flows.
-    if (claims.gmail) return finishGmail(req, url, claims.gmail, claims.allow);
+    // The same redirect URI serves the modules' consents (a mailbox): one registered URI, several flows.
+    for (const [claim, finish] of callbacks) if (claims[claim]) return finish(req, url, claims);
     const code = url.searchParams.get("code");
     if (!code) return json({ error: url.searchParams.get("error") ?? "google sent no code" }, 400);
     const email = await exchange(code, callbackUrl(req, url));
