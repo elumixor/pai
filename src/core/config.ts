@@ -99,17 +99,17 @@ export const config = {
     .filter(Boolean),
 
   /**
-   * Sign-in for the web client: the Clerk application Dsk, shared with Kip, so one account opens both. Without it the browser surfaces take the token only.
+   * Sign-in for the web client: the Clerk application Desk, shared with Keep, so one account opens both. Without it the browser surfaces take the token only.
    */
   clerk: {
     secretKey: env.CLERK_SECRET_KEY ?? "",
     publishableKey: env.CLERK_PUBLISHABLE_KEY ?? "",
   },
 
-  /** Kip (projects, tasks, docs): where its `elements.js` is, for `kip:` links in chat. */
-  kipUrl: setting("PAI_KIP_URL") ?? "",
-  /** What Kip signs its webhooks with (`/kip/events`), one secret per workspace hook; without one they are refused. */
-  kipWebhookSecrets: (env.PAI_KIP_WEBHOOK_SECRETS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+  /** Keep (projects, tasks, docs): where its `elements.js` is, for `keep:` links in chat. */
+  keepUrl: setting("PAI_KEEP_URL") ?? "",
+  /** What Keep signs its webhooks with (`/keep/events`), one secret per workspace hook; without one they are refused. */
+  keepWebhookSecrets: (env.PAI_KEEP_WEBHOOK_SECRETS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
 
   /** Published on the internet (pai-dev runs Caddy on 80/443 for it); core only reads it for `baseUrl`. */
   public: bool(setting("PAI_PUBLIC")),

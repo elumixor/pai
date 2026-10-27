@@ -56,7 +56,7 @@ export async function handleAuth(req: Request, url: URL): Promise<Response | und
   }
   if (path === "/auth/handoff") return handoff(req, url, clerkConfigured() ? SIGN_IN : "/auth/google");
   if (path === "/auth/config") {
-    return json({ clerkPublishableKey: clerkConfigured() ? config.clerk.publishableKey : null, kipUrl: config.kipUrl || null });
+    return json({ clerkPublishableKey: clerkConfigured() ? config.clerk.publishableKey : null, keepUrl: config.keepUrl || null });
   }
   // The consent screen links here; Google will not publish an app without a privacy policy.
   if (path === "/auth/privacy") return new Response(PRIVACY, { headers: { "content-type": "text/html; charset=utf-8" } });

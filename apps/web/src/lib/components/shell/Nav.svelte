@@ -14,7 +14,7 @@
 </script>
 
 <nav class="flex h-full flex-col" aria-label="pai" onclickcapture={(e) => (e.target as HTMLElement).closest("a") && onnavigate()}>
-  <div class="px-3 pt-3 pb-2"><dsk-bar></dsk-bar></div>
+  <div class="px-3 pt-3 pb-2"><desk-bar></desk-bar></div>
   <a class={link("#/")} href="#/"><MessageCircle size={16} /> Chat</a>
   <div class="min-h-0 flex-1 overflow-y-auto py-1" aria-label="Threads">
     {#each agents.tree as node (node.agent.slug)}

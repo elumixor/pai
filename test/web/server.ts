@@ -21,7 +21,7 @@ Object.assign(process.env, {
   PAI_CONFIG: join(scratch, "config.json"),
   PAI_CLAUDE_PROJECTS: join(scratch, "claude-projects"),
   PAI_TOKEN: TOKEN,
-  PAI_KIP_URL: `http://127.0.0.1:${CONTROL_PORT}`,
+  PAI_KEEP_URL: `http://127.0.0.1:${CONTROL_PORT}`,
   // An ask made at night would otherwise wait for the morning instead of reaching the chat.
   PAI_QUIET_HOURS: "",
 });
@@ -34,9 +34,9 @@ const drafts = await import("../../src/domain/drafts.ts");
 
 startServer();
 
-/** A stand-in for Kip's `elements.js`: the same element name, drawing the URN it was given. */
-const ELEMENTS = `customElements.define("kip-pill", class extends HTMLElement {
-  connectedCallback() { this.textContent = "Kip · " + this.getAttribute("urn"); this.dataset.ready = "1"; }
+/** A stand-in for Keep's `elements.js`: the same element name, drawing the URN it was given. */
+const ELEMENTS = `customElements.define("keep-pill", class extends HTMLElement {
+  connectedCallback() { this.textContent = "Keep · " + this.getAttribute("urn"); this.dataset.ready = "1"; }
 });`;
 
 const json = (value: unknown) => Response.json(value, { headers: { "access-control-allow-origin": "*" } });

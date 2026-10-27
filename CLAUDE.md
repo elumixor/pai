@@ -15,22 +15,22 @@ orchestrator, `main.ts`): Telegram's pai topic, Paigram's bot chat, `pai dev say
 requests, e.g. Voice); depth pai › standing › sub. Other topics and `pai claude` are plain threads (`chat`);
 a builder thread in a repo is `code`.
 
-## Where things live (the Dsk split)
+## Where things live (the Desk split)
 
 pai core is the assistant only: sessions over the Agent SDK, `main.ts` and the agents, tasks, asks, drafts,
 requests, automations, triage, recall, memory, journal, spend/usage/models, the HTTP API + SSE, auth, the module
 SDK and loader, the CLI, and the self-update. Everything about the host machine or writing code is the `pai-dev`
 module (`elumixor/pai-dev`, `modules/dev`): Mutagen files sync, code-server + its `vscode/` extension, the catalog of
 repos, the terminal mirror and channel, the menu bar app, the release check, install, release, `infra/`, Caddy, and
-the coding threads (pai-builder, archived). Core runs without it: no repos, loopback + token. Projects, tasks and docs live in Kip
-(`elumixor/kip`, `kip:page/<id>` URNs, an MCP); pai knows Kip, Kip never knows pai.
+the coding threads (pai-builder, archived). Core runs without it: no repos, loopback + token. Projects, tasks and docs live in Keep
+(`elumixor/keep`, `keep:page/<id>` URNs, an MCP); pai knows Keep, Keep never knows pai.
 
-pai is one app of the dsk suite: every repo under `~/dev/@dsk/` (package `@dsk/<name>`, never published — the npm
-scope is not ours), every app under `*.dsk.atmagaming.com` — hub `dsk.` (`@dsk/dsk`, which also serves `bar.js`:
-`<dsk-bar>`, the ⌘K app switcher every app embeds), Kip `kip.`, ppl `ppl.` (people, and the one sign-in:
-`/sign-in?next=`), pai `pai.` (the old `pai.atmagaming.com` still served as `PAI_DOMAIN_ALIASES` for Paigram builds),
-editor `editor.`. Clerk's production app "Dsk" sits on dsk.atmagaming.com, so one session covers them all;
-`@dsk/core` (`github:elumixor/dsk-core`) holds the browser side every app shares (Clerk with its components,
+pai is the AI part of the desk suite: every repo under `~/dev/@desk/` (package `@desk/<name>`, never published — the npm
+scope is not ours), every app under `*.desk.atmagaming.com` — hub `desk.` (`@desk/desk`, which also serves `bar.js`:
+`<desk-bar>`, the app switcher every app embeds; each app keeps its own ⌘K), keep `keep.`, people `people.` (people,
+and the one sign-in: `/sign-in?next=`), pai `pai.` (the old `pai.atmagaming.com` still served as `PAI_DOMAIN_ALIASES`
+for Paigram builds), dev `dev.`. Clerk's production app "Desk" sits on desk.atmagaming.com, so one session covers them
+all; `@desk/core` (`github:elumixor/desk-core`) holds the browser side every app shares (Clerk with its components,
 the central sign-in, URNs).
 
 Modules come in two kinds (`sdk.ts`): a **connector** (`kind: "connector"`, a signed-in outside channel —
@@ -39,7 +39,7 @@ broken, with the link that fixes it), its `events`, its `tools`, and `connector.
 `verified | unverified | not_sent`; `GET /connectors` lists them in that one shape for the clients. A
 **capability** (`kind: "capability"`: `pai-browser`, `pai-dev`) is something the box can do. Each
 module repo has the same layout: `index.ts` default export, a one-paragraph `CLAUDE.md`, `README.md`, tests next to
-the code, `bun.lock`, `biome.json` extending `@dsk/pai/biome.json` (resolved through the module's `node_modules/@dsk/pai`).
+the code, `bun.lock`, `biome.json` extending `@desk/pai/biome.json` (resolved through the module's `node_modules/@desk/pai`).
 The order of `pai.config.ts` is the order clients list modules; loading follows `requires`.
 pai's `biome.json` is lint only (formatter off): `bun run lint`.
 Self-update stays in core (`src/domain/update.ts`: `POST /update` + the auto-update tick, then every module clone pulled), so a module that fails to load never leaves the box unable to update.
@@ -142,7 +142,7 @@ reconnect every account, so say so in the same breath as shipping it.
 - `src/protocol/rich.ts` — metadata trailer: plain text for stock clients, structured for ours.
 - `src/host/remote.ts` — the box as `PAI_REMOTE` (`user@host`, default `pai@$PAI_HOST_IP`), ssh with port 22 opened for this machine's public address on the Hetzner firewall, and `boxApi()` — the box's https address and token learned once over ssh into `~/.config/pai/box.json`, which every CLI command then uses. `pai claude` from a Mac is `pai claude` on the box over ssh; there it is `claude` in the workspace (a new conversation; `--resume` is claude's picker; modules' `claudeArgs` are added). `POST /attach {id, cwd}` hands a daemon session to a terminal; `POST /adopt {id, cwd, title}` makes a conversation held on disk a live session without a turn (Paigram opens synced threads with it). Host install, update of a laptop, the release check and the menu bar are pai-dev's.
 - The browser editor (code-server on `PAI_EDITOR_PORT` 8788 with pai-dev's `vscode/` extension; `PAI_NO_EDITOR`, `PAI_EDITOR_BIND`, `PAI_EDITOR_DOMAIN`) is pai-dev's.
-- `apps/web/` — the web client (SvelteKit SPA, Svelte 5, Tailwind 4), served by the daemon at `/` with its routes in the hash (`/#/tasks`), so no client route can shadow an API path. Only the chat with pai, in the spirit of Paigram: the chat (`ChatView`: the log for an agent, the turn streaming in with its tool calls folded, asks with their buttons, drafts as editable cards with Send and Discard, `AskUserQuestion` answered in place, pictures attached or pasted), the threads tree (agents under pai, sub-agents under them, each a chat), tasks (waiting on me / working / scheduled / done, with the need's buttons), connectors (`GET /connectors`) and skills (`GET /context`). A `kip:page/<id>` in a message becomes `<kip-pill>` from Kip's own `elements.js` (`PAI_KIP_URL`). Sign-in: Clerk (the account shared with Kip; `CLERK_SECRET_KEY`/`CLERK_PUBLISHABLE_KEY`, `PAI_ALLOWED` emails) or a `?token=` link. `bun run dev` = Vite on 5180 against the box (`~/.config/pai/box.json`); `bun run test:web` = Playwright against the daemon on a scratch database (`test/web/server.ts`, a control port puts replies, asks and drafts on the bus; no session ever starts).
+- `apps/web/` — the web client (SvelteKit SPA, Svelte 5, Tailwind 4), served by the daemon at `/` with its routes in the hash (`/#/tasks`), so no client route can shadow an API path. Only the chat with pai, in the spirit of Paigram: the chat (`ChatView`: the log for an agent, the turn streaming in with its tool calls folded, asks with their buttons, drafts as editable cards with Send and Discard, `AskUserQuestion` answered in place, pictures attached or pasted), the threads tree (agents under pai, sub-agents under them, each a chat), tasks (waiting on me / working / scheduled / done, with the need's buttons), connectors (`GET /connectors`) and skills (`GET /context`). A `keep:page/<id>` in a message becomes `<keep-pill>` from Keep's own `elements.js` (`PAI_KEEP_URL`). Sign-in: Clerk (the account shared with Keep; `CLERK_SECRET_KEY`/`CLERK_PUBLISHABLE_KEY`, `PAI_ALLOWED` emails) or a `?token=` link. `bun run dev` = Vite on 5180 against the box (`~/.config/pai/box.json`); `bun run test:web` = Playwright against the daemon on a scratch database (`test/web/server.ts`, a control port puts replies, asks and drafts on the bus; no session ever starts).
 - `src/domain/claude-login.ts` — the box's own Claude login. An `authentication_failed` turn is no reply: it raises one `waiting_user` task linking `/claude/login` (runs `claude auth login`, the user pastes the code back), closed by the next turn that gets through; pai then answers what went unanswered.
 - `src/domain/usage.ts` — the Claude subscription's windows (`GET /usage`) with the Claude Code login on the machine, plus what the sessions cost. Never copy a Mac's login to the box: refresh tokens are single-use, so two machines on one login sign each other out.
 - `src/domain/spend.ts` — the ledger of every model call: Claude Code responses read from all transcripts (daemon, terminals, sub-agents; `msg:<id>` dedupes the per-block repeats), triage results, gateway calls. Priced at API list rates; `GET /spend?days=`, `pai cost [days] [--by …]`, settings › Spend show it beside the real price (`PAI_CLAUDE_PLAN_USD` for the period, shared by API price, + metered).

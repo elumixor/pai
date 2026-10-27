@@ -1,6 +1,6 @@
 import { MAX_FILES, readable, serve as serveAttachment, type Upload } from "../domain/attachments.ts";
 import * as drafts from "../domain/drafts.ts";
-import * as kip from "../domain/kip.ts";
+import * as keep from "../domain/keep.ts";
 import * as projects from "../domain/projects.ts";
 import * as automations from "../domain/automations.ts";
 import { context, save as saveContext } from "../domain/context.ts";
@@ -269,11 +269,11 @@ export async function handle(req: Request): Promise<Response> {
 
     // One list for the dashboard: the built-in pieces and the modules from their own repositories.
     if (path === "/connectors") return json(await external.connectors());
-    if (path === "/kip/events" && req.method === "POST") {
+    if (path === "/keep/events" && req.method === "POST") {
       try {
-        return json(kip.receive(await req.text(), req.headers.get("x-kip-signature")));
+        return json(keep.receive(await req.text(), req.headers.get("x-keep-signature")));
       } catch (err) {
-        if (err instanceof kip.KipSignatureError) return json({ error: err.message }, 401);
+        if (err instanceof keep.KeepSignatureError) return json({ error: err.message }, 401);
         throw err;
       }
     }

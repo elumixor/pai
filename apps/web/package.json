@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@clerk/clerk-js": "^6.26.0",
-    "@dsk/core": "github:elumixor/dsk-core",
+    "@desk/core": "github:elumixor/desk-core",
     "dompurify": "^3.3.0",
     "lucide-svelte": "^1.0.1",
     "marked": "^17.0.0"

@@ -220,16 +220,16 @@ export async function load() {
 }
 
 /**
- * A module resolves `@dsk/pai/src/…` and pai's dependencies (the Agent SDK, zod, grammy, …)
- * through its `node_modules`: a link to pai's own, which carries an `@dsk/pai` link to this
+ * A module resolves `@desk/pai/src/…` and pai's dependencies (the Agent SDK, zod, grammy, …)
+ * through its `node_modules`: a link to pai's own, which carries an `@desk/pai` link to this
  * checkout. Made in the module's real directory, so a checkout elsewhere works too. A module
  * with dependencies of its own keeps its `node_modules` and gets links to what pai has.
  */
 function linkPai(dir: string) {
   const real = realpathSync(dir);
   const paiModules = join(config.repo, "node_modules");
-  const self = join(paiModules, "@dsk", "pai");
-  mkdirSync(join(paiModules, "@dsk"), { recursive: true });
+  const self = join(paiModules, "@desk", "pai");
+  mkdirSync(join(paiModules, "@desk"), { recursive: true });
   if (!isLink(self)) symlinkSync(config.repo, self);
   const own = join(real, "node_modules");
   const manifest = existsSync(join(real, "package.json")) ? (JSON.parse(readFileSync(join(real, "package.json"), "utf8")) as { dependencies?: Record<string, string> }) : {};

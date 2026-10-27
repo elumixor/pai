@@ -1,5 +1,5 @@
 import { Clerk } from "@clerk/clerk-js";
-import { onDskDomain, signInUrl, startClerk } from "@dsk/core";
+import { onDeskDomain, signInUrl, startClerk } from "@desk/core";
 import type { AuthConfig } from "./types";
 
 const TOKEN_KEY = "pai.token";
@@ -21,14 +21,14 @@ function storedToken(): string | null {
 }
 
 /**
- * Who the browser is to the daemon: a Clerk session (the Dsk account shared with Kip and ppl), or the daemon's
+ * Who the browser is to the daemon: a Clerk session (the Desk account shared with Keep and ppl), or the daemon's
  * token when a link carried one (`/?token=…`) — what the CLI and the menu bar hand out.
  */
 class Auth {
   loaded = $state(false);
   signedIn = $state(false);
   error = $state<string | null>(null);
-  config = $state<AuthConfig>({ clerkPublishableKey: null, kipUrl: null });
+  config = $state<AuthConfig>({ clerkPublishableKey: null, keepUrl: null });
   readonly #token = storedToken();
   #clerk: Clerk | null = null;
   #ready: Promise<void> | null = null;
@@ -70,7 +70,7 @@ class Auth {
 
   /** On the suite's domain the one sign-in is ppl's, which sends the browser back; elsewhere (a dev server, an old host) it happens here. */
   async mountSignIn(element: HTMLDivElement, redirect: string) {
-    if (onDskDomain()) {
+    if (onDeskDomain()) {
       location.assign(signInUrl(new URL(redirect, location.origin).href));
       return () => {};
     }
