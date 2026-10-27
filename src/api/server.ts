@@ -4,7 +4,7 @@ import { get as getTerminal } from "../domain/terminals.ts";
 import { logger } from "../core/log.ts";
 import { freePort } from "./port.ts";
 import { handle, json } from "./routes.ts";
-import { serveApp } from "./app.ts";
+import { isAppPath, serveApp } from "./app.ts";
 import { authorized, identified, isPage, rememberToken, tokenFromRequest, unauthorized } from "./auth.ts";
 import { googleConfigured, handleAuth, loginUrl, wantsHtml } from "./google.ts";
 
@@ -38,22 +38,21 @@ export function startServer() {
     hostname: config.host,
     port: config.port,
     idleTimeout: 0,
-    fetch(req, bunServer): Response | Promise<Response> | undefined {
+    async fetch(req, bunServer): Promise<Response | undefined> {
       const url = new URL(req.url);
       const { pathname } = url;
       if (req.method === "OPTIONS") return withCors(new Response(null, { status: 204 }));
       if (pathname.startsWith("/auth/")) return handleAuth(req, url).then((response) => response ?? json({ error: "not found" }, 404));
       const local = !req.headers.has("x-forwarded-for") && ["127.0.0.1", "::1"].includes(bunServer.requestIP(req)?.address ?? "");
-      if (!authorized(req, url, bunServer.requestIP(req)?.address) || (googleConfigured() && isPage(pathname) && !local && !identified(req, url))) {
+      if (!(await authorized(req, url, bunServer.requestIP(req)?.address)) || (googleConfigured() && isPage(pathname) && !local && !(await identified(req, url)))) {
         // A person in a browser is sent to sign in; a program gets the 401 it can act on.
         if (googleConfigured() && wantsHtml(req) && req.method === "GET") return Response.redirect(loginUrl(pathname + url.search), 302);
         return withCors(unauthorized());
       }
       const remember = (response: Response) => rememberToken(response, tokenFromRequest(req, url));
-      if (pathname === "/") return Response.redirect("/ui/", 302);
-      // The dashboard used to live here; the client has it now.
-      if (pathname === "/app" || pathname.startsWith("/app/")) return Response.redirect("/ui/", 302);
-      if (pathname === "/ui" || pathname.startsWith("/ui/")) return serveApp(pathname).then(remember);
+      // The old client lived under these; the web client is at `/`.
+      if (/^\/(app|ui)(\/|$)/.test(pathname)) return Response.redirect("/", 302);
+      if (isAppPath(pathname)) return serveApp(pathname).then(remember);
 
       const terminalId = STREAM_PATH.exec(pathname)?.[1];
       if (!terminalId) return handle(req).then(withCors).then(remember);

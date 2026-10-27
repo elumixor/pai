@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Nord, as pai always was: one set of tokens, redefined for dark. Components never name a colour. */
+:root {
+  --bg: #eceff4;
+  --surface: #ffffff;
+  --sunken: #e5e9f0;
+  --ink: #2e3440;
+  --muted: #4c566a;
+  --faint: #8a93a6;
+  --line: #d8dee9;
+  --accent: #5e81ac;
+  --accent-soft: #dfe8f3;
+  --danger: #bf616a;
+}
+
+.dark {
+  --bg: #242933;
+  --surface: #2e3440;
+  --sunken: #3b4252;
+  --ink: #eceff4;
+  --muted: #c3cad6;
+  --faint: #7b859a;
+  --line: #3b4252;
+  --accent: #88c0d0;
+  --accent-soft: #2f3d4c;
+  --danger: #d08770;
+}
+
+@theme {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: reduced motion has to beat every component's own timing */
+    animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: as above */
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Rendered Markdown, styled once here: it is HTML from `render`, outside Svelte's scoping. */
+.prose-pai { line-height: 1.6; overflow-wrap: anywhere; }
+.prose-pai > * + * { margin-top: 0.6em; }
+.prose-pai h1, .prose-pai h2, .prose-pai h3 { font-weight: 700; margin-top: 1em; }
+.prose-pai h1 { font-size: 1.3em; }
+.prose-pai h2 { font-size: 1.15em; }
+.prose-pai ul { list-style: disc; padding-left: 1.3em; }
+.prose-pai ol { list-style: decimal; padding-left: 1.3em; }
+.prose-pai a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.prose-pai code { font-family: var(--font-mono); font-size: 0.88em; background: var(--sunken); padding: 0.1em 0.3em; }
+.prose-pai pre { background: var(--sunken); padding: 0.8em 1em; overflow-x: auto; }
+.prose-pai pre code { background: none; padding: 0; }
+.prose-pai blockquote { border-left: 3px solid var(--line); padding-left: 0.9em; color: var(--muted); }
+.prose-pai table { border-collapse: collapse; }
+.prose-pai td, .prose-pai th { border: 1px solid var(--line); padding: 0.3em 0.6em; }

@@ -1,8 +1,5 @@
 import { config } from "../core/config.ts";
 import { MAX_FILES, readable, serve as serveAttachment, type Upload } from "../domain/attachments.ts";
-import { mapResponse } from "../domain/maps.ts";
-import { ratesResponse } from "../domain/rates.ts";
-import * as reads from "../domain/reads.ts";
 import * as drafts from "../domain/drafts.ts";
 import { all as allProjects, clone, CloneError, createContext, refresh } from "../domain/catalog.ts";
 import * as automations from "../domain/automations.ts";
@@ -12,7 +9,6 @@ import * as external from "../modules/external.ts";
 import { handleConnect as gmailConnect, listAccounts as gmailAccounts, removeAccount as gmailRemove } from "../modules/gmail.ts";
 import { needsLogin, usage } from "../domain/usage.ts";
 import * as claudeLogin from "../domain/claude-login.ts";
-import { diagnostics } from "../domain/diagnostics.ts";
 import { recentEvents, waitFor } from "../core/bus.ts";
 import * as sessions from "../domain/sessions.ts";
 import * as mirror from "../domain/mirror.ts";
@@ -23,7 +19,6 @@ import { logger } from "../core/log.ts";
 import { events } from "./events.ts";
 import { messagePage } from "./message.ts";
 import { status } from "./status.ts";
-import * as files from "../domain/files.ts";
 import * as settings from "../domain/settings.ts";
 import { allThreads, ensureTranscriptAt, sessionsIn, toolCall, transcript, transcriptPath } from "../domain/transcript.ts";
 import { cost as hostingCost } from "../domain/hetzner.ts";
@@ -36,7 +31,6 @@ import * as messages from "../domain/messages.ts";
 import * as summaries from "../domain/summaries.ts";
 import * as recall from "../domain/recall.ts";
 import * as audit from "../domain/audit.ts";
-import * as requests from "../domain/requests.ts";
 import * as tasks from "../domain/tasks.ts";
 import * as sync from "../domain/sync.ts";
 import { importPrompt, snapshot } from "../domain/snapshot.ts";
@@ -105,32 +99,6 @@ export async function handle(req: Request): Promise<Response> {
       return json({ id: s.id, cwd: s.cwd, fresh, title: s.title });
     }
 
-    // A session's model and effort from now on; its process restarts on the next message.
-    if (path === "/reconfigure" && req.method === "POST") {
-      const { id, model, effort } = await body<{ id: string; model?: string | null; effort?: "low" | "medium" | "high" | "xhigh" | "max" | null }>(req);
-      try {
-        return json(sessions.reconfigure(id, { model, effort }));
-      } catch (err) {
-        return json({ error: (err as Error).message }, 409);
-      }
-    }
-
-    if (path === "/files") return json(files.list(url.searchParams.get("path") ?? config.devRoot));
-
-    if (path === "/file" && req.method === "PUT") {
-      const { path: target, text } = await body<{ path: string; text: string }>(req);
-      return json(files.write(target, text));
-    }
-
-    if (path === "/file") return json(await files.read(url.searchParams.get("path") ?? ""));
-
-    if (path === "/files/index") return json(files.index(url.searchParams.get("path") ?? config.devRoot));
-
-    // Type errors for a file, from tsc on the project around it.
-    if (path === "/diagnostics") return json(await diagnostics(url.searchParams.get("path") ?? "", url.searchParams.get("fresh") === "1"));
-
-    if (path === "/roots") return json(files.roots());
-
     // A picture someone attached, by the name the transcript gives it.
     if (path.startsWith("/attachments/"))
       return serveAttachment(path.slice("/attachments/".length), url.searchParams.get("name") ?? undefined) ?? json({ error: "no such attachment" }, 404);
@@ -159,19 +127,6 @@ export async function handle(req: Request): Promise<Response> {
         return json({ error: (err as Error).message }, 400);
       }
     }
-
-    // How far he has read, per chat: the box holds it, so every client agrees.
-    if (path === "/reads" && req.method === "POST") {
-      const { place, at } = await body<{ place?: string; at?: number }>(req);
-      return json({ marks: reads.mark(String(place ?? ""), Number(at ?? 0)) });
-    }
-    if (path === "/reads") return json({ marks: reads.marks() });
-
-    // What a currency is worth, for showing an amount in the ones he thinks in.
-    if (path === "/rates") return await ratesResponse();
-
-    // A place's map picture: OpenStreetMap tiles stitched into an SVG, cached on the box.
-    if (path === "/map") return (await mapResponse(url.searchParams)) ?? json({ error: "lat and lon required" }, 400);
 
     // A thread's conversation as it is on disk, which is what `claude --resume` shows.
     if (path === "/transcript") {
@@ -208,8 +163,6 @@ export async function handle(req: Request): Promise<Response> {
 
     if (path === "/settings")
       return json({ editable: settings.EDITABLE, effective: settings.effective(), overrides: await settings.current() });
-
-    if (path === "/docs") return json(files.documents());
 
     // The service manager brings the daemon back, which is what "restart" means here. A signal,
     // not exit(): the daemon's own shutdown notes which turns it cut off, and the next start
@@ -326,14 +279,6 @@ export async function handle(req: Request): Promise<Response> {
       if (kill) s.kill();
       else await s.interrupt();
       return json({ ok: true });
-    }
-
-    // The slash commands a session's process accepts; a session that is not live falls back to any live one's.
-    if (path === "/commands") {
-      const raw = url.searchParams.get("session") ?? "";
-      const s = sessions.find(raw);
-      const any = [...sessions.list()].map((x) => sessions.find(x.sessionId)).find((x) => x && x.commands.length);
-      return json(s?.commands.length ? s.commands : (any?.commands ?? []));
     }
 
     // What each kind of session is given, for the dashboard.
@@ -652,19 +597,6 @@ export async function handle(req: Request): Promise<Response> {
         return json({ error: (err as Error).message }, 400);
       }
     }
-    if (path === "/notices") return json({ digest: asks.digest() });
-    if (path === "/requests") return json({ requests: requests.list({ limit: 50 }), routes: requests.routes() });
-    if (path === "/pins" && req.method === "POST") {
-      const { action, mode } = await body<{ action: string; mode: asks.PinMode | null }>(req);
-      return json(asks.pin(action, mode));
-    }
-    if (path === "/pins") return json(asks.pins());
-    if (path === "/mutes" && req.method === "POST") {
-      const { pattern, source } = await body<{ pattern: string; source?: string }>(req);
-      return json(asks.mute(pattern, source ?? ""), 201);
-    }
-    if (path === "/mutes" && req.method === "DELETE") return json({ removed: asks.unmute(Number(url.searchParams.get("id"))) });
-    if (path === "/mutes") return json(asks.mutes());
     // What the sessions did outside the daemon: sends, posts, writes, clicks in signed-in sites.
     // The state of things as one markdown document; posted back (to this or another pai), it becomes pai's turn to rebuild from.
     if (path === "/snapshot" && req.method === "POST") {

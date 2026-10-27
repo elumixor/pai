@@ -1,15 +1,13 @@
 #!/usr/bin/env bun
 /**
- * `bun run install` — everything this machine needs, from the checkout: the web app and the
- * client bundles, the daemon as a service with `pai` on PATH (and the menu bar app on macOS),
- * and the desktop app in /Applications. `--no-app` skips the desktop build, which is the slow
- * part; `--uninstall` and `--no-menubar` are passed on to the service installer.
+ * `bun run install` — everything this machine needs, from the checkout: the web client, the
+ * daemon as a service with `pai` on PATH (and the menu bar app on macOS). `--uninstall` and
+ * `--no-menubar` are passed on to the service installer.
  *
  * The script is named `install`, which is also a lifecycle hook `bun install` runs; that
  * call is told apart by its environment and does nothing here.
  */
 import { $ } from "bun";
-import { join } from "node:path";
 import { config } from "../src/core/config.ts";
 
 // `bun install` below would run this script again as its lifecycle hook, with this
@@ -30,11 +28,10 @@ if (args.includes("--uninstall")) {
 }
 
 await run("dependencies", [bun, "install"]);
-await run("client", [bun, "run", "build:ui"]);
-// A Mac is a client of the box: the command, the menu bar app, the desktop app. Linux is the box.
+await run("web client", [bun, "run", "build:web"]);
+// A Mac is a client of the box: the command and the menu bar app. Linux is the box.
 if (process.platform === "darwin") {
   await run("pai + menu bar", [bun, "run", "src/host/install-client.ts", ...args.filter((a) => a === "--no-menubar")]);
-  if (!args.includes("--no-app")) await run("desktop app", [bun, "run", join("scripts", "desktop.ts"), "--install"]);
 } else {
   await run("daemon service", [bun, "run", "src/host/install-daemon-linux.ts"]);
 }

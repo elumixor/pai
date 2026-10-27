@@ -84,8 +84,8 @@ export async function update(force = false): Promise<UpdateResult> {
   }
   await run("bun install", $`${process.execPath} install`.cwd(config.repo).nothrow().quiet());
   // process.execPath, not "bun": the service's PATH is not a login shell's.
-  // The client the daemon serves at /ui is the desktop app's bundle; it is built the same way.
-  await run("build client", $`${process.execPath} run build:ui`.cwd(config.repo).nothrow().quiet());
+  // The web client the daemon serves at `/`.
+  await run("build client", $`${process.execPath} run build:web`.cwd(config.repo).nothrow().quiet());
   if (process.platform === "darwin") {
     await run(
       "swiftc",

@@ -65,7 +65,7 @@ async function carryState() {
 
 async function install() {
   await remote("cd ~/pai && bun install");
-  await remote("cd ~/pai && bun run build:ui");
+  await remote("cd ~/pai && bun run build:web");
   await remote("cd ~/pai && bun run scripts/install.ts");
   await remote("systemctl --user is-active pai");
 }

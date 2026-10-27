@@ -105,11 +105,25 @@ export const config = {
   google: {
     clientId: env.PAI_GOOGLE_CLIENT_ID ?? "",
     clientSecret: env.PAI_GOOGLE_CLIENT_SECRET ?? "",
-    allowed: (setting("PAI_GOOGLE_ALLOWED") ?? "")
-      .split(/[,\s]+/)
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean),
   },
+
+  /** Who may sign in to the browser surfaces, by email. */
+  allowed: (setting("PAI_ALLOWED") ?? "")
+    .split(/[,\s]+/)
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean),
+
+  /**
+   * Sign-in for the web client: the Clerk application shared with Keep and Balance, so one account opens all of
+   * them. Without it the browser surfaces take the token only.
+   */
+  clerk: {
+    secretKey: env.CLERK_SECRET_KEY ?? "",
+    publishableKey: env.CLERK_PUBLISHABLE_KEY ?? "",
+  },
+
+  /** Keep (projects, tasks, docs): where its `elements.js` is, for `keep:` links in chat. */
+  keepUrl: setting("PAI_KEEP_URL") ?? "",
 
   /** Put the daemon on the public internet: Caddy on 80/443, run by the daemon, https included. */
   public: bool(setting("PAI_PUBLIC")),

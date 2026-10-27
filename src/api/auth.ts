@@ -2,11 +2,12 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../core/config.ts";
+import { clerkConfigured, clerkEmail } from "./clerk.ts";
 
 /**
  * Who may talk to the daemon once it is reachable from anywhere but loopback. Two ways in:
  *
- * - A browser signs in with Google (`google.ts`) and carries a signed session cookie.
+ * - A browser signs in with Clerk (`clerk.ts`, the account shared with Keep) or Google (`google.ts`, a signed cookie).
  * - A program presents the shared token: `Authorization: Bearer`, `?token=`, or the cookie a
  *   link left behind. The CLI, the menu bar, the desktop app and the editor extension do this.
  *
@@ -19,11 +20,11 @@ const TOKEN_COOKIE = "pai_token";
 const SESSION_COOKIE = "pai_session";
 const SESSION_DAYS = 30;
 
-/** Paths a browser must be able to load before it can present anything. */
-const PUBLIC_PATHS = [/^\/app(\/|$)/, /^\/ui(\/|$)/, /^\/m\//, /^\/auth\//];
+/** Paths a browser must be able to load before it can present anything: the client itself, its sign-in, modules' pages. */
+const PUBLIC_PATHS = [/^\/$/, /^\/_app\//, /^\/favicon\.svg$/, /^\/ui(\/|$)/, /^\/m\//, /^\/auth\//];
 
-/** The pages themselves; with Google sign-in these send a stranger to sign in rather than render. */
-export const isPage = (pathname: string) => /^\/(ui|app)\/?$/.test(pathname);
+/** The page itself; with Google sign-in it sends a stranger to sign in rather than render. Clerk signs in inside it. */
+export const isPage = (pathname: string) => pathname === "/" && !clerkConfigured();
 
 export interface Session {
   readonly email: string;
@@ -35,16 +36,16 @@ export const tokenFromRequest = (req: Request, url: URL) =>
   url.searchParams.get("token") ??
   cookie(req, TOKEN_COOKIE);
 
-export function authorized(req: Request, url: URL, address?: string) {
-  if (!config.token && !config.google.clientId) return true;
+export async function authorized(req: Request, url: URL, address?: string) {
+  if (!config.token && !config.google.clientId && !clerkConfigured()) return true;
   if (PUBLIC_PATHS.some((pattern) => pattern.test(url.pathname))) return true;
   if ((address === "127.0.0.1" || address === "::1") && !req.headers.has("x-forwarded-for")) return true;
   return identified(req, url);
 }
 
-/** Whether the request itself says who it is from: a session, or the token. */
-export const identified = (req: Request, url: URL) =>
-  (Boolean(config.token) && tokenFromRequest(req, url) === config.token) || Boolean(sessionFromRequest(req));
+/** Whether the request itself says who it is from: the token, a Google session cookie, or a Clerk session. */
+export const identified = async (req: Request, url: URL) =>
+  (Boolean(config.token) && tokenFromRequest(req, url) === config.token) || Boolean(sessionFromRequest(req)) || Boolean(await clerkEmail(req));
 
 export const unauthorized = () =>
   new Response(JSON.stringify({ error: "sign in, or present the token" }), {

@@ -36,8 +36,8 @@ async function waitFor(predicate: () => boolean, timeoutMs = 5000) {
 
 beforeAll(() => {
   // The client is a build artefact; a clean checkout (CI) has not made it yet.
-  if (!existsSync(join(import.meta.dir, "..", "desktop", "ui", "dist", "index.html"))) {
-    const built = Bun.spawnSync({ cmd: ["bun", "run", "build:ui"] });
+  if (!existsSync(join(import.meta.dir, "..", "apps", "web", "build", "index.html"))) {
+    const built = Bun.spawnSync({ cmd: ["bun", "run", "build:web"] });
     if (built.exitCode !== 0) throw new Error("could not build the client for the test run");
   }
   server = startServer();
@@ -56,34 +56,6 @@ describe("api", () => {
     expect(status.ok).toBe(true);
     expect(status.version).toBeTruthy();
     expect(status.settings.workspace).toBeTruthy();
-  });
-
-  it("names the roots it can show, and lists one", async () => {
-    const roots = (await (await get("/roots")).json()) as { name: string; path: string }[];
-    expect(roots.map((r) => r.name)).toContain("pai");
-    const paiRoot = roots.find((r) => r.name === "pai");
-    const entries = (await (await get(`/files?path=${encodeURIComponent(paiRoot?.path ?? "")}`)).json()) as {
-      name: string;
-    }[];
-    expect(entries.map((e) => e.name)).toContain("package.json");
-  });
-
-  it("reads a file inside a root and refuses one outside", async () => {
-    const roots = (await (await get("/roots")).json()) as { name: string; path: string }[];
-    const paiRoot = roots.find((r) => r.name === "pai")?.path ?? "";
-    const file = (await (await get(`/file?path=${encodeURIComponent(`${paiRoot}/package.json`)}`)).json()) as {
-      text: string;
-    };
-    expect(file.text).toContain("\"name\"");
-
-    const refused = await get("/file?path=%2Fetc%2Fpasswd");
-    expect(refused.status).toBe(500);
-    expect(await refused.text()).toContain("outside the directories");
-  });
-
-  it("lists the documents worth reading", async () => {
-    const docs = (await (await get("/docs")).json()) as { name: string }[];
-    expect(docs.some((doc) => doc.name.endsWith(".md"))).toBe(true);
   });
 
   it("lists projects", async () => {
@@ -139,8 +111,8 @@ describe("api", () => {
     expect((await get("/health")).headers.get("access-control-allow-origin")).toBe("*");
   });
 
-  it("serves the client bundle at /ui", async () => {
-    const res = await get("/ui/");
+  it("serves the web client at /", async () => {
+    const res = await get("/");
     expect([200, 503]).toContain(res.status);
   });
 
@@ -156,27 +128,37 @@ describe("api", () => {
 });
 
 describe("the web app", () => {
-  it("redirects the root to the client", async () => {
-    const res = await fetch(`${base}/`, { redirect: "manual" });
+  it("sends the old client's address to the new one", async () => {
+    const res = await fetch(`${base}/ui/`, { redirect: "manual" });
     expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toContain("/ui/");
+    expect(res.headers.get("location")).toBe("/");
   });
 
-  it("serves the built page", async () => {
-    const res = await get("/ui/");
+  it("serves the built page, never cached", async () => {
+    const res = await get("/");
     expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-cache");
     expect(await res.text()).toContain("<title>pai</title>");
   });
 
-  it("serves the bundle", async () => {
-    const res = await get("/ui/main.js");
+  it("serves the hashed assets as immutable", async () => {
+    const html = await (await get("/")).text();
+    const asset = /\/_app\/immutable\/[^"']+\.js/.exec(html)?.[0];
+    expect(asset).toBeDefined();
+    const res = await get(asset!);
     expect(res.status).toBe(200);
-    expect((await res.text()).length).toBeGreaterThan(1000);
+    expect(res.headers.get("cache-control")).toContain("immutable");
   });
 
   it("refuses to escape the build directory", async () => {
-    const res = await get("/ui/../../package.json");
+    const res = await get("/_app/../../../package.json");
     expect(await res.text()).not.toContain("\"name\": \"pai\"");
+  });
+
+  it("tells a browser how to sign in", async () => {
+    const res = await get("/auth/config");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toHaveProperty("clerkPublishableKey");
   });
 });
 
@@ -270,9 +252,4 @@ describe("pai and its staff over the api", () => {
     expect((await post("/routines", { name: "bad", schedule: "every day", action: "turn" })).status).toBe(400);
   });
 
-  it("pins outbound actions and mutes senders", async () => {
-    expect(await (await post("/pins", { action: "send email", mode: "ask" })).json()).toEqual([{ action: "send email", mode: "ask" }]);
-    const mute = (await (await post("/mutes", { pattern: "newsletter" })).json()) as { id: number };
-    expect((await (await fetch(`${base}/mutes?id=${mute.id}`, { method: "DELETE" })).json()) as unknown).toEqual({ removed: true });
-  });
 });

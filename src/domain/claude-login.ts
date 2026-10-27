@@ -202,7 +202,7 @@ f.onsubmit = async (e) => {
   f.closest("ol").remove();
   document.getElementById("state").innerHTML = "Signed in as <b></b>. pai is answering again.";
   document.querySelector("#state b").textContent = d.email || "?";
-  out.innerHTML = '<a href="/ui/">Back to pai</a>';
+  out.innerHTML = '<a href="/">Back to pai</a>';
 };
 </script>`;
   return new Response(

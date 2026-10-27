@@ -74,7 +74,7 @@ if (!api) {
 }
 
 // CI may be unable to run at all (billing, quota). The box updates itself from the tag then,
-// through `pai update`; only the desktop app build is lost, which `bun run desktop:build` makes here.
+// through `pai update`, which builds the web client on the box.
 let fellBack = false;
 async function ciFailed(): Promise<string | undefined> {
   // `gh` is a Mac-side tool: on the box this stays quiet and the fifteen-minute timeout is what speaks.
@@ -83,7 +83,7 @@ async function ciFailed(): Promise<string | undefined> {
   if (!latest || latest.status !== "completed" || latest.conclusion === "success") return undefined;
   const jobs = await $`gh api repos/{owner}/{repo}/actions/runs/${latest.databaseId}/jobs`.cwd(config.repo).nothrow().quiet();
   const first = (JSON.parse(jobs.stdout.toString() || "{}") as { jobs?: { conclusion: string; steps: unknown[] }[] }).jobs?.[0];
-  return first && first.steps.length === 0 ? "CI could not start (billing or quota) — the box is updating from the tag on its own; the desktop app needs `bun run desktop:build` here" : `CI ${latest.conclusion}`;
+  return first && first.steps.length === 0 ? "CI could not start (billing or quota) — the box is updating from the tag on its own" : `CI ${latest.conclusion}`;
 }
 
 for (let attempt = 0; attempt < 60; attempt++) {

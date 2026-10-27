@@ -1,4 +1,5 @@
 import { config } from "../core/config.ts";
+import { clerkConfigured } from "./clerk.ts";
 import { logger } from "../core/log.ts";
 import { clearSession, identified, origin, sessionCookie, sessionFromRequest, sign, verify } from "./auth.ts";
 import { finishConnect as finishGmail } from "../modules/gmail.ts";
@@ -23,7 +24,10 @@ const STATE_COOKIE = "pai_oauth";
 export const googleConfigured = () => Boolean(config.google.clientId && config.google.clientSecret);
 
 /** Only a path on this host may be the place to return to; anything else is a redirect to elsewhere. */
-const safeNext = (next: string | null) => (next && /^\/(?!\/)/.test(next) ? next : "/ui/");
+const safeNext = (next: string | null) => (next && /^\/(?!\/)/.test(next) ? next : "/");
+
+/** The web client's own sign-in, in its hash router. */
+export const SIGN_IN = "/#/sign-in";
 
 export const loginUrl = (next: string) => `/auth/google?next=${encodeURIComponent(next)}`;
 
@@ -34,13 +38,17 @@ export async function handleAuth(req: Request, url: URL): Promise<Response | und
     return json(session ? { email: session.email, expires: session.exp } : { email: null });
   }
   if (path === "/auth/logout") {
-    return redirect("/ui/", { "set-cookie": clearSession() });
+    return redirect("/", { "set-cookie": clearSession() });
   }
   if (path === "/auth/check") {
     // Caddy's forward_auth: 2xx lets the request through, anything else is sent to the browser as is.
-    if (identified(req, url)) return new Response(null, { status: 204 });
+    if (await identified(req, url)) return new Response(null, { status: 204 });
     const wanted = req.headers.get("x-forwarded-uri") ?? "/editor/";
-    return wantsHtml(req) ? redirect(loginUrl(wanted)) : json({ error: "sign in first" }, 401);
+    if (!wantsHtml(req)) return json({ error: "sign in first" }, 401);
+    return redirect(clerkConfigured() ? SIGN_IN : loginUrl(wanted));
+  }
+  if (path === "/auth/config") {
+    return json({ clerkPublishableKey: clerkConfigured() ? config.clerk.publishableKey : null, keepUrl: config.keepUrl || null });
   }
   // The consent screen links here; Google will not publish an app without a privacy policy.
   if (path === "/auth/privacy") return new Response(PRIVACY, { headers: { "content-type": "text/html; charset=utf-8" } });
@@ -72,8 +80,8 @@ export async function handleAuth(req: Request, url: URL): Promise<Response | und
     if (!code) return json({ error: url.searchParams.get("error") ?? "google sent no code" }, 400);
     const email = await exchange(code, callbackUrl(req, url));
     if (!email) return json({ error: "google did not confirm an email address" }, 401);
-    if (!config.google.allowed.includes(email.toLowerCase())) {
-      log.warn(`${email} signed in but is not on PAI_GOOGLE_ALLOWED`);
+    if (!config.allowed.includes(email.toLowerCase())) {
+      log.warn(`${email} signed in but is not on PAI_ALLOWED`);
       return json({ error: `${email} is not allowed here` }, 403);
     }
     log.info(`${email} signed in`);

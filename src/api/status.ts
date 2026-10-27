@@ -28,7 +28,7 @@ export async function status() {
       updateChannel: config.updateChannel,
       autoUpdate: config.autoUpdate,
       tokenSet: Boolean(config.token),
-      google: googleConfigured() ? config.google.allowed : false,
+      google: googleConfigured() ? config.allowed : false,
       published: config.public,
       idleShutdownMinutes: Math.round(config.idleShutdownMs / 60000),
     },

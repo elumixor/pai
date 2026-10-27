@@ -19,9 +19,11 @@ menubar/pai-menubar
 
 editor/vscode/out
 editor/vscode/*.vsix
-desktop/ui/dist
-desktop/src-tauri/target
-desktop/src-tauri/gen
+apps/web/node_modules
+apps/web/.svelte-kit
+apps/web/build
+test-results/
+playwright-report/
 
 # external modules, installed from pai.config.ts
 /modules/

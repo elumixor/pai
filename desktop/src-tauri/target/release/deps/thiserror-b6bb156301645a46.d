@@ -1,0 +1,14 @@
+/Users/elumixor/dev/pai/desktop/src-tauri/target/release/deps/thiserror-b6bb156301645a46.d: /Users/elumixor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.20/src/lib.rs /Users/elumixor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.20/src/aserror.rs /Users/elumixor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.20/src/display.rs /Users/elumixor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.20/src/var.rs /Users/elumixor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.20/src/private.rs /Users/elumixor/dev/pai/desktop/src-tauri/target/release/build/thiserror-4d628efb3f82f24a/out/private.rs
+
+/Users/elumixor/dev/pai/desktop/src-tauri/target/release/deps/libthiserror-b6bb156301645a46.rlib: /Users/elumixor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.20/src/lib.rs /Users/elumixor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.20/src/aserror.rs /Users/elumixor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.20/src/display.rs /Users/elumixor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.20/src/var.rs /Users/elumixor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.20/src/private.rs /Users/elumixor/dev/pai/desktop/src-tauri/target/release/build/thiserror-4d628efb3f82f24a/out/private.rs
+
+/Users/elumixor/dev/pai/desktop/src-tauri/target/release/deps/libthiserror-b6bb156301645a46.rmeta: /Users/elumixor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.20/src/lib.rs /Users/elumixor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.20/src/aserror.rs /Users/elumixor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.20/src/display.rs /Users/elumixor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.20/src/var.rs /Users/elumixor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.20/src/private.rs /Users/elumixor/dev/pai/desktop/src-tauri/target/release/build/thiserror-4d628efb3f82f24a/out/private.rs
+
+/Users/elumixor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.20/src/lib.rs:
+/Users/elumixor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.20/src/aserror.rs:
+/Users/elumixor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.20/src/display.rs:
+/Users/elumixor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.20/src/var.rs:
+/Users/elumixor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.20/src/private.rs:
+/Users/elumixor/dev/pai/desktop/src-tauri/target/release/build/thiserror-4d628efb3f82f24a/out/private.rs:
+
+# env-dep:OUT_DIR=/Users/elumixor/dev/pai/desktop/src-tauri/target/release/build/thiserror-4d628efb3f82f24a/out
