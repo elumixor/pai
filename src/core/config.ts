@@ -124,6 +124,8 @@ export const config = {
 
   /** Keep (projects, tasks, docs): where its `elements.js` is, for `keep:` links in chat. */
   keepUrl: setting("PAI_KEEP_URL") ?? "",
+  /** What Keep signs its webhooks with (`/keep/events`), one secret per workspace hook; without one they are refused. */
+  keepWebhookSecrets: (env.PAI_KEEP_WEBHOOK_SECRETS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
 
   /** Put the daemon on the public internet: Caddy on 80/443, run by the daemon, https included. */
   public: bool(setting("PAI_PUBLIC")),

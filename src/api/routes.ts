@@ -1,6 +1,7 @@
 import { config } from "../core/config.ts";
 import { MAX_FILES, readable, serve as serveAttachment, type Upload } from "../domain/attachments.ts";
 import * as drafts from "../domain/drafts.ts";
+import * as keep from "../domain/keep.ts";
 import { all as allProjects, clone, CloneError, createContext, refresh } from "../domain/catalog.ts";
 import * as automations from "../domain/automations.ts";
 import { context, save as saveContext } from "../domain/context.ts";
@@ -296,6 +297,14 @@ export async function handle(req: Request): Promise<Response> {
 
     // One list for the dashboard: the built-in pieces and the modules from their own repositories.
     if (path === "/connectors") return json(await external.connectors());
+    if (path === "/keep/events" && req.method === "POST") {
+      try {
+        return json(keep.receive(await req.text(), req.headers.get("x-keep-signature")));
+      } catch (err) {
+        if (err instanceof keep.KeepSignatureError) return json({ error: err.message }, 401);
+        throw err;
+      }
+    }
     if (path === "/modules")
       return json([
         ...describeModules(),
