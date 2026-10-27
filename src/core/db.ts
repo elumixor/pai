@@ -214,6 +214,18 @@ CREATE TABLE IF NOT EXISTS cursors (
   updated_at  INTEGER NOT NULL
 );
 
+-- Keep tasks with a dev session started for them (domain/dev-tasks.ts): one session per task, its status kept in step.
+CREATE TABLE IF NOT EXISTS dev_tasks (
+  keep_urn    TEXT PRIMARY KEY,
+  workspace   TEXT NOT NULL,
+  project     TEXT NOT NULL,
+  title       TEXT NOT NULL DEFAULT '',
+  session_id  TEXT,                     -- null while the start is in flight
+  status      TEXT,                     -- doing | review, the last one written to the task
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+
 -- Transcripts, the message log, mail and chat copies, searched with the recall tool; see domain/recall.ts.
 CREATE VIRTUAL TABLE IF NOT EXISTS archive USING fts5(source, ref UNINDEXED, title, body, ts UNINDEXED, tokenize = 'porter unicode61');
 `);

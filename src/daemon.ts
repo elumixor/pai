@@ -27,6 +27,7 @@ import * as models from "./domain/models.ts";
 import { flush as flushNotices } from "./domain/asks.ts";
 import { startClaudeLoginCheck } from "./domain/claude-login.ts";
 import * as dev from "./domain/dev.ts";
+import * as devTasks from "./domain/dev-tasks.ts";
 import * as held from "./domain/held.ts";
 import * as mirror from "./domain/mirror.ts";
 import * as projects from "./domain/projects.ts";
@@ -41,6 +42,8 @@ await connectors.load();
 projects.provide("dev", dev.source);
 held.provide("mirror", mirror.held);
 const stopDev = await dev.start();
+// Keep tasks with a dev project get a dev session, their status following it.
+const stopDevTasks = devTasks.start();
 relayToParent();
 // pai and its staff: the agents' turns, the one chat, routines feeding both.
 const stopAgents = agents.start();
@@ -102,6 +105,7 @@ function shutdown(signal: string) {
   stopMirror();
   stopReleaseCheck();
   stopDev();
+  stopDevTasks();
   void connectors.stopAll();
   void bot?.stop();
   noteInterrupted();

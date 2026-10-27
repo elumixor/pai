@@ -70,6 +70,7 @@ export interface RichEvent {
 export const EVENT_ICONS: Readonly<Record<string, string>> = {
   "agent.created": "person.crop.circle.badge.plus",
   "agent.spawned": "arrow.triangle.branch",
+  "dev.session": "terminal",
   delegate: "arrow.turn.down.right",
   request: "arrow.turn.down.right",
   report: "arrow.turn.up.left",

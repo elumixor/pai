@@ -17,6 +17,8 @@ import type { Project, ProjectSource } from "./projects.ts";
 const log = logger("dev");
 const REFRESH_MS = 5 * 60 * 1000;
 const TIMEOUT_MS = 5000;
+/** A tool may clone or make a worktree before it answers. */
+const TOOL_TIMEOUT_MS = 60_000;
 
 export class DevError extends Error {
   constructor(message: string) {
@@ -25,10 +27,10 @@ export class DevError extends Error {
   }
 }
 
-async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function call<T>(path: string, init: RequestInit = {}, timeoutMs = TIMEOUT_MS): Promise<T> {
   const res = await fetch(`${config.dev.url}${path}`, {
     ...init,
-    signal: AbortSignal.timeout(TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
     headers: { "content-type": "application/json", ...(config.dev.token ? { authorization: `Bearer ${config.dev.token}` } : {}) },
   });
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
@@ -73,5 +75,50 @@ export async function deliver(sessionId: string, text: string, images: readonly 
   } catch (err) {
     log.warn(`deliver ${sessionId.slice(0, 6)}: ${(err as Error).message}`);
     return false;
+  }
+}
+
+/** One tool of dev's MCP server, its text result read back as JSON. */
+async function tool<T>(name: string, args: Record<string, unknown>): Promise<T> {
+  const reply = await call<{ error?: { message: string }; result?: { isError?: boolean; content?: { text?: string }[] } }>("/mcp", {
+    method: "POST",
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
+  }, TOOL_TIMEOUT_MS);
+  const text = reply.result?.content?.[0]?.text ?? "";
+  if (reply.error || reply.result?.isError) throw new DevError(`${name}: ${reply.error?.message ?? text}`);
+  return JSON.parse(text || "null") as T;
+}
+
+export interface StartedSession {
+  /** dev's session id (the Claude Code session id). */
+  readonly id: string;
+  /** `dev:session/<id>`. */
+  readonly urn: string;
+  readonly url?: string;
+}
+
+/** A Claude Code session dev runs for a Keep task: in a worktree of the project when the project asks for one. */
+export async function startSession(input: { project: string; keepUrn: string; title: string; brief: string }): Promise<StartedSession> {
+  const started = await tool<{ session?: string; id?: string; url?: string }>("start_session", {
+    project: input.project,
+    keep_urn: input.keepUrn,
+    title: input.title,
+    brief: input.brief,
+    // dev before the keep flow took the brief as `prompt`.
+    prompt: input.brief,
+  });
+  const id = started.session?.replace(/^dev:session\//, "") ?? started.id;
+  if (!id) throw new DevError("start_session answered without a session");
+  return { id, urn: `dev:session/${id}`, url: started.url };
+}
+
+/** Whether a session's turn is running now; undefined when dev does not know it (yet). */
+export async function sessionBusy(id: string): Promise<boolean | undefined> {
+  try {
+    const { session } = await call<{ session: { busy: boolean; running?: boolean } }>(`/sessions/${id}?limit=1`);
+    return session.busy || Boolean(session.running);
+  } catch (err) {
+    if (err instanceof DevError && /no session|no conversation/.test(err.message)) return undefined;
+    throw err;
   }
 }

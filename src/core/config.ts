@@ -113,6 +113,15 @@ export const config = {
   keepUrl: setting("PAI_KEEP_URL") ?? "",
   /** What Keep signs its webhooks with (`/keep/events`), one secret per workspace hook; without one they are refused. */
   keepWebhookSecrets: (env.PAI_KEEP_WEBHOOK_SECRETS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+  /** Keep agent keys pai's own code calls Keep's MCP with, one per workspace: `<workspace id>:<keep_… key>,…`. */
+  keepKeys: Object.fromEntries(
+    (env.PAI_KEEP_KEYS ?? "")
+      .split(",")
+      .map((pair) => pair.trim().split(":"))
+      .filter((pair): pair is [string, string] => pair.length === 2 && Boolean(pair[0]) && Boolean(pair[1])),
+  ) as Readonly<Record<string, string>>,
+  /** A Keep task with a dev project gets a dev session started for it (`dev-tasks.ts`); PAI_DEV_TASKS=0 turns that off. */
+  devTasks: bool(setting("PAI_DEV_TASKS"), true),
 
   /** Published on the internet (dev's gateway runs Caddy on 80/443 for it); core only reads it for `baseUrl`. */
   public: bool(setting("PAI_PUBLIC")),
