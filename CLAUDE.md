@@ -31,7 +31,7 @@ broken, with the link that fixes it), its `events`, its `tools`, and `connector.
 `verified | unverified | not_sent`; `GET /connectors` lists them in that one shape for the clients. A
 **capability** (`kind: "capability"`: `pai-browser`, `pai-dev`) is something the box can do. Each
 module repo has the same layout: `index.ts` default export, a one-paragraph `CLAUDE.md`, `README.md`, tests next to
-the code, `bun.lock`, `biome.json` extending `pai/biome.json` (resolved through the module's `node_modules/pai`).
+the code, `bun.lock`, `biome.json` extending `@dsk/pai/biome.json` (resolved through the module's `node_modules/@dsk/pai`).
 The order of `pai.config.ts` is the order clients list modules; loading follows `requires`.
 pai's `biome.json` is lint only (formatter off): `bun run lint`.
 Self-update stays in core (`src/domain/update.ts`: `POST /update` + the auto-update tick, then every module clone pulled), so a module that fails to load never leaves the box unable to update.

@@ -220,15 +220,16 @@ export async function load() {
 }
 
 /**
- * A module resolves `pai/src/…` and pai's dependencies (the Agent SDK, zod, grammy, …)
- * through its `node_modules`: a link to pai's own, which carries a `pai` link to this
+ * A module resolves `@dsk/pai/src/…` and pai's dependencies (the Agent SDK, zod, grammy, …)
+ * through its `node_modules`: a link to pai's own, which carries an `@dsk/pai` link to this
  * checkout. Made in the module's real directory, so a checkout elsewhere works too. A module
  * with dependencies of its own keeps its `node_modules` and gets links to what pai has.
  */
 function linkPai(dir: string) {
   const real = realpathSync(dir);
   const paiModules = join(config.repo, "node_modules");
-  const self = join(paiModules, "pai");
+  const self = join(paiModules, "@dsk", "pai");
+  mkdirSync(join(paiModules, "@dsk"), { recursive: true });
   if (!isLink(self)) symlinkSync(config.repo, self);
   const own = join(real, "node_modules");
   const manifest = existsSync(join(real, "package.json")) ? (JSON.parse(readFileSync(join(real, "package.json"), "utf8")) as { dependencies?: Record<string, string> }) : {};
@@ -236,9 +237,16 @@ function linkPai(dir: string) {
     mkdirSync(own, { recursive: true });
     for (const name of readdirSync(paiModules)) {
       if (name.startsWith(".") || existsSync(join(own, name))) continue;
+      // A link left dangling by a move of either checkout is replaced, not tripped over.
+      if (isLink(join(own, name))) rmSync(join(own, name));
       if (name.startsWith("@")) {
         mkdirSync(join(own, name), { recursive: true });
-        for (const sub of readdirSync(join(paiModules, name))) if (!existsSync(join(own, name, sub))) symlinkSync(join(paiModules, name, sub), join(own, name, sub));
+        for (const sub of readdirSync(join(paiModules, name))) {
+          const link = join(own, name, sub);
+          if (existsSync(link)) continue;
+          if (isLink(link)) rmSync(link);
+          symlinkSync(join(paiModules, name, sub), link);
+        }
       } else symlinkSync(join(paiModules, name), join(own, name));
     }
     return;
