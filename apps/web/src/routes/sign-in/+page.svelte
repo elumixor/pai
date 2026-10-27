@@ -20,9 +20,7 @@
   });
 </script>
 
-<main class="grid min-h-dvh place-items-center p-4">
-  <div class="space-y-6">
-    <h1 class="text-center font-display text-4xl font-bold tracking-tight">pai</h1>
-    <div bind:this={host}></div>
-  </div>
+<main class="empty boot sign-in">
+  <h1 class="sign-in-mark">pai</h1>
+  <div bind:this={host}></div>
 </main>

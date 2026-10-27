@@ -101,6 +101,8 @@ export interface Agent {
   readonly budget?: { readonly turnsPerDay: number; readonly turnMinutes: number };
   readonly createdAt?: number;
   readonly closedAt?: number | null;
+  /** The threads it is running, newest first. */
+  readonly threads?: readonly AgentThread[];
 }
 
 export type MessageKind = "chat" | "delegate" | "report" | "request" | "response" | "ask" | "answer" | "notice" | "event";
@@ -207,4 +209,205 @@ export interface Upload {
   readonly media_type: string;
   readonly data: string;
   readonly name?: string;
+}
+
+// ---- what the pages about the daemon read ---------------------------------------------------
+
+/** A conversation found in `~/.claude/projects`, terminal ones included. */
+export interface DiskSession {
+  readonly sessionId: string;
+  readonly cwd: string;
+  readonly title: string;
+  readonly lastActivity: string;
+}
+
+export interface ProjectSummary {
+  readonly slug: string;
+  readonly path: string;
+  readonly summary: string;
+  readonly kind?: "repo" | "context";
+  readonly repo?: string;
+}
+
+export interface ModuleSetting {
+  readonly key: string;
+  readonly label: string;
+  readonly hint?: string;
+  readonly secret?: boolean;
+  readonly type?: "text" | "toggle" | "number";
+  readonly value: string;
+}
+
+export interface ModuleInfo {
+  readonly name: string;
+  readonly title: string;
+  readonly description: string;
+  readonly kind: "channel" | "tools" | "source" | "service";
+  readonly enabled: boolean;
+  readonly status: Record<string, unknown>;
+  readonly tools?: { readonly server: string; readonly names: readonly string[]; readonly kinds: readonly string[] };
+  readonly prompt?: { readonly text: string; readonly kinds: readonly string[] };
+  readonly events?: readonly { readonly kind: string; readonly description: string }[];
+  readonly settings?: readonly ModuleSetting[];
+  readonly accounts?: {
+    readonly items: readonly { readonly label: string; readonly detail: string }[];
+    readonly connectPath: string;
+    readonly removePath: string;
+    readonly hint: string;
+  };
+  readonly live: boolean;
+  /** A module from its own repository with a page of its own: its path under the daemon. */
+  readonly ui?: string;
+  readonly external?: boolean;
+}
+
+export interface Automation {
+  readonly id: number;
+  readonly name: string;
+  readonly event: string;
+  readonly filter: string;
+  readonly action: "notify" | "turn" | "task";
+  readonly project: string;
+  readonly template: string;
+  readonly enabled: boolean;
+  readonly runs: number;
+  readonly lastRun: number | null;
+}
+
+export interface SlashCommand {
+  readonly name: string;
+  readonly description: string;
+  readonly argumentHint: string;
+}
+
+export interface Status {
+  readonly pid: number;
+  readonly uptime: number;
+  readonly version: string;
+  readonly host: { readonly hostname: string; readonly platform: string; readonly baseUrl?: string; readonly api: string; readonly publicUrl?: string };
+  readonly editor: { readonly enabled: boolean; readonly url?: string; readonly running: boolean };
+  readonly settings: {
+    readonly workspace: string;
+    readonly devRoot: string;
+    readonly models: { readonly main: string; readonly task: string };
+    readonly updateChannel: string;
+    readonly autoUpdate: boolean;
+    readonly idleShutdownMinutes: number;
+  };
+  readonly counts: { readonly projects: number };
+}
+
+export interface AgentThread {
+  readonly sessionId: string;
+  readonly shortId: string;
+  readonly title: string;
+  readonly project: string | null;
+  readonly cwd?: string | null;
+  readonly kind?: string;
+  readonly state: string;
+  readonly startedAt?: number;
+  readonly lastActivity: number;
+  readonly costUsd?: number;
+  readonly turns?: number;
+  readonly model?: string | null;
+  readonly modelPref?: string | null;
+  readonly effort?: Effort | null;
+  /** Where it was started: `agent` (by the agent it is listed under), `general` (the client's detached box), `cli`, `terminal`, `phone`, `builder`, `routine`. */
+  readonly origin?: string;
+}
+
+/** `GET /agents/<slug>/instructions`: its own files (CLAUDE.md and what that imports) and what is appended to Claude Code's prompt. */
+export interface AgentInstructions {
+  readonly folder: string;
+  readonly files: readonly { readonly name: string; readonly text: string }[];
+  readonly system: string;
+}
+
+export interface Ask {
+  readonly id: number;
+  readonly agent: string;
+  readonly question: string;
+  readonly options: readonly string[];
+  readonly freeText: boolean;
+  readonly priority: string;
+  readonly blocking: boolean;
+  readonly context?: string;
+  readonly status?: "open" | "answered" | "dropped";
+  readonly createdAt: number;
+}
+
+export interface Routine {
+  readonly id: number;
+  readonly name: string;
+  readonly event: string;
+  readonly schedule: string;
+  readonly action: string;
+  readonly agent: string;
+  readonly enabled: boolean;
+  readonly runs: number;
+  readonly lastRun: number | null;
+  readonly owner: string;
+}
+
+/** One outward tool call as `GET /audit` lists them: a send, a write, a click in a signed-in site. */
+export interface AuditEntry {
+  readonly toolUseId: string;
+  readonly sessionId: string;
+  readonly agent: string | null;
+  readonly tool: string;
+  readonly summary: string;
+  readonly input: string;
+  readonly result: string | null;
+  /** null while the call has not answered. */
+  readonly ok: boolean | null;
+  readonly ts: number;
+}
+
+/** One group in `GET /spend`: API list price beside what was actually paid, tokens and time. */
+export interface SpendBucket {
+  readonly key: string;
+  readonly apiUsd: number;
+  readonly realUsd: number;
+  readonly input: number;
+  readonly output: number;
+  readonly cacheRead: number;
+  readonly cacheWrite: number;
+  readonly ms: number;
+  readonly calls: number;
+}
+
+export interface SpendReport {
+  readonly days: number;
+  readonly plan: { readonly monthlyUsd: number; readonly periodUsd: number; readonly tier?: string };
+  readonly credits: { readonly usedUsd: number; readonly monthlyUsd: number };
+  readonly box?: { readonly periodUsd: number };
+  readonly total: SpendBucket & { readonly savedUsd: number };
+  readonly by: Record<"agent" | "project" | "model" | "source", SpendBucket[]>;
+  readonly daily: SpendBucket[];
+}
+
+/** One tool call in a transcript: what was asked and, once it answered, what came back. */
+export interface TranscriptTool {
+  readonly id?: string;
+  readonly name: string;
+  readonly input?: string;
+  readonly result?: string;
+}
+
+/** One message of a thread as it is on disk. */
+export interface Transcript {
+  readonly role: "user" | "assistant";
+  readonly ts: string;
+  readonly text: string;
+  readonly thinking?: string;
+  readonly tools?: readonly TranscriptTool[];
+  readonly images?: readonly string[];
+  readonly meta?: boolean;
+}
+
+/** The daemon's editable settings, what is in effect, and what was changed. */
+export interface Settings {
+  readonly editable: readonly string[];
+  readonly effective: Record<string, string>;
+  readonly overrides: Record<string, string>;
 }

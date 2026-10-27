@@ -1,0 +1,88 @@
+/* What the Svelte client adds over the old stylesheet: its own tokens, the suite's switcher in the corner, the
+   threads view without the editor's columns, find highlights, and a phone's width. */
+:root {
+  --chat-w: 900px;
+}
+
+/* ---- the corner: the suite's switcher where the brand sits, then the views ---------------------------------- */
+.nav-brand { display: inline-flex; align-items: center; height: 27px; margin-right: -4px; }
+.tree-toggle { display: none; }
+
+/* ---- the room's centre: one page at a time, coming in where the last one stood ------------------------------- */
+.centre-page { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; align-items: center; }
+.centre-page.wide { align-items: stretch; }
+.home-centre .task-view, .home-centre .centre-page > .agent-view { pointer-events: auto; }
+.task-view > .chat { flex: 1; min-height: 0; }
+.compose-tool[disabled] { cursor: default; }
+.agent-reports { margin: 0; color: var(--ink-45); font: 400 var(--meta)/var(--meta-lh) var(--font-ui); }
+
+/* ---- find: the matches are highlights, so no row is rewritten to mark them ----------------------------------- */
+::highlight(find-hit) { background-color: color-mix(in srgb, var(--busy) 35%, transparent); }
+::highlight(find-current) { background-color: var(--busy); color: var(--canvas); }
+
+/* ---- before the shell: starting, signing in ---------------------------------------------------------------- */
+.empty.boot { min-height: 100dvh; font-family: var(--font-ui); }
+.sign-in-mark { margin: 0 0 12px; font: 700 34px/1 var(--font-ui); letter-spacing: -0.03em; color: var(--ink); }
+
+/* ---- settings: an editable context item is written in place ------------------------------------------------- */
+.ctx-editor { display: flex; flex-direction: column; }
+.ctx-edit { flex: 1; width: 100%; min-height: 0; border: 0; resize: none; background: transparent; outline: none; line-height: 1.55; }
+.settings-body .dash-title { flex-wrap: wrap; }
+
+/* ---- the threads view: two panes and the rail, the editor's columns gone ------------------------------------ */
+.work { grid-template-columns: minmax(280px, 1fr) 10px var(--w-second) 10px var(--w-rail); grid-template-rows: minmax(0, 1fr); }
+.work.b-empty { grid-template-columns: minmax(280px, 1fr) 0 0 10px var(--w-rail); }
+.work.b-empty .second { visibility: hidden; box-shadow: none; }
+.work.b-empty .handle.second { pointer-events: none; }
+.thread-slot { display: flex; flex-direction: column; }
+.thread-slot > .empty { background: transparent; }
+
+/* ---- a phone: the tree behind a button, the chat edge to edge, one pane at a time --------------------------- */
+@media (max-width: 760px) {
+  .nav { top: 12px; left: 12px; gap: 10px; }
+  .tree-toggle { position: absolute; top: 12px; right: 12px; z-index: 31; display: inline-flex; }
+  .home { --side-w: 0px; }
+  .home-side { display: none; }
+  .home.tree-open .home-side { display: flex; position: fixed; top: 52px; left: 0; right: 0; bottom: 0; width: auto; z-index: 25; padding: 12px 16px 40px; background: var(--canvas-gradient); mask-image: none; }
+  .home-crumbs { top: 46px; left: 12px; right: 12px; }
+  .home-crumbs .crumb { max-width: 46vw; }
+  .home-centre { inset: 76px 12px 0 12px; }
+  .chat-log { inset: 0 -12px -20px; padding: 24px 12px 220px; }
+  .chat-scrollbar { display: none; }
+  .chat-foot { padding-bottom: 12px; }
+  .chat-compose { padding: 10px 8px 10px 14px; }
+  .row.mine { max-width: 88%; }
+  .row.reply { padding: 20px 4px; }
+  .row.pill, .row.event, .row.card, .row.notice, .row.answer, .row.tools, .row.question { padding-left: 4px; padding-right: 4px; }
+  .rings { display: none; }
+  .agent-tasks, .agent-notes { padding: 16px 4px 40px; }
+  .home.board-mode .home-centre { inset: 56px 12px 12px; }
+  .board-view, .board-view.with-panel { grid-template-columns: minmax(0, 1fr); }
+  .board-tree { display: none; }
+  .board-toolbar { flex-wrap: wrap; height: auto; gap: 8px; padding-bottom: 6px; }
+  .board-toolbar .task-new { width: 100%; order: 3; }
+  .board-main .board { grid-template-columns: repeat(4, 78vw); overflow-x: auto; scroll-snap-type: x mandatory; }
+  .board-column { scroll-snap-align: start; }
+  .board-view.with-panel .board-panel { position: fixed; inset: 56px 8px 8px; margin: 0; z-index: 26; }
+  .work { grid-template-columns: minmax(0, 1fr); padding: 56px 12px 12px; }
+  .work .handle, .work .second { display: none; }
+  .work.has-a .col-rail, .work:not(.has-a) .thread-slot:first-child { display: none; }
+  .statusbar { padding: 0 12px; }
+  .notices { width: min(330px, calc(100vw - 24px)); }
+  .peek { max-width: calc(100vw - 16px); }
+  .find-input { width: 140px; }
+}
+
+/* ---- the staff inside the settings sheet: three columns that fit it --------------------------------------- */
+.settings .staff { grid-template-columns: minmax(170px, 210px) minmax(0, 1fr) minmax(200px, 260px); }
+.staff-log { text-align: left; }
+.staff-log > * { flex-shrink: 0; }
+@media (max-width: 760px) {
+  .settings .staff { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .settings .staff-tree, .settings .staff-side { display: none; }
+}
+/* The settings sheet is the wide one it was meant to be: `dialog.sheet.wide` used to win over it. */
+dialog.sheet.settings { width: min(1040px, 96vw); max-width: none; height: 84vh; max-height: 84vh; padding: 0; gap: 0; }
+/* `.chat` is also the chat column's class: a staff message must not become one. */
+.staff-log .msg.chat { flex: none; width: auto; min-height: auto; align-items: stretch; }
+.staff-log .msg.chat.mine { align-items: stretch; }
