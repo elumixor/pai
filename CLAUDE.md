@@ -25,6 +25,14 @@ repos, the terminal mirror and channel, the menu bar app, the release check, ins
 the coding threads (pai-builder, archived). Core runs without it: no repos, loopback + token. Projects, tasks and docs live in Kip
 (`elumixor/kip`, `kip:page/<id>` URNs, an MCP); pai knows Kip, Kip never knows pai.
 
+pai is one app of the dsk suite: every repo under `~/dev/@dsk/` (package `@dsk/<name>`, never published — the npm
+scope is not ours), every app under `*.dsk.atmagaming.com` — hub `dsk.` (`@dsk/dsk`, which also serves `bar.js`:
+`<dsk-bar>`, the ⌘K app switcher every app embeds), Kip `kip.`, ppl `ppl.` (people, and the one sign-in:
+`/sign-in?next=`), pai `pai.` (the old `pai.atmagaming.com` still served as `PAI_DOMAIN_ALIASES` for Paigram builds),
+editor `editor.`. Clerk's production app "Dsk" sits on dsk.atmagaming.com, so one session covers them all;
+`@dsk/core` (`github:elumixor/dsk-core`) holds the browser side every app shares (Clerk with its components,
+the central sign-in, URNs).
+
 Modules come in two kinds (`sdk.ts`): a **connector** (`kind: "connector"`, a signed-in outside channel —
 `pai-telegram`, `pai-email`, `pai-linkedin`, `pai-whatsapp`) exposes `connector.status(ctx)` (signed in / signed out /
 broken, with the link that fixes it), its `events`, its `tools`, and `connector.send` answering
