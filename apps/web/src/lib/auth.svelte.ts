@@ -4,11 +4,31 @@ import type { AuthConfig } from "./types";
 const TOKEN_KEY = "pai.token";
 const STARTUP_TIMEOUT_MS = 15_000;
 
+type ClerkUiConstructor = NonNullable<NonNullable<NonNullable<Parameters<Clerk["load"]>[0]>["ui"]>["ClerkUI"]>;
+
 class SignInError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "SignInError";
   }
+}
+
+/**
+ * Clerk's prebuilt components ship as a separate bundle served by the instance's Frontend API. A development
+ * instance injects it on its own; a production one only mounts components when it is handed the constructor.
+ */
+function loadClerkUi(publishableKey: string) {
+  const frontendApi = atob(publishableKey.split("_")[2]).slice(0, -1);
+  return new Promise<ClerkUiConstructor>((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = `https://${frontendApi}/npm/@clerk/ui@1/dist/ui.browser.js`;
+    script.async = true;
+    script.crossOrigin = "anonymous";
+    script.onload = () =>
+      resolve((window as unknown as { __internal_ClerkUICtor: ClerkUiConstructor }).__internal_ClerkUICtor);
+    script.onerror = () => reject(new SignInError("Sign-in could not load its components."));
+    document.head.appendChild(script);
+  });
 }
 
 function storedToken(): string | null {
@@ -22,7 +42,7 @@ function storedToken(): string | null {
 }
 
 /**
- * Who the browser is to the daemon: a Clerk session (the account shared with Keep and Balance), or the daemon's
+ * Who the browser is to the daemon: a Clerk session (the Desk account shared with Keep), or the daemon's
  * token when a link carried one (`/?token=…`) — what the CLI and the menu bar hand out.
  */
 class Auth {
@@ -55,7 +75,7 @@ class Auth {
     const clerk = new Clerk(this.config.clerkPublishableKey);
     (window as unknown as { Clerk: Clerk }).Clerk = clerk;
     await Promise.race([
-      clerk.load(),
+      loadClerkUi(this.config.clerkPublishableKey).then((ClerkUI) => clerk.load({ ui: { ClerkUI } })),
       new Promise((_, reject) => setTimeout(() => reject(new SignInError("Sign-in took too long to load.")), STARTUP_TIMEOUT_MS)),
     ]);
     this.#clerk = clerk;
