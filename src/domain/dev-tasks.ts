@@ -9,7 +9,8 @@ import * as messages from "./messages.ts";
 /**
  * Keep → dev: a Keep task whose effective properties carry a dev `project` (its own or inherited from the project
  * page above it) and no dev `session` gets one Claude Code session from dev, started with a brief made of the task
- * (title, body, the titles above it). The session's `dev:session/<id>` is written back onto the task, and the task's
+ * (title, body, the titles above it). The session's `dev:session/<id>` is written back onto the task (defining a
+ * `Dev session` property of the page's own when it has none), and the task's
  * status follows the session: In progress while a turn runs, In review when it stops. One session per task, ever:
  * the task's URN is claimed in `dev_tasks` before dev is asked. Off with `PAI_DEV_TASKS=0`.
  */
@@ -30,6 +31,7 @@ export interface PropertyDef {
   readonly type: string;
   readonly extension?: string;
   readonly extType?: string;
+  readonly multiple?: boolean;
   readonly options?: readonly { id: string; name: string }[];
 }
 
@@ -43,6 +45,10 @@ export interface KeepPage {
   readonly properties?: Record<string, unknown>;
   readonly effective?: Record<string, unknown>;
   readonly schema?: readonly PropertyDef[] | null;
+  /** Properties the page defines for itself (any page may). */
+  readonly ownSchema?: readonly PropertyDef[] | null;
+  readonly inheritedSchema?: readonly PropertyDef[] | null;
+  readonly inheritedFrom?: Record<string, string>;
 }
 
 interface Found {
@@ -132,6 +138,21 @@ async function readPage(workspace: string, urn: string) {
   return callKeep<KeepPage>(workspace, "get_page", { id: pageId(urn) });
 }
 
+/** The properties a page's values are checked against: its database's and its own. */
+export const definitions = (page: KeepPage): PropertyDef[] => [...(page.schema ?? []), ...(page.ownSchema ?? [])];
+
+export const SESSION_PROPERTY = { id: "dev-session", name: "Dev session", type: "extension", extType: "session", multiple: true } as const;
+
+/** The dev extension's id: the project property's, else the one in the workspace serving a `session` type. */
+async function extensionId(workspace: string, page: KeepPage, projectKey: string) {
+  const known = [...definitions(page), ...(page.inheritedSchema ?? [])].find((p) => p.id === projectKey)?.extension;
+  if (known) return known;
+  const extensions = await callKeep<{ id: string; manifest?: { propertyTypes?: { id: string }[] } }[]>(workspace, "list_extensions", {
+    workspace_id: pageId(workspace),
+  });
+  return extensions.find((e) => e.manifest?.propertyTypes?.some((t) => t.id === "session"))?.id;
+}
+
 /** One Keep page event: starts the task's session when it should have one. Answers what it did, for tests and logs. */
 export async function consider(event: { urn: string; workspace: string; effective?: Record<string, unknown> }) {
   // The webhook already says the page has no dev project: nothing to read.
@@ -144,9 +165,17 @@ export async function consider(event: { urn: string; workspace: string; effectiv
   const project = findValue(values, PROJECT_PREFIX);
   if (!project) return "no project";
   if (findValue(values, SESSION_PREFIX)) return "has session";
-  // Only a row of a database with a session property is a task; a project page has nowhere to hold one.
-  const target = sessionProperty(page.schema, project.key);
-  if (!target) return "no session property";
+  const defs = definitions(page);
+  const existing = sessionProperty(defs, project.key);
+  // A task inherits its project; the page holding the value itself is the project (unless it already takes sessions).
+  if (!existing && !page.inheritedFrom?.[project.key]) return "project page";
+  let define: PropertyDef[] | undefined;
+  if (!existing) {
+    const extension = await extensionId(event.workspace, page, project.key);
+    if (!extension) return "no dev extension";
+    define = [{ ...SESSION_PROPERTY, extension }];
+  }
+  const target = existing ?? define![0]!;
   const slug = slugOf(project.urn);
   if (!claim(event.urn, event.workspace, slug, page.title)) return "claimed";
   let started: dev.StartedSession;
@@ -159,10 +188,11 @@ export async function consider(event: { urn: string; workspace: string; effectiv
   }
   db.prepare("UPDATE dev_tasks SET session_id = ?, updated_at = ? WHERE keep_urn = ?").run(started.id, now(), event.urn);
   const value = [{ urn: started.urn, label: `${slug} · ${started.id.slice(0, 6)}` }];
-  const doing = statusOption(page.schema, "doing");
+  const doing = statusOption(defs, "doing");
   await callKeep(event.workspace, "set_properties", {
     id: page.id,
     properties: { [target.id]: value, ...(doing ? { [doing.property]: doing.option } : {}) },
+    ...(define ? { define } : {}),
   });
   if (doing) db.prepare("UPDATE dev_tasks SET status = 'doing' WHERE keep_urn = ?").run(event.urn);
   messages.event("pai", "dev.session", `Started a dev session for ${page.title} in ${slug}`, {
@@ -184,7 +214,7 @@ export async function sync() {
       const status: Status = busy ? "doing" : "review";
       if (status === row.status) continue;
       const page = await readPage(row.workspace, row.keep_urn);
-      const option = statusOption(page.schema, status);
+      const option = statusOption(definitions(page), status);
       if (option) await callKeep(row.workspace, "set_properties", { id: page.id, properties: { [option.property]: option.option } });
       db.prepare("UPDATE dev_tasks SET status = ?, updated_at = ? WHERE keep_urn = ?").run(status, now(), row.keep_urn);
     } catch (err) {
