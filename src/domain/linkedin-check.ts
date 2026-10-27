@@ -113,7 +113,7 @@ async function status(): Promise<Status | undefined> {
  */
 export async function checkLinkedIn(nowMs = Date.now()) {
   // No LinkedIn to watch: a task claiming pai cannot see it would be noise, so any open one resolves.
-  if (!external.isInstalled(NAME)) return report(undefined);
+  if (!external.get(NAME)) return report(undefined);
   const s = await status();
   const pollAt = s?.lastPoll ? Date.parse(s.lastPoll.at) : undefined;
   report(

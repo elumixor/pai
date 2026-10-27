@@ -21,7 +21,9 @@ function walk(dir: string): string[] {
   }
   return out;
 }
-const inModules = (existsSync("modules") ? walk("modules") : []).sort();
+// Only the configured ones: a module left on disk but switched off in `pai.config.ts` is not part of this pai.
+const configured = Object.keys((await import("../pai.config.ts")).default.connectors);
+const inModules = configured.flatMap((name) => (existsSync(join("modules", name)) ? walk(join("modules", name)) : [])).sort();
 const files = [...here, ...inModules];
 if (files.length === 0) throw new Error("no test files found");
 

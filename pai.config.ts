@@ -10,7 +10,7 @@ export default {
   connectors: {
     telegram: "github:elumixor/desk-telegram",
     email: "github:elumixor/desk-email",
-    linkedin: "github:elumixor/desk-linkedin",
+    // linkedin: "github:elumixor/desk-linkedin", (off until its proxy works again)
     whatsapp: "github:elumixor/desk-whatsapp",
     browser: "github:elumixor/desk-browser",
   },
