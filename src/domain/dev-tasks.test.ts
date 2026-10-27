@@ -10,10 +10,10 @@ process.env.PAI_CONFIG = join(scratch, "config.json");
 const { brief, findValue, sessionProperty, statusOption, PROJECT_PREFIX, SESSION_PREFIX } = await import("./dev-tasks.ts");
 
 const schema = [
-  { id: "status", name: "Status", type: "select", options: [{ id: "o1", name: "Todo" }, { id: "o2", name: "In Progress" }, { id: "o3", name: "in review" }] },
-  { id: "proj", name: "Dev project", type: "extension", extension: "ext-dev", extType: "project" },
-  { id: "other", name: "Other session", type: "extension", extension: "ext-other", extType: "session" },
-  { id: "sess", name: "Dev session", type: "extension", extension: "ext-dev", extType: "session" },
+  { name: "Status", type: "select", options: [{ id: "o1", name: "Todo" }, { id: "o2", name: "In Progress" }, { id: "o3", name: "in review" }] },
+  { name: "Dev project", type: "extension", extension: "ext-dev", extType: "project" },
+  { name: "Other session", type: "extension", extension: "ext-other", extType: "session" },
+  { name: "Dev session", type: "extension", extension: "ext-dev", extType: "session" },
 ];
 
 describe("dev tasks", () => {
@@ -26,13 +26,13 @@ describe("dev tasks", () => {
   });
 
   it("writes the session next to the project's extension", () => {
-    expect(sessionProperty(schema, "proj")?.id).toBe("sess");
-    expect(sessionProperty(schema.slice(0, 2), "proj")).toBeUndefined();
+    expect(sessionProperty(schema, "Dev project")?.name).toBe("Dev session");
+    expect(sessionProperty(schema.slice(0, 2), "Dev project")).toBeUndefined();
   });
 
   it("matches status options by name, ignoring case, and only when they exist", () => {
-    expect(statusOption(schema, "doing")).toEqual({ property: "status", option: "o2" });
-    expect(statusOption(schema, "review")).toEqual({ property: "status", option: "o3" });
+    expect(statusOption(schema, "doing")).toEqual({ property: "Status", option: "o2" });
+    expect(statusOption(schema, "review")).toEqual({ property: "Status", option: "o3" });
     expect(statusOption([schema[0]!].map((p) => ({ ...p, options: p.options?.slice(0, 1) })), "doing")).toBeUndefined();
   });
 

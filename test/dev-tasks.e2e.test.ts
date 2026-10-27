@@ -17,17 +17,18 @@ process.env.PAI_CLAUDE_PROJECTS = join(scratch, "claude-projects");
 process.env.PAI_KEEP_WEBHOOK_SECRETS = SECRET;
 process.env.PAI_KEEP_KEYS = `${WS}:keep_test`;
 
-const schema = [
-  { id: "status", name: "Status", type: "select", options: [{ id: "todo", name: "Todo" }, { id: "doing", name: "In progress" }, { id: "review", name: "In review" }] },
-  { id: "project", name: "Dev project", type: "extension", extension: "dev", extType: "project", inherit: true },
-  { id: "session", name: "Dev session", type: "extension", extension: "dev", extType: "session" },
+// A task's properties come from its trait: values are keyed by property name.
+const taskSchema = [
+  { name: "Status", type: "select", options: [{ id: "todo", name: "Todo" }, { id: "doing", name: "In progress" }, { id: "review", name: "In review" }] },
+  { name: "Dev project", type: "extension", extension: "dev", extType: "project", inherit: true },
+  { name: "Dev session", type: "extension", extension: "dev", extType: "session" },
 ];
-const pages: Record<string, { id: string; title: string; kind?: string; plain?: boolean; ownSchema?: unknown[]; inheritedFrom?: Record<string, string>; body: string; properties: Record<string, unknown>; effective: Record<string, unknown> }> = {
-  task: { id: "task", title: "Fix login", body: "It loops after sign-in.", properties: {}, effective: { project: { urn: "dev:project/scratch", label: "scratch", fields: { worktree: true }, inheritedFrom: "proj" } } },
-  tasks: { id: "tasks", title: "Tasks", kind: "database", body: "", properties: {}, effective: { project: { urn: "dev:project/scratch" } } },
-  projpage: { id: "projpage", title: "Scratch", plain: true, body: "", ownSchema: [{ id: "proj", name: "Dev project", type: "extension", extension: "dev", extType: "project", inherit: true }], properties: { proj: { urn: "dev:project/scratch" } }, effective: { proj: { urn: "dev:project/scratch" } } },
-  sub: { id: "sub", title: "Write docs", plain: true, body: "The README.", properties: {}, inheritedFrom: { proj: "projpage" }, effective: { proj: { urn: "dev:project/scratch", label: "scratch" } } },
-  plain: { id: "plain", title: "Buy milk", body: "", properties: {}, effective: {} },
+const pages: Record<string, { id: string; title: string; schema: unknown[]; views?: unknown[]; inheritedFrom?: Record<string, string>; body: string; properties: Record<string, unknown>; effective: Record<string, unknown> }> = {
+  task: { id: "task", title: "Fix login", body: "It loops after sign-in.", schema: taskSchema, properties: {}, effective: { "Dev project": { urn: "dev:project/scratch", label: "scratch", fields: { worktree: true }, inheritedFrom: "proj" } } },
+  tasks: { id: "tasks", title: "Tasks", body: "", schema: [], views: [{ embedded: false }], properties: {}, effective: { "Dev project": { urn: "dev:project/scratch" } } },
+  projpage: { id: "projpage", title: "Scratch", body: "", schema: [{ name: "Dev project", type: "extension", extension: "dev", extType: "project", inherit: true }], properties: { "Dev project": { urn: "dev:project/scratch" } }, effective: { "Dev project": { urn: "dev:project/scratch" } } },
+  sub: { id: "sub", title: "Write docs", body: "The README.", schema: [], properties: {}, inheritedFrom: { "Dev project": "projpage" }, effective: { "Dev project": { urn: "dev:project/scratch", label: "scratch" } } },
+  plain: { id: "plain", title: "Buy milk", body: "", schema: [], properties: {}, effective: {} },
 };
 const keepCalls: { tool: string; args: Record<string, unknown>; auth: string | null }[] = [];
 const starts: Record<string, unknown>[] = [];
@@ -44,11 +45,11 @@ const keep = Bun.serve({
     }
     const page = pages[String(params.arguments.id)]!;
     if (params.name === "set_properties") {
-      if (params.arguments.define) page.ownSchema = [...(page.ownSchema ?? []), ...(params.arguments.define as unknown[])];
+      if (params.arguments.define) page.schema = [...page.schema, ...(params.arguments.define as unknown[])];
       Object.assign(page.properties, params.arguments.properties);
       Object.assign(page.effective, params.arguments.properties);
     }
-    const value = params.name === "get_page" ? { ...page, urn: `keep:page/${page.id}`, path: ["Atma", "Scratch"], schema: page.plain ? null : schema } : { id: page.id };
+    const value = params.name === "get_page" ? { ...page, urn: `keep:page/${page.id}`, path: ["Atma", "Scratch"] } : { id: page.id };
     return Response.json({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text: JSON.stringify(value) }], structuredContent: value } });
   },
 });
@@ -111,7 +112,7 @@ describe("keep task → dev session", () => {
     expect(String(starts[0]!.brief)).toContain("Atma › Scratch › Fix login");
     const set = keepCalls.find((c) => c.tool === "set_properties");
     expect(set?.auth).toBe("Bearer keep_test");
-    expect(set?.args.properties).toMatchObject({ session: [{ urn: "dev:session/s-123456" }], status: "doing" });
+    expect(set?.args.properties).toMatchObject({ "Dev session": [{ urn: "dev:session/s-123456" }], Status: "doing" });
     expect(messages.list({ kinds: ["event"] }).some((m) => m.body === "Started a dev session for Fix login in scratch")).toBe(true);
   });
 
@@ -140,15 +141,15 @@ describe("keep task → dev session", () => {
     expect(starts).toHaveLength(2);
     expect(starts[1]).toMatchObject({ keep_urn: "keep:page/sub", title: "Write docs" });
     const set = keepCalls.findLast((c) => c.tool === "set_properties");
-    expect(set?.args.define).toEqual([{ id: "dev-session", name: "Dev session", type: "extension", extType: "session", multiple: true, extension: "dev" }]);
-    expect(set?.args.properties).toEqual({ "dev-session": [{ urn: "dev:session/s-123456", label: "scratch · s-1234" }] });
-    expect(pages.projpage!.properties["dev-session"]).toBeUndefined();
+    expect(set?.args.define).toEqual([{ name: "Dev session", type: "extension", extType: "session", multiple: true, extension: "dev" }]);
+    expect(set?.args.properties).toEqual({ "Dev session": [{ urn: "dev:session/s-123456", label: "scratch · s-1234" }] });
+    expect(pages.projpage!.properties["Dev session"]).toBeUndefined();
   });
 
   it("moves the task to review when the session stops", async () => {
     busy = false;
     await devTasks.sync();
-    expect(pages.task!.properties.status).toBe("review");
+    expect(pages.task!.properties.Status).toBe("review");
     const writes = keepCalls.filter((c) => c.tool === "set_properties").length;
     await devTasks.sync();
     expect(keepCalls.filter((c) => c.tool === "set_properties")).toHaveLength(writes);

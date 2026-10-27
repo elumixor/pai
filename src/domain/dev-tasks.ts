@@ -25,8 +25,8 @@ const FOLLOW_MS = 14 * 24 * 60 * 60 * 1000;
 export const PROJECT_PREFIX = "dev:project/";
 export const SESSION_PREFIX = "dev:session/";
 
+/** A Keep property: a name and a type; a page's values are keyed by the name. */
 export interface PropertyDef {
-  readonly id: string;
   readonly name: string;
   readonly type: string;
   readonly extension?: string;
@@ -39,16 +39,17 @@ export interface KeepPage {
   readonly id: string;
   readonly urn?: string;
   readonly title: string;
-  readonly kind?: string;
   readonly path?: readonly string[];
   readonly body?: string;
   readonly properties?: Record<string, unknown>;
   readonly effective?: Record<string, unknown>;
+  /** The properties the page defines (its traits' and its own). */
   readonly schema?: readonly PropertyDef[] | null;
-  /** Properties the page defines for itself (any page may). */
-  readonly ownSchema?: readonly PropertyDef[] | null;
+  /** Names of the traits the page satisfies. */
+  readonly traits?: readonly string[];
   readonly inheritedSchema?: readonly PropertyDef[] | null;
   readonly inheritedFrom?: Record<string, string>;
+  readonly views?: readonly { embedded?: boolean }[];
 }
 
 interface Found {
@@ -85,20 +86,20 @@ export function findValue(values: Record<string, unknown> | undefined, prefix: s
 /** Where the session goes: an extension property of type `session`, the project property's extension preferred. */
 export function sessionProperty(schema: readonly PropertyDef[] | null | undefined, projectKey?: string) {
   const sessions = (schema ?? []).filter((p) => p.type === "extension" && p.extType === "session");
-  const extension = schema?.find((p) => p.id === projectKey)?.extension;
+  const extension = schema?.find((p) => p.name === projectKey)?.extension;
   return sessions.find((p) => p.extension === extension) ?? sessions[0];
 }
 
 export type Status = "doing" | "review";
 const STATUS_NAMES: Record<Status, string> = { doing: "in progress", review: "in review" };
 
-/** The status select and the option for this state; undefined when the database has no such option. */
+/** The status select (by name) and the option for this state; undefined when the page has no such option. */
 export function statusOption(schema: readonly PropertyDef[] | null | undefined, status: Status) {
   const selects = (schema ?? []).filter((p) => p.type === "select");
   const ordered = [...selects.filter((p) => /status/i.test(p.name)), ...selects.filter((p) => !/status/i.test(p.name))];
   for (const property of ordered) {
     const option = property.options?.find((o) => o.name.trim().toLowerCase() === STATUS_NAMES[status]);
-    if (option) return { property: property.id, option: option.id };
+    if (option) return { property: property.name, option: option.id };
   }
   return undefined;
 }
@@ -138,14 +139,14 @@ async function readPage(workspace: string, urn: string) {
   return callKeep<KeepPage>(workspace, "get_page", { id: pageId(urn) });
 }
 
-/** The properties a page's values are checked against: its database's and its own. */
-export const definitions = (page: KeepPage): PropertyDef[] => [...(page.schema ?? []), ...(page.ownSchema ?? [])];
+/** The properties a page's values are checked against. */
+export const definitions = (page: KeepPage): PropertyDef[] => [...(page.schema ?? [])];
 
-export const SESSION_PROPERTY = { id: "dev-session", name: "Dev session", type: "extension", extType: "session", multiple: true } as const;
+export const SESSION_PROPERTY = { name: "Dev session", type: "extension", extType: "session", multiple: true } as const;
 
 /** The dev extension's id: the project property's, else the one in the workspace serving a `session` type. */
 async function extensionId(workspace: string, page: KeepPage, projectKey: string) {
-  const known = [...definitions(page), ...(page.inheritedSchema ?? [])].find((p) => p.id === projectKey)?.extension;
+  const known = [...definitions(page), ...(page.inheritedSchema ?? [])].find((p) => p.name === projectKey)?.extension;
   if (known) return known;
   const extensions = await callKeep<{ id: string; manifest?: { propertyTypes?: { id: string }[] } }[]>(workspace, "list_extensions", {
     workspace_id: pageId(workspace),
@@ -159,8 +160,8 @@ export async function consider(event: { urn: string; workspace: string; effectiv
   if (event.effective && !findValue(event.effective, PROJECT_PREFIX)) return "no project";
   if (db.query("SELECT 1 FROM dev_tasks WHERE keep_urn = ? AND session_id IS NOT NULL").get(event.urn)) return "has session";
   const page = await readPage(event.workspace, event.urn);
-  // A database's schema is its rows', so it would look like a task holding a session property.
-  if (page.kind === "database") return "database";
+  // A page showing its pages in a view tab is a list of tasks, not one.
+  if (page.views?.some((v) => !v.embedded)) return "list";
   const values = effectiveOf(page);
   const project = findValue(values, PROJECT_PREFIX);
   if (!project) return "no project";
@@ -191,7 +192,7 @@ export async function consider(event: { urn: string; workspace: string; effectiv
   const doing = statusOption(defs, "doing");
   await callKeep(event.workspace, "set_properties", {
     id: page.id,
-    properties: { [target.id]: value, ...(doing ? { [doing.property]: doing.option } : {}) },
+    properties: { [target.name]: value, ...(doing ? { [doing.property]: doing.option } : {}) },
     ...(define ? { define } : {}),
   });
   if (doing) db.prepare("UPDATE dev_tasks SET status = 'doing' WHERE keep_urn = ?").run(event.urn);
