@@ -1,7 +1,7 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.2.4/schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
-  "files": { "includes": ["**/*.ts", "**/*.tsx", "!editor", "!infra", "!apps", "!menubar", "!modules", "!workspace", "!data"] },
+  "files": { "includes": ["**/*.ts", "**/*.tsx", "!apps", "!modules", "!workspace", "!data"] },
   "formatter": { "enabled": false },
   "assist": { "enabled": false },
   "linter": {

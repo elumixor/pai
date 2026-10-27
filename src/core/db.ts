@@ -12,14 +12,6 @@ db.exec("PRAGMA journal_mode = WAL;");
 db.exec("PRAGMA busy_timeout = 5000;");
 
 db.exec(`
-CREATE TABLE IF NOT EXISTS projects (
-  slug        TEXT PRIMARY KEY,
-  path        TEXT NOT NULL,
-  summary     TEXT NOT NULL DEFAULT '',
-  aliases     TEXT NOT NULL DEFAULT '[]',
-  updated_at  INTEGER NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS sessions (
   session_id    TEXT PRIMARY KEY,
   short_id      TEXT NOT NULL,
@@ -74,7 +66,7 @@ CREATE TABLE IF NOT EXISTS kv (
   value TEXT NOT NULL
 );
 
--- How far each transcript has been read by the mirror (domain/mirror.ts), so a restart does not repeat it.
+-- How far each transcript has been read by pai-dev's mirror, so a restart does not repeat it.
 CREATE TABLE IF NOT EXISTS transcript_offsets (
   path    TEXT PRIMARY KEY,
   offset  INTEGER NOT NULL
@@ -227,8 +219,6 @@ CREATE VIRTUAL TABLE IF NOT EXISTS archive USING fts5(source, ref UNINDEXED, tit
 `);
 
 // Columns added after the first release; ALTER is the migration.
-if (!(db.query("PRAGMA table_info(projects)").all() as { name: string }[]).some((c) => c.name === "kind"))
-  db.exec("ALTER TABLE projects ADD COLUMN kind TEXT NOT NULL DEFAULT 'repo'");
 const sessionColumns = (db.query("PRAGMA table_info(sessions)").all() as { name: string }[]).map((c) => c.name);
 if (!sessionColumns.includes("parent_id")) db.exec("ALTER TABLE sessions ADD COLUMN parent_id TEXT");
 if (!sessionColumns.includes("model")) db.exec("ALTER TABLE sessions ADD COLUMN model TEXT");

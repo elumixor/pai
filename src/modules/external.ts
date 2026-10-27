@@ -5,8 +5,8 @@
  */
 import { $ } from "bun";
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, symlinkSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { config } from "../core/config.ts";
+import { dirname, join, resolve } from "node:path";
+import { config, setting } from "../core/config.ts";
 import { bus, type PaiEvent } from "../core/bus.ts";
 import { cursors, db, kv } from "../core/db.ts";
 import { logger } from "../core/log.ts";
@@ -15,10 +15,15 @@ import { onGoogleCallback } from "../api/google.ts";
 import { event } from "../domain/messages.ts";
 import { put } from "../domain/recall.ts";
 import * as tasks from "../domain/tasks.ts";
-import { sdk, type CliContext, type ConnectorStatus, type ModuleContext, type ModuleExport, type ModuleHealth, type PaiConfig, type PaiModule } from "./sdk.ts";
+import * as watch from "../domain/watch.ts";
+import * as projects from "../domain/projects.ts";
+import * as held from "../domain/held.ts";
+import { sdk, type CliIo, type ConnectorStatus, type ModuleContext, type ModuleExport, type ModuleHealth, type PaiConfig, type PaiModule } from "./sdk.ts";
 
 const log = logger("modules");
-export const modulesDir = join(config.repo, "modules");
+/** `PAI_MODULES_DIR` and `PAI_MODULES_CONFIG` point a scratch daemon (a module's e2e) at modules of its own. */
+export const modulesDir = resolve(process.env.PAI_MODULES_DIR ?? join(config.repo, "modules"));
+const dataDirOf = (name: string) => join(dirname(config.dbPath), "modules", name);
 
 export interface Loaded {
   readonly name: string;
@@ -34,16 +39,20 @@ const loaded = new Map<string, Loaded>();
 /** The modules as `pai.config.ts` lists them: the order the clients show, not the order they start in. */
 let listing: readonly string[] = [];
 
-/** `pai.config.ts`, with `pai.config.local.ts` (not committed) overriding entries: a path to a checkout while working on a module. */
+/**
+ * `pai.config.ts`, with `pai.config.local.ts` (not committed) overriding entries: a path to a checkout while working
+ * on a module. `PAI_MODULES_CONFIG` names one file that replaces both.
+ */
 export async function readConfig(): Promise<PaiConfig> {
-  const read = async (file: string): Promise<Partial<PaiConfig>> => {
-    const path = join(config.repo, file);
+  const read = async (path: string): Promise<Partial<PaiConfig>> => {
     if (!existsSync(path)) return {};
     const mod = (await import(path)) as { default?: PaiConfig };
     return mod.default ?? {};
   };
-  const base = await read("pai.config.ts");
-  const local = await read("pai.config.local.ts");
+  const only = process.env.PAI_MODULES_CONFIG;
+  if (only) return { modules: { ...((await read(resolve(only))).modules ?? {}) } };
+  const base = await read(join(config.repo, "pai.config.ts"));
+  const local = await read(join(config.repo, "pai.config.local.ts"));
   return { modules: { ...(base.modules ?? {}), ...(local.modules ?? {}) } };
 }
 
@@ -116,7 +125,7 @@ export function remove(name: string) {
 }
 
 function contextFor(name: string, dir: string): ModuleContext {
-  const dataDir = join(config.repo, "data", "modules", name);
+  const dataDir = dataDirOf(name);
   mkdirSync(dataDir, { recursive: true });
   const prefix = `module:${name}:`;
   return {
@@ -134,8 +143,9 @@ function contextFor(name: string, dir: string): ModuleContext {
       google: { clientId: config.google.clientId, clientSecret: config.google.clientSecret },
     },
     env: process.env,
+    setting,
     sessions: undefined as unknown as ModuleContext["sessions"],
-    catalog: undefined as unknown as ModuleContext["catalog"],
+    projects: { all: projects.all, get: projects.get },
     threads: undefined as unknown as ModuleContext["threads"],
     settings: {
       get: (key) => kv.get(prefix + key),
@@ -155,6 +165,8 @@ function contextFor(name: string, dir: string): ModuleContext {
     tasks: { list: tasks.list, add: tasks.add, update: tasks.update },
     recall: { put },
     cursors,
+    watch: { keep: watch.keep },
+    update: { status: async () => (await import("../domain/update.ts")).status() },
     auth: { sign, origin, onGoogleCallback },
   };
 }
@@ -176,7 +188,7 @@ function ordered(modules: Readonly<Record<string, string>>, requiresOf: (name: s
 export async function load() {
   const { modules } = await readConfig();
   listing = Object.keys(modules);
-  const [sessions, catalog, transcript] = await Promise.all([import("../domain/sessions.ts"), import("../domain/catalog.ts"), import("../domain/transcript.ts")]);
+  const [sessions, transcript] = await Promise.all([import("../domain/sessions.ts"), import("../domain/transcript.ts")]);
   // Import everything first (to know what requires what), then register in dependency order.
   const imported = new Map<string, PaiModule>();
   for (const [name, source] of Object.entries(modules)) {
@@ -197,9 +209,12 @@ export async function load() {
       continue;
     }
     const dir = dirOf(name);
-    const ctx = { ...contextFor(name, dir), sessions, catalog, threads: transcript.allThreads } as ModuleContext;
+    const ctx = { ...contextFor(name, dir), sessions, threads: transcript.allThreads } as ModuleContext;
     loaded.set(name, { name, source: modules[name]!, dir, module, ctx });
     linkSkills(module, dir);
+    if (!(module.enabled?.(ctx) ?? true)) continue;
+    if (module.projects) projects.provide(name, module.projects);
+    if (module.held) held.provide(name, module.held);
   }
   return [...loaded.values()];
 }
@@ -311,6 +326,7 @@ export async function describe() {
       prompt: l.module ? promptsOf(l.module)[0] : undefined,
       cli: Boolean(l.module?.cli),
       commands: l.module?.commands ?? [],
+      verbs: l.module?.verbs ?? [],
       requires: l.module?.requires ?? [],
       routes: Boolean(l.module?.routes),
       ui: l.module?.ui ? `/m/${l.name}/ui/` : undefined,
@@ -390,31 +406,52 @@ export async function mounted(req: Request, url: URL): Promise<Response | undefi
   return undefined;
 }
 
-/** Whether `pai <name> <sub>` is one the module wants run on the laptop. */
-export async function runsHere(name: string, sub: string | undefined) {
-  const { modules } = await readConfig();
-  const source = modules[name];
-  if (!source) return false;
+/** A configured module imported here, for the command line (installed first when missing); undefined when not configured. */
+async function localModule(name: string): Promise<PaiModule | undefined> {
+  const source = (await readConfig()).modules[name];
+  if (!source) return undefined;
   if (!isInstalled(name)) await install(name, source);
-  const module = await importModule(dirOf(name)).catch(() => undefined);
-  // `""` in `cliHere` is the bare `pai <name>`.
+  return importModule(dirOf(name));
+}
+
+/** Every configured module this machine can import, for what the command line asks of all of them; one that fails is said and skipped. */
+async function localModules(): Promise<{ name: string; module: PaiModule }[]> {
+  const out: { name: string; module: PaiModule }[] = [];
+  for (const name of Object.keys((await readConfig()).modules)) {
+    try {
+      const module = await localModule(name);
+      if (module) out.push({ name, module });
+    } catch (err) {
+      log.warn(`${name}: ${(err as Error).message}`);
+    }
+  }
+  return out;
+}
+
+/** The module that answers `pai <verb> …`, if one does. */
+export async function verbOwner(verb: string) {
+  return (await localModules()).find((m) => m.module.verbs?.some((v) => v.name === verb))?.name;
+}
+
+/** What modules add to `claude` started by `pai claude`. */
+export const claudeArgs = async () => (await localModules()).flatMap((m) => m.module.claudeArgs?.() ?? []);
+
+/** Whether `pai <name> <sub>` is one the module wants run on the laptop; `""` in `cliHere` is the bare `pai <name>`. */
+export async function runsHere(name: string, sub: string | undefined) {
+  const module = await localModule(name);
   return Boolean(module?.cliHere?.includes(sub ?? ""));
 }
 
-/** `pai <name> …`: the module's own command line, against the daemon's API. */
-export async function runCli(name: string, args: readonly string[], api: CliContext["api"], post: CliContext["post"], out: CliContext["out"], json: boolean): Promise<number | undefined> {
-  const { modules } = await readConfig();
-  const source = modules[name];
-  if (!source) return undefined;
-  if (!isInstalled(name)) await install(name, source);
-  const dir = dirOf(name);
-  const module = await importModule(dir);
+/** `pai <name> …`: the module's own command line, against the daemon's API. Undefined when no such module is configured. */
+export async function runCli(name: string, args: readonly string[], io: CliIo): Promise<number | undefined> {
+  const module = await localModule(name);
+  if (!module) return undefined;
   if (!module.cli) throw new Error(`${name} has no command line`);
-  const dataDir = join(config.repo, "data", "modules", name);
+  const dataDir = dataDirOf(name);
   mkdirSync(dataDir, { recursive: true });
   const { spin } = await import("../clients/spinner.ts");
-  const run = async (other: string, otherArgs: readonly string[]) => (await runCli(other, otherArgs, api, post, out, json)) ?? 1;
-  return (await module.cli({ name, dir, dataDir, args, json, api, post, out, spin, run })) ?? 0;
+  const run = async (other: string, otherArgs: readonly string[]) => (await runCli(other, otherArgs, io)) ?? 1;
+  return (await module.cli({ ...io, name, dir: dirOf(name), dataDir, args, spin, run })) ?? 0;
 }
 
 export type { PaiEvent };

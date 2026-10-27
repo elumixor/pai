@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { config } from "../core/config.ts";
 import { allPrompts as externalPrompts } from "../modules/external.ts";
 import { modules } from "../modules/index.ts";
-import { all as allProjects } from "./catalog.ts";
+import { all as allProjects } from "./projects.ts";
 import type { SessionKind } from "./session.ts";
 import { unavailable, type Unavailable } from "./capabilities.ts";
 import { seen as seenInventories, type Inventory } from "./inventory.ts";

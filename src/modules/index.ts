@@ -1,6 +1,4 @@
 import { config } from "../core/config.ts";
-import { editorStatus } from "../domain/editor.ts";
-import { publicStatus } from "../domain/publish.ts";
 import * as settings from "../domain/settings.ts";
 import type { Module } from "./types.ts";
 
@@ -34,27 +32,6 @@ export const modules: readonly Module[] = [
     enabled: () => true,
     status: () => ({}),
     tools: { server: "pai", names: ["start_thread", "send_to_thread", "list_threads", "thread_output", "stop_thread", "progress", "list_projects", "describe_project"], kinds: ["chat"] },
-  },
-  {
-    name: "editor",
-    title: "Browser editor",
-    description: "code-server with the pai extension, on the API's address, for a machine with nothing installed.",
-    kind: "service",
-    enabled: () => config.editor.enabled,
-    status: () => editorStatus(),
-    settings: [{ key: "PAI_NO_EDITOR", label: "Turned off", type: "toggle" }],
-  },
-  {
-    name: "public",
-    title: "Public address",
-    description: "Caddy with https on 80/443, run by the daemon, behind Google sign-in or the token.",
-    kind: "service",
-    enabled: () => config.public,
-    status: () => publicStatus() as Record<string, unknown>,
-    settings: [
-      { key: "PAI_PUBLIC", label: "Enabled", type: "toggle" },
-      { key: "PAI_DOMAIN", label: "Domain", hint: "empty means <ip>.sslip.io" },
-    ],
   },
 ];
 

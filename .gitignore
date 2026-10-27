@@ -15,10 +15,6 @@ workspace/*
 workspace/.claude/*
 !workspace/.claude/skills/
 scripts/pai
-menubar/pai-menubar
-
-editor/vscode/out
-editor/vscode/*.vsix
 apps/web/node_modules
 apps/web/.svelte-kit
 apps/web/build

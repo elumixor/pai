@@ -4,7 +4,7 @@ import { config } from "../core/config.ts";
 import * as agents from "./agents.ts";
 import * as asks from "./asks.ts";
 import * as automations from "./automations.ts";
-import { all as allProjects } from "./catalog.ts";
+import { all as allProjects } from "./projects.ts";
 import * as tasks from "./tasks.ts";
 
 /**

@@ -1,7 +1,7 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import type { Session, SessionKind } from "./session.ts";
-import { all as allProjects, get as getProject, refresh } from "./catalog.ts";
+import { all as allProjects, get as getProject, refresh } from "./projects.ts";
 import { bus, recentEvents } from "../core/bus.ts";
 import * as sessions from "./sessions.ts";
 import { cost as hostingCost } from "./hetzner.ts";

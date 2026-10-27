@@ -50,6 +50,8 @@ async function api(path: string, init?: RequestInit, retried = false): Promise<a
   }
 }
 
+const raw = (path: string, init?: RequestInit) => fetch(base + path, { ...init, headers: { ...auth, ...(init?.headers as Record<string, string>) } });
+
 const post = (path: string, data: unknown) =>
   api(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) });
 const patch = (path: string, data: unknown) =>
@@ -99,7 +101,7 @@ type ModuleHelp = import("./help.ts").ModuleHelp;
 async function moduleHelp(): Promise<ModuleHelp[]> {
   const data = await api("/modules").catch(() => undefined);
   const ext = Array.isArray(data) ? data.filter((m: any) => m.external) : [];
-  return ext.map((m: any) => ({ name: m.name, description: m.description ?? "", commands: (m.commands ?? []).map((x: any) => ({ name: x.name.split(" ")[0] === x.name ? x.name : x.name.split(" ")[0], args: x.name.includes(" ") ? x.name.slice(x.name.indexOf(" ") + 1) : x.args, description: x.description })) }));
+  return ext.map((m: any) => ({ name: m.name, description: m.description ?? "", verbs: m.verbs ?? [], commands: (m.commands ?? []).map((x: any) => ({ name: x.name.split(" ")[0] === x.name ? x.name : x.name.split(" ")[0], args: x.name.includes(" ") ? x.name.slice(x.name.indexOf(" ") + 1) : x.args, description: x.description })) }));
 }
 
 interface ThreadRow {
@@ -147,9 +149,9 @@ async function claude(args: string[], cwd: string) {
     const install = Bun.spawn(["sh", "-c", "curl -fsSL https://claude.ai/install.sh | bash"], { stdio: ["ignore", "inherit", "inherit"] });
     if ((await install.exited) !== 0) throw new Error("claude did not install; see https://docs.claude.com/en/docs/claude-code/setup");
   }
-  // The pai channel: what is typed for this conversation in Paigram arrives here.
-  const { channelArgs } = await import("./channel.ts");
-  return Bun.spawn([bin, ...channelArgs(), ...args], { cwd, stdio: ["inherit", "inherit", "inherit"] }).exited;
+  // What modules add (pai-dev's channel: what is typed for this conversation in Paigram arrives here).
+  const extra = await (await import("../modules/external.ts")).claudeArgs();
+  return Bun.spawn([bin, ...extra, ...args], { cwd, stdio: ["inherit", "inherit", "inherit"] }).exited;
 }
 
 /** The daemon hands the thread over (its transcript in place, its process stopped), then claude continues it here. */
@@ -163,13 +165,6 @@ async function resumeThread(id: string, extra: string[]) {
 
 async function userCommand() {
   switch (cmd) {
-    // `pai ssh` is a shell on the box; `pai ssh <command>` runs that there and comes back.
-    case "ssh":
-    case "connect": {
-      if (!box) throw new Error("no box configured: set PAI_REMOTE=user@host in .env");
-      if (!remoteBox) throw new Error(`${box.target} is this machine`);
-      process.exit(await r.ssh(remoteBox, positional.length ? positional.join(" ") : undefined));
-    }
     // A conversation with the assistant, in this terminal: a new one each time, in the
     // workspace (its persona, its memory); `--resume` is claude's own picker of earlier ones.
     // From a laptop that is the same command on the box over ssh.
@@ -181,122 +176,9 @@ async function userCommand() {
       const id = at >= 0 && args[at + 1] && !args[at + 1]!.startsWith("-") ? args[at + 1]! : undefined;
       process.exit(id ? await resumeThread(id, args.filter((_, i) => i !== at && i !== at + 1)) : await claude(args, config.workspace));
     }
-    // The MCP server `claude` starts in a terminal (see channel.ts); `install` makes `claude` in this shell load it.
-    case "channel": {
-      const channel = await import("./channel.ts");
-      if (positional[0] === "install") {
-        const { rc, sudo } = channel.install();
-        if (sudo) return console.log(`claude in ${rc} loads the pai channel behind a warning on every start; to skip it, allowlist the channel and install again:\n  ${sudo} && pai channel install`);
-        return console.log(`claude in ${rc} now loads the pai channel; open a new shell`);
-      }
-      return channel.run({ base, auth });
-    }
     case "status": {
       const data = await api("/health");
       out(data, () => statusLines(data, remoteBox ? "box" : "here").join("\n"));
-      break;
-    }
-    case "sync":
-    case "fs":
-    case "files": {
-      const f = await import("../host/files.ts");
-      if (!remoteBox) throw new Error("file sync runs on the laptop, against the box");
-      const sub = cmd === "sync" ? "watch" : (positional[0] ?? "status");
-      const made = await f.ensureSessions();
-      if (made.length) console.error(`started syncing ${made.join(", ")}`);
-      const winner = args.includes("--local") ? "local" : args.includes("--remote") ? "remote" : undefined;
-      const show = async () => out(await f.status(), () => filesLines(current!));
-      let current: Awaited<ReturnType<typeof f.status>> | undefined;
-      const refresh = async () => (current = await f.status());
-      switch (sub) {
-        case "status":
-          await refresh();
-          await show();
-          break;
-        case "watch": {
-          if (positional[1] === "on") return void out(await f.resume(), () => "watching");
-          if (positional[1] === "off") return void out(await f.pause(), () => "paused; `pai files watch on` to resume");
-          // A live view that leaves once everything is in sync (--forever stays); without a terminal, one reading.
-          if (!process.stdout.isTTY || jsonOut) {
-            await refresh();
-            await show();
-            break;
-          }
-          await (await import("./files-ui.tsx")).watch(args.includes("--forever"));
-          break;
-        }
-        case "on":
-          out(await f.resume(), () => "watching");
-          break;
-        case "off":
-          out(await f.pause(), () => "paused; `pai files on` to resume");
-          break;
-        case "sync":
-        case "push":
-        case "pull": {
-          const take = sub === "push" ? "local" : sub === "pull" ? "remote" : winner;
-          await refresh();
-          const conflicts = current!.flatMap((x) => x.conflicts.map((c) => `${x.name}: ${c.path} (here ${c.local}, box ${c.remote})`));
-          if (conflicts.length && !take) {
-            console.error(`${conflicts.length} conflict${conflicts.length > 1 ? "s" : ""} — nothing changed. --local keeps this machine's version, --remote the box's:\n  ${conflicts.join("\n  ")}`);
-            process.exit(1);
-          }
-          const settled = take ? await f.resolve(take) : [];
-          await f.flush();
-          // A first sync with its conflicts settled becomes an ordinary one now rather than on the next command.
-          const promoted = await f.ensureSessions();
-          if (promoted.length) console.error(`first sync done: ${promoted.join(", ")} now settle on their own`);
-          await refresh();
-          out({ settled, folders: current }, () => [...(settled.length ? [`settled ${settled.length} in favour of ${take === "local" ? "this machine" : "the box"}:`, ...settled.map((x) => `  ${x}`), ""] : []), filesLines(current!)].join("\n"));
-          break;
-        }
-        case "diff": {
-          // `diff` prints every conflict as a unified diff; `diff tree` walks them in a terminal; `diff <path>` is one.
-          const ui = await import("./files-ui.tsx");
-          if (positional[1] === "tree") {
-            if (!process.stdout.isTTY) throw new Error("`diff tree` needs a terminal; `pai files diff` prints them");
-            if (!(await ui.tree())) console.log("no conflicts");
-            break;
-          }
-          await refresh();
-          const want = positional[1];
-          const pairs = current!.flatMap((x) => x.conflicts.filter((c) => !want || c.path === want || c.path.endsWith(`/${want}`)).map((c) => ({ folder: x.name, ...c })));
-          if (jsonOut) {
-            const withText = [];
-            for (const p of pairs) withText.push({ ...p, diff: await f.diff(p.folder, p.path) });
-            console.log(JSON.stringify(withText, null, 2));
-            break;
-          }
-          if (!pairs.length) {
-            console.log(want ? `no conflict at ${want}` : "no conflicts");
-            break;
-          }
-          const colour = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
-          for (const p of pairs) {
-            console.log(`${help.c.head(p.path)}  ${help.c.dim(`here ${p.local} · box ${p.remote}`)}`);
-            console.log((await f.diff(p.folder, p.path, colour)).trimEnd() || help.c.dim("  (identical now)"));
-            console.log();
-          }
-          break;
-        }
-        case "reset":
-          await f.reset();
-          out({ reset: true }, () => "history forgotten; the next cycle re-reads both sides");
-          break;
-        default:
-          console.log(help.section("files", help.FILES));
-      }
-      break;
-    }
-    // The box pulls what its channel says is new and restarts; this checkout, when it is a
-    // laptop's, is pulled too and its menu bar app rebuilt.
-    case "update": {
-      const there = await post("/update", {}).catch(async (err: Error) => {
-        if (!err.message.includes("Unable to connect") || remoteBox) throw err;
-        return (await import("../host/update.ts")).update();
-      });
-      const here = remoteBox ? await (await import("../host/client.ts")).update() : undefined;
-      out({ box: there, client: here }, () => [`${remoteBox ? "box   " : "here  "}${updateLine(there)}`, ...(here ? [`client ${here.head}${here.updated ? " — updated" : " — up to date"}`] : [])].join("\n"));
       break;
     }
     // What runs the assistant costs: the Claude subscription's windows and the box.
@@ -305,14 +187,6 @@ async function userCommand() {
       const box = await api("/cost");
       const spend = await api(`/spend?days=${Number(positional[0]) || 30}`);
       out({ claude, box, spend }, () => [...usageLines(claude), "", ...costLines(box), "", ...spendLines(spend, flag("by") ?? "agent")].join("\n"));
-      break;
-    }
-    case "menubar": {
-      const m = await import("../host/menubar.ts");
-      const sub = positional[0] ?? "status";
-      if (sub === "install") out(await m.install(remoteBox ? await r.boxApi(remoteBox) : undefined), () => "menu bar app installed");
-      else if (sub === "uninstall") out(await m.uninstall(), () => "menu bar app removed");
-      else out(m.status(), () => (m.status().installed ? "installed" : "not installed (`pai menubar install`)"));
       break;
     }
     // Every conversation there is — running, waiting, held on disk — by project. In a terminal
@@ -404,7 +278,7 @@ async function userCommand() {
       }
       const shell = (process.env.SHELL ?? "").split("/").pop();
       if (shell !== "zsh") throw new Error(`completion is zsh only; this shell is ${shell || "unknown"} (\`pai completion zsh\` prints the script)`);
-      const { installCompletion } = await import("../host/client.ts");
+      const { installCompletion } = await import("./completion.ts");
       const result = await installCompletion(script);
       const messages = { current: "completion already installed", updated: "completion updated — this shell predates it: run `exec zsh` (or open a new tab)", installed: "completion installed — this shell predates it: run `exec zsh` (or open a new tab)" };
       out(result, (): string => messages[result.status]);
@@ -490,18 +364,26 @@ async function userCommand() {
       console.log(help.usage(await moduleHelp()));
       break;
     default: {
-      // A module's own command line: on the box it runs here; from a laptop it runs there,
-      // except the subcommands a module wants on the laptop (a browser, its files).
-      const external = await import("../modules/external.ts");
-      if (remoteBox && !(await external.runsHere(cmd!, positional[0]))) process.exit(await r.ssh(remoteBox, ["pai", cmd, ...args].map(r.quote).join(" ")));
-      const code = await external.runCli(cmd!, args, api, post, out, jsonOut);
-      if (code === undefined) {
+      // A word a module answers (`pai files`, pai-dev's), else a module's own command line (`pai <module> …`).
+      const owner = await (await import("../modules/external.ts")).verbOwner(cmd!);
+      if (!(await (owner ? runModule(owner, [cmd!, ...args], cmd) : runModule(cmd!, args, positional[0])))) {
         console.log(help.usage(await moduleHelp()));
         process.exit(1);
       }
-      process.exit(code);
     }
   }
+}
+
+/**
+ * A module's command line: on the box it runs here; from a laptop it runs there, except what the module wants on the
+ * laptop (`cliHere`: a browser, its files). False when no module of that name is configured.
+ */
+async function runModule(name: string, cliArgs: readonly string[], sub: string | undefined): Promise<boolean> {
+  const external = await import("../modules/external.ts");
+  if (remoteBox && !(await external.runsHere(name, sub))) process.exit(await r.ssh(remoteBox, ["pai", ...argv].map(r.quote).join(" ")));
+  const code = await external.runCli(name, cliArgs, { api, post, fetch: raw, out, json: jsonOut });
+  if (code === undefined) return false;
+  process.exit(code);
 }
 
 const STATE_MARK: Record<string, string> = { idle: "○", queued: "◔", working: "●", waiting: "?", closed: "×" };
@@ -601,61 +483,9 @@ function statusLines(data: any, label: string) {
   if (data.error) return [`${label.padEnd(9)} ${data.error}`];
   return [
     `${label.padEnd(9)} ${data.version} · ${data.host.hostname} (${data.host.platform}) · api ${data.host.api}`,
-    `public    ${data.public?.url ?? "(off)"}${data.public?.state && data.public.state !== "up" ? ` — ${data.public.state}${data.public.reason ? `: ${data.public.reason}` : ""}` : ""}`,
-    `editor    ${data.editor?.enabled ? `${data.editor.running ? "running" : "starting"} at ${data.editor.url}` : "off"}`,
     `projects  ${data.counts.projects}`,
   ];
 }
-
-const STATE: Record<string, string> = {
-  watching: "in sync",
-  scanning: "scanning",
-  "staging-alpha": "sending",
-  "staging-beta": "receiving",
-  transitioning: "applying",
-  connecting: "connecting",
-  "connecting-alpha": "connecting",
-  "connecting-beta": "connecting to the box",
-  "waiting-for-rescan": "waiting",
-  "halted-on-root-emptied": "halted: a root was emptied (pai files reset)",
-  "halted-on-root-deletion": "halted: a root was deleted",
-  "halted-on-root-type-change": "halted: a root changed type",
-  missing: "not set up",
-};
-
-/** Like `git status`: a line per folder, then its conflicts and problems indented, coloured on a terminal. */
-function filesLines(folders: any[]) {
-  const { c } = help;
-  const paint = (x: any) => (x.paused ? c.args : x.state === "watching" ? (x.conflicts.length ? paintRed : c.command) : x.state.startsWith("halted") ? paintRed : c.pai);
-  return folders
-    .map((x) => {
-      const state = x.paused ? "paused" : (STATE[x.state] ?? x.state);
-      const mark = x.paused ? "⏸" : x.state === "watching" ? (x.conflicts.length ? "!" : "✓") : x.state.startsWith("halted") || x.state === "missing" ? "✗" : "…";
-      const facts = [x.files !== undefined && `${x.files.toLocaleString("en-US")} files`, x.cycles !== undefined && `${x.cycles} cycles`, x.progress && `${x.progress.total ? Math.round((x.progress.done / x.progress.total) * 100) : 0}% ${x.progress.path}`].filter(Boolean).join(" · ");
-      const head = `${paint(x)(mark)} ${c.head(x.local.replace(process.env.HOME ?? "", "~").padEnd(12))} ${paint(x)(state)}${facts ? c.dim(`  ${facts}`) : ""}${x.error ? paintRed(`  ${x.error}`) : ""}`;
-      const lines = [head];
-      if (x.conflicts.length) {
-        lines.push(paintRed(`  ${x.conflicts.length} conflict${x.conflicts.length > 1 ? "s" : ""}`) + c.dim("  (pai files diff; sync --local or --remote settles)"));
-        for (const k of x.conflicts.slice(0, 12)) lines.push(`    ${k.local === "deleted" ? paintRed("−") : k.remote === "deleted" ? c.command("+") : c.args("±")} ${k.path}${c.dim(`  here ${k.local} · box ${k.remote}`)}`);
-        if (x.conflicts.length > 12) lines.push(c.dim(`    … ${x.conflicts.length - 12} more (pai files diff tree)`));
-      }
-      if (x.problems?.length) {
-        lines.push(c.args(`  ${x.problems.length} problem${x.problems.length > 1 ? "s" : ""}`) + c.dim("  (skipped, not synced)"));
-        for (const p of x.problems.slice(0, 6)) lines.push(`    ${c.dim(p.side.padEnd(4))} ${p.path}${c.dim(`  ${p.error}`)}`);
-        if (x.problems.length > 6) lines.push(c.dim(`    … ${x.problems.length - 6} more (--json lists all)`));
-      }
-      return lines.join("\n");
-    })
-    .join("\n");
-}
-const paintRed = (s: string) => (process.stdout.isTTY && !process.env.NO_COLOR ? `\x1b[31m${s}\x1b[0m` : s);
-
-const updateLine = (data: any) =>
-  data.error
-    ? data.error
-    : data.updated
-      ? `updated to ${data.head}${data.restarting ? " — restarting" : ""}`
-      : `${data.head} on ${data.branch} · ${data.behind} behind${data.dirty ? " · dirty" : ""}${data.reason ? ` · ${data.reason}` : ""}`;
 
 async function devCommand() {
   switch (cmd) {
@@ -678,28 +508,6 @@ async function devCommand() {
       out({ pid: child.pid, log }, () => `daemon ${child.pid} — ${log} (--foreground to stay attached)`);
       break;
     }
-    case "update": {
-      // Works with the daemon down too — then the update just runs here.
-      const local = async () => {
-        const u = await import("../host/update.ts");
-        return args.includes("--check") ? u.status() : u.update(args.includes("--force"));
-      };
-      const remote = () =>
-        args.includes("--check") ? api("/update") : post("/update", { force: args.includes("--force") });
-      const data = await remote().catch((err: Error) => {
-        if (!err.message.includes("Unable to connect")) throw err;
-        return local();
-      });
-      out(data, () =>
-        data.updated
-          ? `updated to ${data.head}${data.restarting ? " — daemon restarting" : ""}`
-          : `${data.head} on ${data.branch} · ${data.behind} behind${data.dirty ? " · dirty" : ""}${data.reason ? ` · ${data.reason}` : ""}`,
-      );
-      break;
-    }
-    case "install":
-      await import("../host/install-daemon-linux.ts");
-      break;
     case "say": {
       const data = await post("/pai", { text: positional.join(" "), wait: true });
       out(data, () => data.text || (data.error ?? "(no reply)"));
@@ -772,8 +580,9 @@ async function devCommand() {
       out(data, () => "restarting");
       break;
     }
+    // What core does not know is the `dev` module's (pai-dev: update, install, release, …).
     default:
-      console.log(help.section("dev", help.DEV));
+      if (!cmd || !(await runModule("dev", [cmd, ...args], cmd))) console.log(help.section("dev", help.DEV));
   }
 }
 

@@ -1,8 +1,7 @@
-import { config } from "../core/config.ts";
 import { MAX_FILES, readable, serve as serveAttachment, type Upload } from "../domain/attachments.ts";
 import * as drafts from "../domain/drafts.ts";
 import * as keep from "../domain/keep.ts";
-import { all as allProjects, clone, CloneError, createContext, refresh } from "../domain/catalog.ts";
+import * as projects from "../domain/projects.ts";
 import * as automations from "../domain/automations.ts";
 import { context, save as saveContext } from "../domain/context.ts";
 import { byName as moduleByName, describeModules } from "../modules/index.ts";
@@ -11,10 +10,9 @@ import { needsLogin, usage } from "../domain/usage.ts";
 import * as claudeLogin from "../domain/claude-login.ts";
 import { recentEvents, waitFor } from "../core/bus.ts";
 import * as sessions from "../domain/sessions.ts";
-import * as mirror from "../domain/mirror.ts";
-import * as channels from "../domain/channels.ts";
+import * as held from "../domain/held.ts";
 import * as terminals from "../domain/terminals.ts";
-import { status as updateStatus, update } from "../host/update.ts";
+import { status as updateStatus, update } from "../domain/update.ts";
 import { logger } from "../core/log.ts";
 import { events } from "./events.ts";
 import { messagePage } from "./message.ts";
@@ -32,7 +30,6 @@ import * as summaries from "../domain/summaries.ts";
 import * as recall from "../domain/recall.ts";
 import * as audit from "../domain/audit.ts";
 import * as tasks from "../domain/tasks.ts";
-import * as sync from "../domain/sync.ts";
 import { importPrompt, snapshot } from "../domain/snapshot.ts";
 
 const log = logger("api");
@@ -75,12 +72,6 @@ export async function handle(req: Request): Promise<Response> {
     if (mounted) return mounted;
 
     if (path === "/health") return json(await status());
-
-    // A terminal's `claude` listening for what is typed for its conversation elsewhere (`pai channel`).
-    if (path === "/channel" && req.method === "GET") {
-      const session = url.searchParams.get("session");
-      return session ? channels.stream(session) : json({ error: "session required" }, 400);
-    }
 
     // Hands the main conversation to a terminal: its process goes down so an interactive
     // `claude --resume` owns the transcript alone; the next message here revives it, with
@@ -176,36 +167,22 @@ export async function handle(req: Request): Promise<Response> {
 
     if (path === "/update") return json(await updateStatus());
 
-    // A project is added by cloning a repository under devRoot, or as a context: a directory
-    // in the workspace with instructions and memory of its own.
+    // A project is added by cloning a repository (through the module that keeps them), or as a context: a
+    // directory in the workspace with instructions and memory of its own.
     if (path === "/projects" && req.method === "POST") {
       const { url: source, name, about } = await body<{ url?: string; name?: string; about?: string }>(req);
       try {
-        return json(source ? clone(source, name) : createContext(name ?? "", about), 201);
+        return json(source ? projects.clone(source, name) : projects.createContext(name ?? "", about), 201);
       } catch (err) {
-        if (err instanceof CloneError) return json({ error: err.message }, 400);
+        if (err instanceof projects.ProjectError) return json({ error: err.message }, 400);
         throw err;
       }
     }
 
-    if (path === "/projects") {
-      if (url.searchParams.get("refresh")) refresh();
-      return json(allProjects());
-    }
+    if (path === "/projects") return json(url.searchParams.get("refresh") ? projects.refresh() : projects.all());
 
     // The subscription's limits and what the sessions have cost, for the clients' status line.
     if (path === "/usage") return json({ ...(await usage()), needsLogin: needsLogin() });
-
-    // Each Mac's file sync against this box, as its menu bar app reports it.
-    if (path === "/sync" && req.method === "POST") {
-      try {
-        sync.record(await body<Record<string, unknown>>(req));
-        return json({ ok: true });
-      } catch (err) {
-        return json({ error: (err as Error).message }, 400);
-      }
-    }
-    if (path === "/sync") return json(sync.list());
 
     // This machine's own Claude login: the page that reconnects it, and the code pasted back.
     if (path === claudeLogin.LOGIN_PATH && req.method === "GET") return claudeLogin.page();
@@ -238,11 +215,11 @@ export async function handle(req: Request): Promise<Response> {
 
     if (path === "/send" && req.method === "POST") {
       const { id, text, wait, cwd, title, images } = await body<{ id: string; text: string; wait?: boolean; cwd?: string; title?: string; images?: { media_type: string; data: string }[] }>(req);
-      // A conversation a terminal holds goes into that terminal while its channel is connected; the mirror resumes it here otherwise.
-      const held = !sessions.find(id) ? mirror.find(id) : undefined;
-      if (held && !wait) {
-        held.send(text, { images });
-        return json(held.summary());
+      // A conversation held elsewhere (a terminal's) goes there; its module resumes it here when it cannot.
+      const elsewhere = !sessions.find(id) ? held.find(id) : undefined;
+      if (elsewhere && !wait) {
+        elsewhere.send(text, { images });
+        return json(elsewhere.summary());
       }
       const s = resolveLive(id) ?? (cwd ? sessions.adopt(id, cwd, title ?? "") : undefined);
       if (!s) return json({ error: "no such session" }, 404);

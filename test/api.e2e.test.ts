@@ -11,7 +11,6 @@ process.env.PAI_PORT = "8899";
 // Loopback, not whatever tailnet address this machine has: the test talks to 127.0.0.1.
 process.env.PAI_BIND = "127.0.0.1";
 process.env.PAI_NO_TELEGRAM = "1";
-process.env.PAI_NO_EDITOR = "1";
 process.env.PAI_CONFIG = join(scratch, "config.json");
 process.env.PAI_CLAUDE_PROJECTS = join(scratch, "claude-projects");
 
@@ -62,14 +61,6 @@ describe("api", () => {
     const res = await get("/projects");
     expect(res.status).toBe(200);
     expect(Array.isArray(await res.json())).toBe(true);
-  });
-
-  it("keeps what each Mac says about its file sync", async () => {
-    expect((await post("/sync", { machine: "Mac", state: "nonsense" })).status).toBe(400);
-    expect((await post("/sync", { machine: "Mac", state: "conflicts", conflicts: 2, text: "files: 2 conflicts" })).status).toBe(200);
-    expect((await post("/sync", { machine: "Mac", state: "synced", conflicts: 0, text: "files in sync" })).status).toBe(200);
-    const reports = (await (await get("/sync")).json()) as { machine: string; state: string }[];
-    expect(reports).toEqual([expect.objectContaining({ machine: "Mac", state: "synced" })]);
   });
 
   it("reads and writes the editable settings", async () => {

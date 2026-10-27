@@ -5,7 +5,7 @@ import { existsSync, watch } from "node:fs";
 import { join } from "node:path";
 import { config } from "../core/config.ts";
 import { bus, type PaiEvent } from "../core/bus.ts";
-import { all as allProjects, get as getProject } from "./catalog.ts";
+import { containing, get as getProject } from "./projects.ts";
 import { logger } from "../core/log.ts";
 import * as messages from "./messages.ts";
 
@@ -13,7 +13,7 @@ const log = logger("sessions");
 
 const live = new Map<string, Session>();
 
-/** Conversations a terminal holds (see mirror.ts): busy or idle by their transcripts, though no process of ours runs them. */
+/** Conversations a terminal holds (pai-dev's mirror): busy or idle by their transcripts, though no process of ours runs them. */
 export const terminalStates = new Map<string, "busy" | "idle">();
 
 export interface SpawnTask {
@@ -116,7 +116,7 @@ export function revive(sessionId: string): Session | undefined {
 export function adopt(sessionId: string, cwd: string, title: string): Session {
   const known = ensureLive(sessionId);
   if (known) return known;
-  const project = getProject(cwd) ?? allProjects().find((p) => cwd === p.path || cwd.startsWith(`${p.path}/`));
+  const project = containing(cwd);
   // A transcript written by another machine sits under that machine's path; `claude --resume` looks only under this one.
   ensureTranscriptAt(sessionId, workingDirectory(cwd, project?.slug ?? null));
   const session = new Session({

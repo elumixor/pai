@@ -1,8 +1,6 @@
 import { $ } from "bun";
 import { config } from "../core/config.ts";
-import { all as allProjects } from "../domain/catalog.ts";
-import { editorStatus } from "../domain/editor.ts";
-import { publicStatus, publicUrl } from "../domain/publish.ts";
+import { all as allProjects } from "../domain/projects.ts";
 import { googleConfigured } from "./google.ts";
 
 /** What the dashboard shows about the daemon itself: where it runs and how it is set up. */
@@ -17,10 +15,7 @@ export async function status() {
       platform: process.platform,
       baseUrl: config.baseUrl || undefined,
       api: `http://${config.host}:${config.port}`,
-      publicUrl: publicUrl(),
     },
-    editor: editorStatus(),
-    public: publicStatus(),
     settings: {
       workspace: config.workspace,
       devRoot: config.devRoot,

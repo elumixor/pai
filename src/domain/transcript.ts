@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { config } from "../core/config.ts";
 import { IMAGE_REF, keep } from "./attachments.ts";
+import { all as allProjects } from "./projects.ts";
 
 /**
  * A session's conversation, read from the transcript Claude Code keeps on disk — the same
@@ -189,9 +190,8 @@ export interface Thread extends DiskSession {
  * machine — newest first, `perProject` from each. This is what a person chooses from.
  */
 export async function allThreads(perProject = 15): Promise<Thread[]> {
-  const { all } = await import("./catalog.ts");
   const out: Thread[] = [];
-  for (const project of all()) {
+  for (const project of allProjects()) {
     const found = await sessionsIn(project.path, perProject).catch(() => []);
     for (const s of found) out.push({ ...s, project: project.slug, shortId: s.sessionId.slice(0, 6) });
   }

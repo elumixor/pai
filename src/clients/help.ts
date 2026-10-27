@@ -11,22 +11,22 @@ export interface Command {
   readonly description: string;
 }
 
+/** A top-level word a module answers (`pai files`), with its own subcommands for the completion. */
+export interface Verb extends Command {
+  readonly subcommands?: readonly Command[];
+}
+
 export interface ModuleHelp {
   readonly name: string;
   readonly description: string;
   readonly commands: readonly Command[];
+  readonly verbs: readonly Verb[];
 }
 
 export const CORE: readonly Command[] = [
   { name: "claude", args: "[--resume [id]] [args…]", description: "a new conversation with the assistant; --resume continues one (an id, or claude's picker)" },
-  { name: "ssh", args: "[command…]", description: "a shell on the box, or one command there" },
   { name: "status", description: "version, address, what is on" },
-  { name: "sync", description: "watch the files sync until in step" },
-  { name: "files", args: "[command]", description: "files here and on the box (`fs` too); `pai files help`" },
-  { name: "update", description: "update pai here and on the box" },
   { name: "cost", args: "[days] [--by agent|project|model|source|day]", description: "Claude limits, the box, and where the tokens went: API price beside the real one" },
-  { name: "menubar", args: "[install|uninstall]", description: "the menu bar app on this Mac" },
-  { name: "channel", args: "[install]", description: "Paigram reaches `claude` in a terminal; `install` makes `claude` in your shell load it" },
   { name: "threads", args: "[project]", description: "every conversation by project; pick one to continue it here (`projects` is the same)" },
   { name: "agents", description: "pai and its staff as a tree: status, open tasks, spend today" },
   { name: "log", args: "[agent] [--limit n]", description: "the message log: everything said between you, pai and the agents; an agent's chat" },
@@ -46,16 +46,6 @@ export const CORE: readonly Command[] = [
   { name: "version", description: "pai here and on the box" },
 ];
 
-export const FILES: readonly Command[] = [
-  { name: "status", description: "what is in sync, what is not" },
-  { name: "watch", args: "[on|off] [--forever]", description: "live view, leaves once in sync; on/off pauses and resumes" },
-  { name: "sync", args: "[--local|--remote]", description: "one cycle; conflicts listed, settled only with a side" },
-  { name: "push", description: "sync --local" },
-  { name: "pull", description: "sync --remote" },
-  { name: "diff", args: "[tree|<path>]", description: "the conflicts as diffs; `tree` walks them and settles each" },
-  { name: "reset", description: "forget what was agreed; compare afresh" },
-];
-
 export const DEV: readonly Command[] = [
   { name: "say", args: "<text>", description: "a turn in pai's one chat; waits for the reply" },
   { name: "rotate", description: "rebuild pai's session now (journal, briefing)" },
@@ -70,8 +60,6 @@ export const DEV: readonly Command[] = [
   { name: "settings", args: "[KEY=value…]", description: "the daemon's settings" },
   { name: "restart", description: "restart the daemon" },
   { name: "daemon", args: "[--foreground]", description: "start the daemon" },
-  { name: "install", args: "[--uninstall]", description: "the systemd service on the box" },
-  { name: "update", args: "[--check] [--force]", description: "this daemon only" },
 ];
 
 const colour = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR && process.env.TERM !== "dumb";
@@ -104,6 +92,7 @@ export function usage(modules: readonly ModuleHelp[] = []) {
     lines.push("", c.head("Modules:"));
     for (const m of modules) {
       lines.push("", `  ${c.pai("pai")} ${c.module(m.name)}${" ".repeat(Math.max(1, 14 - m.name.length))}${c.dim(m.description)}`);
+      if (m.verbs.length) lines.push(...table(`${c.pai("pai")} `, m.verbs).map((l) => `  ${l}`));
       const w = width(m.commands.map((x) => ({ ...x, name: `${m.name} ${x.name}`.trim() })));
       for (const x of m.commands) {
         const visible = `${m.name} ${x.name}${x.args ? ` ${x.args}` : ""}`.trim();
@@ -121,9 +110,12 @@ export const section = (title: string, cmds: readonly Command[], prefix = "") =>
 export function zshCompletion(modules: readonly ModuleHelp[]) {
   const q = (s: string) => s.replace(/'/g, "'\\''").replace(/:/g, "\\:");
   const entries = (cmds: readonly Command[]) => cmds.filter((x) => x.name).map((x) => `'${q(x.name.split(" ")[0]!)}:${q(x.description)}'`).join(" ");
-  const top = [...CORE, ...modules.map((m) => ({ name: m.name, description: m.description })), { name: "dev", description: "the daemon's own controls" }];
-  const subs: string[] = [`    files|fs) sub=(${entries(FILES)});;`, `    dev) sub=(${entries(DEV)});;`, `    menubar) sub=('install:install' 'uninstall:remove' 'status:status');;`, `    modules) sub=('update:pull them all' 'restart:reload');;`, `    completion) sub=('zsh:print the script');;`];
-  for (const m of modules) subs.push(`    ${m.name}) sub=(${entries(m.commands)});;`);
+  const verbs = modules.flatMap((m) => m.verbs);
+  const dev = modules.find((m) => m.name === "dev");
+  const top = [...CORE, ...verbs, ...modules.filter((m) => m !== dev).map((m) => ({ name: m.name, description: m.description })), { name: "dev", description: "the daemon's own controls" }];
+  const subs: string[] = [`    dev) sub=(${entries([...DEV, ...(dev?.commands ?? [])])});;`, `    modules) sub=('update:pull them all' 'restart:reload');;`, `    completion) sub=('zsh:print the script');;`];
+  for (const v of verbs) if (v.subcommands?.length) subs.push(`    ${v.name}) sub=(${entries(v.subcommands)});;`);
+  for (const m of modules) if (m !== dev) subs.push(`    ${m.name}) sub=(${entries(m.commands)});;`);
   return `#compdef pai
 # pai shell completion — generated by \`pai completion\`; regenerated by \`pai update\`.
 _pai() {

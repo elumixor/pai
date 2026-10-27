@@ -6,14 +6,12 @@
   "scripts": {
     "daemon": "bun run src/daemon.ts",
     "dev": "cd apps/web && bun run dev",
-    "install": "bun run scripts/install.ts",
+    "setup": "bun run src/clients/cli.ts dev install",
     "cli": "bun run src/clients/cli.ts",
-    "infra": "bun run infra/apply.ts",
-    "release": "bun run scripts/release.ts",
+    "release": "bun run src/clients/cli.ts dev release",
     "typecheck": "tsc --noEmit && cd apps/web && bun run check",
     "test": "bun run scripts/test.ts",
     "lint": "biome lint .",
-    "editor": "bun run scripts/editor.ts",
     "postinstall": "chmod +x node_modules/node-pty/prebuilds/*/spawn-helper 2>/dev/null || true; node -e \"require('node-pty')\" 2>/dev/null || (cd node_modules/node-pty && npx --yes node-gyp rebuild >/dev/null 2>&1) || true",
     "build:web": "cd apps/web && bun install --frozen-lockfile && bun run build",
     "test:web": "bun run build:web && bunx playwright test"

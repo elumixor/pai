@@ -8,7 +8,7 @@ import { day } from "../core/time.ts";
 import { attach, type Upload } from "./attachments.ts";
 import { narrowed, unresolved } from "./capabilities.ts";
 import { isLimit, limitLine, resetAt } from "./limits.ts";
-import { get as getProject } from "./catalog.ts";
+import { get as getProject } from "./projects.ts";
 import * as journal from "./journal.ts";
 import * as messages from "./messages.ts";
 import { agentInstructions, instructionsFor } from "./prompts.ts";

@@ -13,12 +13,14 @@ import type { SessionKind } from "../domain/session.ts";
 import type { SessionRef } from "../domain/tools.ts";
 import type { PaiEvent } from "../core/bus.ts";
 import type { ModuleSetting } from "./types.ts";
+import type { Project, ProjectSource } from "../domain/projects.ts";
+import type { HeldThread, HeldThreads } from "../domain/held.ts";
 
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { recentEvents, waitFor } from "../core/bus.ts";
 
-export type { SessionKind, SessionRef, PaiEvent, ModuleSetting };
+export type { SessionKind, SessionRef, PaiEvent, ModuleSetting, Project, ProjectSource, HeldThread, HeldThreads };
 
 /** What a module's factory is handed: pai's runtime, so the module imports nothing from pai. */
 export interface PaiSdk {
@@ -66,9 +68,12 @@ export interface ModuleContext {
     readonly google: { readonly clientId: string; readonly clientSecret: string };
   };
   readonly env: Readonly<Record<string, string | undefined>>;
+  /** One of the daemon's own settings (`data/config.json` over the environment), as the dashboard edits them. */
+  readonly setting: (name: string) => string | undefined;
   /** The daemon's sessions: the main conversation, tasks, lookups. */
   readonly sessions: typeof import("../domain/sessions.ts");
-  readonly catalog: typeof import("../domain/catalog.ts");
+  /** Every project sessions can run in: what modules provide (`projects`) and the workspace's contexts. */
+  readonly projects: Pick<typeof import("../domain/projects.ts"), "all" | "get">;
   /** Every conversation on disk, per project, the daemon's and terminal ones alike. */
   readonly threads: typeof import("../domain/transcript.ts").allThreads;
   /** Module settings, kept in the database under the module's name. */
@@ -89,6 +94,10 @@ export interface ModuleContext {
   readonly recall: Pick<typeof import("../domain/recall.ts"), "put">;
   /** Where a watcher left off, by key. */
   readonly cursors: typeof import("../core/db.ts").cursors;
+  /** An observer's one task per fault, its reason kept current (`watch.ts`). */
+  readonly watch: Pick<typeof import("../domain/watch.ts"), "keep">;
+  /** Where this checkout stands against what it follows (the self-update core keeps). */
+  readonly update: Pick<typeof import("../domain/update.ts"), "status">;
   readonly auth: {
     /** A payload signed with the daemon's key: an OAuth `state` that comes back verified. */
     readonly sign: typeof import("../api/auth.ts").sign;
@@ -106,6 +115,8 @@ export type GoogleCallback = (req: Request, url: URL, claims: Readonly<Record<st
 export type ModuleRoute = (req: Request, url: URL, ctx: ModuleContext) => Promise<Response | undefined> | Response | undefined;
 
 /** What `pai <name> …` is handed: the API of the daemon it runs next to, and the terminal. */
+export type CliIo = Pick<CliContext, "api" | "post" | "fetch" | "out" | "json">;
+
 export interface CliContext {
   readonly name: string;
   readonly dir: string;
@@ -114,6 +125,8 @@ export interface CliContext {
   readonly json: boolean;
   readonly api: (path: string, init?: RequestInit) => Promise<any>;
   readonly post: (path: string, data: unknown) => Promise<any>;
+  /** The daemon's API as a raw response (a stream), with the same address and credentials. */
+  readonly fetch: (path: string, init?: RequestInit) => Promise<Response>;
   readonly out: (data: unknown, pretty?: () => string) => void;
   /** A spinner on stderr with a label; `update` changes it, `stop` ends it, with a note or not. */
   readonly spin: (label: string) => { update(label: string): void; stop(note?: string): void };
@@ -207,6 +220,17 @@ export interface PaiModule {
   readonly commands?: readonly { readonly name: string; readonly description: string }[];
   /** Subcommands that run on the laptop instead (they need its browser, its files); the daemon's API is still the box's. */
   readonly cliHere?: readonly string[];
+  /**
+   * Top-level words this module answers: `pai <verb> …` runs its `cli` with the verb as the first argument (and
+   * `cliHere` is checked against the verb). Listed in `pai --help` beside core's own commands.
+   */
+  readonly verbs?: readonly ModuleVerb[];
+  /** Extra arguments for `claude` started by `pai claude` (pai-dev's channel, so Paigram reaches that terminal). */
+  readonly claudeArgs?: () => readonly string[];
+  /** Projects sessions can run in (repositories), beside the workspace's own contexts. */
+  readonly projects?: ProjectSource;
+  /** Conversations this module holds outside the daemon (a terminal's) that a message can still reach. */
+  readonly held?: HeldThreads;
   /** http under `/m/<name>/`; `path` is what follows that prefix. `undefined` is a 404. */
   readonly routes?: (req: Request, path: string, url: URL, ctx: ModuleContext) => Promise<Response | undefined> | Response | undefined;
   /** Path prefixes it answers outside `/m/` (`/gmail/`), behind the daemon's auth: links already out in the world. */
@@ -229,6 +253,14 @@ export interface PaiModule {
   readonly start?: (ctx: ModuleContext) => Promise<void> | void;
   readonly stop?: () => Promise<void> | void;
   readonly health?: () => Promise<ModuleHealth> | ModuleHealth;
+}
+
+export interface ModuleVerb {
+  readonly name: string;
+  readonly args?: string;
+  readonly description: string;
+  /** Its own subcommands, for the completion. */
+  readonly subcommands?: readonly { readonly name: string; readonly args?: string; readonly description: string }[];
 }
 
 export type McpServer = ReturnType<typeof createSdkMcpServer>;

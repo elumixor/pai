@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { get as getProject } from "./catalog.ts";
+import { get as getProject } from "./projects.ts";
 import { Terminal, TerminalError, type TerminalOptions } from "./terminal.ts";
 import { bus } from "../core/bus.ts";
 import { logger } from "../core/log.ts";

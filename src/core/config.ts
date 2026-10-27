@@ -22,7 +22,7 @@ function bool(v: string | undefined, dflt = false) {
 
 /**
  * The Tailscale address of this machine, if it is on a tailnet (100.64.0.0/10). Binding
- * there rather than to loopback is what makes the API, the dashboard and the editor reachable
+ * there rather than to loopback is what makes the API and the clients reachable
  * from other devices without a tunnel — and still not reachable from the internet.
  */
 function tailnetAddress() {
@@ -38,7 +38,8 @@ const overridesPath = resolve(env.PAI_CONFIG ?? join(repo, "data", "config.json"
 const overrides: Record<string, string> = existsSync(overridesPath)
   ? (JSON.parse(readFileSync(overridesPath, "utf8")) as Record<string, string>)
   : {};
-const setting = (name: string) => overrides[name] ?? env[name];
+/** A setting as the daemon reads it: `data/config.json` over the environment. */
+export const setting = (name: string): string | undefined => overrides[name] ?? env[name];
 
 export const config = {
   overridesPath,
@@ -46,28 +47,12 @@ export const config = {
   /** Where the assistant keeps its own files: persona (CLAUDE.md), downloads, notes. */
   workspace: resolve(setting("PAI_WORKSPACE") ?? join(repo, "workspace")),
 
-  /** Root that gets scanned for coding projects. */
+  /** Where the user's repositories live (pai-dev indexes them). */
   devRoot: resolve(setting("PAI_DEV_ROOT") ?? join(homedir(), "dev")),
-  scanDepth: Number(env.PAI_SCAN_DEPTH ?? 2),
 
   /** The HTTP API. Loopback by default; the tailnet address when other devices need it. */
   port: Number(setting("PAI_PORT") ?? 8787),
   host: setting("PAI_BIND") ?? tailnetAddress() ?? "127.0.0.1",
-
-  /**
-   * The browser editor (code-server with the pai extension), started and supervised by the
-   * daemon on the same address as the API. PAI_NO_EDITOR=1 turns it off.
-   */
-  editor: {
-    enabled: !bool(setting("PAI_NO_EDITOR")),
-    port: Number(setting("PAI_EDITOR_PORT") ?? 8788),
-    host: setting("PAI_EDITOR_BIND") ?? setting("PAI_BIND") ?? tailnetAddress() ?? "127.0.0.1",
-    /**
-     * On a public daemon the editor is a shell in a browser. With Google sign-in the proxy
-     * guards it; otherwise it falls back to the token as its password.
-     */
-    password: env.PAI_EDITOR_PASSWORD ?? (bool(setting("PAI_PUBLIC")) && !env.PAI_GOOGLE_CLIENT_ID ? (setting("PAI_TOKEN") ?? "") : ""),
-  },
 
   /** Shared Playwright MCP server, one per daemon. */
   browserPort: Number(setting("PAI_BROWSER_PORT") ?? 8931),
@@ -127,7 +112,7 @@ export const config = {
   /** What Keep signs its webhooks with (`/keep/events`), one secret per workspace hook; without one they are refused. */
   keepWebhookSecrets: (env.PAI_KEEP_WEBHOOK_SECRETS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
 
-  /** Put the daemon on the public internet: Caddy on 80/443, run by the daemon, https included. */
+  /** Published on the internet (pai-dev runs Caddy on 80/443 for it); core only reads it for `baseUrl`. */
   public: bool(setting("PAI_PUBLIC")),
 
   /** A domain of your own pointing at this host. Empty means `<public ip>.sslip.io`. */
