@@ -199,7 +199,7 @@ export interface Connector {
 /** What the daemon tells a browser before it signs in. */
 export interface AuthConfig {
   readonly clerkPublishableKey: string | null;
-  readonly keepUrl: string | null;
+  readonly kipUrl: string | null;
 }
 
 /** A picture or file going out with a message, as the API takes it. */

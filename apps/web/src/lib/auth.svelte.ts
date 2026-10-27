@@ -42,14 +42,14 @@ function storedToken(): string | null {
 }
 
 /**
- * Who the browser is to the daemon: a Clerk session (the Desk account shared with Keep), or the daemon's
+ * Who the browser is to the daemon: a Clerk session (the Desk account shared with Kip), or the daemon's
  * token when a link carried one (`/?token=…`) — what the CLI and the menu bar hand out.
  */
 class Auth {
   loaded = $state(false);
   signedIn = $state(false);
   error = $state<string | null>(null);
-  config = $state<AuthConfig>({ clerkPublishableKey: null, keepUrl: null });
+  config = $state<AuthConfig>({ clerkPublishableKey: null, kipUrl: null });
   readonly #token = storedToken();
   #clerk: Clerk | null = null;
   #ready: Promise<void> | null = null;

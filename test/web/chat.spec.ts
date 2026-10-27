@@ -76,12 +76,12 @@ test("a draft is edited on its card and sent as it stands", async ({ page }) => 
   expect(after.status).toBe("sending");
 });
 
-test("a keep: link renders Keep's pill", async ({ page }) => {
+test("a kip: link renders Kip's pill", async ({ page }) => {
   await stubSession(page, []);
-  const urn = "keep:page/6f1c3c1e-8a4b-4c55-9b0a-0d1f2e3a4b5c";
+  const urn = "kip:page/6f1c3c1e-8a4b-4c55-9b0a-0d1f2e3a4b5c";
   await control("/control/message", { from: "pai", to: "user", kind: "chat", body: `The spec is ${urn}.` });
   await page.goto(`/?token=${TOKEN}`);
-  await expect(page.locator(`keep-pill[urn="${urn}"]`)).toHaveText(`Keep · ${urn}`);
+  await expect(page.locator(`kip-pill[urn="${urn}"]`)).toHaveText(`Kip · ${urn}`);
 });
 
 test("connectors, tasks and skills have their pages", async ({ page }) => {
