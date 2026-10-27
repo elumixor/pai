@@ -10,7 +10,7 @@ import { config } from "../core/config.ts";
 import { bus, type PaiEvent } from "../core/bus.ts";
 import { db, kv } from "../core/db.ts";
 import { logger } from "../core/log.ts";
-import { sdk, type CliContext, type ModuleContext, type ModuleExport, type ModuleHealth, type PaiConfig, type PaiModule } from "./sdk.ts";
+import { sdk, type CliContext, type ConnectorStatus, type ModuleContext, type ModuleExport, type ModuleHealth, type PaiConfig, type PaiModule } from "./sdk.ts";
 
 const log = logger("modules");
 export const modulesDir = join(config.repo, "modules");
@@ -276,7 +276,7 @@ export async function describe() {
       linked: isLink(l.dir),
       title: l.module?.title,
       description: l.module?.description,
-      kind: l.module?.kind ?? "tools",
+      kind: l.module?.kind ?? "capability",
       enabled: l.module && l.ctx ? (l.module.enabled?.(l.ctx) ?? true) : false,
       started: Boolean(l.started),
       health: await health(l.name),
@@ -290,6 +290,32 @@ export async function describe() {
       settings: l.module?.settings,
       events: l.module?.events,
     })),
+  );
+}
+
+const BROKEN = (detail: string): ConnectorStatus => ({ state: "broken", detail });
+
+/** Every connector module in one shape: what clients draw a connectors page from. */
+export async function connectors() {
+  return Promise.all(
+    all()
+      .filter((l) => l.module?.kind === "connector")
+      .map(async (l) => {
+        const status = l.error
+          ? BROKEN(l.error)
+          : !l.module?.connector
+            ? BROKEN("declares itself a connector but has no status")
+            : await Promise.resolve(l.module.connector.status()).catch((err: Error) => BROKEN(err.message));
+        return {
+          name: l.name,
+          title: l.module?.title ?? l.name,
+          description: l.module?.description ?? "",
+          status,
+          events: l.module?.events ?? [],
+          tools: l.module?.tools?.names ?? [],
+          canSend: Boolean(l.module?.connector?.send),
+        };
+      }),
   );
 }
 

@@ -107,6 +107,50 @@ export interface ModuleHealth {
   readonly detail?: string;
 }
 
+/**
+ * Whether a connector can act right now: `signed_in`, `signed_out` (never connected, or the login was dropped — `fix`
+ * is where to sign in) or `broken` (connected but failing — `detail` says how, `fix` how to repair it).
+ */
+export type ConnectorState = "signed_in" | "signed_out" | "broken";
+
+export interface ConnectorStatus {
+  readonly state: ConnectorState;
+  /** Who it is signed in as (`+420…`, `@handle`, an address), or what is wrong. */
+  readonly detail?: string;
+  readonly fix?: { readonly label: string; readonly url: string };
+}
+
+/** What a send came back as, read back out of the channel itself: there, there unconfirmed, or not there. */
+export type SendOutcome = "verified" | "unverified" | "not_sent";
+
+export interface ConnectorSend {
+  /** A chat, a handle, an address — whatever the channel names a recipient by. */
+  readonly to: string;
+  readonly text: string;
+  readonly subject?: string;
+}
+
+export interface SendResult {
+  readonly outcome: SendOutcome;
+  readonly detail?: string;
+}
+
+/**
+ * The surface every connector exposes beyond the module's own `events` and `tools`, so clients render all of them
+ * from one shape (`GET /connectors`): its state with the link that fixes it, and a send that says whether the
+ * message is really there.
+ */
+export interface Connector {
+  readonly status: () => Promise<ConnectorStatus> | ConnectorStatus;
+  readonly send?: (message: ConnectorSend) => Promise<SendResult>;
+}
+
+/**
+ * Two kinds of module: a `connector` is a signed-in outside channel (events in, tools out, sends verified by
+ * read-back) and carries `connector`; a `capability` is something the box can do (a browser, coding threads).
+ */
+export type ModuleKind = "connector" | "capability";
+
 export interface PaiModule {
   readonly name: string;
   readonly title: string;
@@ -115,7 +159,9 @@ export interface PaiModule {
   readonly requires?: readonly string[];
   /** What other modules get from `ctx.use(this.name)`. */
   readonly api?: object;
-  readonly kind?: "channel" | "tools" | "source" | "service";
+  readonly kind?: ModuleKind;
+  /** Required for `kind: "connector"`. */
+  readonly connector?: Connector;
   /** Off means nothing of it reaches sessions; default on. */
   readonly enabled?: (ctx: ModuleContext) => boolean;
   /** An in-process MCP server per session, built with `createSdkMcpServer` from this file. */

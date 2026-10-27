@@ -15,6 +15,24 @@ orchestrator, `main.ts`): Telegram's pai topic, Paigram's bot chat, `pai dev say
 requests, e.g. Voice); depth pai › standing › sub. Other topics and `pai claude` are plain threads (`chat`);
 a builder thread in a repo is `code`.
 
+## Where things live (the Desk split)
+
+pai core is the assistant only: sessions over the Agent SDK, `main.ts` and the agents, tasks, asks, drafts,
+requests, automations, triage, recall, memory, journal, spend/usage/models, the HTTP API + SSE, auth, the module
+SDK and loader, the CLI. Everything about the host machine or writing code moves to the `pai-dev` module
+(`elumixor/pai-dev`): Mutagen files sync, code-server + `editor/vscode`, the catalog of repos, the terminal mirror
+and channel, the menu bar app, host update/release check/systemd install, `infra/`, `publish.ts` (Caddy), the
+release script, and `pai-builder`'s coding threads. Projects, tasks and docs live in Keep
+(`elumixor/keep`, `keep:page/<id>` URNs, an MCP); pai knows Keep, Keep never knows pai.
+
+Modules come in two kinds (`sdk.ts`): a **connector** (`kind: "connector"`, a signed-in outside channel —
+`pai-telegram`, `pai-email`, `pai-linkedin`, `pai-whatsapp`) exposes `connector.status()` (signed in / signed out /
+broken, with the link that fixes it), its `events`, its `tools`, and `connector.send` answering
+`verified | unverified | not_sent`; `GET /connectors` lists them in that one shape for the clients. A
+**capability** (`kind: "capability"`: `pai-browser`, `pai-dev`) is something the box can do. Each module repo has
+the same layout: `index.ts` default export, a one-paragraph `CLAUDE.md`, `README.md`, tests next to the code,
+`bun.lock`, Biome from pai.
+
 ## Feedback loop
 
 Never test through Telegram. The CLI drives the identical code path.

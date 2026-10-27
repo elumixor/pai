@@ -350,6 +350,7 @@ export async function handle(req: Request): Promise<Response> {
     }
 
     // One list for the dashboard: the built-in pieces and the modules from their own repositories.
+    if (path === "/connectors") return json(await external.connectors());
     if (path === "/modules")
       return json([
         ...describeModules(),
