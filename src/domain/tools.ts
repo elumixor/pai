@@ -19,7 +19,7 @@ export interface SessionRef {
  * In-process MCP server. One instance per session, so the tools know who is calling; the
  * session arrives through a ref because pre-warmed processes are built before it exists.
  */
-export function paiTools(kind: SessionKind, ref: SessionRef, agent?: string) {
+export function paiTools(_kind: SessionKind, ref: SessionRef, agent?: string) {
   const self = () => {
     if (!ref.session) throw new Error("tool called before its session was bound");
     return ref.session;

@@ -7,7 +7,7 @@ import { modules } from "../modules/index.ts";
 import { all as allProjects } from "./catalog.ts";
 import type { SessionKind } from "./session.ts";
 import { unavailable, type Unavailable } from "./capabilities.ts";
-import { seen as seenInventories, serverStates, type Inventory } from "./inventory.ts";
+import { seen as seenInventories, type Inventory } from "./inventory.ts";
 import { moduleHeading, sections } from "./prompts.ts";
 
 /**

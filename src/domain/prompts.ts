@@ -131,7 +131,7 @@ export function agentInstructions(a: Pick<Agent, "kind" | "name" | "slug">, own:
   return [`${AGENT.trim()}\n${kind.trim()}\n\nYou are ${a.name} (\`${a.slug}\`).`, own.trim() ? `# Your role (CLAUDE.md)\n${own.trim()}` : ""].filter(Boolean).join("\n\n");
 }
 
-export function instructionsFor(kind: SessionKind, project?: string, agent?: AgentSetup): string {
+export function instructionsFor(kind: SessionKind, _project?: string, agent?: AgentSetup): string {
   const role = agent ? agent.instructions : kind === "code" ? CODE : CHAT;
   // The builder's paragraph tells a conversation to start threads; pai hands coding to agents instead.
   const sections = moduleSections(kind)

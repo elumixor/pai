@@ -8,11 +8,8 @@
  */
 import { $ } from "bun";
 import { config } from "../core/config.ts";
-import { logger } from "../core/log.ts";
 import * as watch from "../domain/watch.ts";
 import type { UpdateStatus } from "./update.ts";
-
-const log = logger("update");
 
 /** CI delivers in five to seven minutes; past this a release is late, not in flight. */
 export const GRACE_MS = 15 * 60_000;
