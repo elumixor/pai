@@ -1,5 +1,8 @@
 import { MAX_FILES, readable, serve as serveAttachment, type Upload } from "../domain/attachments.ts";
 import * as drafts from "../domain/drafts.ts";
+import { mapResponse } from "../domain/maps.ts";
+import { ratesResponse } from "../domain/rates.ts";
+import * as reads from "../domain/reads.ts";
 import * as keep from "../domain/keep.ts";
 import * as projects from "../domain/projects.ts";
 import * as automations from "../domain/automations.ts";
@@ -113,6 +116,36 @@ export async function handle(req: Request): Promise<Response> {
       } catch (err) {
         return json({ error: (err as Error).message }, 400);
       }
+    }
+
+    // How far he has read, per chat: the box holds it, so every client agrees.
+    if (path === "/reads" && req.method === "POST") {
+      const { place, at } = await body<{ place?: string; at?: number }>(req);
+      return json({ marks: reads.mark(String(place ?? ""), Number(at ?? 0)) });
+    }
+    if (path === "/reads") return json({ marks: reads.marks() });
+
+    // What a currency is worth, for showing an amount in the ones he thinks in.
+    if (path === "/rates") return await ratesResponse();
+
+    // A place's map picture: OpenStreetMap tiles stitched into an SVG, cached on the box.
+    if (path === "/map") return (await mapResponse(url.searchParams)) ?? json({ error: "lat and lon required" }, 400);
+
+    // A session's model and effort from now on; its process restarts on the next message.
+    if (path === "/reconfigure" && req.method === "POST") {
+      const { id, model, effort } = await body<{ id: string; model?: string | null; effort?: "low" | "medium" | "high" | "xhigh" | "max" | null }>(req);
+      try {
+        return json(sessions.reconfigure(id, { model, effort }));
+      } catch (err) {
+        return json({ error: (err as Error).message }, 409);
+      }
+    }
+
+    // The slash commands a session's process accepts; a session that is not live falls back to any live one's.
+    if (path === "/commands") {
+      const s = sessions.find(url.searchParams.get("session") ?? "");
+      const any = [...sessions.list()].map((x) => sessions.find(x.sessionId)).find((x) => x?.commands.length);
+      return json(s?.commands.length ? s.commands : (any?.commands ?? []));
     }
 
     // A thread's conversation as it is on disk, which is what `claude --resume` shows.

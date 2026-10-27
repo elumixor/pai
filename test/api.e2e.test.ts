@@ -243,4 +243,32 @@ describe("pai and its staff over the api", () => {
     expect((await post("/routines", { name: "bad", schedule: "every day", action: "turn" })).status).toBe(400);
   });
 
+  it("keeps how far he has read, forward only", async () => {
+    expect(await (await get("/reads")).json()).toEqual({ marks: {} });
+    await post("/reads", { place: "chat:pai", at: 2000 });
+    const back = (await (await post("/reads", { place: "chat:pai", at: 1000 })).json()) as { marks: Record<string, number> };
+    expect(back.marks["chat:pai"]).toBe(2000);
+    expect(((await (await get("/reads")).json()) as { marks: Record<string, number> }).marks["chat:pai"]).toBe(2000);
+  });
+
+  it("refuses to reconfigure a session it does not know", async () => {
+    const res = await post("/reconfigure", { id: "nope", model: "sonnet" });
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: string }).error).toContain("no such session");
+  });
+
+  it("lists slash commands, none without a live session", async () => {
+    expect(await (await get("/commands?session=nope")).json()).toEqual([]);
+  });
+
+  it("asks a map for a place, and refuses one without", async () => {
+    expect((await get("/map")).status).toBe(400);
+    expect((await get("/map?lat=200&lon=0")).status).toBe(400);
+  });
+
+  it("answers the rates with the currencies he keeps", async () => {
+    const res = await get("/rates");
+    expect([200, 503]).toContain(res.status);
+    expect(Array.isArray(((await res.json()) as { currencies: string[] }).currencies)).toBe(true);
+  });
 });
