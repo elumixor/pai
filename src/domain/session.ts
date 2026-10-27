@@ -9,7 +9,7 @@ import * as audit from "./audit.ts";
 import { paiTools, type SessionRef } from "./tools.ts";
 import { browserMcp } from "./browser.ts";
 import { instructionsFor } from "./prompts.ts";
-import { mcpServers as externalMcpServers } from "../modules/external.ts";
+import { mcpServers as externalMcpServers } from "../connectors/loader.ts";
 import { knownServers, noteInit } from "./inventory.ts";
 import { serverAllowed } from "./capabilities.ts";
 import { describeServers } from "./mcp-describe.ts";

@@ -2,7 +2,7 @@ import type { AgentSetup, SessionKind } from "./session.ts";
 import type { Agent } from "./agents.ts";
 import { config } from "../core/config.ts";
 import { modules } from "../modules/index.ts";
-import { prompts as externalPrompts } from "../modules/external.ts";
+import { prompts as externalPrompts } from "../connectors/loader.ts";
 import { unavailable, unresolved } from "./capabilities.ts";
 
 const COMMON = `

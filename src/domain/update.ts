@@ -8,7 +8,7 @@ import { $ } from "bun";
 import { config } from "../core/config.ts";
 import { bus } from "../core/bus.ts";
 import { logger } from "../core/log.ts";
-import * as external from "../modules/external.ts";
+import * as external from "../connectors/loader.ts";
 import { list } from "./sessions.ts";
 
 const log = logger("update");
@@ -71,7 +71,7 @@ export async function status(): Promise<UpdateStatus> {
 async function pullModules() {
   const out: Record<string, string> = {};
   for (const m of external.all()) {
-    const r = await external.update(m.name).catch((err: Error) => ({ updated: false, reason: err.message }));
+    const r = await external.update(m.name, m.source).catch((err: Error) => ({ updated: false, reason: err.message }));
     out[m.name] = r.updated && "to" in r ? `${r.from} → ${r.to}` : (("reason" in r ? r.reason : undefined) ?? "up to date");
   }
   return out;

@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { config } from "../core/config.ts";
-import { allPrompts as externalPrompts } from "../modules/external.ts";
+import { allPrompts as externalPrompts } from "../connectors/loader.ts";
 import { modules } from "../modules/index.ts";
 import { all as allProjects } from "./projects.ts";
 import type { SessionKind } from "./session.ts";

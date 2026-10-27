@@ -13,7 +13,7 @@ process.env.PAI_BIND = "127.0.0.1";
 process.env.PAI_NO_TELEGRAM = "1";
 process.env.PAI_CLAUDE_PROJECTS = join(scratch, "claude-projects");
 
-const external = await import("../src/modules/external.ts");
+const external = await import("../src/connectors/loader.ts");
 const { startServer } = await import("../src/api/server.ts");
 
 const CONNECTORS = ["telegram", "email", "linkedin", "whatsapp"];

@@ -8,7 +8,7 @@
  */
 import { db, kv } from "../core/db.ts";
 import { logger } from "../core/log.ts";
-import * as external from "../modules/external.ts";
+import * as external from "../connectors/loader.ts";
 import * as watch from "./watch.ts";
 
 const log = logger("linkedin");

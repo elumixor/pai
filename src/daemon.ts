@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs";
-import { config } from "./core/config.ts";
+import { join } from "node:path";
+import { config, setting } from "./core/config.ts";
 import { restoreDaemonJob, startServer } from "./api/server.ts";
 import { killAll, noteInterrupted, reapIdle, relayToParent, resumeInterrupted, warmUp, watchMemory } from "./domain/sessions.ts";
 import { closeAll as closeTerminals } from "./domain/terminals.ts";
@@ -10,7 +11,8 @@ import { startLinkedInCheck } from "./domain/linkedin-check.ts";
 import { startBrowserCheck } from "./domain/browser-check.ts";
 import { startAutomations } from "./domain/automations.ts";
 import { startModules } from "./modules/index.ts";
-import * as external from "./modules/external.ts";
+import * as connectors from "./connectors/loader.ts";
+import * as telegram from "./clients/telegram.ts";
 import { logger } from "./core/log.ts";
 import * as agents from "./domain/agents.ts";
 import { startRates } from "./domain/rates.ts";
@@ -33,8 +35,8 @@ import { startReleaseCheck } from "./domain/release-check.ts";
 const log = logger("daemon");
 
 mkdirSync(config.workspace, { recursive: true });
-// Before anything spawns a session: their tools, prompt and projects come from the modules too.
-await external.load();
+// Before anything spawns a session: their tools and instructions come from the connectors too.
+await connectors.load();
 // The repositories are dev's (a separate system on this box); terminals' conversations are followed here.
 projects.provide("dev", dev.source);
 held.provide("mirror", mirror.held);
@@ -59,8 +61,13 @@ const stopLinkedInCheck = startLinkedInCheck();
 const stopBrowserCheck = startBrowserCheck();
 const stopAutomations = startAutomations();
 const stopModules = startModules();
-await external.startAll();
-// After the modules: the chat is listening when terminal threads are announced.
+await connectors.startAll();
+// pai's own Telegram client, the bot he talks to pai through; after the connectors, since his account transcribes its voice.
+const bot =
+  setting("TELEGRAM_BOT_TOKEN") && setting("TELEGRAM_CHAT_ID") && setting("PAI_NO_TELEGRAM") !== "1"
+    ? telegram.startTelegram({ token: setting("TELEGRAM_BOT_TOKEN")!, chatId: Number(setting("TELEGRAM_CHAT_ID")), baseUrl: config.baseUrl, inbox: join(config.workspace, "inbox") })
+    : undefined;
+// After the connectors and the bot: the chat is listening when terminal threads are announced.
 const stopMirror = mirror.start();
 const stopReleaseCheck = startReleaseCheck();
 const stopRecall = recall.start();
@@ -95,7 +102,8 @@ function shutdown(signal: string) {
   stopMirror();
   stopReleaseCheck();
   stopDev();
-  void external.stopAll();
+  void connectors.stopAll();
+  void bot?.stop();
   noteInterrupted();
   killAll();
   closeTerminals();
@@ -108,4 +116,4 @@ function shutdown(signal: string) {
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-log.info(`pai up — workspace ${config.workspace}, modules ${external.active().map((m) => m.name).join(", ") || "none"}`);
+log.info(`pai up — workspace ${config.workspace}, connectors ${connectors.active().map((m) => m.name).join(", ") || "none"}, bot ${bot ? "on" : "off"}`);

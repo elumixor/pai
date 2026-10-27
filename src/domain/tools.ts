@@ -7,6 +7,7 @@ import * as sessions from "./sessions.ts";
 import { cost as hostingCost } from "./hetzner.ts";
 import { roleOf, staffTools } from "./staff-tools.ts";
 import * as audit from "./audit.ts";
+import { locationTools } from "./location.ts";
 
 const ok = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });
 const taskArg = z.string().describe("thread id, full or the 6-character short form");
@@ -25,6 +26,8 @@ export function paiTools(_kind: SessionKind, ref: SessionRef, agent?: string) {
     return ref.session;
   };
   const common = [
+    // A place goes to him as a pin in his chat with pai, which every client draws (Telegram as a venue card).
+    ...locationTools(ref),
     tool(
       "progress",
       "Post a short interim note to the user in this session's chat, before the turn ends. Use sparingly: one line when a long step finished.",

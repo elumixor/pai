@@ -42,10 +42,10 @@ async function updateClient() {
   const dirty = (await git("status", "--porcelain")).stdout.toString().trim().length > 0;
   if (!dirty) await git("pull", "--ff-only", "--quiet");
   const head = (await git("rev-parse", "--short", "HEAD")).stdout.toString().trim();
-  const external = await import("../modules/external.ts");
+  const external = await import("../connectors/loader.ts");
   const modules: Record<string, string> = {};
-  for (const name of Object.keys((await external.readConfig()).modules).filter(external.isInstalled)) {
-    const r = await external.update(name);
+  for (const [name, source] of Object.entries((await external.readConfig()).connectors).filter(([n]) => external.isInstalled(n))) {
+    const r = await external.update(name, source);
     modules[name] = r.updated ? `${r.from} → ${r.to}` : (r.reason ?? "up to date");
   }
   const updated = head !== before;

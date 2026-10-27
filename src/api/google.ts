@@ -2,7 +2,7 @@ import { config } from "../core/config.ts";
 import { clerkConfigured } from "./clerk.ts";
 import { logger } from "../core/log.ts";
 import { clearSession, origin, sessionCookie, sessionFromRequest, sign, verify } from "./auth.ts";
-import type { GoogleCallback } from "../modules/sdk.ts";
+import type { OAuthFinish } from "@desk/connector";
 
 const log = logger("google");
 
@@ -20,9 +20,11 @@ const AUTH = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN = "https://oauth2.googleapis.com/token";
 const STATE_COOKIE = "pai_oauth";
 
-/** Modules' consents that come back through the one redirect URI, by the claim their state carries. */
-const callbacks = new Map<string, GoogleCallback>();
-export const onGoogleCallback = (claim: string, finish: GoogleCallback) => void callbacks.set(claim, finish);
+/** Connectors' consents that come back through the one redirect URI, by the claim their state carries. */
+const callbacks = new Map<string, OAuthFinish>();
+export const onGoogleCallback = (claim: string, finish: OAuthFinish) => void callbacks.set(claim, finish);
+/** The cookie the callback checks a state against; it rides on the redirect to Google. */
+export const stateCookie = (state: string, req: Request) => `${STATE_COOKIE}=${state}; Path=/auth; Max-Age=600; HttpOnly; SameSite=Lax${secure(req)}`;
 
 export const googleConfigured = () => Boolean(config.google.clientId && config.google.clientSecret);
 
@@ -63,7 +65,7 @@ export async function handleAuth(req: Request, url: URL): Promise<Response | und
       state,
       prompt: "select_account",
     });
-    return redirect(`${AUTH}?${params}`, { "set-cookie": `${STATE_COOKIE}=${state}; Path=/auth; Max-Age=600; HttpOnly; SameSite=Lax${secure(req)}` });
+    return redirect(`${AUTH}?${params}`, { "set-cookie": stateCookie(state, req) });
   }
   if (path === "/auth/google/callback") {
     const state = url.searchParams.get("state") ?? "";

@@ -34,6 +34,7 @@
     "@codemirror/legacy-modes": "^6.5.4",
     "@codemirror/state": "^6.7.4",
     "@codemirror/view": "^6.43.11",
+    "@desk/connector": "github:elumixor/desk-connector#v0.1.0",
     "@elumixor/react-telegram": "^0.3.0",
     "@grammyjs/auto-retry": "^2.0.2",
     "@grammyjs/transformer-throttler": "^1.2.1",
@@ -45,7 +46,6 @@
     "ink": "7",
     "node-pty": "^1.1.0",
     "react": "^19.2.8",
-    "telegram": "^2.26.22",
     "ws": "^8.18.0",
     "zod": "^4.4.3"
   },

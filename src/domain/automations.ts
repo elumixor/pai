@@ -2,7 +2,7 @@ import { bus, type PaiEvent } from "../core/bus.ts";
 import { db, now } from "../core/db.ts";
 import { logger } from "../core/log.ts";
 import { cronMatches, minuteKey, parseCron } from "../core/time.ts";
-import * as external from "../modules/external.ts";
+import * as external from "../connectors/loader.ts";
 import * as agents from "./agents.ts";
 import * as asks from "./asks.ts";
 import * as messages from "./messages.ts";

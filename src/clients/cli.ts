@@ -160,8 +160,8 @@ async function claude(args: string[], cwd: string) {
     const install = Bun.spawn(["sh", "-c", "curl -fsSL https://claude.ai/install.sh | bash"], { stdio: ["ignore", "inherit", "inherit"] });
     if ((await install.exited) !== 0) throw new Error("claude did not install; see https://docs.claude.com/en/docs/claude-code/setup");
   }
-  // What modules add, and dev's channel (what is typed for this conversation in Paigram arrives here).
-  const extra = [...(await (await import("../modules/external.ts")).claudeArgs()), ...devChannelArgs()];
+  // dev's channel: what is typed for this conversation in Paigram arrives here.
+  const extra = devChannelArgs();
   return Bun.spawn([bin, ...extra, ...args], { cwd, stdio: ["inherit", "inherit", "inherit"] }).exited;
 }
 
@@ -377,9 +377,8 @@ async function userCommand() {
       console.log(help.usage(await moduleHelp()));
       break;
     default: {
-      // A word a module answers, else a module's own command line (`pai <module> …`).
-      const owner = await (await import("../modules/external.ts")).verbOwner(cmd!);
-      if (!(await (owner ? runModule(owner, [cmd!, ...args], cmd) : runModule(cmd!, args, positional[0])))) {
+      // A connector's own command line (`pai <connector> …`).
+      if (!(await runModule(cmd!, args, positional[0]))) {
         console.log(help.usage(await moduleHelp()));
         process.exit(1);
       }
@@ -388,11 +387,11 @@ async function userCommand() {
 }
 
 /**
- * A module's command line: on the box it runs here; from a laptop it runs there, except what the module wants on the
- * laptop (`cliHere`: a browser, its files). False when no module of that name is configured.
+ * A connector's command line: on the box it runs here; from a laptop it runs there, except what the connector wants on
+ * the laptop (`cliHere`: a browser, its files). False when no connector of that name is configured.
  */
 async function runModule(name: string, cliArgs: readonly string[], sub: string | undefined): Promise<boolean> {
-  const external = await import("../modules/external.ts");
+  const external = await import("../connectors/loader.ts");
   if (remoteBox && !(await external.runsHere(name, sub))) process.exit(await r.ssh(remoteBox, ["pai", ...argv].map(r.quote).join(" ")));
   const code = await external.runCli(name, cliArgs, { api, post, fetch: raw, out, json: jsonOut });
   if (code === undefined) return false;

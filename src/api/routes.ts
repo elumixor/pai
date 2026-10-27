@@ -8,7 +8,8 @@ import * as projects from "../domain/projects.ts";
 import * as automations from "../domain/automations.ts";
 import { context, save as saveContext } from "../domain/context.ts";
 import { byName as moduleByName, describeModules } from "../modules/index.ts";
-import * as external from "../modules/external.ts";
+import * as external from "../connectors/loader.ts";
+import { info as telegramInfo } from "../clients/telegram.ts";
 import { needsLogin, usage } from "../domain/usage.ts";
 import * as claudeLogin from "../domain/claude-login.ts";
 import { recentEvents, waitFor } from "../core/bus.ts";
@@ -294,13 +295,18 @@ export async function handle(req: Request): Promise<Response> {
     }
     if (path === "/context") return json(context());
 
-    // A module's own http, under its name; anything else under /m/ is a message page (below).
+    // The bot's public face: pai's own Telegram client, at the path it had while it lived in the telegram module.
+    if (path === "/m/telegram/info") {
+      const info = telegramInfo();
+      return info ? json(info) : json({ error: "the bot is off" }, 503);
+    }
+    // A connector's own http, under its name; anything else under /m/ is a message page (below).
     if (path.startsWith("/m/")) {
       const answered = await external.route(req, url);
       if (answered) return answered;
     }
 
-    // One list for the dashboard: the built-in pieces and the modules from their own repositories.
+    // The channel connectors in one shape, with each one's status.
     if (path === "/connectors") return json(await external.connectors());
     if (path === "/keep/events" && req.method === "POST") {
       try {
@@ -328,7 +334,7 @@ export async function handle(req: Request): Promise<Response> {
       const name = modulePath[1];
       const l = external.get(name)!;
       if (modulePath[2] === "install" && req.method === "POST") return json({ dir: await external.install(name, l.source), restartRequired: true });
-      if (modulePath[2] === "update" && req.method === "POST") return json({ ...(await external.update(name)), restartRequired: true });
+      if (modulePath[2] === "update" && req.method === "POST") return json({ ...(await external.update(name, l.source)), restartRequired: true });
       if (modulePath[2] === "remove" && req.method === "POST") return json({ removed: external.remove(name), restartRequired: true });
       return json((await external.describe()).find((m) => m.name === name));
     }
