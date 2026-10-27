@@ -54,7 +54,7 @@ const dev = Bun.serve({
       starts.push(params.arguments);
       return Response.json({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text: JSON.stringify({ session: "dev:session/s-123456", url: "https://dev.test/s" }) }] } });
     }
-    if (url.pathname === "/sessions/s-123456") return Response.json({ session: { id: "s-123456", busy, running: busy } });
+    if (url.pathname === "/sessions/s-123456") return Response.json({ session: { id: "s-123456", busy: true, running: busy } });
     return Response.json([]);
   },
 });

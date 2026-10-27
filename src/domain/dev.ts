@@ -112,11 +112,15 @@ export async function startSession(input: { project: string | { urn: string; fie
   return { id, urn: `dev:session/${id}`, url: started.url };
 }
 
-/** Whether a session's turn is running now; undefined when dev does not know it (yet). */
+/**
+ * Whether a session's turn is running now; undefined when dev does not know it (yet). dev's own process is the truth
+ * for a session it runs; `busy` alone is read from the transcript, and a headless run never writes the turn's end, so
+ * it is only believed while a terminal holds the session.
+ */
 export async function sessionBusy(id: string): Promise<boolean | undefined> {
   try {
-    const { session } = await call<{ session: { busy: boolean; running?: boolean } }>(`/sessions/${id}?limit=1`);
-    return session.busy || Boolean(session.running);
+    const { session } = await call<{ session: { busy: boolean; running?: boolean; connected?: boolean } }>(`/sessions/${id}?limit=1`);
+    return Boolean(session.running) || (session.busy && Boolean(session.connected));
   } catch (err) {
     if (err instanceof DevError && /no session|no conversation/.test(err.message)) return undefined;
     throw err;
