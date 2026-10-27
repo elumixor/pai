@@ -12,6 +12,7 @@
     "release": "bun run scripts/release.ts",
     "typecheck": "tsc --noEmit && cd apps/web && bun run check",
     "test": "bun run scripts/test.ts",
+    "lint": "biome lint .",
     "editor": "bun run scripts/editor.ts",
     "postinstall": "chmod +x node_modules/node-pty/prebuilds/*/spawn-helper 2>/dev/null || true; node -e \"require('node-pty')\" 2>/dev/null || (cd node_modules/node-pty && npx --yes node-gyp rebuild >/dev/null 2>&1) || true",
     "build:web": "cd apps/web && bun install --frozen-lockfile && bun run build",
@@ -51,6 +52,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.2.4",
     "@happy-dom/global-registrator": "^21.0.3",
     "@types/bun": "latest",
     "@types/react": "^19.2.18",

@@ -2,7 +2,6 @@ import { config } from "../core/config.ts";
 import { editorStatus } from "../domain/editor.ts";
 import { publicStatus } from "../domain/publish.ts";
 import * as settings from "../domain/settings.ts";
-import { gmailModule } from "./gmail.ts";
 import type { Module } from "./types.ts";
 
 /**
@@ -36,7 +35,6 @@ export const modules: readonly Module[] = [
     status: () => ({}),
     tools: { server: "pai", names: ["start_thread", "send_to_thread", "list_threads", "thread_output", "stop_thread", "progress", "list_projects", "describe_project"], kinds: ["chat"] },
   },
-  gmailModule,
   {
     name: "editor",
     title: "Browser editor",
@@ -74,7 +72,6 @@ export function describeModules() {
     tools: m.tools,
     prompt: m.prompt,
     events: m.events,
-    accounts: m.accounts ? { items: m.accounts.list(), connectPath: m.accounts.connectPath, removePath: m.accounts.removePath, hint: m.accounts.hint } : undefined,
     settings: m.settings?.map((s) => ({ ...s, value: s.secret ? (settings.effective()[s.key as settings.Editable] ? "set" : "") : (settings.effective()[s.key as settings.Editable] ?? "") })),
     live: Boolean(m.start),
   }));

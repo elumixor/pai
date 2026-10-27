@@ -224,14 +224,6 @@ CREATE TABLE IF NOT EXISTS cursors (
 
 -- Transcripts, the message log, mail and chat copies, searched with the recall tool; see domain/recall.ts.
 CREATE VIRTUAL TABLE IF NOT EXISTS archive USING fts5(source, ref UNINDEXED, title, body, ts UNINDEXED, tokenize = 'porter unicode61');
-
--- One row per Gmail account connected through /gmail/connect; see modules/gmail.ts.
-CREATE TABLE IF NOT EXISTS gmail_accounts (
-  label         TEXT PRIMARY KEY,
-  email         TEXT NOT NULL,
-  refresh_token TEXT NOT NULL,
-  created_at    INTEGER NOT NULL
-);
 `);
 
 // Columns added after the first release; ALTER is the migration.
@@ -260,10 +252,6 @@ if (!automationColumns.includes("agent")) db.exec("ALTER TABLE automations ADD C
 if (!automationColumns.includes("check_rule")) db.exec("ALTER TABLE automations ADD COLUMN check_rule TEXT NOT NULL DEFAULT ''");
 if (!automationColumns.includes("owner")) db.exec("ALTER TABLE automations ADD COLUMN owner TEXT NOT NULL DEFAULT 'user'");
 if (!automationColumns.includes("last_fire")) db.exec("ALTER TABLE automations ADD COLUMN last_fire TEXT NOT NULL DEFAULT ''");
-// What Google actually granted this mailbox, space-separated, as the token endpoint reported it. A
-// grant is frozen at consent, so this is the only way to know a mailbox cannot send before trying.
-if (!(db.query("PRAGMA table_info(gmail_accounts)").all() as { name: string }[]).some((c) => c.name === "scopes"))
-  db.exec("ALTER TABLE gmail_accounts ADD COLUMN scopes TEXT NOT NULL DEFAULT ''");
 
 /** Where a watcher left off. */
 export const cursors = {

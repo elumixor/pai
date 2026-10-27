@@ -361,7 +361,7 @@ async function userCommand() {
             }
             return full && x.body ? `${head}\n\n${x.body.trim()}\n` : head;
           })
-          .join(full && cmd !== "tools" ? "\n" + "─".repeat(60) + "\n" : "\n"),
+          .join(full && cmd !== "tools" ? `\n${"─".repeat(60)}\n` : "\n"),
       );
       break;
     }
@@ -383,7 +383,7 @@ async function userCommand() {
       const ext = data.filter((x: any) => x.external);
       out(data, () =>
         [
-          ...ext.map((m: any) => `${m.name.padEnd(12)} ${(m.status.health.ok ? (m.status.started ? "running" : m.enabled ? "loaded" : "off") : "broken").padEnd(8)} ${m.status.source}${m.status.linked ? " (linked)" : ""}${m.status.health.detail ? ` — ${m.status.health.detail}` : ""}${m.status.cli ? "  · pai " + m.name : ""}`),
+          ...ext.map((m: any) => `${m.name.padEnd(12)} ${(m.status.health.ok ? (m.status.started ? "running" : m.enabled ? "loaded" : "off") : "broken").padEnd(8)} ${m.status.source}${m.status.linked ? " (linked)" : ""}${m.status.health.detail ? ` — ${m.status.health.detail}` : ""}${m.status.cli ? `  · pai ${m.name}` : ""}`),
           ...(ext.length ? [""] : []),
           ...data.filter((x: any) => !x.external).map((m: any) => `${m.name.padEnd(12)} ${(m.enabled ? "on" : "off").padEnd(8)} built in`),
         ].join("\n"),

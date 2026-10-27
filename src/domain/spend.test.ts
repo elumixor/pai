@@ -9,14 +9,14 @@ process.env.PAI_CLAUDE_PLAN_USD = "200";
 const { price, scan, report, recordGateway } = await import("./spend.ts");
 
 const assistant = (id: string, output: number, entrypoint = "cli", model = "claude-opus-5-5") =>
-  JSON.stringify({
+  `${JSON.stringify({
     type: "assistant",
     entrypoint,
     sessionId: "s1",
     cwd: "/Users/someone/dev/pai",
     timestamp: new Date().toISOString(),
     message: { id, model, usage: { input_tokens: 1_000_000, output_tokens: output, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } },
-  }) + "\n";
+  })}\n`;
 
 describe("spend", () => {
   test("prices by model, with cache writes by their lifetime", () => {

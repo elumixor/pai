@@ -118,6 +118,6 @@ export async function screen(text: string, sinks: Sinks): Promise<Verdict> {
 
 /** Whether a reply is only the boilerplate pai says when it has nothing to say; the chat log skips it. */
 export function boilerplate(text: string): boolean {
-  const t = text.replace(/[*_`~()\[\]\s]+/g, " ").trim().toLowerCase();
+  const t = text.replace(/[*_`~()[\]\s]+/g, " ").trim().toLowerCase();
   return t.length <= 48 && /^(no (response|action|reply) (is )?needed|nothing (to do|needed|for you)|no(thing)? (further|new)( for you)?|done)[.!…]*$/.test(t);
 }
