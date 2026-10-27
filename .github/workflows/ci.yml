@@ -1,5 +1,7 @@
 name: ci
 
+# Checks on every push to main and every PR; a v* tag publishes the daemon archive and asks the box to update.
+# box-service.yml is desk-infra's, copied here because a public repo cannot call a private repo's workflows.
 on:
   push:
     branches: [main]
@@ -10,76 +12,12 @@ permissions:
   contents: write
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile
-      - run: bun run build:web
-      - run: bun run typecheck
-      - run: bun run test
-      - run: bunx playwright install --with-deps chromium && bunx playwright test
-
-  # A tag publishes the daemon archive (the checkout with the web client built) and tells the host to update.
-  # Nothing reaches into the host: it pulls the tag it is told about.
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile
-      - run: bun run build:web
-      - name: collect
-        run: |
-          set -eu
-          tag="${GITHUB_REF_NAME}"
-          mkdir -p out
-          git archive --format=tar --prefix=pai/ HEAD | tar -x -C out
-          mkdir -p out/pai/apps/web
-          cp -R apps/web/build out/pai/apps/web/build
-          (cd out && zip -qr "pai-daemon-${tag}.zip" pai && rm -rf pai)
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: out/*
-          generate_release_notes: true
-
-  # The host follows tags (PAI_UPDATE_CHANNEL=tag); this asks it to look now instead of on
-  # its next poll, and waits until it answers with the new version.
-  deploy:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: release
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - name: ask the host to update
-        env:
-          PAI_URL: ${{ secrets.PAI_URL }}
-          PAI_TOKEN: ${{ secrets.PAI_TOKEN }}
-        run: |
-          set -eu
-          if [ -z "${PAI_URL:-}" ] || [ -z "${PAI_TOKEN:-}" ]; then
-            echo "PAI_URL / PAI_TOKEN not set — the host will pick the tag up on its own"; exit 0
-          fi
-          curl -sS -X POST "$PAI_URL/update" -H "authorization: Bearer $PAI_TOKEN" -H "content-type: application/json" -d '{"force":false}'
-          echo
-          for i in $(seq 1 36); do
-            sleep 5
-            version=$(curl -sS "$PAI_URL/health" -H "authorization: Bearer $PAI_TOKEN" | jq -r .version || true)
-            echo "host says $version"
-            [ "$version" = "$GITHUB_REF_NAME" ] && exit 0
-          done
-          echo "host did not come back on $GITHUB_REF_NAME"; exit 1
-      - name: summary
-        run: |
-          {
-            echo "## ${GITHUB_REF_NAME}"
-            echo
-            echo "- client: ${{ secrets.PAI_URL }}/"
-          } >> "$GITHUB_STEP_SUMMARY"
+  service:
+    uses: ./.github/workflows/box-service.yml
+    with:
+      archive: pai-daemon
+      archive-include: apps/web/build
+      update-timeout: 180
+    secrets:
+      url: ${{ secrets.PAI_URL }}
+      token: ${{ secrets.PAI_TOKEN }}

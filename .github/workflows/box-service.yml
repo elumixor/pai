@@ -1,0 +1,137 @@
+# Copied from elumixor/desk-infra/.github/workflows/box-service.yml by its scripts/sync-workflows.ts; edit it there.
+# A desk service that runs on the box (pai, dev): checks and tests on every push; a `v*` tag then publishes
+# a GitHub release and asks the box to update (POST <url>/update), waiting until <url>/health reports the tag.
+# Nothing reaches into the box: it pulls the tag it is told about, and finds it by itself on its next poll
+# when it cannot be asked.
+#
+#   permissions:
+#     contents: write
+#   jobs:
+#     service:
+#       uses: elumixor/desk-infra/.github/workflows/box-service.yml@main
+#       secrets:
+#         url: ${{ secrets.PAI_URL }}
+#         token: ${{ secrets.PAI_TOKEN }}
+name: box service
+
+on:
+  workflow_call:
+    inputs:
+      bun-version:
+        type: string
+        default: latest
+      node:
+        description: set up Node 22 (node-gyp builds)
+        type: boolean
+        default: false
+      playwright-dir:
+        description: directory whose Playwright suite runs after the tests; empty for none
+        type: string
+        default: "."
+      archive:
+        description: on a tag, attach `<archive>-<tag>.zip` (the checkout plus `archive-include`) to the release; empty for none
+        type: string
+        default: ""
+      archive-include:
+        description: built directory copied into the archive (e.g. apps/web/build)
+        type: string
+        default: ""
+      update-timeout:
+        description: seconds to wait for the box to report the new tag
+        type: number
+        default: 300
+    secrets:
+      url:
+        required: false
+      token:
+        required: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ inputs.bun-version }}
+      - if: inputs.node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - id: has
+        run: |
+          has() { jq -e --arg s "$1" '.scripts[$s]' package.json > /dev/null; }
+          for s in build:web lint typecheck test; do has "$s" && echo "${s/:/_}=true" || echo "${s/:/_}=false"; done >> "$GITHUB_OUTPUT"
+      - run: bun install --frozen-lockfile
+      - if: steps.has.outputs.build_web == 'true'
+        run: bun run build:web
+      - if: steps.has.outputs.lint == 'true'
+        run: bun run lint
+      - if: steps.has.outputs.typecheck == 'true'
+        run: bun run typecheck
+      - if: steps.has.outputs.test == 'true'
+        run: bun run test
+      - if: inputs.playwright-dir != ''
+        working-directory: ${{ inputs.playwright-dir }}
+        run: bunx playwright install --with-deps chromium && bunx playwright test
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - if: inputs.archive != ''
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ inputs.bun-version }}
+      - if: inputs.archive != ''
+        name: archive
+        env:
+          NAME: ${{ inputs.archive }}
+          INCLUDE: ${{ inputs.archive-include }}
+        run: |
+          set -eu
+          mkdir -p out
+          if [ -n "$INCLUDE" ]; then bun install --frozen-lockfile && bun run build:web; fi
+          prefix=$(basename "$GITHUB_REPOSITORY")
+          git archive --format=tar --prefix="$prefix/" HEAD | tar -x -C out
+          if [ -n "$INCLUDE" ]; then mkdir -p "out/$prefix/$(dirname "$INCLUDE")" && cp -R "$INCLUDE" "out/$prefix/$INCLUDE"; fi
+          (cd out && zip -qr "$NAME-$GITHUB_REF_NAME.zip" "$prefix" && rm -rf "$prefix")
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ inputs.archive != '' && 'out/*' || '' }}
+          generate_release_notes: true
+
+  # The box follows tags; this asks it to look now instead of on its next poll.
+  deploy:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: ask the box to update
+        env:
+          URL: ${{ secrets.url }}
+          TOKEN: ${{ secrets.token }}
+          TIMEOUT: ${{ inputs.update-timeout }}
+        run: |
+          set -eu
+          if [ -z "${URL:-}" ] || [ -z "${TOKEN:-}" ]; then
+            echo "no url / token: the box picks the tag up on its own"; exit 0
+          fi
+          curl -sS -X POST "$URL/update" -H "authorization: Bearer $TOKEN" -H "content-type: application/json" -d '{"force":false}' || true
+          echo
+          for _ in $(seq 1 $((TIMEOUT / 5))); do
+            sleep 5
+            version=$(curl -sS "$URL/health" -H "authorization: Bearer $TOKEN" | jq -r .version || true)
+            echo "box says $version"
+            [ "$version" = "$GITHUB_REF_NAME" ] && exit 0
+          done
+          echo "the box did not come back on $GITHUB_REF_NAME"; exit 1
+      - name: summary
+        env:
+          URL: ${{ secrets.url }}
+        run: printf '## %s\n\n- %s/\n' "$GITHUB_REF_NAME" "$URL" >> "$GITHUB_STEP_SUMMARY"
