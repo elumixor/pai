@@ -94,11 +94,11 @@ class Auth {
     return token ? { authorization: `Bearer ${token}` } : {};
   }
 
-  async mountSignIn(element: HTMLDivElement) {
+  async mountSignIn(element: HTMLDivElement, redirect: string) {
     await this.load();
     const clerk = this.#clerk;
     if (!clerk) return () => {};
-    clerk.mountSignIn(element, { forceRedirectUrl: "/", signUpForceRedirectUrl: "/" });
+    clerk.mountSignIn(element, { forceRedirectUrl: redirect, signUpForceRedirectUrl: redirect });
     return () => clerk.unmountSignIn(element);
   }
 

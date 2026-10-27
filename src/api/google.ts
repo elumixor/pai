@@ -2,6 +2,7 @@ import { config } from "../core/config.ts";
 import { clerkConfigured } from "./clerk.ts";
 import { logger } from "../core/log.ts";
 import { clearSession, identified, origin, sessionCookie, sessionFromRequest, sign, verify } from "./auth.ts";
+import { handoff, handoffFrom, redeem } from "./handoff.ts";
 import type { GoogleCallback } from "../modules/sdk.ts";
 
 const log = logger("google");
@@ -47,10 +48,13 @@ export async function handleAuth(req: Request, url: URL): Promise<Response | und
   if (path === "/auth/check") {
     // Caddy's forward_auth: 2xx lets the request through, anything else is sent to the browser as is.
     if (await identified(req, url)) return new Response(null, { status: 204 });
+    const redeemed = redeem(req);
+    if (redeemed) return redeemed;
     const wanted = req.headers.get("x-forwarded-uri") ?? "/editor/";
     if (!wantsHtml(req)) return json({ error: "sign in first" }, 401);
-    return redirect(clerkConfigured() ? SIGN_IN : loginUrl(wanted));
+    return redirect(handoffFrom(req) ?? (clerkConfigured() ? SIGN_IN : loginUrl(wanted)));
   }
+  if (path === "/auth/handoff") return handoff(req, url, clerkConfigured() ? SIGN_IN : "/auth/google");
   if (path === "/auth/config") {
     return json({ clerkPublishableKey: clerkConfigured() ? config.clerk.publishableKey : null, keepUrl: config.keepUrl || null });
   }
