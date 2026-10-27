@@ -22,8 +22,9 @@ const schema = [
   { id: "project", name: "Dev project", type: "extension", extension: "dev", extType: "project", inherit: true },
   { id: "session", name: "Dev session", type: "extension", extension: "dev", extType: "session" },
 ];
-const pages: Record<string, { id: string; title: string; body: string; properties: Record<string, unknown>; effective: Record<string, unknown> }> = {
+const pages: Record<string, { id: string; title: string; kind?: string; body: string; properties: Record<string, unknown>; effective: Record<string, unknown> }> = {
   task: { id: "task", title: "Fix login", body: "It loops after sign-in.", properties: {}, effective: { project: { urn: "dev:project/scratch", label: "scratch", fields: { worktree: true }, inheritedFrom: "proj" } } },
+  tasks: { id: "tasks", title: "Tasks", kind: "database", body: "", properties: {}, effective: { project: { urn: "dev:project/scratch" } } },
   plain: { id: "plain", title: "Buy milk", body: "", properties: {}, effective: {} },
 };
 const keepCalls: { tool: string; args: Record<string, unknown>; auth: string | null }[] = [];
@@ -117,6 +118,7 @@ describe("keep task → dev session", () => {
     const before = keepCalls.length;
     await hook("page.created", "plain", {});
     await hook("page.created", "plain");
+    await hook("page.created", "tasks");
     await settle();
     expect(starts).toHaveLength(1);
     expect(keepCalls.slice(before).every((c) => c.tool === "get_page")).toBe(true);

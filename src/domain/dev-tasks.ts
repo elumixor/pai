@@ -37,6 +37,7 @@ export interface KeepPage {
   readonly id: string;
   readonly urn?: string;
   readonly title: string;
+  readonly kind?: string;
   readonly path?: readonly string[];
   readonly body?: string;
   readonly properties?: Record<string, unknown>;
@@ -137,6 +138,8 @@ export async function consider(event: { urn: string; workspace: string; effectiv
   if (event.effective && !findValue(event.effective, PROJECT_PREFIX)) return "no project";
   if (db.query("SELECT 1 FROM dev_tasks WHERE keep_urn = ? AND session_id IS NOT NULL").get(event.urn)) return "has session";
   const page = await readPage(event.workspace, event.urn);
+  // A database's schema is its rows', so it would look like a task holding a session property.
+  if (page.kind === "database") return "database";
   const values = effectiveOf(page);
   const project = findValue(values, PROJECT_PREFIX);
   if (!project) return "no project";
