@@ -18,7 +18,7 @@ interface Ticket {
   readonly exp: number;
 }
 
-/** The registrable part every handed-off host shares with the main one: `atmagaming.com` for `pai.atmagaming.com`. */
+/** The registrable part every handed-off host shares with the main one: `dsk.atmagaming.com` for `pai.dsk.atmagaming.com`. */
 const parent = () => config.domain.split(".").slice(1).join(".");
 
 /** For a request on another host that is not signed in: where it goes to be signed in by the main host. */
