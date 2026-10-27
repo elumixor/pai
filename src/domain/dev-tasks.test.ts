@@ -18,7 +18,7 @@ const schema = [
 
 describe("dev tasks", () => {
   it("finds a project value whether own, inherited or wrapped", () => {
-    expect(findValue({ proj: { urn: "dev:project/keep", label: "keep" } }, PROJECT_PREFIX)).toEqual({ key: "proj", urn: "dev:project/keep" });
+    expect(findValue({ proj: { urn: "dev:project/keep", label: "keep" } }, PROJECT_PREFIX)).toMatchObject({ key: "proj", urn: "dev:project/keep" });
     expect(findValue({ proj: { value: { urn: "dev:project/keep" }, inheritedFrom: "p1" } }, PROJECT_PREFIX)?.urn).toBe("dev:project/keep");
     expect(findValue({ sess: [{ urn: "dev:session/abc" }] }, SESSION_PREFIX)?.key).toBe("sess");
     expect(findValue({ title: "x", status: "o1" }, PROJECT_PREFIX)).toBeUndefined();

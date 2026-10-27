@@ -23,7 +23,7 @@ const schema = [
   { id: "session", name: "Dev session", type: "extension", extension: "dev", extType: "session" },
 ];
 const pages: Record<string, { id: string; title: string; body: string; properties: Record<string, unknown>; effective: Record<string, unknown> }> = {
-  task: { id: "task", title: "Fix login", body: "It loops after sign-in.", properties: {}, effective: { project: { urn: "dev:project/scratch", label: "scratch", inheritedFrom: "proj" } } },
+  task: { id: "task", title: "Fix login", body: "It loops after sign-in.", properties: {}, effective: { project: { urn: "dev:project/scratch", label: "scratch", fields: { worktree: true }, inheritedFrom: "proj" } } },
   plain: { id: "plain", title: "Buy milk", body: "", properties: {}, effective: {} },
 };
 const keepCalls: { tool: string; args: Record<string, unknown>; auth: string | null }[] = [];
@@ -98,7 +98,7 @@ describe("keep task → dev session", () => {
     expect((await hook("page.created", "task", pages.task!.effective)).status).toBe(200);
     await settle();
     expect(starts).toHaveLength(1);
-    expect(starts[0]).toMatchObject({ project: "scratch", keep_urn: "keep:page/task", title: "Fix login" });
+    expect(starts[0]).toMatchObject({ project: { urn: "dev:project/scratch", fields: { worktree: true } }, keep_urn: "keep:page/task", title: "Fix login" });
     expect(String(starts[0]!.brief)).toContain("It loops after sign-in.");
     expect(String(starts[0]!.brief)).toContain("Atma › Scratch › Fix login");
     const set = keepCalls.find((c) => c.tool === "set_properties");

@@ -47,10 +47,12 @@ export interface KeepPage {
 interface Found {
   readonly key: string;
   readonly urn: string;
+  /** The extension value itself (`{ urn, label, fields }`). */
+  readonly value: Record<string, unknown>;
 }
 
 /** The first `{urn}` under a property value (an extension value, an array of them, or one wrapped with `inheritedFrom`). */
-function urnIn(value: unknown, prefix: string): string | undefined {
+function urnIn(value: unknown, prefix: string): Record<string, unknown> | undefined {
   if (!value || typeof value !== "object") return undefined;
   if (Array.isArray(value)) {
     for (const item of value) {
@@ -60,15 +62,15 @@ function urnIn(value: unknown, prefix: string): string | undefined {
     return undefined;
   }
   const record = value as Record<string, unknown>;
-  if (typeof record.urn === "string" && record.urn.startsWith(prefix)) return record.urn;
+  if (typeof record.urn === "string" && record.urn.startsWith(prefix)) return record;
   return urnIn(record.value, prefix);
 }
 
 /** The property holding a value of this kind (`dev:project/…`, `dev:session/…`). */
 export function findValue(values: Record<string, unknown> | undefined, prefix: string): Found | undefined {
   for (const [key, value] of Object.entries(values ?? {})) {
-    const urn = urnIn(value, prefix);
-    if (urn) return { key, urn };
+    const found = urnIn(value, prefix);
+    if (found) return { key, urn: String(found.urn), value: found };
   }
   return undefined;
 }
@@ -146,7 +148,8 @@ export async function consider(event: { urn: string; workspace: string; effectiv
   if (!claim(event.urn, event.workspace, slug, page.title)) return "claimed";
   let started: dev.StartedSession;
   try {
-    started = await dev.startSession({ project: slug, keepUrn: event.urn, title: page.title, brief: brief(page, event.urn) });
+    // The whole value, so dev reads the project's own fields (worktree per task).
+    started = await dev.startSession({ project: { urn: project.urn, fields: project.value.fields }, keepUrn: event.urn, title: page.title, brief: brief(page, event.urn) });
   } catch (err) {
     release(event.urn);
     throw err;
