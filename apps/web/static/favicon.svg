@@ -1,1 +1,39 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><title>pai</title><circle cx="16" cy="16" r="15" fill="#2e3440"/><circle cx="16" cy="16" r="6" fill="#88c0d0"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8A4DFF"/>
+      <stop offset="1" stop-color="#2B85FF"/>
+    </linearGradient>
+    <radialGradient id="sheen" cx="0.5" cy="0" r="0.75">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="glyph" x1="0.3" y1="0" x2="0.1" y2="1">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="0.55" stop-color="#fff" stop-opacity="0.96"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0.78"/>
+    </linearGradient>
+    <filter id="glass" x="-25%" y="-25%" width="150%" height="160%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="22"/>
+      <feOffset dy="20" result="blur"/>
+      <feFlood flood-color="#0A0A28" flood-opacity="0.26"/>
+      <feComposite in2="blur" operator="in" result="shadow"/>
+      <feOffset in="SourceAlpha" dy="10" result="down"/>
+      <feComposite in="SourceAlpha" in2="down" operator="out"/>
+      <feGaussianBlur stdDeviation="3"/>
+      <feComposite in2="SourceAlpha" operator="in"/>
+      <feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.9 0" result="spec"/>
+      <feOffset in="SourceAlpha" dy="-14" result="up"/>
+      <feComposite in="SourceAlpha" in2="up" operator="out"/>
+      <feGaussianBlur stdDeviation="8"/>
+      <feComposite in2="SourceAlpha" operator="in"/>
+      <feColorMatrix values="0 0 0 0 0.1  0 0 0 0 0.12  0 0 0 0 0.3  0 0 0 0.16 0" result="shade"/>
+      <feMerge><feMergeNode in="shadow"/><feMergeNode in="SourceGraphic"/><feMergeNode in="shade"/><feMergeNode in="spec"/></feMerge>
+    </filter>
+    
+  </defs>
+  <rect width="1024" height="1024" rx="228" fill="url(#bg)"/>
+  <rect width="1024" height="1024" rx="228" fill="url(#sheen)"/>
+  <path d="M260,470 L260,778 Q260,818 296,798 Q372,749.3 437.6,733.3 A284,284 0 1 0 260,470 Z M678,470 A134,134 0 1 0 410,470 A134,134 0 1 0 678,470 Z" fill-rule="evenodd" fill="url(#glyph)" filter="url(#glass)"/>
+  <path d="M544,372 Q556.7,457.3 642,470 Q556.7,482.7 544,568 Q531.3,482.7 446,470 Q531.3,457.3 544,372 Z" fill="url(#glyph)" filter="url(#glass)"/>
+</svg>
