@@ -1,1 +1,0 @@
-import"./main-a138tj5s.js";var o={"+":"inserted","-":"deleted","@":"meta"},r={name:"diff",token:function(n){var e=n.string.search(/[\t ]+?$/);if(!n.sol()||e===0)return n.skipToEnd(),("error "+(o[n.string.charAt(0)]||"")).replace(/ $/,"");var i=o[n.peek()]||n.skipToEnd();if(e===-1)n.skipToEnd();else n.pos=e;return i}};export{r as diff};
