@@ -220,9 +220,16 @@ export async function health(name: string): Promise<Health> {
   return Promise.resolve(l.connector.health()).catch((err: Error) => ({ ok: false, detail: err.message }));
 }
 
-/** The status of one connector, whatever state it is in: one that failed to load or to answer is broken. */
+/**
+ * The status of one connector, whatever state it is in: one that failed to load or to answer is broken. A capability
+ * without a status of its own answers with its health: working is signed in, failing is broken.
+ */
 async function statusOf(l: Loaded) {
   if (l.error) return broken(l.error);
+  if (l.connector && !l.connector.status && l.connector.kind === "capability") {
+    const h = await health(l.name);
+    return h.ok ? { state: "signed_in" as const, detail: h.detail } : broken(h.detail ?? "not working");
+  }
   if (!l.connector?.status || !l.host) return broken("has no status");
   const host = l.host;
   return Promise.resolve()
@@ -259,20 +266,19 @@ export async function describe() {
   );
 }
 
-/** Every channel connector in one shape: what clients draw a connectors page from. */
+/** Every connector in one shape, channels and capabilities alike: what clients draw a connectors page from. */
 export async function connectors() {
   return Promise.all(
-    listed()
-      .filter((l) => (l.connector?.kind ?? "connector") === "connector")
-      .map(async (l) => ({
-        name: l.name,
-        title: l.connector?.title ?? l.name,
-        description: l.connector?.description ?? "",
-        status: await statusOf(l),
-        events: l.connector?.events ?? [],
-        tools: l.connector?.tools?.map((t) => t.name) ?? [],
-        canSend: Boolean(l.connector?.send),
-      })),
+    listed().map(async (l) => ({
+      name: l.name,
+      kind: l.connector?.kind ?? "connector",
+      title: l.connector?.title ?? l.name,
+      description: l.connector?.description ?? "",
+      status: await statusOf(l),
+      events: l.connector?.events ?? [],
+      tools: l.connector?.tools?.map((t) => t.name) ?? [],
+      canSend: Boolean(l.connector?.send),
+    })),
   );
 }
 

@@ -187,9 +187,10 @@ export interface Need {
 
 export type ConnectorState = "signed_in" | "signed_out" | "broken";
 
-/** One connector module as `GET /connectors` lists it. */
+/** One connector as `GET /connectors` lists it: a channel (`connector`) or something the others use (`capability`). */
 export interface Connector {
   readonly name: string;
+  readonly kind: "connector" | "capability";
   readonly title: string;
   readonly description: string;
   readonly status: { readonly state: ConnectorState; readonly detail?: string; readonly fix?: { readonly label: string; readonly url: string } };

@@ -16,7 +16,7 @@ process.env.PAI_CLAUDE_PROJECTS = join(scratch, "claude-projects");
 const external = await import("../src/connectors/loader.ts");
 const { startServer } = await import("../src/api/server.ts");
 
-const CONNECTORS = ["telegram", "email", "linkedin", "whatsapp"];
+const CONNECTORS = ["telegram", "email", "linkedin", "whatsapp", "browser"];
 // The real modules, loaded as the daemon loads them (not started), only where they are installed:
 // loading would otherwise clone them, which a checkout without the GitHub key cannot.
 const installed = CONNECTORS.every(external.isInstalled);
@@ -34,7 +34,7 @@ afterAll(async () => {
 });
 
 describe("connectors", () => {
-  it.skipIf(!installed)("lists every connector module in config order, each with a status", async () => {
+  it.skipIf(!installed)("lists every connector in config order, capabilities too, each with a status", async () => {
     const res = await fetch("http://127.0.0.1:8897/connectors");
     expect(res.status).toBe(200);
     const list = (await res.json()) as { name: string; status: { state: string } }[];

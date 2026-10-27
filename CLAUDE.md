@@ -52,8 +52,8 @@ connector's `api`, `http` (`/m/<name>/` and the public url), Google OAuth (`oaut
 calling agent passed as `call.agent`) for chat and code sessions, its `instructions` a prompt paragraph, its `routes`
 `/m/<name>/…`, `mounts` other prefixes (`/gmail/`), `ui` `/m/<name>/ui/`, its `cli` `pai <name> …` (run on the box;
 a Mac forwards over ssh unless `cliHere`). `kind: "connector"` must answer `status` (signed in / signed out / broken
-with the link that fixes it) and may `send` (`verified | unverified | not_sent`); `GET /connectors` lists them in that
-shape, `GET /modules` with the built-in pieces, `pai modules [update]` lists or pulls them. pai's own code reads a
+with the link that fixes it) and may `send` (`verified | unverified | not_sent`); `GET /connectors` lists them all in that
+shape (a capability without a status answers with its health), `GET /modules` with the built-in pieces, `pai modules [update]` lists or pulls them. pai's own code reads a
 connector's `api` with `connectors.api(name)` (email's `addresses`, telegram's `transcribe`). The Telegram bot pai is
 talked to through is pai's own client (`src/clients/telegram.ts`), not a connector; `/m/telegram/info` is its public
 face for Paigram. Connector repos: `index.ts`, a one-paragraph `CLAUDE.md`, `README.md`, tests next to the code
