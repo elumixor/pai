@@ -21,6 +21,10 @@ import { rates } from "./rates.ts";
 const log = logger("spend");
 const projectsDir = process.env.PAI_CLAUDE_PROJECTS ?? join(homedir(), ".claude", "projects");
 const SCAN_MS = 60_000;
+/** Apps' gateway spend (`pullGateway`): how often it is asked for, and how many days back each pull rereads. */
+const GATEWAY_MS = 60 * 60_000;
+const GATEWAY_DAYS = 3;
+const GATEWAY_REPORT = "https://ai-gateway.vercel.sh/v1/report";
 /** Read at most this much of one transcript per pass, so a first scan of months of history never holds it all at once. */
 const CHUNK = 8 * 1024 * 1024;
 const DAY_MS = 86_400_000;
@@ -129,6 +133,65 @@ export function recordGateway(model: string, usage: { prompt_tokens?: number; co
   const output = usage?.completion_tokens ?? 0;
   const costUsd = typeof usage?.cost === "number" ? usage.cost : price(model, { input, output, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 });
   record({ ref: `gateway:${what}:${crypto.randomUUID()}`, ts: now(), source: "gateway", billing: "metered", model, input, output, costUsd, ms, agent: what });
+}
+
+// ---- other apps' gateway calls ------------------------------------------------------------
+
+interface ReportRow {
+  readonly tag?: string;
+  readonly model?: string;
+  readonly total_cost?: number;
+  readonly input_tokens?: number;
+  readonly output_tokens?: number;
+  readonly cached_input_tokens?: number;
+  readonly cache_creation_input_tokens?: number;
+}
+
+export class GatewayReportError extends Error {
+  constructor(readonly status: number, readonly query: string) {
+    super(`gateway report ${status} for ${query}`);
+  }
+}
+
+async function gatewayReport(query: Record<string, string>): Promise<ReportRow[]> {
+  const search = new URLSearchParams(query).toString();
+  const res = await fetch(`${GATEWAY_REPORT}?${search}`, { headers: { authorization: `Bearer ${config.aiGatewayKey}` } });
+  if (!res.ok) throw new GatewayReportError(res.status, search);
+  return ((await res.json()) as { results?: ReportRow[] }).results ?? [];
+}
+
+/**
+ * What other apps (Keep's completions, …) spent through the same gateway key, by the tag each one
+ * puts on its calls: one row per tag, day and model. pai's own calls carry no tag and are recorded
+ * as they happen. A day's totals only grow, so rereading the last few is safe (`record` keeps the max).
+ */
+export async function pullGateway(days = GATEWAY_DAYS): Promise<number> {
+  if (!config.aiGatewayKey) return 0;
+  const dayOf = (back: number) => new Date(now() - back * DAY_MS).toISOString().slice(0, 10);
+  const dates = Array.from({ length: days }, (_, i) => dayOf(i));
+  const range = { start_date: dayOf(days - 1), end_date: dayOf(0) };
+  const tags = (await gatewayReport({ ...range, group_by: "tag" })).map((r) => r.tag).filter((tag): tag is string => Boolean(tag));
+  let rows = 0;
+  for (const tag of tags)
+    for (const day of dates)
+      for (const r of await gatewayReport({ start_date: day, end_date: day, group_by: "model", tag })) {
+        if (!r.model) continue;
+        record({
+          ref: `gateway:${tag}:${day}:${r.model}`,
+          ts: Date.parse(`${day}T12:00:00Z`),
+          source: "gateway",
+          billing: "metered",
+          agent: tag,
+          model: r.model,
+          input: r.input_tokens,
+          output: r.output_tokens,
+          cacheRead: r.cached_input_tokens,
+          cacheWrite: r.cache_creation_input_tokens,
+          costUsd: r.total_cost,
+        });
+        rows += 1;
+      }
+  return rows;
 }
 
 interface Usage {
@@ -258,13 +321,19 @@ export function start() {
       log.warn(`scan: ${(err as Error).message}`);
     }
   };
+  const pull = () => pullGateway().catch((err: Error) => log.warn(`gateway: ${err.message}`));
   // The first pass may read months of history; it waits until the daemon is up.
-  const first = setTimeout(pass, 5_000);
+  const first = setTimeout(() => {
+    pass();
+    void pull();
+  }, 5_000);
   const timer = setInterval(pass, SCAN_MS);
+  const gateway = setInterval(pull, GATEWAY_MS);
   bus.on("event", onTurn);
   return () => {
     clearTimeout(first);
     clearInterval(timer);
+    clearInterval(gateway);
     bus.off("event", onTurn);
   };
 }

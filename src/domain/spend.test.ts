@@ -6,7 +6,8 @@ import { join } from "node:path";
 const dir = mkdtempSync(join(tmpdir(), "pai-spend-"));
 process.env.PAI_DB = join(dir, "pai.db");
 process.env.PAI_CLAUDE_PLAN_USD = "200";
-const { price, scan, report, recordGateway } = await import("./spend.ts");
+const { price, scan, report, recordGateway, pullGateway } = await import("./spend.ts");
+const { config } = await import("../core/config.ts");
 
 const assistant = (id: string, output: number, entrypoint = "cli", model = "claude-opus-5-5") =>
   `${JSON.stringify({
@@ -46,5 +47,33 @@ describe("spend", () => {
     const terminal = r.by.source.find((b) => b.key === "terminal")!;
     expect(terminal.realUsd).toBeCloseTo((plan * 24) / 28);
     expect(r.by.project.find((b) => b.key === "pai")?.calls).toBe(2);
+  });
+
+  test("other apps' gateway spend is pulled by tag, day and model, and a reread replaces it", async () => {
+    const real = globalThis.fetch;
+    const key = config.aiGatewayKey;
+    config.aiGatewayKey = "vck_test";
+    let cost = 0.01;
+    globalThis.fetch = (async (url: string) => {
+      const q = new URL(url).searchParams;
+      const results =
+        q.get("group_by") === "tag"
+          ? [{ tag: "" }, { tag: "keep" }]
+          : q.get("start_date") === new Date().toISOString().slice(0, 10)
+            ? [{ model: "google/gemini-3.5-flash-lite", total_cost: cost, input_tokens: 1000, output_tokens: 10 }]
+            : [];
+      return new Response(JSON.stringify({ results }));
+    }) as typeof fetch;
+    try {
+      expect(await pullGateway(2)).toBe(1);
+      cost = 0.03;
+      await pullGateway(2);
+      const keep = (await report(30)).by.agent.find((b) => b.key === "keep");
+      expect(keep?.realUsd).toBeCloseTo(0.03);
+      expect(keep?.input).toBe(1000);
+    } finally {
+      globalThis.fetch = real;
+      config.aiGatewayKey = key;
+    }
   });
 });
