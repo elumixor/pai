@@ -39,7 +39,7 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.2.4",
-        "@elumixor/devkit": "^0.11.2",
+        "@elumixor/devkit": "^0.12.0",
         "@happy-dom/global-registrator": "^21.0.3",
         "@playwright/test": "^1.64.1",
         "@types/bun": "latest",
@@ -162,7 +162,7 @@
 
     "@desk/connector": ["@desk/connector@github:elumixor/desk-connector#91e1f43", { "dependencies": { "zod": "^4.4.3" } }, "elumixor-desk-connector-91e1f43"],
 
-    "@elumixor/devkit": ["@elumixor/devkit@0.11.2", "", { "dependencies": { "ink": "7.1.1", "react": "19.2.8", "wrap-ansi": "10.0.2" }, "bin": { "devkit": "src/bin/devkit.ts", "free-port": "src/bin/free-port.ts" } }, "sha512-45gHVobwf/97xSJuO1BZvzKn3teUBHEtq45lA74NLNoT91/9uaK2H4mUiBilEMkmz6Rl+YCus9wcm2WkzMV9JQ=="],
+    "@elumixor/devkit": ["@elumixor/devkit@0.12.0", "", { "dependencies": { "ink": "7.1.1", "react": "19.2.8", "wrap-ansi": "10.0.2" }, "bin": { "devkit": "src/bin/devkit.ts", "free-port": "src/bin/free-port.ts" } }, "sha512-08Iigr/mEse67Tp3rL96gpak1MM9dgPSOeMuZMcBjlB4o1IaY2BLZQn1hroPbxP4PEdo5QfmI6e9cAxjxqmFOA=="],
 
     "@elumixor/react-message-renderer": ["@elumixor/react-message-renderer@0.3.0", "", { "dependencies": { "react-reconciler": "^0.33.0" }, "peerDependencies": { "react": ">=19" } }, "sha512-47E4HEb8YmnX3ysCid2Dwoy+F2TEvml7hP7tJ9ixKJpDeMSHRJr1sJvw0po23c3B9TqUNtTZyFobBX8rVeu1AQ=="],
 
