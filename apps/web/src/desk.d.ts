@@ -13,6 +13,6 @@ interface Window {
 
 declare namespace svelteHTML {
   interface IntrinsicElements {
-    "desk-bar": { class?: string };
+    "desk-bar": { class?: string; app?: string };
   }
 }

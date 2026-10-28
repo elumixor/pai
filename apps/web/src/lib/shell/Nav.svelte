@@ -19,7 +19,7 @@
 </script>
 
 <nav class="nav" aria-label="pai">
-  <desk-bar class="nav-brand"></desk-bar>
+  <desk-bar app="pai" class="nav-brand"></desk-bar>
   {#each ITEMS as item (item.name)}
     <a class="nav-item" class:on={item.active.includes(route.name)} href={href(item.name)} title={item.title} aria-label={item.title.replace(/ \(.*/, "")}><Icon name={item.icon} size={15} /></a>
   {/each}
