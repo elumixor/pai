@@ -27,6 +27,7 @@ import { cost as hostingCost } from "../domain/hetzner.ts";
 import * as models from "../domain/models.ts";
 import * as spend from "../domain/spend.ts";
 import * as agents from "../domain/agents.ts";
+import * as push from "../domain/push.ts";
 import * as asks from "../domain/asks.ts";
 import * as main from "../domain/main.ts";
 import * as messages from "../domain/messages.ts";
@@ -561,6 +562,19 @@ export async function handle(req: Request): Promise<Response> {
         createdAt: t.updatedAt,
       }));
       return json([...fromSessions, ...fromDrafts, ...fromAsks, ...fromTasks].sort((a, b) => b.createdAt - a.createdAt));
+    }
+
+    // A phone's APNs token (Paigram registers itself), and a test push to every phone.
+    if (path === "/push/devices" && req.method === "POST") {
+      const { token, bundleId, env } = await body<{ token?: string; bundleId?: string; env?: push.ApnsEnv }>(req);
+      if (!token || !bundleId) return json({ error: "token and bundleId required" }, 400);
+      push.register({ token, bundleId, env: env === "sandbox" ? "sandbox" : "production" });
+      return json({ registered: true });
+    }
+    if (path === "/push/devices" && req.method === "DELETE") return json({ removed: push.unregister(url.searchParams.get("token") ?? "") });
+    if (path === "/push/test" && req.method === "POST") {
+      const { title, body: text } = await body<{ title?: string; body?: string }>(req);
+      return json({ delivered: await push.notify({ title: title ?? "pai", body: text ?? "Push works." }) });
     }
 
     // One answer for any of them, by the id `/needs` gave it — what a notification's button sends.
