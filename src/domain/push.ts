@@ -54,13 +54,17 @@ export interface Notification {
 
 const text = (value: unknown) => (typeof value === "string" ? value : "");
 
+/** Paigram's peer id for an email chat (namespace 4, the box's contact id), packed as Postbox packs it, so a tap opens the chat. */
+const EMAIL_PEER_NAMESPACE = 4;
+const emailPeerId = (contactId: unknown) => (typeof contactId === "number" ? EMAIL_PEER_NAMESPACE * 2 ** 32 + contactId : undefined);
+
 /** Which events reach the phone, and as what. */
 const RULES: Readonly<Record<string, (payload: Record<string, unknown>) => Notification>> = {
   "email.new": (p) => ({
     title: text(p.name) || text(p.address),
     body: [text(p.subject), text(p.snippet)].filter(Boolean).join("\n"),
     thread: `email:${p.contactId}`,
-    data: { email: { contactId: p.contactId, account: p.account, id: p.id } },
+    data: { peerId: emailPeerId(p.contactId), email: { contactId: p.contactId, account: p.account, id: p.id } },
   }),
 };
 
