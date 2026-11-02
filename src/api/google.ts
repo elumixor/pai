@@ -1,7 +1,8 @@
 import { config } from "../core/config.ts";
 import { clerkConfigured } from "./clerk.ts";
 import { logger } from "../core/log.ts";
-import { clearSession, origin, sessionCookie, sessionFromRequest, sign, verify } from "./auth.ts";
+import { clearSession, identified, origin, personEmail, sessionCookie, sessionFromRequest, sign, tokenFromRequest, verify } from "./auth.ts";
+import { deviceFor, listDevices, mintDevice, revokeDevice } from "./devices.ts";
 import type { OAuthFinish } from "@desk/connector";
 
 const log = logger("google");
@@ -48,6 +49,7 @@ export async function handleAuth(req: Request, url: URL): Promise<Response | und
   if (path === "/auth/config") {
     return json({ clerkPublishableKey: clerkConfigured() ? config.clerk.publishableKey : null, keepUrl: config.keepUrl || null });
   }
+  if (path === "/auth/devices" || path.startsWith("/auth/devices/")) return devices(req, url);
   // The consent screen links here; Google will not publish an app without a privacy policy.
   if (path === "/auth/privacy") return new Response(PRIVACY, { headers: { "content-type": "text/html; charset=utf-8" } });
   if (!googleConfigured()) {
@@ -86,6 +88,31 @@ export async function handleAuth(req: Request, url: URL): Promise<Response | und
     return redirect(claims.next, { "set-cookie": sessionCookie(email, req) });
   }
   return undefined;
+}
+
+/**
+ * Phones' own tokens (`devices.ts`). Minting needs a person signed in (the link page, `/#/link`, posts here with its
+ * Clerk session); the JSON body keeps a cross-site form from doing it with the cookie. Listing and revoking take any
+ * credential, and a device may always revoke itself (`DELETE /auth/devices/self`, Paigram's sign-out).
+ */
+async function devices(req: Request, url: URL) {
+  const rest = url.pathname.slice("/auth/devices".length).replace(/^\//, "");
+  if (req.method === "POST" && !rest) {
+    if (!(req.headers.get("content-type") ?? "").includes("application/json")) return json({ error: "expected JSON" }, 415);
+    const email = await personEmail(req);
+    if (!email) return json({ error: "sign in first" }, 401);
+    const { name } = (await req.json().catch(() => ({}))) as { name?: string };
+    return json(mintDevice(email, String(name ?? "")));
+  }
+  if (req.method === "DELETE" && rest === "self") {
+    const device = deviceFor(tokenFromRequest(req, url) ?? "");
+    if (!device) return json({ error: "not a device token" }, 401);
+    return json({ revoked: revokeDevice(device.id) });
+  }
+  if (!(await identified(req, url))) return json({ error: "sign in, or present the token" }, 401);
+  if (req.method === "GET" && !rest) return json(listDevices());
+  if (req.method === "DELETE" && rest) return json({ revoked: revokeDevice(rest) });
+  return json({ error: "not found" }, 404);
 }
 
 function callbackUrl(req: Request, url: URL) {

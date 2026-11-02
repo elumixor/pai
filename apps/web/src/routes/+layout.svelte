@@ -9,7 +9,11 @@
 
   $effect(() => void auth.load());
   $effect(() => {
-    if (auth.loaded && !auth.error && !auth.signedIn && !signingIn) void goto("#/sign-in", { replaceState: true });
+    // The page asked for comes back after sign-in (`next`), so a link (Paigram's `#/link`) survives it.
+    if (auth.loaded && !auth.error && !auth.signedIn && !signingIn) {
+      const wanted = page.url.hash.replace(/^#\/?/, "");
+      void goto(wanted ? `#/sign-in?next=${encodeURIComponent(`/#/${wanted}`)}` : "#/sign-in", { replaceState: true });
+    }
   });
 </script>
 
