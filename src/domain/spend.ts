@@ -366,6 +366,8 @@ export interface Report {
   readonly total: Bucket & { readonly savedUsd: number };
   readonly by: Record<"agent" | "project" | "model" | "source", Bucket[]>;
   readonly daily: Bucket[];
+  /** Each agent's calls and list-price spend per day, aligned with `daily`. */
+  readonly dailyAgents: { readonly key: string; readonly calls: number[]; readonly apiUsd: number[] }[];
 }
 
 const bucket = (key: string): Bucket => ({ key, apiUsd: 0, realUsd: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, ms: 0, calls: 0 });
@@ -433,6 +435,7 @@ export async function report(days = 30): Promise<Report> {
   const total = bucket("total");
   const groups = { agent: new Map<string, Bucket>(), project: new Map<string, Bucket>(), model: new Map<string, Bucket>(), source: new Map<string, Bucket>() };
   const daily = new Map<string, Bucket>();
+  const agentDaily = new Map<string, Map<string, Bucket>>();
   const into = (b: Bucket, r: Agg, real: number) => {
     b.apiUsd += r.cost_usd;
     b.realUsd += real;
@@ -458,11 +461,14 @@ export async function report(days = 30): Promise<Report> {
     if (r.model) add(groups.model, r.model, r, real);
     add(groups.source, r.source, r, real);
     add(daily, r.day, r, real);
+    const agent = agentOf(r);
+    add(agentDaily.get(agent) ?? agentDaily.set(agent, new Map()).get(agent)!, r.day, r, real);
   }
   // With nothing used, the plan is still paid: the total says so even when no bucket can carry it.
   if (subscriptionApi === 0) total.realUsd += planPeriod;
 
   const boxMonthly = await boxMonthlyUsd();
+  const calendar = Array.from({ length: days }, (_, i) => dayFmt.format(to - (days - 1 - i) * DAY_MS));
   const sorted = (m: Map<string, Bucket>) => [...m.values()].sort((a, b) => b.apiUsd - a.apiUsd || b.ms - a.ms);
   return {
     from,
@@ -474,6 +480,11 @@ export async function report(days = 30): Promise<Report> {
     total: { ...total, savedUsd: total.apiUsd - total.realUsd },
     by: { agent: sorted(groups.agent), project: sorted(groups.project), model: sorted(groups.model), source: sorted(groups.source) },
     // Every day of the period, quiet ones included, so a chart's bars line up with the calendar.
-    daily: Array.from({ length: days }, (_, i) => dayFmt.format(to - (days - 1 - i) * DAY_MS)).map((day) => daily.get(day) ?? bucket(day)),
+    daily: calendar.map((day) => daily.get(day) ?? bucket(day)),
+    dailyAgents: [...agentDaily].map(([key, byDay]) => ({
+      key,
+      calls: calendar.map((day) => byDay.get(day)?.calls ?? 0),
+      apiUsd: calendar.map((day) => byDay.get(day)?.apiUsd ?? 0),
+    })),
   };
 }
