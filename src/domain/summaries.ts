@@ -1,12 +1,10 @@
 import { bus } from "../core/bus.ts";
-import { config } from "../core/config.ts";
 import { logger } from "../core/log.ts";
 import * as agents from "./agents.ts";
 import * as asks from "./asks.ts";
 import * as messages from "./messages.ts";
 import * as sessions from "./sessions.ts";
-import * as credits from "./credits.ts";
-import * as spend from "./spend.ts";
+import * as smallModel from "./small-model.ts";
 
 /**
  * The gist of a long message, in a sentence or two, so a chat can show what a reply or a
@@ -16,9 +14,6 @@ import * as spend from "./spend.ts";
  */
 
 const log = logger("tldr");
-const GATEWAY = "https://ai-gateway.vercel.sh/v1/chat/completions";
-// A model that answers without thinking first: a reasoning one spends the whole budget on its reasoning and returns nothing.
-const MODEL = "google/gemini-2.5-flash-lite";
 /** Shorter than this a message is its own summary. */
 export const SHORT = 400;
 
@@ -30,7 +25,7 @@ const HEADLINED = new Set(["event", "report", "request", "response", "ask", "not
 /** How many recent rows a starting daemon headlines. */
 const BACKFILL = 100;
 
-export const enabled = () => Boolean(config.aiGatewayKey || config.anthropicKey);
+export const enabled = smallModel.enabled;
 
 /** The summary for a message: what it has, else one written now; undefined when there is no key or the model fails. */
 export function tldr(id: number): Promise<string | undefined> {
@@ -71,10 +66,11 @@ function once(key: string, work: () => Promise<string>) {
 async function writeHeadline(m: messages.Message, answer?: string): Promise<string> {
   const agent = agents.get(m.from)?.name ?? agents.get(m.to)?.name;
   const source = typeof m.meta.source === "string" ? m.meta.source : m.from.startsWith("watcher:") ? m.from.slice(8) : m.from.startsWith("routine:") ? "routine" : undefined;
-  const text = await complete(
+  const text = await smallModel.complete(
     "You write one headline for a row in a personal assistant's activity log: three to six words, no period, no quotes, no markdown. Say who and what happened, and always where it came from: an email says 'emails' or 'by email', Telegram says 'on Telegram', LinkedIn says 'on LinkedIn', a routine is named by its name, a report or a request from an agent starts with the agent's name. Examples: 'Dmytro emails asking for work', 'Dmytro connects on Telegram', 'Daily follow-up ran', 'Approved draft to Dmytro', 'ATMA completed Hiring Developer', 'You wrote to Mama on Telegram'. An answered question is headlined by what was decided.",
     `kind: ${m.kind}${m.meta.event ? ` (${m.meta.event})` : ""}${source ? `\nsource: ${source}` : ""}${agent ? `\nagent: ${agent}` : ""}\n\n${m.body.slice(0, 4_000)}${answer ? `\n\nanswer: ${answer}` : ""}`,
     40,
+    "summaries",
   );
   const line = text.replace(/\*\*|__/g, "").replace(/^["'“”]+|["'“”.]+$/g, "").split("\n")[0]!.trim().split(/\s+/).slice(0, 7).join(" ");
   messages.patchMeta(m.id, { headline: line });
@@ -83,10 +79,11 @@ async function writeHeadline(m: messages.Message, answer?: string): Promise<stri
 
 /** A thread's name from its first message: three to six words, the way a person would title the conversation. */
 async function writeTitle(sessionId: string, text: string) {
-  const title = await complete(
+  const title = await smallModel.complete(
     "You name a conversation with an assistant from its first message: three to six words, sentence case, no period, no quotes, no markdown. Name the subject, not the request's grammar. Examples: 'Flight options to Lisbon', 'Fix flaky login test', 'Birthday gift for Mama'.",
     text.slice(0, 4_000),
     30,
+    "summaries",
   );
   const line = title.replace(/\*\*|__/g, "").replace(/^["'“”]+|["'“”.]+$/g, "").split("\n")[0]!.trim().split(/\s+/).slice(0, 8).join(" ");
   if (line) sessions.find(sessionId)?.retitle(line);
@@ -94,40 +91,13 @@ async function writeTitle(sessionId: string, text: string) {
 }
 
 async function write(m: messages.Message): Promise<string> {
-  const text = await complete(
+  const text = await smallModel.complete(
     "You write the gist of a message from a personal assistant to its user. One or two sentences, up to three when the message holds several decisions. Keep names, numbers, dates and what is asked of the user. Markdown inline marks are fine; no preamble, no quotes, no bullet list.",
     m.body.slice(0, 12_000),
     300,
+    "summaries",
   );
   messages.patchMeta(m.id, { tldr: text });
-  return text;
-}
-
-/** On the plan's API credits while they last; the gateway when there is no key or they are spent. */
-async function complete(system: string, user: string, maxTokens: number): Promise<string> {
-  if (credits.enabled())
-    try {
-      return await credits.complete(system, user, maxTokens, "summaries");
-    } catch (err) {
-      if (!config.aiGatewayKey) throw err;
-      if (!credits.exhausted(err)) log.warn(`credits: ${(err as Error).message}`);
-    }
-  return gateway(system, user, maxTokens);
-}
-
-async function gateway(system: string, user: string, maxTokens: number): Promise<string> {
-  const started = Date.now();
-  const response = await fetch(GATEWAY, {
-    method: "POST",
-    headers: { authorization: `Bearer ${config.aiGatewayKey}`, "content-type": "application/json" },
-    body: JSON.stringify({ model: MODEL, max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] }),
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!response.ok) throw new Error(`gateway ${response.status}: ${(await response.text()).slice(0, 200)}`);
-  const data = (await response.json()) as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number } };
-  spend.recordGateway(MODEL, data.usage, Date.now() - started, "summaries");
-  const text = data.choices?.[0]?.message?.content?.trim();
-  if (!text) throw new Error("gateway answered without text");
   return text;
 }
 

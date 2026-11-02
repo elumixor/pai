@@ -22,7 +22,7 @@
         "@codemirror/legacy-modes": "^6.5.4",
         "@codemirror/state": "^6.7.4",
         "@codemirror/view": "^6.43.11",
-        "@desk/connector": "github:elumixor/desk-connector#v0.1.0",
+        "@desk/connector": "github:elumixor/desk-connector#v0.2.0",
         "@elumixor/react-telegram": "^0.3.0",
         "@grammyjs/auto-retry": "^2.0.2",
         "@grammyjs/transformer-throttler": "^1.2.1",
@@ -160,7 +160,7 @@
 
     "@codemirror/view": ["@codemirror/view@6.43.11", "", { "dependencies": { "@codemirror/state": "^6.7.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-2+esucbQX6wB2JYi1eDvdCPFTA31BN8oSy6xCmk3G6CloV11yOvEjYk+gH7kLrP0MuHG94E8WDhjs5oMiu3+Wg=="],
 
-    "@desk/connector": ["@desk/connector@github:elumixor/desk-connector#91e1f43", { "dependencies": { "zod": "^4.4.3" } }, "elumixor-desk-connector-91e1f43"],
+    "@desk/connector": ["@desk/connector@github:elumixor/desk-connector#fd65f7a", { "dependencies": { "zod": "^4.4.3" } }, "elumixor-desk-connector-fd65f7a"],
 
     "@elumixor/devkit": ["@elumixor/devkit@0.12.0", "", { "dependencies": { "ink": "7.1.1", "react": "19.2.8", "wrap-ansi": "10.0.2" }, "bin": { "devkit": "src/bin/devkit.ts", "free-port": "src/bin/free-port.ts" } }, "sha512-08Iigr/mEse67Tp3rL96gpak1MM9dgPSOeMuZMcBjlB4o1IaY2BLZQn1hroPbxP4PEdo5QfmI6e9cAxjxqmFOA=="],
 

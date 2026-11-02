@@ -14,6 +14,7 @@ import { origin, sign } from "../api/auth.ts";
 import { onGoogleCallback, stateCookie } from "../api/google.ts";
 import { event } from "../domain/messages.ts";
 import { put } from "../domain/recall.ts";
+import * as smallModel from "../domain/small-model.ts";
 import * as tasks from "../domain/tasks.ts";
 
 /** Where a connector keeps state: `data/modules/<name>/`, the directory it had as a module. */
@@ -78,5 +79,6 @@ export function hostFor(name: string, use: <T>(other: string) => T): Host {
     problems: problems(name),
     record: ({ action, text, by, link }) => void event(by ?? "pai", action, text, { meta: link ? { link } : {} }),
     archive: ({ source, id, title, body, at }) => put(source, id, title, body, at),
+    complete: ({ system, prompt, maxTokens, what }) => smallModel.complete(system, prompt, maxTokens, `${name}: ${what}`),
   };
 }
