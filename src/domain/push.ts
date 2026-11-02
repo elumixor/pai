@@ -50,6 +50,11 @@ export interface Notification {
   readonly thread?: string;
   /** Next to `aps`, for the app to act on a tap. */
   readonly data?: Record<string, unknown>;
+  /**
+   * Who wrote, for the phone to draw it as a message from a person (their picture on the lock screen): the
+   * notification extension reads it and fetches the pictures, paths on this box, with the phone's own token.
+   */
+  readonly sender?: { readonly name: string; readonly id: string; readonly avatar?: string; readonly group?: string; readonly groupAvatar?: string; readonly service: string };
 }
 
 const text = (value: unknown) => (typeof value === "string" ? value : "");
@@ -67,6 +72,7 @@ const RULES: Readonly<Record<string, (payload: Record<string, unknown>) => Notif
     body: [text(p.subject), text(p.snippet)].filter(Boolean).join("\n"),
     thread: `email:${p.contactId}`,
     data: { peerId: emailPeerId(p.contactId), email: { contactId: p.contactId, account: p.account, id: p.id } },
+    sender: { name: text(p.name) || text(p.address), id: `email:${text(p.address)}`, avatar: text(p.avatar) || undefined, service: "Mail" },
   }),
   // His own replies (typed on the phone or elsewhere) and muted chats stay quiet, as in WhatsApp itself.
   "whatsapp.message": (p) => {
@@ -77,6 +83,14 @@ const RULES: Readonly<Record<string, (payload: Record<string, unknown>) => Notif
       body: text(p.text),
       thread: `whatsapp:${text(p.chatKind)}:${p.chatId}`,
       data: { peerId: peerId(group ? PEER_NAMESPACE.whatsappGroup : PEER_NAMESPACE.whatsapp, p.chatId), whatsapp: { chatKind: p.chatKind, chatId: p.chatId, id: p.messageId } },
+      sender: {
+        name: group ? text(p.authorName) || text(p.from) : text(p.chatName),
+        id: `whatsapp:${p.authorId ?? p.chatId}`,
+        avatar: text(p.avatar) || undefined,
+        group: group ? text(p.chatName) : undefined,
+        groupAvatar: group ? text(p.chatAvatar) || undefined : undefined,
+        service: "WhatsApp",
+      },
     };
   },
 };
@@ -129,7 +143,8 @@ class Apns {
 
   async send(device: Device, n: Notification): Promise<void> {
     const token = await this.#token();
-    const payload = JSON.stringify({ aps: { alert: { title: n.title, body: n.body }, sound: "default", ...(n.thread ? { "thread-id": n.thread } : {}) }, ...n.data });
+    const aps = { alert: { title: n.title, body: n.body }, sound: "default", ...(n.thread ? { "thread-id": n.thread } : {}), ...(n.sender ? { "mutable-content": 1 } : {}) };
+    const payload = JSON.stringify({ aps, ...n.data, ...(n.sender ? { pai: { ...n.sender, thread: n.thread } } : {}) });
     const request = this.#session(device.env).request({
       ":method": "POST",
       ":path": `/3/device/${device.token}`,
