@@ -64,11 +64,11 @@ Content: keep every fact, number, date, name and intention of the draft (or of t
 
 Email: the text is the whole body, with the greeting and sign-off he uses with this person; no subject line.
 
-Questions: ask only when a correct message needs his decision: the draft is ambiguous in a way that changes its meaning, contradicts what was agreed (another date, time or amount), leaves out an answer the other person explicitly asked for, or could land as rude. Each question short, with two to four concrete options. Still give your best text.
+Questions: almost always none. Never ask when he only wants his words translated or polished, and never about something his words leave open on purpose. Ask only when a correct message needs his decision: the draft is ambiguous in a way that changes its meaning, contradicts what was agreed (another date, time or amount), leaves out an answer the other person explicitly asked for, or could land as rude. Each question short, with two to four concrete options. Still give your best text.
 
 Questions, options and notes are read by him, not sent: write them in the language named under "Talk to him in", whatever the message's language.
 
-Notes: a heads-up that needs no decision, one line each; usually none.`;
+Notes: a heads-up that needs no decision, one line each, only when he would want to know before sending (you translated into a language he did not write in, you resolved a date he may have meant differently). Never explain wording choices. Usually none.`;
 
 /** A time zone the runtime knows, else UTC. */
 const zoneOf = (zone: string | undefined) => {
