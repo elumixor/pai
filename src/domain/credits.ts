@@ -1,4 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import type { z } from "zod";
 import { config } from "../core/config.ts";
 import { now } from "../core/db.ts";
 import { resolve } from "./models.ts";
@@ -17,18 +19,14 @@ export const enabled = () => Boolean(config.anthropicKey);
 /** The answer the API gives once the credits are gone; until the next grant only the fallback works. */
 export const exhausted = (err: unknown) => /credit balance is too low/i.test(String((err as Error)?.message ?? err));
 
-/** One short completion on the newest Haiku, thinking kept low: these are one-line jobs. */
-export async function complete(system: string, user: string, maxTokens: number, what: string): Promise<string> {
+const api = () => {
   if (!config.anthropicKey) throw new Error("no PAI_ANTHROPIC_API_KEY");
   client ??= new Anthropic({ apiKey: config.anthropicKey, maxRetries: 1, timeout: 30_000 });
-  const started = now();
-  const response = await client.messages.create({
-    model: resolve("haiku"),
-    max_tokens: maxTokens + 1_000,
-    output_config: { effort: "low" },
-    system,
-    messages: [{ role: "user", content: user }],
-  });
+  return client;
+};
+
+/** A response's tokens into the spending log, under what it was for. */
+function record(response: Anthropic.Message, started: number, what: string) {
   const t = spend.tokensOf(response.usage);
   spend.record({
     ref: `credits:${response.id}`,
@@ -44,10 +42,38 @@ export async function complete(system: string, user: string, maxTokens: number, 
     costUsd: spend.price(response.model, t),
     ms: now() - started,
   });
+}
+
+/** One short completion on the newest Haiku, thinking kept low: these are one-line jobs. */
+export async function complete(system: string, user: string, maxTokens: number, what: string): Promise<string> {
+  const started = now();
+  const response = await api().messages.create({
+    model: resolve("haiku"),
+    max_tokens: maxTokens + 1_000,
+    output_config: { effort: "low" },
+    system,
+    messages: [{ role: "user", content: user }],
+  });
+  record(response, started, what);
   const text = response.content
     .flatMap((b) => (b.type === "text" ? [b.text] : []))
     .join("")
     .trim();
   if (!text) throw new Error(`no text (${response.stop_reason})`);
   return text;
+}
+
+/** One answer in the shape of `schema`, from the newest model of `family`: for writing that has to be good, not just short. */
+export async function structured<T extends z.ZodType>(family: "haiku" | "sonnet", system: string, user: string, schema: T, maxTokens: number, what: string): Promise<z.infer<T>> {
+  const started = now();
+  const response = await api().messages.parse({
+    model: resolve(family),
+    max_tokens: maxTokens,
+    output_config: { effort: "low", format: zodOutputFormat(schema) },
+    system,
+    messages: [{ role: "user", content: user }],
+  });
+  record(response, started, what);
+  if (response.stop_reason === "refusal" || response.parsed_output === null) throw new Error(`no answer (${response.stop_reason})`);
+  return response.parsed_output as z.infer<T>;
 }

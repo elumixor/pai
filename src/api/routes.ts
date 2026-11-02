@@ -28,6 +28,7 @@ import * as models from "../domain/models.ts";
 import * as spend from "../domain/spend.ts";
 import * as agents from "../domain/agents.ts";
 import * as push from "../domain/push.ts";
+import * as composer from "../domain/compose.ts";
 import * as asks from "../domain/asks.ts";
 import * as main from "../domain/main.ts";
 import * as messages from "../domain/messages.ts";
@@ -575,6 +576,17 @@ export async function handle(req: Request): Promise<Response> {
     if (path === "/push/test" && req.method === "POST") {
       const { title, body: text } = await body<{ title?: string; body?: string }>(req);
       return json({ delivered: await push.notify({ title: title ?? "pai", body: text ?? "Push works." }) });
+    }
+
+    // Paigram's compose button: the draft as the message he would send in that chat.
+    if (path === "/compose" && req.method === "POST") {
+      const request = await body<composer.ComposeRequest>(req);
+      if (!request.draft?.trim()) return json({ error: "draft required" }, 400);
+      try {
+        return json(await composer.compose({ ...request, messages: request.messages ?? [] }));
+      } catch (err) {
+        return json({ error: (err as Error).message }, 502);
+      }
     }
 
     // One answer for any of them, by the id `/needs` gave it — what a notification's button sends.

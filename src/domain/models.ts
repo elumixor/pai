@@ -47,9 +47,13 @@ export function latest(): Record<string, Model> {
   return out;
 }
 
+/** The newest of each family as of this release, for before the Models API has been asked once. */
+const KNOWN: Readonly<Record<(typeof FAMILIES)[number], string>> = { fable: "claude-fable-5-1", opus: "claude-opus-5-5", sonnet: "claude-sonnet-5-5", haiku: "claude-haiku-5-5" };
+
 /** A family name to the newest model id of that family; anything else (a full id, a dated one) as it is. */
 export function resolve(model: string): string {
-  return (FAMILIES as readonly string[]).includes(model) ? (latest()[model]?.id ?? model) : model;
+  const family = FAMILIES.find((f) => f === model);
+  return family ? (latest()[family]?.id ?? KNOWN[family]) : model;
 }
 
 async function refresh() {
