@@ -54,18 +54,31 @@ export interface Notification {
 
 const text = (value: unknown) => (typeof value === "string" ? value : "");
 
-/** Paigram's peer id for an email chat (namespace 4, the box's contact id), packed as Postbox packs it, so a tap opens the chat. */
-const EMAIL_PEER_NAMESPACE = 4;
-const emailPeerId = (contactId: unknown) => (typeof contactId === "number" ? EMAIL_PEER_NAMESPACE * 2 ** 32 + contactId : undefined);
+/** Paigram's peer namespaces for the box's chats: email contacts, WhatsApp people (DMs) and WhatsApp groups. */
+const PEER_NAMESPACE = { email: 4, whatsapp: 5, whatsappGroup: 6 } as const;
+/** A box chat's id as Paigram's peer id, packed as Postbox packs it, so a tap opens the chat. */
+const peerId = (namespace: number, id: unknown) => (typeof id === "number" ? namespace * 2 ** 32 + id : undefined);
+const emailPeerId = (contactId: unknown) => peerId(PEER_NAMESPACE.email, contactId);
 
-/** Which events reach the phone, and as what. */
-const RULES: Readonly<Record<string, (payload: Record<string, unknown>) => Notification>> = {
+/** Which events reach the phone, and as what; a rule answering undefined lets the event pass silently. */
+const RULES: Readonly<Record<string, (payload: Record<string, unknown>) => Notification | undefined>> = {
   "email.new": (p) => ({
     title: text(p.name) || text(p.address),
     body: [text(p.subject), text(p.snippet)].filter(Boolean).join("\n"),
     thread: `email:${p.contactId}`,
     data: { peerId: emailPeerId(p.contactId), email: { contactId: p.contactId, account: p.account, id: p.id } },
   }),
+  // His own replies (typed on the phone or elsewhere) and muted chats stay quiet, as in WhatsApp itself.
+  "whatsapp.message": (p) => {
+    if (p.fromMe === true || p.muted === true) return undefined;
+    const group = p.chatKind === "group";
+    return {
+      title: group ? `${text(p.authorName) || text(p.from)} @ ${text(p.chatName)}` : text(p.chatName),
+      body: text(p.text),
+      thread: `whatsapp:${text(p.chatKind)}:${p.chatId}`,
+      data: { peerId: peerId(group ? PEER_NAMESPACE.whatsappGroup : PEER_NAMESPACE.whatsapp, p.chatId), whatsapp: { chatKind: p.chatKind, chatId: p.chatId, id: p.messageId } },
+    };
+  },
 };
 
 /** Apple's provider token lives an hour; renewed well before. */
@@ -167,8 +180,8 @@ export async function notify(n: Notification): Promise<number> {
 
 export function start() {
   const handler = (e: PaiEvent) => {
-    const rule = RULES[e.kind];
-    if (rule) void notify(rule(e.payload)).catch((err: Error) => log.warn(err.message));
+    const notification = RULES[e.kind]?.(e.payload);
+    if (notification) void notify(notification).catch((err: Error) => log.warn(err.message));
   };
   bus.on("event", handler);
   return () => {
