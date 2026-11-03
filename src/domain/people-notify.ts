@@ -105,7 +105,7 @@ export function start() {
   let queue = Promise.resolve();
   let stopped = false;
   enqueue = (id) => {
-    queue = queue.then(() => (stopped ? undefined : handle(id)));
+    queue = queue.then(() => (stopped ? undefined : handle(id))).catch((err: Error) => log.warn(`${id}: ${err.message}`));
   };
   const pending = db.query("SELECT id FROM keep_notifications WHERE routed_at IS NULL AND received_at > ? ORDER BY received_at").all(now() - REQUEUE_MS) as { id: string }[];
   for (const { id } of pending) enqueue(id);
@@ -233,7 +233,7 @@ async function decideRoute(n: Notification, page: string): Promise<{ via: Via; t
   return { via: "decide", target: { kind: "main" } };
 }
 
-/** A new thread for the page, linked to it and briefed; when another thread took the page meanwhile, that one. */
+/** A new thread for the page, linked to it (taking over a gone owner's link) and briefed; when a live thread has it, that one. */
 function spawnFor(n: Notification, page: string, info: KeepPage | undefined, parent: string | null): Target {
   const owner = targetOf(keepLinks.threadFor(page));
   if (owner) return owner;

@@ -90,7 +90,9 @@ export class KeepSignatureError extends Error {
 /** Whether `signature` (`sha256=<hex>`) is the HMAC of `body` with `secret`. */
 export function signedWith(secret: string, body: string, signature: string) {
   const expected = `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
-  return expected.length === signature.length && timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+  const a = Buffer.from(expected);
+  const b = Buffer.from(signature);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 const signed = (body: string, signature: string | null) =>

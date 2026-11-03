@@ -474,7 +474,7 @@ export class Session {
             this.recentTools = [...this.recentTools.slice(-(RECENT_TOOLS - 1)), this.lastTool];
             bus.emitEvent("session.tool", { id: block.id, name: block.name, summary: this.lastTool, parent }, this.id);
             audit.record({ toolUseId: block.id, sessionId: this.id, agent: this.agent, tool: block.name, summary: this.lastTool, input: block.input });
-            keepLinks.observe(this.id, block.name, block.input);
+            keepLinks.observe(this.id, block.name, block.input, block.id);
           }
         }
         break;
@@ -490,6 +490,7 @@ export class Session {
               const result = resultPreview(block.content);
               bus.emitEvent("session.tool_result", { id: block.tool_use_id, result, parent }, this.id);
               audit.settle(block.tool_use_id, result, Boolean(block.is_error));
+              keepLinks.settle(block.tool_use_id, Boolean(block.is_error));
             }
         break;
       }
