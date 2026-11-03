@@ -64,14 +64,18 @@ function build(
     ...externalMcpServers(kind, ref),
     ...keepMcp(sessionId),
   };
-  const mcpServers = Object.fromEntries(Object.entries(servers).filter(([name]) => serverAllowed(name, agent?.tools)));
+  // The `keep` server pai injects (Pai's key, this thread's client tag) is every agent's: each tracks its work there.
+  const paiKeep = "keep" in servers;
+  const mcpServers = Object.fromEntries(Object.entries(servers).filter(([name]) => name === "keep" || serverAllowed(name, agent?.tools)));
   // claude.ai connectors arrive with the user's settings rather than through mcpServers; the
   // ones an agent may not use are denied by their tool prefix, as the last session init named them.
   const disallowedTools = agent?.tools ? knownServers().filter((name) => !(name in servers) && !serverAllowed(name, agent.tools)).map(toolPrefix) : [];
   // Connectors the user switched off for the assistant (a calendar that lives in Balance instead).
   disallowedTools.push(...config.deniedConnectors.map(toolPrefix));
   // The old per-workspace Keep servers in the user's settings: the `keep` server above covers every workspace.
-  if ("keep" in servers) disallowedTools.push(...knownServers().filter((name) => name.startsWith("keep-")).map(toolPrefix));
+  if (paiKeep) disallowedTools.push(...knownServers().filter((name) => name.startsWith("keep-")).map(toolPrefix));
+  // Without Pai's key, a `keep` in the user's settings would act as the user: no session gets it.
+  else if (knownServers().includes("keep") && !disallowedTools.includes(toolPrefix("keep"))) disallowedTools.push(toolPrefix("keep"));
   // pai delegates through its own agents, which the user can watch and answer; Claude Code's Agent tool would hide the work.
   // Threads are the same kind of hidden work: whatever pai hands off is an agent, so it shows in the agent tree.
   if (agent?.slug === "pai") disallowedTools.push("Agent", "Task", ...PAI_THREAD_TOOLS);

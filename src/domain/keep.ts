@@ -99,7 +99,6 @@ const signed = (body: string, signature: string | null) =>
 export function receive(body: string, signature: string | null): KeepEvent {
   if (!signed(body, signature)) throw new KeepSignatureError();
   const event = JSON.parse(body) as KeepEvent;
-  const effective = event.effective ?? event.properties;
   bus.emitEvent(`keep.${event.type}`, {
     ...(event.id ? { id: event.id } : {}),
     urn: event.urn,
@@ -110,7 +109,8 @@ export function receive(body: string, signature: string | null): KeepEvent {
     changed: event.changed,
     ...(event.changes ? { changes: event.changes } : {}),
     ...(event.comment ? { comment: event.comment } : {}),
-    ...(effective ? { effective } : {}),
+    ...(event.properties ? { properties: event.properties } : {}),
+    ...(event.effective ? { effective: event.effective } : {}),
   });
   return event;
 }
