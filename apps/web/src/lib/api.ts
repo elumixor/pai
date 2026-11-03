@@ -84,6 +84,8 @@ export const api = {
   agent: (slug: string) => get<Agent & { children: Agent[]; tasks: TaskItem[] }>(`/agents/${slug}`),
   agentInstructions: (slug: string) => get<AgentInstructions>(`/agents/${slug}/instructions`),
   messageAgent: (slug: string, text: string, taskId?: number, images: readonly Upload[] = []) => send<LogMessage>(`/agents/${slug}/message`, { text, taskId, images }),
+  /** Puts threads under a session, an agent (`agent:<slug>`) or at the top (`null`). */
+  moveThreads: (ids: readonly string[], parent: string | null) => send<{ moved: string[] }>("/sessions/move", { ids, parent }),
   configureAgent: (slug: string, changes: { bubble?: boolean; name?: string; parent?: string }) => send(`/agents/${slug}`, changes, "PATCH"),
   closeAgent: (slug: string) => send(`/agents/${slug}/close`, {}),
   messages: (agent: string, options: { before?: number; limit?: number; task?: number } = {}) =>

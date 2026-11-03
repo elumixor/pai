@@ -68,3 +68,21 @@ export function settle(toolUseId: string, isError: boolean): void {
     log.warn(`settle ${call.action} ${call.page}: ${(err as Error).message}`);
   }
 }
+
+/** The Keep pages each session works on: the task dev started it for, and the pages it watches. Titles as last known. */
+export function pagesBySession(): Map<string, { urn: string; title: string }[]> {
+  const rows = db
+    .query(
+      `SELECT session_id, keep_urn AS urn, title FROM dev_tasks WHERE session_id IS NOT NULL
+       UNION SELECT session_id, page_urn AS urn, title FROM keep_threads`,
+    )
+    .all() as { session_id: string; urn: string; title: string }[];
+  const by = new Map<string, { urn: string; title: string }[]>();
+  for (const r of rows) {
+    const list = by.get(r.session_id) ?? [];
+    if (!list.some((p) => p.urn === r.urn)) list.push({ urn: r.urn, title: r.title });
+    else if (r.title) list.find((p) => p.urn === r.urn)!.title ||= r.title;
+    by.set(r.session_id, list);
+  }
+  return by;
+}

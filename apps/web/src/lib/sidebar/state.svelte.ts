@@ -1,3 +1,4 @@
+import type { TreeNode } from "./tree";
 import { recall, remember } from "../storage";
 
 const NARROW = "(max-width: 767px)";
@@ -17,6 +18,8 @@ class Sidebar {
   open = $state(true);
   width = $state(260);
   expanded = $state(new Set<string>(recall<string[]>(EXPANDED_KEY, [])));
+  /** The tree drawn now: what a drop checks it would not put a row under itself. */
+  roots = $state.raw<readonly TreeNode[]>([]);
 
   constructor() {
     const saved = Number(recall<number>(WIDTH_KEY, 0));
@@ -64,3 +67,49 @@ class Sidebar {
 }
 
 export const sidebar = new Sidebar();
+
+/**
+ * The rows picked in the tree, Keep's way: ⌘-click adds or drops one, ⇧-click picks the run from the anchor, and a
+ * drag or `m` moves them all. `last` is the row picked last, drawn a shade deeper.
+ */
+class Selection {
+  selected = $state(new Set<string>());
+  anchor = $state<string | null>(null);
+  last = $state<string | null>(null);
+  /** Rows being dragged: a drop puts them under the row it lands on. */
+  dragging = $state<readonly string[] | null>(null);
+
+  has(id: string) {
+    return this.selected.has(id);
+  }
+
+  toggle(id: string) {
+    const next = new Set(this.selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    this.selected = next;
+    this.anchor = id;
+    this.last = next.has(id) ? id : null;
+  }
+
+  /** Picks every visible row between the anchor and `id`. */
+  range(id: string, from: string | null) {
+    const rows = [...document.querySelectorAll<HTMLElement>('[role="tree"] [role="treeitem"][data-tree-id]')].map((r) => r.dataset.treeId!).filter((r) => r !== "pai");
+    const start = from ? rows.indexOf(from) : -1;
+    const end = rows.indexOf(id);
+    if (end < 0) return;
+    const [a, b] = start < 0 ? [end, end] : [Math.min(start, end), Math.max(start, end)];
+    this.selected = new Set(rows.slice(a, b + 1));
+    this.anchor ??= from ?? id;
+    this.last = id;
+  }
+
+  clear() {
+    if (!this.selected.size && !this.anchor) return;
+    this.selected = new Set();
+    this.anchor = null;
+    this.last = null;
+  }
+}
+
+export const selection = new Selection();

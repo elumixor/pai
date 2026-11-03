@@ -28,6 +28,7 @@ import { cost as hostingCost } from "../domain/hetzner.ts";
 import * as models from "../domain/models.ts";
 import * as spend from "../domain/spend.ts";
 import * as agents from "../domain/agents.ts";
+import * as keepLinks from "../domain/keep-links.ts";
 import * as push from "../domain/push.ts";
 import * as composer from "../domain/compose.ts";
 import * as asks from "../domain/asks.ts";
@@ -393,7 +394,26 @@ export async function handle(req: Request): Promise<Response> {
     if (path === "/spend") return json(await spend.report(Math.max(1, Math.min(365, Number(url.searchParams.get("days") ?? 30) || 30))));
 
     // `limit`: how many of the recent ones; the web client's tree asks for enough to nest every thread under its parent.
-    if (path === "/sessions") return json({ live: sessions.list(), recent: sessions.recent(Math.max(1, Math.min(1000, Number(url.searchParams.get("limit") ?? 30) || 30))) });
+    // Each with the Keep pages it works on (`keep`), for the sidebar's pills.
+    if (path === "/sessions") {
+      const pages = keepLinks.pagesBySession();
+      const withPages = <T extends { sessionId: string }>(s: T) => (pages.has(s.sessionId) ? { ...s, keep: pages.get(s.sessionId) } : s);
+      return json({ live: sessions.list().map(withPages), recent: sessions.recent(Math.max(1, Math.min(1000, Number(url.searchParams.get("limit") ?? 30) || 30))).map(withPages) });
+    }
+    // Threads put under another session, an agent (`agent:<slug>`, its current session) or at the top (`null`).
+    if (path === "/sessions/move" && req.method === "POST") {
+      const { ids, parent } = await body<{ ids: string[]; parent: string | null }>(req);
+      if (!Array.isArray(ids)) return json({ error: "ids must be a list" }, 400);
+      let under: string | null = null;
+      if (parent?.startsWith("agent:")) {
+        under = agents.get(parent.slice("agent:".length))?.sessionId ?? null;
+        if (!under) return json({ error: `${parent} has no session to put threads under` }, 400);
+      } else if (parent) {
+        under = sessions.resolveId(parent) ?? null;
+        if (!under) return json({ error: "no such session" }, 404);
+      }
+      return json({ moved: sessions.move(ids, under) });
+    }
 
     // The task list (`items`); `live` and `recent` are the sessions, as clients built before the list read them.
     if (path === "/tasks" && req.method === "POST") {

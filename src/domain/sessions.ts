@@ -193,6 +193,36 @@ export interface SessionRow {
   origin: ThreadOrigin | null;
 }
 
+/** The session above one, as the database has it. */
+const parentOf = (id: string) => (db.query("SELECT parent_id FROM sessions WHERE session_id = ?").get(id) as { parent_id: string | null } | undefined)?.parent_id ?? null;
+
+/**
+ * Puts threads under another session (or at the top, `null`): where the sidebar shows them and where their reports go.
+ * A thread is never put under itself or below itself. Answers the ids that moved.
+ */
+export function move(ids: readonly string[], parent: string | null): string[] {
+  const moved: string[] = [];
+  for (const raw of ids) {
+    const id = resolveId(raw);
+    if (!id) continue;
+    if (parent) {
+      const seen = new Set<string>();
+      let up: string | null = parent;
+      while (up && up !== id && !seen.has(up)) {
+        seen.add(up);
+        up = parentOf(up);
+      }
+      if (up === id) continue;
+    }
+    db.prepare("UPDATE sessions SET parent_id = ? WHERE session_id = ?").run(parent, id);
+    const s = live.get(id);
+    if (s) s.parent = parent;
+    moved.push(id);
+  }
+  if (moved.length) bus.emitEvent("sessions.moved", { ids: moved, parent });
+  return moved;
+}
+
 /** Recent sessions, live or not, newest activity first. */
 export function recent(limit = 20, kind?: SessionKind): SessionRow[] {
   const rows = (

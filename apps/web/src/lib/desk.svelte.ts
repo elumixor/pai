@@ -97,6 +97,24 @@ class Desk {
     this.sessions = [...byId.values()];
   }
 
+  /**
+   * Puts tree rows under another (`agent:<slug>` / `thread:<id>`) or at the top (`null`): a thread goes under a thread
+   * or an agent, an agent only under an agent. Shown at once, then read back.
+   */
+  async move(ids: readonly string[], target: string | null) {
+    const threads = ids.filter((id) => id.startsWith("thread:")).map((id) => id.slice("thread:".length));
+    const agents = ids.filter((id) => id.startsWith("agent:")).map((id) => id.slice("agent:".length));
+    const parentSession = target?.startsWith("thread:") ? target.slice("thread:".length) : target?.startsWith("agent:") ? this.bySlug(target.slice("agent:".length))?.sessionId ?? null : null;
+    if (threads.length && (!target || parentSession)) {
+      this.sessions = this.sessions.map((s) => (threads.includes(s.sessionId) && s.sessionId !== parentSession ? { ...s, parent: parentSession } : s));
+      const sent = await api.moveThreads(threads, target);
+      if (sent.error) console.warn("[move]", sent.error);
+    }
+    const agentParent = target === null ? PAI : target.startsWith("agent:") ? target.slice("agent:".length) : null;
+    if (agentParent) for (const slug of agents) if (slug !== agentParent) await api.configureAgent(slug, { parent: agentParent });
+    await Promise.all([this.refreshSessions(), agents.length ? this.refreshAgents() : undefined]);
+  }
+
   /** A session's state as an event says it, before the next refresh brings the rest. */
   #setState(id: string | undefined, state: string) {
     const index = id ? this.sessions.findIndex((s) => s.sessionId === id) : -1;

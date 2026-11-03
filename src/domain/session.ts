@@ -240,7 +240,8 @@ export class Session {
   readonly project?: string;
   title: string;
   threadId: number | null;
-  readonly parent: string | null;
+  /** The session that started it, where its reports go; moved in the sidebar with `sessions.move`. */
+  parent: string | null;
   /** The agent this session works for, if any. */
   readonly agent: string | null;
   private readonly agentSetup?: AgentSetup;

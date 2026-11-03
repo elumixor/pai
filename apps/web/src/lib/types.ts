@@ -27,6 +27,8 @@ export interface SessionSummary {
   readonly modelPref?: string | null;
   readonly effort?: Effort | null;
   readonly lastActivity?: number | string;
+  /** The Keep pages it works on: the task dev started it for, the pages it watches. */
+  readonly keep?: readonly { readonly urn: string; readonly title: string }[];
 }
 
 export interface UsageWindow {

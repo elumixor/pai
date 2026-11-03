@@ -1,13 +1,15 @@
 <script lang="ts">
-  import { Hand, House, LogOut, PanelLeftClose, Plus, Settings } from "lucide-svelte";
+  import { CommandPalette, type PaletteItem } from "@desk/core/palette";
+  import { ArrowUpToLine, Hand, House, LogOut, PanelLeftClose, Plus, Settings } from "lucide-svelte";
   import { auth } from "../auth.svelte";
   import { desk } from "../desk.svelte";
   import { href, navigate } from "../router.svelte";
   import MenuItem from "../ui/MenuItem.svelte";
   import Popover from "../ui/Popover.svelte";
   import Separator from "../ui/Separator.svelte";
-  import { SIDEBAR_COLLAPSE, sidebar } from "./state.svelte";
-  import { type TreeNode, generalWaiting } from "./tree";
+  import { mover } from "./move.svelte";
+  import { SIDEBAR_COLLAPSE, selection, sidebar } from "./state.svelte";
+  import { ancestors, type TreeNode, generalWaiting } from "./tree";
   import TreeItem from "./TreeItem.svelte";
 
   /**
@@ -53,17 +55,69 @@
     window.addEventListener("pointercancel", stop);
   }
 
+  $effect(() => {
+    sidebar.roots = roots;
+  });
+
+  /** Where the rows being moved can go: the top, an agent (agents and threads), a thread (threads only). */
+  const destinations = $derived.by((): PaletteItem[] => {
+    if (!mover.open) return [];
+    const ids = mover.ids;
+    const agentsMoved = ids.some((id) => id.startsWith("agent:"));
+    const go = (target: string | null) => () => {
+      mover.open = false;
+      selection.clear();
+      if (target) sidebar.set(target, true);
+      void desk.move(ids, target);
+    };
+    const out: PaletteItem[] = [{ key: "top", label: "Top level", icon: ArrowUpToLine, run: go(null) }];
+    const walk = (list: readonly TreeNode[], path: string) => {
+      for (const n of list) {
+        const under = ids.includes(n.id) || (ancestors(roots, n.id) ?? []).some((a) => ids.includes(a));
+        if (under) continue;
+        if (n.holds && !(agentsMoved && n.id.startsWith("thread:"))) out.push({ key: n.id, label: n.label, icon: n.icon, hint: path, quiet: out.length > 12, run: go(n.id) });
+        walk(n.children, path ? `${path} › ${n.label}` : n.label);
+      }
+    };
+    walk(roots, "");
+    return out;
+  });
+
+  /** A click anywhere but on a tree row (or a menu acting on the selection) lets the selection go. */
+  function clearOutside(event: PointerEvent) {
+    if (!selection.selected.size) return;
+    if ((event.target as Element).closest('[data-tree-id], [role="menu"], [role="dialog"], .ctx-menu')) return;
+    selection.clear();
+  }
+
   const newThread = (parent?: string) => {
     navigate(parent ? { name: "new", param: parent } : "new");
     sidebar.settle();
   };
 </script>
 
+<svelte:window onpointerdown={clearOutside} />
+
 <aside
   style:--sidebar-width="{sidebar.width}px"
   class="app-side relative flex w-(--sidebar-width) shrink-0 flex-col bg-sidebar text-[14px] md:z-10 md:shadow-[8px_0_12px_-6px_var(--edge-shadow-strong)] max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-30 max-md:w-72 max-md:shadow-float"
 >
-  <div class="min-h-0 flex-1 overflow-y-auto px-2 pt-2" role="tree" tabindex="-1" aria-label="Threads">
+  <div
+    class="min-h-0 flex-1 overflow-y-auto px-2 pt-2"
+    role="tree"
+    tabindex="-1"
+    aria-label="Threads"
+    ondragover={(e) => { if (selection.dragging && !(e.target as Element).closest('[role="treeitem"]')) e.preventDefault(); }}
+    ondrop={(e) => {
+      // Below the rows (or on General): the dragged rows go to the top.
+      if (e.defaultPrevented || !selection.dragging || (e.target as Element).closest('[role="treeitem"]')) return;
+      e.preventDefault();
+      const ids = selection.dragging;
+      selection.dragging = null;
+      selection.clear();
+      void desk.move(ids, null);
+    }}
+  >
     <div class="sticky top-0 z-10 -mx-2 -mt-2 bg-sidebar px-2 pt-2">
       <div data-tree-id="pai" class="group mb-1 flex h-8 items-center gap-0.5 rounded-sm pr-1 transition-colors has-[a:focus-visible]:bg-ink-10 has-[a:focus-visible]:text-ink {home ? 'bg-ink-10 text-ink' : 'text-ink-70 hover:bg-ink-5 hover:text-ink'}">
         <a href={href("home")} class="flex min-w-0 flex-1 items-center gap-2 self-stretch pl-1 outline-none" onclick={() => sidebar.settle()}>
@@ -123,3 +177,4 @@
     onpointerdown={startResize}
   ></div>
 </aside>
+<CommandPalette items={destinations} bind:open={mover.open} shortcut={false} placeholder={mover.ids.length > 1 ? `Move ${mover.ids.length} into…` : "Move into…"} />

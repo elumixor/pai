@@ -20,6 +20,12 @@ export interface TreeNode {
   /** Decisions waiting on him in this row itself. */
   readonly waiting: number;
   readonly lastActivity: number;
+  /** The dev project a thread runs in. */
+  readonly project?: string;
+  /** The Keep pages a thread works on. */
+  readonly keep?: readonly { readonly urn: string; readonly title: string }[];
+  /** Whether threads can be put under it: a thread, or an agent with a session. */
+  readonly holds: boolean;
   readonly children: TreeNode[];
 }
 
@@ -86,6 +92,7 @@ export function buildTree({ agents, sessions, needs, open, pai }: TreeInput): Tr
       working: a.status === "working",
       waiting: needs.filter((n) => n.agent === a.slug && !(n.session && threadIds.has(n.session))).length,
       lastActivity: a.lastActive ?? a.createdAt ?? 0,
+      holds: Boolean(a.sessionId),
       children: [],
     });
   }
@@ -101,6 +108,9 @@ export function buildTree({ agents, sessions, needs, open, pai }: TreeInput): Tr
       working: busy(t.state),
       waiting: needs.filter((n) => n.session === t.sessionId).length,
       lastActivity: time(t.lastActivity),
+      project: t.kind === "code" ? (t.project ?? undefined) : undefined,
+      keep: t.keep?.length ? t.keep : undefined,
+      holds: true,
       children: [],
     });
   }
