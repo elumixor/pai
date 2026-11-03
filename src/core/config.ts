@@ -41,6 +41,12 @@ const overrides: Record<string, string> = existsSync(overridesPath)
 /** A setting as the daemon reads it: `data/config.json` over the environment. */
 export const setting = (name: string): string | undefined => overrides[name] ?? env[name];
 
+/** The key of the first `<workspace id>:<key>` pair of the old PAI_KEEP_KEYS: every old agent key now opens Pai's account. */
+function firstKeepKey(pairs: string | undefined) {
+  const first = (pairs ?? "").split(",")[0]?.trim() ?? "";
+  return first.slice(first.indexOf(":") + 1);
+}
+
 export const config = {
   overridesPath,
   repo,
@@ -113,13 +119,12 @@ export const config = {
   keepUrl: setting("PAI_KEEP_URL") ?? "",
   /** What Keep signs its webhooks with (`/keep/events`), one secret per workspace hook; without one they are refused. */
   keepWebhookSecrets: (env.PAI_KEEP_WEBHOOK_SECRETS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
-  /** Keep agent keys pai's own code calls Keep's MCP with, one per workspace: `<workspace id>:<keep_… key>,…`. */
-  keepKeys: Object.fromEntries(
-    (env.PAI_KEEP_KEYS ?? "")
-      .split(",")
-      .map((pair) => pair.trim().split(":"))
-      .filter((pair): pair is [string, string] => pair.length === 2 && Boolean(pair[0]) && Boolean(pair[1])),
-  ) as Readonly<Record<string, string>>,
+  /** Pai's Keep key (`keep_…`): Pai is a regular member of the workspaces it works in, so one key reads and writes all of them. */
+  keepKey: env.PAI_KEEP_KEY || firstKeepKey(env.PAI_KEEP_KEYS),
+  /** What People signs its notifications to Pai with (`/people/notify`); without it they are refused. */
+  peopleWebhookSecret: env.PAI_PEOPLE_WEBHOOK_SECRET ?? "",
+  /** Pai's People person id: how it recognises itself in Keep and People (`people:person/<id>`). */
+  peopleId: setting("PAI_PEOPLE_ID") ?? "",
   /** A Keep task with a dev project gets a dev session started for it (`dev-tasks.ts`); PAI_DEV_TASKS=0 turns that off. */
   devTasks: bool(setting("PAI_DEV_TASKS"), true),
 

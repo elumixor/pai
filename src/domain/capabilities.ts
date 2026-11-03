@@ -25,9 +25,9 @@ export const matchTerms = (capability: string): readonly string[] => {
 
 const matches = (server: string, capability: string) => matchTerms(capability).some((term) => server.toLowerCase().includes(term));
 
-/** An MCP server an agent may use: `pai` always; anything else only when its tools list names it. */
+/** An MCP server an agent may use: `pai` and `keep` (every agent tracks its work there) always; anything else only when its tools list names it. */
 export function serverAllowed(server: string, allowed: readonly string[] | undefined) {
-  if (!allowed || server === "pai") return true;
+  if (!allowed || server === "pai" || server === "keep") return true;
   return allowed.some((a) => a === "*" || matches(server, a));
 }
 

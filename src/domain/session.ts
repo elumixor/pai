@@ -14,6 +14,7 @@ import { knownServers, noteInit } from "./inventory.ts";
 import { serverAllowed } from "./capabilities.ts";
 import { describeServers } from "./mcp-describe.ts";
 import { resolve as resolveModel } from "./models.ts";
+import * as keepLinks from "./keep-links.ts";
 
 /** Subprocesses spawned and initialised ahead of time, keyed by kind. Only kinds with a fixed cwd can be warmed. */
 interface Warm {
@@ -41,11 +42,27 @@ const PAI_THREAD_TOOLS = ["mcp__dev__start_session", "mcp__dev__send_to_session"
 /** The prefix Claude Code gives a server's tools, so a deny rule can remove a whole connector. */
 const toolPrefix = (server: string) => `mcp__${server.replace(/[^A-Za-z0-9_-]/g, "_")}`;
 
-function build(kind: SessionKind, cwd: string, ref: SessionRef, project?: string, prefs?: { model?: string | null; effort?: Effort | null }, agent?: AgentSetup): Options {
+/** Keep's MCP as Pai's Keep account, every write tagged with this thread, so its watches and notifications find their way back. */
+function keepMcp(sessionId: string): NonNullable<Options["mcpServers"]> {
+  if (!config.keepUrl || !config.keepKey) return {};
+  const url = `${config.keepUrl.replace(/\/$/, "")}/mcp`;
+  return { keep: { type: "http", url, headers: { authorization: `Bearer ${config.keepKey}`, "x-keep-client": `pai:thread/${sessionId}` } } };
+}
+
+function build(
+  kind: SessionKind,
+  cwd: string,
+  ref: SessionRef,
+  sessionId: string,
+  project?: string,
+  prefs?: { model?: string | null; effort?: Effort | null },
+  agent?: AgentSetup,
+): Options {
   const servers: NonNullable<Options["mcpServers"]> = {
     pai: paiTools(kind, ref, agent?.slug),
     playwright: browserMcp(),
     ...externalMcpServers(kind, ref),
+    ...keepMcp(sessionId),
   };
   const mcpServers = Object.fromEntries(Object.entries(servers).filter(([name]) => serverAllowed(name, agent?.tools)));
   // claude.ai connectors arrive with the user's settings rather than through mcpServers; the
@@ -53,6 +70,8 @@ function build(kind: SessionKind, cwd: string, ref: SessionRef, project?: string
   const disallowedTools = agent?.tools ? knownServers().filter((name) => !(name in servers) && !serverAllowed(name, agent.tools)).map(toolPrefix) : [];
   // Connectors the user switched off for the assistant (a calendar that lives in Balance instead).
   disallowedTools.push(...config.deniedConnectors.map(toolPrefix));
+  // The old per-workspace Keep servers in the user's settings: the `keep` server above covers every workspace.
+  if ("keep" in servers) disallowedTools.push(...knownServers().filter((name) => name.startsWith("keep-")).map(toolPrefix));
   // pai delegates through its own agents, which the user can watch and answer; Claude Code's Agent tool would hide the work.
   // Threads are the same kind of hidden work: whatever pai hands off is an agent, so it shows in the agent tree.
   if (agent?.slug === "pai") disallowedTools.push("Agent", "Task", ...PAI_THREAD_TOOLS);
@@ -100,7 +119,7 @@ export function prewarm(kind: "chat") {
   if (warm.has(kind)) return;
   const ref: SessionRef = {};
   const id = randomUUID();
-  const options = { ...build(kind, config.workspace, ref), sessionId: id };
+  const options = { ...build(kind, config.workspace, ref, id), sessionId: id };
   const entry: Warm = { id, ref, ready: startup({ options }) };
   warm.set(kind, entry);
   entry.ready.then(
@@ -197,7 +216,7 @@ export interface SessionOptions {
 }
 
 /** Where a thread was started: the client's detached box, the CLI, a terminal, the phone, the builder, a routine. */
-export type ThreadOrigin = "general" | "cli" | "terminal" | "phone" | "builder" | "routine";
+export type ThreadOrigin = "general" | "cli" | "terminal" | "phone" | "builder" | "routine" | "keep";
 
 /** Who a turn came from: the user typing, or the daemon (a report, a request, a routine) speaking to the session. */
 export type TurnOrigin = "user" | "system" | "silent";
@@ -299,7 +318,7 @@ export class Session {
   private start(resume: boolean) {
     this.resuming = resume;
     const ref: SessionRef = { session: this };
-    const options = build(this.kind, this.cwd, ref, this.project, { model: this.modelPref, effort: this.effort }, this.agentSetup);
+    const options = build(this.kind, this.cwd, ref, this.id, this.project, { model: this.modelPref, effort: this.effort }, this.agentSetup);
     this.mcpConfig = options.mcpServers;
     options.title = this.title;
     if (resume) options.resume = this.id;
@@ -451,6 +470,7 @@ export class Session {
             this.recentTools = [...this.recentTools.slice(-(RECENT_TOOLS - 1)), this.lastTool];
             bus.emitEvent("session.tool", { id: block.id, name: block.name, summary: this.lastTool, parent }, this.id);
             audit.record({ toolUseId: block.id, sessionId: this.id, agent: this.agent, tool: block.name, summary: this.lastTool, input: block.input });
+            keepLinks.observe(this.id, block.name, block.input);
           }
         }
         break;
