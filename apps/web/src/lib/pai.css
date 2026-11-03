@@ -117,8 +117,6 @@ time, .thread-when, .when, .inline-time, .tool-call-size, .count, .agent-stats {
 .notice p { margin: 0; }
 .row-inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .note { color: var(--ink-30); font-size: 11px; }
-.group { padding: 2px 0; }
-.group + .group { border-top: 1px solid var(--ink-5); }
 .threads { display: flex; flex-direction: column; padding: 0 0 4px; }
 .threads.long { max-height: 232px; overflow-y: auto; }
 .thread {

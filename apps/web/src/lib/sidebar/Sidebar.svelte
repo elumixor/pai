@@ -103,9 +103,9 @@
           {#if auth.user?.avatar}
             <img src={auth.user.avatar} alt="" class="size-5 shrink-0 rounded-full" />
           {:else}
-            <span class="grid size-5 shrink-0 place-items-center rounded-full bg-ink-10 text-[11px] font-semibold text-ink-70">{(auth.user?.name ?? "p").slice(0, 1).toUpperCase()}</span>
+            <span class="grid size-5 shrink-0 place-items-center rounded-full bg-ink-10 text-[11px] font-semibold text-ink-70">{(auth.user?.name ?? "?").slice(0, 1).toUpperCase()}</span>
           {/if}
-          <span class="min-w-0 flex-1 truncate text-left">{auth.user?.name || desk.hostname || "pai"}</span>
+          <span class="min-w-0 flex-1 truncate text-left">{auth.user?.name ?? "Account"}</span>
         </button>
       {/snippet}
       {#snippet children({ close })}

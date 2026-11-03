@@ -52,12 +52,15 @@ class Auth {
       this.loaded = true;
       return;
     }
-    if (!this.config.clerkPublishableKey) throw new SignInError("Sign-in is not configured on this daemon; open it with a token link.");
-    const clerk = await startClerk(Clerk, this.config.clerkPublishableKey);
+    // The box's key is Clerk's production instance, bound to the suite's domain: a dev server signs in on the
+    // development instance Keep uses locally (`VITE_CLERK_PUBLISHABLE_KEY`), the proxy carrying the box's token.
+    const key = (import.meta.env.DEV && import.meta.env.VITE_CLERK_PUBLISHABLE_KEY) || this.config.clerkPublishableKey;
+    if (!key) throw new SignInError("Sign-in is not configured on this daemon; open it with a token link.");
+    const clerk = await startClerk(Clerk, key);
     this.#clerk = clerk;
     const who = () => {
       const u = clerk.user;
-      this.user = u ? { name: u.fullName || u.primaryEmailAddress?.emailAddress || "You", avatar: u.imageUrl || undefined } : null;
+      this.user = u ? { name: u.firstName || u.fullName || u.primaryEmailAddress?.emailAddress || "You", avatar: u.imageUrl || undefined } : null;
     };
     this.signedIn = Boolean(clerk.session);
     who();
