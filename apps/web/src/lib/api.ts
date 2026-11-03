@@ -95,7 +95,8 @@ export const api = {
   tasks: async () => (await get<{ items?: TaskItem[] }>("/tasks")).items ?? [],
   /** Every task, closed ones included. */
   allTasks: async () => (await get<{ items?: TaskItem[] }>("/tasks?all=1")).items ?? [],
-  sessions: () => get<{ items?: TaskItem[]; live: SessionSummary[]; recent: SessionSummary[] }>("/tasks"),
+  /** The sessions running now and the most recent ones, live or not: what the tree is built from. */
+  sessions: (limit = 400) => get<{ live: SessionSummary[]; recent: SessionSummary[] }>(`/sessions?limit=${limit}`, true),
   task: (id: number) => get<TaskItem & { children: TaskItem[] }>(`/tasks/${id}`),
   createTask: (input: { title: string; owner?: string; due?: string; status?: TaskStatus }) => send<TaskItem>("/tasks", input),
   updateTask: (id: number, changes: Partial<Pick<TaskItem, "status" | "title" | "owner" | "nextAction" | "notes">> & { due?: string | null; parentId?: number | null }) =>
@@ -116,8 +117,8 @@ export const api = {
   transcript: (session: string, limit = 300, cwd?: string) => get<Transcript[]>(`/transcript?session=${q(session)}&limit=${limit}${cwd ? `&cwd=${q(cwd)}` : ""}`),
   toolCall: (session: string, tool: string) => get<{ name: string; input: unknown; result?: string }>(`/transcript/tool?session=${q(session)}&tool=${q(tool)}`),
   threadsIn: (cwd: string, limit?: number) => get<DiskSession[]>(`/threads?cwd=${q(cwd)}${limit ? `&limit=${limit}` : ""}`),
-  /** A new plain thread, on its own or in a project; its first message goes with it. */
-  startThread: (text: string, images: readonly Upload[] = [], project?: string) => send<SessionSummary>("/task", { title: "", text, images, project, origin: project ? undefined : "general" }),
+  /** A new plain thread, on its own or under the thread it is started from; its first message goes with it. */
+  startThread: (text: string, images: readonly Upload[] = [], parent?: string) => send<SessionSummary>("/task", { title: "", text, images, parent, origin: "general" }),
   sendThread: (id: string, text: string, images: readonly Upload[] = [], adopt?: { cwd?: string; title?: string }) => send("/send", { id, text, images, ...adopt }),
   stop: (id: string) => send("/stop", { id }),
   reconfigure: (id: string, changes: { model?: string | null; effort?: Effort | null }) => send("/reconfigure", { id, ...changes }),

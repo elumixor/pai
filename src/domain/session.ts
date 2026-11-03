@@ -135,6 +135,17 @@ export function closeWarm() {
 const log = logger("session");
 
 /**
+ * The SDK warns at every start that `bypassPermissions` shadows `canUseTool`, with a stack trace that reads like a crash.
+ * AskUserQuestion still reaches the callback (it is how questions become `session.question`), so the warning is noise.
+ */
+const emitWarning = process.emitWarning.bind(process);
+process.emitWarning = ((warning: string | Error, ...rest: unknown[]) => {
+  const options = rest[0] as { code?: string } | undefined;
+  if (options?.code === "CLAUDE_SDK_CAN_USE_TOOL_SHADOWED") return;
+  (emitWarning as (...args: unknown[]) => void)(warning, ...rest);
+}) as typeof process.emitWarning;
+
+/**
  * chat: a conversation with the assistant, in its workspace — every Telegram topic, every
  * `pai claude`, every thread the dashboard opens; none of them is special. code: a builder
  * thread in one of the user's repositories.

@@ -14,6 +14,11 @@ export interface SessionSummary {
   readonly recentTools?: readonly string[];
   /** The session that started this one, if it was not the user. */
   readonly parent?: string | null;
+  /** The agent the session works for (pai's own are `pai`); a thread of no agent's has none. */
+  readonly agent?: string | null;
+  /** Where it was started: `general` (the web client's box), `cli`, `terminal`, `phone`, `builder`, `routine`. */
+  readonly origin?: string | null;
+  readonly startedAt?: number;
   readonly turns?: number;
   readonly costUsd?: number;
   /** The model that answered last, as the API names it. */
@@ -103,6 +108,8 @@ export interface Agent {
   readonly closedAt?: number | null;
   /** The threads it is running, newest first. */
   readonly threads?: readonly AgentThread[];
+  /** Its current session: the one its chat talks to. */
+  readonly sessionId?: string | null;
 }
 
 export type MessageKind = "chat" | "delegate" | "report" | "request" | "response" | "ask" | "answer" | "notice" | "event";

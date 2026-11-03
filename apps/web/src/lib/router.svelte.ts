@@ -2,14 +2,14 @@ import { goto } from "$app/navigation";
 import { page } from "$app/state";
 
 /**
- * Where the client is, as an address in the hash (the daemon owns every real path): the main chat at the root, an
- * agent's chat, a task, a thread, a project and the board under their ids, the threads view, and the settings sheet
- * over whatever was open — so a page can be linked to and the back button means something.
+ * Where the client is, as an address in the hash (the daemon owns every real path): General at the root, an agent's
+ * chat and a thread under their ids, a new thread (under the thread it is started from, when it is), and the settings
+ * sheet over whatever was open — so a page can be linked to and the back button means something.
  */
-export type RouteName = "home" | "chat" | "board" | "task" | "thread" | "project" | "threads" | "settings";
-const NAMES: readonly RouteName[] = ["home", "chat", "board", "task", "thread", "project", "threads", "settings"];
-/** What needs its id: a bare `chat` or `task` is the front page. */
-const NEEDS_PARAM: readonly RouteName[] = ["chat", "task", "thread", "project"];
+export type RouteName = "home" | "chat" | "thread" | "new" | "settings";
+const NAMES: readonly RouteName[] = ["home", "chat", "thread", "new", "settings"];
+/** What needs its id: a bare `chat` or `thread` is the front page. */
+const NEEDS_PARAM: readonly RouteName[] = ["chat", "thread"];
 
 export interface Route {
   readonly name: RouteName;
@@ -18,15 +18,11 @@ export interface Route {
 
 export function parse(raw: string): Route {
   const [first = "", second] = raw.replace(/^[/#]+|\/+$/g, "").split("/");
-  // The editor's old address opens the threads, which is what is left of it here.
-  if (first === "editor" || first === "work") return { name: "threads", param: second ? decodeURIComponent(second) : undefined };
   // The dashboard's pages became sections of the settings.
   if (["agents", "modules", "automations", "projects", "context", "spend", "connectors", "skills"].includes(first)) return { name: "settings", param: first === "skills" ? "context" : first };
-  if (first === "tasks") return { name: "board" };
   const name = first as RouteName;
   if (!NAMES.includes(name) || name === "home") return { name: "home" };
   if (NEEDS_PARAM.includes(name) && !second) return { name: "home" };
-  if (name === "task" && !Number(second)) return { name: "home" };
   return second ? { name, param: decodeURIComponent(second) } : { name };
 }
 

@@ -1,101 +1,70 @@
 <script lang="ts" module>
-  import type { IconName } from "../icons";
-
   export type Section = "appearance" | "usage" | "shortcuts" | "account" | "snapshot" | "modules" | "connectors" | "automations" | "projects" | "context" | "agents" | "spend";
-  export const SECTIONS: readonly { id: Section; label: string; icon: IconName }[] = [
-    { id: "appearance", label: "Appearance", icon: "sun" },
-    { id: "usage", label: "Usage rings", icon: "zap" },
-    { id: "shortcuts", label: "Shortcuts", icon: "key" },
-    { id: "account", label: "Account", icon: "user" },
-    { id: "snapshot", label: "Snapshot", icon: "archive" },
-  ];
-  /** What the dashboard used to be: pages about the daemon itself, each a section here. */
-  export const PAGES: readonly { id: Section; label: string; icon: IconName }[] = [
-    { id: "modules", label: "Modules", icon: "zap" },
-    { id: "connectors", label: "Connectors", icon: "link" },
-    { id: "automations", label: "Routines", icon: "clock" },
-    { id: "projects", label: "Projects", icon: "folder" },
-    { id: "context", label: "Context", icon: "book" },
-    { id: "agents", label: "Agents", icon: "users" },
-    { id: "spend", label: "Spend", icon: "hourglass" },
-  ];
-  export const SHORTCUTS: { keys: string; what: string }[] = [
-    { keys: "⌘K", what: "search everything: views, agents, tasks, threads, settings" },
-    { keys: "⌘⇧,", what: "settings" },
-    { keys: "⌘1 / ⌘2 / ⌘3", what: "chat / board / threads" },
-    { keys: "⌘.", what: "what happened: the bell" },
-    { keys: "⌘F", what: "find in the open conversation" },
-    { keys: "⌃L", what: "focus the message box" },
-    { keys: "⌃N", what: "a new thread on its own" },
-    { keys: "⌃Tab / ⌃⇧Tab", what: "next / previous thread in the threads view" },
-    { keys: "/", what: "at the start of a message: a slash command (skills, plugins, built-ins)" },
-    { keys: "⇧click", what: "open a thread in the right pane" },
-    { keys: "right click · two-finger swipe left", what: "on a message: reply to it" },
+
+  export const SHORTCUTS: [keys: string, what: string][] = [
+    ["⌘K", "Find a thread, an agent, a setting, or run a command"],
+    ["⌘⇧,", "Settings"],
+    ["⌘\\", "Show or hide the sidebar"],
+    ["⌃N", "A new thread"],
+    ["⌃L", "Focus the message box"],
+    ["⌘F", "Find in the open conversation"],
+    ["j k · h l", "Move · fold, unfold, in the sidebar"],
+    ["/", "At the start of a message: a slash command (skills, plugins, built-ins)"],
+    ["Right click · two-finger swipe left", "On a message: reply to it"],
   ];
 </script>
 
 <script lang="ts">
-  import { PALETTES, type Palette, type ThemeMode } from "@desk/core";
+  import { PALETTES, type Palette, type ThemeKind, type ThemeMode } from "@desk/core";
+  import { SettingsDialog, type SettingsSection } from "@desk/core/settings";
+  import { Archive, BookOpen, Bot, Clock, Download, Folder, Gauge, Keyboard, LogOut, Monitor, Moon, Palette as PaletteIcon, Plug, Puzzle, Sun, Upload, User, Wallet } from "lucide-svelte";
   import { api } from "../api";
   import { auth } from "../auth.svelte";
   import { desk } from "../desk.svelte";
   import { prefs } from "../prefs.svelte";
   import { theme } from "../theme.svelte";
-  import Icon from "../ui/Icon.svelte";
-  import Sheet from "../ui/Sheet.svelte";
   import Connectors from "./Connectors.svelte";
   import Context from "./Context.svelte";
   import Modules from "./Modules.svelte";
   import Projects from "./Projects.svelte";
   import Routines from "./Routines.svelte";
+  import SettingsBlock from "./SettingsBlock.svelte";
   import Spend from "./Spend.svelte";
   import Staff from "./Staff.svelte";
 
   /**
-   * The settings sheet: sections on the left, a search that filters every row, the rows on the right — how this
-   * client looks, which rings it shows, the keys, the account, the snapshot — and under "pai" the pages about the
-   * daemon itself: its modules, connectors, routines, projects, context, staff and spend.
+   * The suite's settings dialog (`@desk/core/settings`, Keep's too): how this client looks, which rings it shows, the
+   * keys, the account, the snapshot, then the pages about the daemon itself — its modules, connectors, routines,
+   * projects, context, staff and spend.
    */
-  let { section: initial = "appearance", onclose, onsection }: { section?: Section; onclose: () => void; onsection: (s: Section) => void } = $props();
-  // svelte-ignore state_referenced_locally
-  let section = $state<Section>(initial);
-  $effect(() => void (section = initial));
-  let query = $state("");
-  let sheet = $state<Sheet>();
-  const MODES: { value: ThemeMode; label: string; icon: IconName }[] = [
-    { value: "system", label: "System", icon: "monitor" },
-    { value: "light", label: "Light", icon: "sun" },
-    { value: "dark", label: "Dark", icon: "moon" },
-  ];
-  const isPage = (s: Section) => PAGES.some((p) => p.id === s);
+  let { open = $bindable(false), active = $bindable<Section>("appearance"), onclose }: { open?: boolean; active?: Section; onclose?: () => void } = $props();
 
-  interface Row {
-    readonly section: Section;
-    readonly id: string;
-    readonly icon: IconName;
-    readonly title: string;
-    readonly hint?: string;
-    readonly keywords: string;
-    readonly stack?: boolean;
-  }
-  const rows: Row[] = [
-    { section: "appearance", id: "mode", icon: "sun", title: "Mode", hint: "follows the system unless you pick one", keywords: "theme light dark system" },
-    { section: "appearance", id: "light", icon: "sun", title: "Light theme", hint: "picking one switches to light", keywords: `theme ${PALETTES.filter((t) => t.kind === "light").map((t) => t.name).join(" ")}`, stack: true },
-    { section: "appearance", id: "dark", icon: "moon", title: "Dark theme", hint: "picking one switches to dark", keywords: `theme ${PALETTES.filter((t) => t.kind === "dark").map((t) => t.name).join(" ")}`, stack: true },
-    { section: "usage", id: "rings", icon: "zap", title: "Rings in the status bar", hint: "one ring per Claude limit window; hover a ring for the details", keywords: "quota limit session weekly fable opus sonnet", stack: true },
-    ...SHORTCUTS.map((s): Row => ({ section: "shortcuts", id: `key:${s.keys}`, icon: "key", title: s.keys, hint: s.what, keywords: "keyboard shortcut keybinding" })),
-    { section: "account", id: "who", icon: "user", title: "Signed in", hint: "the desk account shared with keep and people, or a token link", keywords: "sign out account clerk" },
-    { section: "account", id: "daemon", icon: "link", title: "Daemon", hint: "the pai this page talks to", keywords: "address url host box" },
-    { section: "snapshot", id: "export", icon: "download", title: "Export", hint: "memory, staff with their notes, open tasks, decisions, routines, project contexts — one markdown file", keywords: "backup save state" },
-    { section: "snapshot", id: "import", icon: "enter", title: "Import", hint: "a snapshot handed to pai as a prompt: it creates the missing agents and tasks, writes their notes, merges the memory", keywords: "restore load state" },
+  const SECTIONS: SettingsSection<Section>[] = [
+    { id: "appearance", label: "Appearance", icon: PaletteIcon, keywords: "theme dark light mode palette" },
+    { id: "usage", label: "Usage rings", icon: Gauge, keywords: "limits windows session weekly rings" },
+    { id: "shortcuts", label: "Keyboard", icon: Keyboard, keywords: "shortcuts keys keybinding" },
+    { id: "account", label: "Account", icon: User, keywords: "sign out daemon host box clerk" },
+    { id: "snapshot", label: "Snapshot", icon: Archive, keywords: "export import backup restore memory" },
+    { id: "modules", label: "Modules", icon: Puzzle, keywords: "connectors capabilities restart settings" },
+    { id: "connectors", label: "Connectors", icon: Plug, keywords: "telegram email gmail linkedin whatsapp browser signed in" },
+    { id: "automations", label: "Routines", icon: Clock, keywords: "automations cron events triggers" },
+    { id: "projects", label: "Projects", icon: Folder, keywords: "repos contexts" },
+    { id: "context", label: "Context", icon: BookOpen, keywords: "instructions memories skills tools prompt" },
+    { id: "agents", label: "Agents", icon: Bot, keywords: "staff team rename close bubble" },
+    { id: "spend", label: "Spend", icon: Wallet, keywords: "cost money tokens usage price" },
   ];
-  const visible = $derived(query.trim() ? rows.filter((r) => `${r.title} ${r.hint ?? ""} ${r.keywords}`.toLowerCase().includes(query.trim().toLowerCase())) : rows.filter((r) => r.section === section));
-
-  function pick(next: Section) {
-    section = next;
-    query = "";
-    onsection(next);
-  }
+  const MODES: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
+    { value: "system", label: "System", icon: Monitor },
+    { value: "light", label: "Light", icon: Sun },
+    { value: "dark", label: "Dark", icon: Moon },
+  ];
+  const KINDS: { kind: ThemeKind; label: string }[] = [
+    { kind: "light", label: "Light theme" },
+    { kind: "dark", label: "Dark theme" },
+  ];
+  const LINES = [46, 70, 58, 80, 40];
+  const option = "flex h-8 items-center gap-2 rounded-sm px-3 transition-colors [&>svg]:text-ink-45";
+  const button = "inline-flex h-8 items-center gap-2 rounded-sm bg-ink-5 px-3 transition-colors hover:bg-ink-10 [&>svg]:text-ink-45";
 
   let exportNote = $state("");
   let importNote = $state("");
@@ -124,76 +93,87 @@
   }
 </script>
 
-{#snippet swatch(p: Palette, on: boolean, choose: () => void)}
+{#snippet swatch(p: Palette, kind: ThemeKind)}
   {@const [bg, panel, line, ink, accent] = p.swatch}
-  <button class="swatch" class:on title={p.name} onclick={choose} style="--sw-bg:{bg};--sw-line:{line}">
-    <span class="sw-preview">
-      <span class="sw-bar" style="background:{panel}"></span>
-      <span class="sw-code">{#each [ink, accent, ink, accent, ink] as color, i (i)}<span class="sw-line" style="background:{color};width:{[46, 70, 58, 80, 40][i]}%;opacity:{i % 2 ? 0.9 : 0.35}"></span>{/each}</span>
+  {@const on = theme.choice[kind] === p.id}
+  <button
+    role="radio"
+    aria-checked={on}
+    title={p.name}
+    class="flex flex-col gap-1.5 rounded-md border-2 p-1 text-left text-[12px] transition-colors {on ? 'border-accent text-ink' : 'border-transparent text-ink-45 hover:border-line'}"
+    onclick={() => theme.choose({ [kind]: p.id, mode: kind })}
+  >
+    <span class="flex h-14 overflow-hidden rounded-sm border" style="background:{bg};border-color:{line}">
+      <span class="w-1/4" style="background:{panel}"></span>
+      <span class="flex flex-1 flex-col justify-center gap-1 px-2">
+        {#each LINES as width, i (i)}<span class="h-1 rounded-full" style="background:{i % 2 ? accent : ink};width:{width}%;opacity:{i % 2 ? 0.9 : 0.35}"></span>{/each}
+      </span>
     </span>
-    <span class="sw-name">{p.name}</span>
+    <span class="truncate px-0.5">{p.name}</span>
   </button>
 {/snippet}
 
-{#snippet control(r: Row)}
-  {#if r.id === "mode"}
-    <div class="segmented">{#each MODES as m (m.value)}<button class="seg" class:on={theme.choice.mode === m.value} onclick={() => theme.choose({ mode: m.value })}><Icon name={m.icon} size={14} /><span>{m.label}</span></button>{/each}</div>
-  {:else if r.id === "light" || r.id === "dark"}
-    {@const kind = r.id}
-    <div class="swatches">{#each PALETTES.filter((t) => t.kind === kind) as p (p.id)}{@render swatch(p, theme.choice[kind] === p.id, () => theme.choose({ [kind]: p.id, mode: kind }))}{/each}</div>
-  {:else if r.id === "rings"}
-    <div class="checks">
-      {#each desk.usage?.windows ?? [] as w (w.name)}
-        <label class="check"><input type="checkbox" checked={!prefs.hiddenRings.includes(w.name)} onchange={(e) => prefs.toggleRing(w.name, e.currentTarget.checked)} /><span>{w.name} · {w.percent}%</span></label>
-      {:else}
-        <span class="dim">{desk.usage?.error ?? "no windows reported yet"}</span>
-      {/each}
-    </div>
-  {:else if r.id === "who"}
-    <button class="btn" onclick={() => auth.signOut()}><Icon name="power" size={13} /><span>Sign out</span></button>
-  {:else if r.id === "daemon"}
-    <span class="dim kbd">{desk.hostname || location.host}</span>
-  {:else if r.id === "export"}
-    <span class="row-inline"><span class="dim">{exportNote}</span><button class="btn" onclick={exportSnapshot}><Icon name="download" size={12} />Export</button></span>
-  {:else if r.id === "import"}
-    <span class="row-inline"><span class="dim">{importNote}</span><button class="btn" onclick={() => picker?.click()}><Icon name="enter" size={12} />Import</button><input type="file" accept=".md,.txt,.json,text/*" hidden bind:this={picker} onchange={importSnapshot} /></span>
-  {:else}
-    <span></span>
-  {/if}
-{/snippet}
-
-<Sheet bind:this={sheet} class="wide settings" {onclose}>
-  <div class="sheet-body">
-    <div class="settings-layout">
-      <aside class="settings-side">
-        <div class="settings-search-box"><Icon name="zap" size={13} /><input class="settings-search" placeholder="Search settings…" spellcheck="false" aria-label="Search settings" bind:value={query} /></div>
-        <nav class="settings-nav">
-          {#each SECTIONS as s (s.id)}<button class="dash-link" class:on={!query && section === s.id} onclick={() => pick(s.id)}><Icon name={s.icon} size={14} /><span>{s.label}</span></button>{/each}
-          <h3 class="section-title">pai</h3>
-          {#each PAGES as s (s.id)}<button class="dash-link" class:on={!query && section === s.id} onclick={() => pick(s.id)}><Icon name={s.icon} size={14} /><span>{s.label}</span></button>{/each}
-        </nav>
-      </aside>
-      <div class="settings-main">
-        <header class="sheet-head"><Icon name="settings" size={14} /><h2>Settings</h2><span class="grow"></span><span class="dim kbd">⌘⇧,</span><button class="iconbtn" title="close (esc)" aria-label="Close" onclick={() => sheet?.close()}><Icon name="x" size={14} /></button></header>
-        <div class="settings-body" class:page={!query && isPage(section)}>
-          {#if !query && isPage(section)}
-            <div class="dash-body" class:full={section === "agents"}>
-              {#if section === "modules"}<Modules />{:else if section === "connectors"}<Connectors />{:else if section === "automations"}<Routines />{:else if section === "projects"}<Projects />{:else if section === "context"}<Context />{:else if section === "agents"}<Staff />{:else if section === "spend"}<Spend />{/if}
-            </div>
-          {:else}
-            {#each visible as r, i (r.id)}
-              {#if query && r.section !== visible[i - 1]?.section}<h3 class="section-title">{SECTIONS.find((s) => s.id === r.section)?.label ?? r.section}</h3>{/if}
-              <div class="setting" class:stack={r.stack}>
-                <Icon name={r.icon} size={15} />
-                <div class="setting-text"><span class="setting-title">{r.title}</span>{#if r.hint}<span class="dim">{r.hint}</span>{/if}</div>
-                {#if r.stack}<span></span>{@render control(r)}{:else}{@render control(r)}{/if}
-              </div>
-            {:else}
-              <p class="hint">nothing matches</p>
-            {/each}
-          {/if}
+<SettingsDialog sections={SECTIONS} bind:open bind:active {onclose}>
+  {#snippet section(entry)}
+    {#if entry.id === "appearance"}
+      <SettingsBlock title="Appearance" about="pai follows the system until you pick a mode on this device. Picking a theme switches to its mode.">
+        <div class="flex gap-2" role="radiogroup" aria-label="Mode">
+          {#each MODES as m (m.value)}
+            {@const on = theme.choice.mode === m.value}
+            <button role="radio" aria-checked={on} class="{option} {on ? 'bg-ink-10 font-medium' : 'bg-ink-5 hover:bg-ink-10'}" onclick={() => theme.choose({ mode: m.value })}><m.icon size={16} /> {m.label}</button>
+          {/each}
         </div>
+        {#each KINDS as k (k.kind)}
+          <div class="space-y-2 pt-2">
+            <p class="m-0 text-[13px] font-medium">{k.label}</p>
+            <div class="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-2" role="radiogroup" aria-label={k.label}>
+              {#each PALETTES.filter((p) => p.kind === k.kind) as p (p.id)}{@render swatch(p, k.kind)}{/each}
+            </div>
+          </div>
+        {/each}
+      </SettingsBlock>
+    {:else if entry.id === "usage"}
+      <SettingsBlock title="Usage rings" about="The subscription's windows shown by the message box.">
+        {#each desk.usage?.windows ?? [] as w (w.name)}
+          <label class="flex h-8 items-center gap-2.5">
+            <input type="checkbox" class="size-4 accent-[var(--accent)]" checked={!prefs.hiddenRings.includes(w.name)} onchange={(e) => prefs.toggleRing(w.name, e.currentTarget.checked)} />
+            {w.name} <span class="text-ink-45">· {w.percent}%</span>
+          </label>
+        {:else}
+          <p class="m-0 text-[13px] text-ink-45">{desk.usage?.error ?? "No windows reported yet."}</p>
+        {/each}
+      </SettingsBlock>
+    {:else if entry.id === "shortcuts"}
+      <SettingsBlock title="Keyboard" about="The keys every page here answers to.">
+        <dl class="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[13px]">
+          {#each SHORTCUTS as [keys, what] (keys)}
+            <dt><kbd class="rounded-xs bg-ink-5 px-1.5 py-0.5 font-mono text-[12px] text-ink-70">{keys}</kbd></dt>
+            <dd class="m-0 text-ink-45">{what}</dd>
+          {/each}
+        </dl>
+      </SettingsBlock>
+    {:else if entry.id === "account"}
+      <SettingsBlock title="Account" about="The desk account shared with Keep and People, or the token link this page was opened with.">
+        <p class="m-0 text-[13px]"><span class="text-ink-45">Daemon</span> <span class="font-mono text-[12px]">{desk.hostname || location.host}</span></p>
+        <button class={button} onclick={() => auth.signOut()}><LogOut size={16} /> Sign out</button>
+      </SettingsBlock>
+    {:else if entry.id === "snapshot"}
+      <SettingsBlock title="Snapshot" about="Memory, staff with their notes, open tasks, decisions, routines and project contexts as one markdown file. Importing one hands it to pai, which rebuilds what is missing.">
+        <div class="flex flex-wrap items-center gap-2">
+          <button class={button} onclick={exportSnapshot}><Download size={16} /> Export</button>
+          <button class={button} onclick={() => picker?.click()}><Upload size={16} /> Import</button>
+          <input type="file" accept=".md,.txt,.json,text/*" hidden bind:this={picker} onchange={importSnapshot} />
+          <span class="text-[13px] text-ink-45">{exportNote || importNote}</span>
+        </div>
+      </SettingsBlock>
+    {:else if entry.id === "agents"}
+      <div class="dash-body full settings-page settings-tall"><Staff /></div>
+    {:else if entry.id === "context"}
+      <div class="dash-body settings-page"><Context /></div>
+    {:else}
+      <div class="dash-body settings-page">
+        {#if entry.id === "modules"}<Modules />{:else if entry.id === "connectors"}<Connectors />{:else if entry.id === "automations"}<Routines />{:else if entry.id === "projects"}<Projects />{:else if entry.id === "spend"}<Spend />{/if}
       </div>
-    </div>
-  </div>
-</Sheet>
+    {/if}
+  {/snippet}
+</SettingsDialog>

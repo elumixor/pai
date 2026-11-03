@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "@clerk/clerk-js": "^6.26.0",
-    "@desk/core": "github:elumixor/desk-core"
+    "@desk/core": "github:elumixor/desk-core#09d0219",
+    "lucide-svelte": "^1.0.1"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.10",

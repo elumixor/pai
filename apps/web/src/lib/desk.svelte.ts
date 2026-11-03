@@ -5,12 +5,14 @@ import type { Agent, LogMessage, Need, ProjectSummary, SessionSummary, TaskItem,
 export const PAI = "pai";
 
 /**
- * What every view of the room reads: the staff (pai and its agents, with the threads each runs), the open tasks and
- * every task by id, what waits on him, the projects, pai's own session, and the usage windows. Loaded once, kept
- * current from the event stream; a view only draws from it.
+ * What every view reads: the staff (pai and its agents), the sessions the thread tree is built from, the open tasks
+ * and every task by id (for the pills in messages), what waits on him, pai's own session, and the usage windows.
+ * Loaded once, kept current from the event stream; a view only draws from it.
  */
 class Desk {
   agents = $state<Agent[]>([]);
+  /** Every session the daemon ran lately, live or not, each once: the threads of the tree. */
+  sessions = $state<SessionSummary[]>([]);
   /** Open tasks: what the tree and the desks show. */
   tasks = $state<TaskItem[]>([]);
   /** Every task by id, closed ones included, so `#20` in a message can say what it was. */
@@ -30,12 +32,13 @@ class Desk {
   bySlug = (slug: string) => this.agents.find((a) => a.slug === slug);
   nameOf = (slug: string) => (slug === "user" ? "you" : slug === PAI ? "General" : (this.bySlug(slug)?.name ?? slug.replace(/^(watcher|routine):/, "")));
   taskOf = (id: number) => this.taskIndex[id] ?? this.tasks.find((t) => t.id === id);
+  threadOf = (id: string) => this.sessions.find((s) => s.sessionId === id || s.shortId === id);
 
   start() {
     if (this.#started) return;
     this.#started = true;
     live.start();
-    live.on((event) => this.#onEvent(event.kind, event.payload));
+    live.on((event) => this.#onEvent(event.kind, event.payload, event.sessionId));
     live.onReconnect(() => void this.load());
     void this.load();
     void this.refreshUsage();
@@ -56,6 +59,7 @@ class Desk {
       api.needs().catch(() => this.needs),
       api.projects().catch(() => this.projects),
       api.allTasks().catch(() => [] as TaskItem[]),
+      this.refreshSessions(),
     ]);
     this.agents = agents;
     this.tasks = tasks;
@@ -83,6 +87,22 @@ class Desk {
     this.agents = await api.agents().catch(() => this.agents);
   }
 
+  /** The running sessions over the recent rows: a live one's state is the current one. */
+  async refreshSessions() {
+    const found = await api.sessions().catch(() => undefined);
+    if (!found) return;
+    const byId = new Map<string, SessionSummary>();
+    for (const s of found.recent) byId.set(s.sessionId, s);
+    for (const s of found.live) byId.set(s.sessionId, { ...byId.get(s.sessionId), ...s });
+    this.sessions = [...byId.values()];
+  }
+
+  /** A session's state as an event says it, before the next refresh brings the rest. */
+  #setState(id: string | undefined, state: string) {
+    const index = id ? this.sessions.findIndex((s) => s.sessionId === id) : -1;
+    if (index >= 0) this.sessions[index] = { ...this.sessions[index]!, state, lastActivity: Date.now() };
+  }
+
   async refreshUsage() {
     try {
       this.usage = await api.usage();
@@ -102,7 +122,7 @@ class Desk {
     } else if (open) this.tasks.push(t);
   }
 
-  #onEvent(kind: string, payload: Record<string, unknown>) {
+  #onEvent(kind: string, payload: Record<string, unknown>, sessionId?: string) {
     this.online = true;
     switch (kind) {
       case "message.new": {
@@ -126,14 +146,20 @@ class Desk {
         else this.agents[index] = { ...this.agents[index]!, ...changed };
         break;
       }
-      // A thread started, answered or ended: the threads under each agent follow.
+      // A turn began: the thread works from now on.
+      case "session.input":
+        this.#setState(sessionId, "busy");
+        break;
+      // A thread started, answered or ended: the staff and the tree follow.
       case "session.started":
+      case "session.resumed":
       case "session.exit":
       case "session.titled":
       case "session.turn_end":
       case "task.created":
+        if (kind === "session.turn_end") this.#setState(sessionId, "idle");
         clearTimeout(this.#agentsTimer);
-        this.#agentsTimer = setTimeout(() => void this.refreshAgents(), kind === "session.started" || kind === "task.created" ? 1500 : 200);
+        this.#agentsTimer = setTimeout(() => void Promise.all([this.refreshAgents(), this.refreshSessions()]), kind === "session.started" || kind === "task.created" ? 1500 : 200);
         break;
       case "session.question":
       case "session.answer":

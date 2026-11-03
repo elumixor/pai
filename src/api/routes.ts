@@ -243,8 +243,10 @@ export async function handle(req: Request): Promise<Response> {
     }
 
     if (path === "/task" && req.method === "POST") {
-      const { title, text, project, model, effort, origin, images } = await body<{ title: string; text: string; project?: string; model?: string | null; effort?: "low" | "medium" | "high" | "xhigh" | "max" | null; origin?: "general" | "cli"; images?: { media_type: string; data: string }[] }>(req);
-      const s = sessions.spawnTask({ title: title ?? "", project, model, effort, origin: origin === "general" ? "general" : project ? "builder" : "cli" });
+      const { title, text, project, model, effort, origin, images, parent } = await body<{ title: string; text: string; project?: string; model?: string | null; effort?: "low" | "medium" | "high" | "xhigh" | "max" | null; origin?: "general" | "cli"; images?: { media_type: string; data: string }[]; parent?: string }>(req);
+      // A thread started under another (the web client's tree) reports to it, as one an agent starts does.
+      const parentId = parent ? (sessions.find(parent)?.id ?? sessions.resolveId(parent) ?? null) : null;
+      const s = sessions.spawnTask({ title: title ?? "", project, model, effort, parent: parentId, origin: origin === "general" ? "general" : project ? "builder" : "cli" });
       if (text || images?.length) s.send(text ?? "", { images });
       return json(s.summary());
     }
@@ -380,7 +382,8 @@ export async function handle(req: Request): Promise<Response> {
     // Where the time, tokens and money went over the last `days`: API price next to the real one.
     if (path === "/spend") return json(await spend.report(Math.max(1, Math.min(365, Number(url.searchParams.get("days") ?? 30) || 30))));
 
-    if (path === "/sessions") return json({ live: sessions.list(), recent: sessions.recent(30) });
+    // `limit`: how many of the recent ones; the web client's tree asks for enough to nest every thread under its parent.
+    if (path === "/sessions") return json({ live: sessions.list(), recent: sessions.recent(Math.max(1, Math.min(1000, Number(url.searchParams.get("limit") ?? 30) || 30))) });
 
     // The task list (`items`); `live` and `recent` are the sessions, as clients built before the list read them.
     if (path === "/tasks" && req.method === "POST") {

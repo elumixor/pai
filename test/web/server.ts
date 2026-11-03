@@ -1,7 +1,6 @@
 /**
- * The daemon for the browser suite: the real HTTP server on a scratch database, plus a control port the specs use
- * to put things on the bus and in the log — a reply, an ask, a draft — as the sessions would. No session is ever
- * started (the specs answer `/pai` themselves), so no test spends model tokens.
+ * The daemon `bun run dev` puts the web client against: the real HTTP server on a scratch database, plus a control
+ * port that puts things on the bus and in the log — a reply, an ask, a draft — as the sessions would.
  */
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";

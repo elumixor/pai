@@ -1,6 +1,139 @@
-/* Tailwind without its preflight: pai's look (`lib/pai.css`) was written over the browser's own defaults. */
+/*
+ * Tailwind without its preflight: the chat's look (`lib/pai.css`) was written over the browser's own defaults. It sits
+ * in its own layer under the utilities, so a utility on an element wins, as it does in Keep; the frame around the
+ * chat (the sidebar, the bar over it) is Keep's, in utilities on the suite's tokens.
+ */
+@layer theme, base, pai, app, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 @import "@desk/core/tokens.css";
-@import "./lib/pai.css";
-@import "./lib/pai-more.css";
+@import "./lib/pai.css" layer(pai);
+@import "./lib/pai-more.css" layer(pai);
+
+/* Keep's canvas: the page on the surface, the sidebar a quieter grey beside it. */
+:root {
+  --page: var(--surface);
+  --sidebar: var(--surface-2);
+  /* The shadow a sidebar casts over what it sits beside: black in every theme, deeper on a dark one to show at all. */
+  --edge-shadow: rgb(0 0 0 / 0.05);
+  --edge-shadow-strong: rgb(0 0 0 / 0.1);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --edge-shadow: rgb(0 0 0 / 0.3);
+    --edge-shadow-strong: rgb(0 0 0 / 0.45);
+  }
+}
+:root[data-theme="dark"] {
+  --edge-shadow: rgb(0 0 0 / 0.3);
+  --edge-shadow-strong: rgb(0 0 0 / 0.45);
+}
+
+@theme inline {
+  --color-page: var(--page);
+  --color-sidebar: var(--sidebar);
+  --font-sans: var(--font-ui);
+}
+
+/* What preflight would have cleared, for the controls drawn with utilities: no frame, no fill of the browser's own. */
+@layer base {
+  :where(button) {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    text-align: inherit;
+  }
+}
+
+@layer app {
+  body {
+    flex-direction: row;
+    background: var(--page);
+    color: var(--ink);
+    font-size: 14px;
+    font-feature-settings: "cv11", "ss01";
+  }
+  /* Links drawn with utilities keep their own colour and no underline; the chat's links are inside its bubbles. */
+  :is(.app-side, .app-bar) a {
+    color: inherit;
+    text-decoration: none;
+  }
+  /* The frame shows focus as Keep does, with a wash on the row (`has-[a:focus-visible]`), not a ring. */
+  :is(.app-side, .app-bar) :focus-visible {
+    outline: none;
+  }
+  /* A row of a popup menu (ui/MenuItem.svelte), Keep's: the wash when pointed at or under the keyboard. */
+  .menu-item {
+    display: flex;
+    width: 100%;
+    min-height: 2.25rem;
+    align-items: center;
+    gap: 0.625rem;
+    padding-inline: 0.625rem;
+    border-radius: var(--r);
+    color: var(--ink);
+    text-align: left;
+    text-decoration: none;
+    transition: background-color var(--dur-fast) var(--ease);
+  }
+  .menu-item:hover,
+  .menu-item:focus-visible,
+  .menu-item[data-active="true"] {
+    background: var(--ink-5);
+  }
+  .menu-item[data-selected="true"] {
+    background: var(--ink-10);
+    font-weight: 500;
+  }
+  :is(button, a, .menu-item).text-hot:is(:hover, :focus-visible, [data-active="true"]):not(:disabled) {
+    background: color-mix(in srgb, var(--hot) 10%, transparent);
+  }
+  svg.lucide {
+    stroke-width: 1.5px;
+    flex-shrink: 0;
+  }
+  /* The tree's spinner, in the place of a row's icon while that thread works. */
+  .tree-spinner {
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    border: 1.5px solid var(--ink-20);
+    border-top-color: var(--ink-70);
+    animation: spin 0.9s linear infinite;
+  }
+  /* The chat's column under the bar: the log reaches past it on both sides, so the column is not what clips it. */
+  .home-centre {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 32px;
+    /* The conversation keeps its own rounded face; the frame around it is the suite's Inter. */
+    font-family: var(--font-body);
+  }
+  .home-centre .chat-log {
+    padding-top: 24px;
+    --fade: linear-gradient(180deg, transparent 0, #000 32px, #000 calc(100% - 200px), rgba(0, 0, 0, 0.45) 100%);
+  }
+  .home-centre .chat-scrollbar {
+    top: 16px;
+  }
+  /* A settings page from the old sheet, laid into the dialog's one scroll. */
+  .settings-page {
+    overflow: visible;
+    padding: 0;
+  }
+  .settings-tall {
+    height: min(560px, 70dvh);
+    border-radius: var(--r);
+    overflow: hidden;
+  }
+  @media (max-width: 767px) {
+    .home-centre {
+      padding: 0 12px;
+    }
+  }
+}

@@ -8,7 +8,7 @@
   import { recall, remember } from "../storage";
   import type { Agent, AgentStatus, Ask, LogMessage, MessageKind, Routine, TaskStatus } from "../types";
   import Icon from "../ui/Icon.svelte";
-  import { KIND_ORDER } from "../home/tree";
+  import { KIND_ORDER } from "../sidebar/tree";
 
   /**
    * The staff: pai and the agents it runs, as a tree; one agent's log — every message to and from it — with a box to

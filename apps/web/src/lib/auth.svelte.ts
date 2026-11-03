@@ -29,6 +29,8 @@ class Auth {
   signedIn = $state(false);
   error = $state<string | null>(null);
   config = $state<AuthConfig>({ clerkPublishableKey: null, keepUrl: null });
+  /** Who is signed in, as the sidebar's account row shows them; a token link has nobody. */
+  user = $state<{ name: string; avatar?: string } | null>(null);
   readonly #token = storedToken();
   #clerk: Clerk | null = null;
   #ready: Promise<void> | null = null;
@@ -53,9 +55,15 @@ class Auth {
     if (!this.config.clerkPublishableKey) throw new SignInError("Sign-in is not configured on this daemon; open it with a token link.");
     const clerk = await startClerk(Clerk, this.config.clerkPublishableKey);
     this.#clerk = clerk;
+    const who = () => {
+      const u = clerk.user;
+      this.user = u ? { name: u.fullName || u.primaryEmailAddress?.emailAddress || "You", avatar: u.imageUrl || undefined } : null;
+    };
     this.signedIn = Boolean(clerk.session);
+    who();
     clerk.addListener(({ session }) => {
       this.signedIn = Boolean(session);
+      who();
     });
     this.loaded = true;
   }
