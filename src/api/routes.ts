@@ -4,6 +4,7 @@ import { mapResponse } from "../domain/maps.ts";
 import { ratesResponse } from "../domain/rates.ts";
 import * as reads from "../domain/reads.ts";
 import * as keep from "../domain/keep.ts";
+import * as peopleNotify from "../domain/people-notify.ts";
 import * as projects from "../domain/projects.ts";
 import * as automations from "../domain/automations.ts";
 import { context, save as saveContext } from "../domain/context.ts";
@@ -317,6 +318,15 @@ export async function handle(req: Request): Promise<Response> {
         return json(keep.receive(await req.text(), req.headers.get("x-keep-signature")));
       } catch (err) {
         if (err instanceof keep.KeepSignatureError) return json({ error: err.message }, 401);
+        throw err;
+      }
+    }
+    // People's notifications for Pai: signed with PAI_PEOPLE_WEBHOOK_SECRET, acked at once, routed to a thread after.
+    if (path === "/people/notify" && req.method === "POST") {
+      try {
+        return json(peopleNotify.receive(await req.text(), req.headers.get("x-people-signature"), req.headers.get("x-people-event")));
+      } catch (err) {
+        if (err instanceof peopleNotify.PeopleNotifyError) return json({ error: err.message }, err.status);
         throw err;
       }
     }

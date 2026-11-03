@@ -38,6 +38,9 @@ const PUBLIC_PATHS = [
   /^\/m\/email\/view\//,
   /^\/m\/email\/push$/,
   /^\/auth\//,
+  // Webhooks: each handler checks its own HMAC (keep.ts, people-notify.ts).
+  /^\/keep\/events$/,
+  /^\/people\/notify$/,
 ];
 
 /** The page itself; with Google sign-in it sends a stranger to sign in rather than render. Clerk signs in inside it. */

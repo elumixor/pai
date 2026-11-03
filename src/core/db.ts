@@ -226,6 +226,26 @@ CREATE TABLE IF NOT EXISTS dev_tasks (
   updated_at  INTEGER NOT NULL
 );
 
+-- Keep pages a thread owns (domain/keep-links.ts): one page = one thread; notifications about the page go to it.
+CREATE TABLE IF NOT EXISTS keep_threads (
+  page_urn    TEXT PRIMARY KEY,         -- keep:page/<id>
+  session_id  TEXT NOT NULL,
+  title       TEXT NOT NULL DEFAULT '',
+  linked_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS keep_threads_session ON keep_threads(session_id);
+
+-- People's notifications as received (domain/people-notify.ts): deduped by id, routed once, re-queued after a restart.
+CREATE TABLE IF NOT EXISTS keep_notifications (
+  id          TEXT PRIMARY KEY,         -- Notification.id
+  body        TEXT NOT NULL,            -- the whole Notification JSON
+  received_at INTEGER NOT NULL,
+  routed_at   INTEGER,
+  via         TEXT,                     -- client | link | decide | general
+  routed_to   TEXT,                     -- main | agent:<slug> | thread:<session id>
+  error       TEXT
+);
+
 -- Transcripts, the message log, mail and chat copies, searched with the recall tool; see domain/recall.ts.
 CREATE VIRTUAL TABLE IF NOT EXISTS archive USING fts5(source, ref UNINDEXED, title, body, ts UNINDEXED, tokenize = 'porter unicode61');
 `);

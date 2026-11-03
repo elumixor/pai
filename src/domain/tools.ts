@@ -7,6 +7,7 @@ import * as sessions from "./sessions.ts";
 import { cost as hostingCost } from "./hetzner.ts";
 import { roleOf, staffTools } from "./staff-tools.ts";
 import * as audit from "./audit.ts";
+import * as keepLinks from "./keep-links.ts";
 import { locationTools } from "./location.ts";
 
 const ok = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });
@@ -72,6 +73,23 @@ export function paiTools(_kind: SessionKind, ref: SessionRef, agent?: string) {
     ),
     tool("rescan_projects", "Re-read the dev root. Use after a repo is created, renamed, or moved.", {}, async () =>
       ok({ projects: refresh().length }),
+    ),
+    tool(
+      "link_keep_page",
+      "Make this thread the one that owns a Keep page (one page = one thread): the page's notifications then come here. Watching a page with Keep's `watch` links it too. `unlink` gives it up; `move` takes it from the thread that has it.",
+      {
+        page: z.string().describe("keep:page/<id>, or the id"),
+        unlink: z.boolean().optional(),
+        move: z.boolean().optional().describe("take the page from the thread that owns it now"),
+      },
+      async ({ page, unlink, move }) => {
+        const urn = keepLinks.pageUrn(page);
+        if (unlink) {
+          keepLinks.unlink(urn, self().id);
+          return ok({ unlinked: urn, owner: keepLinks.threadFor(urn) ?? null });
+        }
+        return ok({ linked: keepLinks.link(urn, self().id, { replace: Boolean(move) }), owner: keepLinks.threadFor(urn) ?? null });
+      },
     ),
   ];
 

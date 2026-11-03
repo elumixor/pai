@@ -29,6 +29,7 @@ import { flush as flushNotices } from "./domain/asks.ts";
 import { startClaudeLoginCheck } from "./domain/claude-login.ts";
 import * as dev from "./domain/dev.ts";
 import * as devTasks from "./domain/dev-tasks.ts";
+import * as peopleNotify from "./domain/people-notify.ts";
 import * as held from "./domain/held.ts";
 import * as mirror from "./domain/mirror.ts";
 import * as projects from "./domain/projects.ts";
@@ -50,6 +51,8 @@ relayToParent();
 const stopAgents = agents.start();
 const stopRates = startRates();
 const stopMain = main.start();
+// After main and the agents: it delivers to them.
+const stopPeopleNotify = peopleNotify.start();
 automations.link({ turn: main.system, triage: triage.add, fields: { brief: briefs.morning, digest: briefs.evening } });
 automations.seed();
 const stopMemoryWatch = watchMemory();
@@ -97,6 +100,7 @@ function shutdown(signal: string) {
   stopPush();
   stopSpend();
   stopModels();
+  stopPeopleNotify();
   stopMain();
   stopAgents();
   stopRates();
