@@ -136,7 +136,7 @@ function claim(urn: string, workspace: string, project: string, title: string) {
 const release = (urn: string) => db.prepare("DELETE FROM dev_tasks WHERE keep_urn = ? AND session_id IS NULL").run(urn);
 
 async function readPage(workspace: string, urn: string) {
-  return callKeep<KeepPage>(workspace, "get_page", { id: pageId(urn) });
+  return callKeep<KeepPage>(workspace, "read_page", { id: pageId(urn) });
 }
 
 /** The properties a page's values are checked against. */
@@ -190,7 +190,7 @@ export async function consider(event: { urn: string; workspace: string; effectiv
   db.prepare("UPDATE dev_tasks SET session_id = ?, updated_at = ? WHERE keep_urn = ?").run(started.id, now(), event.urn);
   const value = [{ urn: started.urn, label: `${slug} · ${started.id.slice(0, 6)}` }];
   const doing = statusOption(defs, "doing");
-  await callKeep(event.workspace, "set_properties", {
+  await callKeep(event.workspace, "edit_page", {
     id: page.id,
     properties: { [target.name]: value, ...(doing ? { [doing.property]: doing.option } : {}) },
     ...(define ? { define } : {}),
@@ -216,7 +216,7 @@ export async function sync() {
       if (status === row.status) continue;
       const page = await readPage(row.workspace, row.keep_urn);
       const option = statusOption(definitions(page), status);
-      if (option) await callKeep(row.workspace, "set_properties", { id: page.id, properties: { [option.property]: option.option } });
+      if (option) await callKeep(row.workspace, "edit_page", { id: page.id, properties: { [option.property]: option.option } });
       db.prepare("UPDATE dev_tasks SET status = ?, updated_at = ? WHERE keep_urn = ?").run(status, now(), row.keep_urn);
     } catch (err) {
       log.warn(`sync ${row.keep_urn}: ${(err as Error).message}`);
