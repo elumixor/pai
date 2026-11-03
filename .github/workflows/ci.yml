@@ -16,6 +16,7 @@ jobs:
     uses: ./.github/workflows/box-service.yml
     with:
       archive: pai-daemon
+      playwright-dir: ""
       archive-include: apps/web/build
       update-timeout: 180
     secrets:
