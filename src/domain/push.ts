@@ -54,7 +54,7 @@ export interface Notification {
    * Who wrote, for the phone to draw it as a message from a person (their picture on the lock screen): the
    * notification extension reads it and fetches the pictures, paths on this box, with the phone's own token.
    */
-  readonly sender?: { readonly name: string; readonly id: string; readonly avatar?: string; readonly group?: string; readonly groupAvatar?: string; readonly service: string };
+  readonly sender?: { readonly name: string; readonly id: string; readonly conversation?: string; readonly image?: string; readonly avatar?: string; readonly group?: string; readonly groupAvatar?: string; readonly service: string };
 }
 
 const text = (value: unknown) => (typeof value === "string" ? value : "");
@@ -67,12 +67,21 @@ const emailPeerId = (contactId: unknown) => peerId(PEER_NAMESPACE.email, contact
 
 /** Which events reach the phone, and as what; a rule answering undefined lets the event pass silently. */
 const RULES: Readonly<Record<string, (payload: Record<string, unknown>) => Notification | undefined>> = {
+  // All mail is one stack on the phone, each sender still its own conversation (and picture) inside it.
   "email.new": (p) => ({
     title: text(p.name) || text(p.address),
-    body: [text(p.subject), text(p.snippet)].filter(Boolean).join("\n"),
-    thread: `email:${p.contactId}`,
+    // The box's one-line summary when it wrote one; else the subject over the start of the text.
+    body: text(p.short) || [text(p.subject), text(p.snippet)].filter(Boolean).join("\n"),
+    thread: "email",
     data: { peerId: emailPeerId(p.contactId), email: { contactId: p.contactId, account: p.account, id: p.id } },
-    sender: { name: text(p.name) || text(p.address), id: `email:${text(p.address)}`, avatar: text(p.avatar) || undefined, service: "Mail" },
+    sender: {
+      name: text(p.name) || text(p.address),
+      id: `email:${text(p.address)}`,
+      conversation: `email:${p.contactId}`,
+      avatar: text(p.avatar) || undefined,
+      image: text(p.image) || undefined,
+      service: "Mail",
+    },
   }),
   // His own replies (typed on the phone or elsewhere) and muted chats stay quiet, as in WhatsApp itself.
   "whatsapp.message": (p) => {
