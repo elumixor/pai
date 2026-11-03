@@ -66,7 +66,7 @@ cp .env.example .env               # TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID
 bun run setup                      # the web client, `pai` on PATH, the service (box)
 bun run daemon                     # or: the daemon in the foreground
 bun run dev                        # devkit: a scratch daemon (:8898, no sessions, no Telegram) + the web client with HMR (:5180)
-bun run dev:box                    # the web client with HMR, against the box
+bun run dev                        # the web client with HMR, against the box
 ```
 
 A release (`bun run release`, a `v*` tag) tells the host to update itself. The editor, the public

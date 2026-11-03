@@ -85,8 +85,7 @@ pai dev answer <id|main> "<text>"   # answer a pending AskUserQuestion
 pai dev tasks | stop <id|main> [--kill] | tail [id] [--raw] | events [id] | memory [query]
 pai dev settings [KEY=value …]      # read or change data/config.json; a change needs restart
 pai dev restart
-bun run dev                # the web client (Vite, port 5180) against a scratch daemon (`test/web/server.ts`)
-bun run dev:box            # the web client against the box
+bun run dev                # the web client (Vite, port 5180) against the box's data
 bun run setup              # = `pai dev install`: the web client, the service, `pai` on PATH (menu bar: `dev menubar install`)
 ```
 
