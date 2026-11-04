@@ -4,12 +4,11 @@ import { config } from "../core/config.ts";
 import * as agents from "./agents.ts";
 import * as asks from "./asks.ts";
 import * as automations from "./automations.ts";
-import { all as allProjects } from "./projects.ts";
 import * as tasks from "./tasks.ts";
 
 /**
  * The state of things as one markdown document: what pai remembers, who its staff are and what each
- * knows, every open task and decision, the routines, the projects pai keeps context for. Written so
+ * knows, every open task and decision, the routines. Written so
  * that a person can read it — and so that handed to a fresh pai as a prompt, it has enough to
  * rebuild all of it: the agents with their briefs and notes, the tasks, the memory.
  */
@@ -26,7 +25,6 @@ export function snapshot(): string {
   const open = tasks.list();
   const decisions = asks.open();
   const routines = automations.all();
-  const contexts = allProjects().filter((p) => p.kind === "context");
 
   const agentBlock = (a: agents.Agent) =>
     [
@@ -77,10 +75,6 @@ export function snapshot(): string {
     "",
     routines.length ? routines.map(routineLine).join("\n") : "_none_",
     "",
-    `## Project contexts (${contexts.length})`,
-    "",
-    contexts.length ? contexts.map((p) => [`### ${p.slug}`, p.summary, "", fence(readIf(join(p.path, "CLAUDE.md")))].join("\n")).join("\n\n") : "_none_",
-    "",
   ].join("\n");
 }
 
@@ -91,7 +85,7 @@ export const importPrompt = (text: string) =>
     "1. Memory: merge its MEMORY.md section into MEMORY.md (keep what is here and not there; take what is there and not here; where they differ, the snapshot wins).",
     "2. Staff: for each agent, create it if no agent with that slug or name exists (create_agent with the kind, parent, brief, tools, model, project), else configure it to match; then write its STATE.md from its notes (Write the file in its folder under workspace/agents/<slug>/).",
     "3. Tasks: add the ones not here (task_add with the owner, status, due, next action, notes); leave the ones already here alone.",
-    "4. Routines and project contexts: create what is missing (routine_add; a context with the project tools you have).",
+    "4. Routines: create what is missing (routine_add).",
     "Do not delete or close anything the snapshot does not mention. When done, report in a few lines what was created, what was updated and what was already in place.",
     "",
     text,

@@ -57,7 +57,7 @@ export function paiTools(_kind: SessionKind, ref: SessionRef, agent?: string) {
     ),
     tool(
       "list_projects",
-      "The user's projects: every git repo under the dev root, plus the context projects (a directory with its own instructions and memory, for work that is not code — travel, hiring).",
+      "The user's projects: every git repo under the dev root.",
       {},
       async () => ok(allProjects().map((p) => ({ slug: p.slug, kind: p.kind, summary: p.summary }))),
     ),
@@ -100,7 +100,7 @@ export function paiTools(_kind: SessionKind, ref: SessionRef, agent?: string) {
       {
         title: z.string().max(60).describe("short topic name, e.g. 'Find game designer'"),
         prompt: z.string().describe("the full instruction for the thread"),
-        project: z.string().optional().describe("project slug from list_projects: a repo for coding work, a context project for work that has its own voice and memory"),
+        project: z.string().optional().describe("project slug from list_projects, for coding work in that repo"),
       },
       async ({ title, prompt, project }) => {
         try {
