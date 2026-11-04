@@ -276,6 +276,8 @@ if (!sessionColumns.includes("model_pref")) db.exec("ALTER TABLE sessions ADD CO
 if (!sessionColumns.includes("effort")) db.exec("ALTER TABLE sessions ADD COLUMN effort TEXT");
 // The agent a session works for (pai itself, or one of its staff); null for plain threads.
 if (!sessionColumns.includes("agent")) db.exec("ALTER TABLE sessions ADD COLUMN agent TEXT");
+// When a thread was moved to the trash (ms); -1 once deleted for good, kept so the mirror never brings it back.
+if (!sessionColumns.includes("deleted_at")) db.exec("ALTER TABLE sessions ADD COLUMN deleted_at INTEGER");
 // Where a thread was started: general (the client, detached), cli, terminal, phone, builder, routine; null = not recorded.
 if (!sessionColumns.includes("origin")) {
   db.exec("ALTER TABLE sessions ADD COLUMN origin TEXT");

@@ -168,7 +168,7 @@ export function resolveId(idOrShort: string): string | undefined {
 }
 
 export function list() {
-  return [...live.values()].filter((s) => s.state !== "dead").map((s) => s.summary());
+  return [...live.values()].filter((s) => s.state !== "dead" && !trashed(s.id)).map((s) => s.summary());
 }
 
 export interface SessionRow {
@@ -191,6 +191,73 @@ export interface SessionRow {
   effort: Effort | null;
   agent: string | null;
   origin: ThreadOrigin | null;
+}
+
+// ---- the trash: a thread deleted goes there first, with everything under it; for good after 30 days -------------
+
+export const TRASH_DAYS = 30;
+const trashed = (id: string) => Boolean(db.query("SELECT 1 FROM sessions WHERE session_id = ? AND deleted_at IS NOT NULL").get(id));
+
+/** The thread and every thread started under it. */
+function withChildren(ids: readonly string[]): string[] {
+  const all = new Set<string>();
+  const add = (id: string) => {
+    if (all.has(id)) return;
+    all.add(id);
+    for (const r of db.query("SELECT session_id FROM sessions WHERE parent_id = ?").all(id) as { session_id: string }[]) add(r.session_id);
+  };
+  for (const raw of ids) {
+    const id = resolveId(raw);
+    if (id) add(id);
+  }
+  return [...all];
+}
+
+/** Moves threads (and what hangs under them) to the trash; a running one is stopped. Agents' sessions are not threads. */
+export function trash(ids: readonly string[]): string[] {
+  const at = now();
+  const moved = withChildren(ids).filter((id) => !(db.query("SELECT 1 FROM sessions WHERE session_id = ? AND (kind = 'main' OR agent IS NOT NULL)").get(id)));
+  for (const id of moved) {
+    db.prepare("UPDATE sessions SET deleted_at = ? WHERE session_id = ? AND deleted_at IS NULL").run(at, id);
+    const s = live.get(id);
+    if (s && s.state !== "dead") s.kill();
+  }
+  if (moved.length) bus.emitEvent("sessions.trashed", { ids: moved });
+  return moved;
+}
+
+/** Takes threads back out of the trash. */
+export function restore(ids: readonly string[]): string[] {
+  const back = withChildren(ids).filter((id) => db.prepare("UPDATE sessions SET deleted_at = NULL WHERE session_id = ? AND deleted_at > 0").run(id).changes > 0);
+  if (back.length) bus.emitEvent("sessions.restored", { ids: back });
+  return back;
+}
+
+/**
+ * Deletes threads for good: what pai kept about them goes, the row stays as a tombstone (`deleted_at = -1`) so a
+ * transcript still on disk is never mirrored back in. The transcript itself is Claude Code's, and stays.
+ */
+export function purge(ids: readonly string[]): string[] {
+  const gone = withChildren(ids).filter((id) => trashed(id));
+  for (const id of gone) {
+    db.prepare("UPDATE sessions SET deleted_at = -1, title = '', parent_id = NULL WHERE session_id = ?").run(id);
+    db.prepare("DELETE FROM keep_threads WHERE session_id = ?").run(id);
+    live.delete(id);
+  }
+  return gone;
+}
+
+/** What is in the trash, newest first. */
+export function trashList(): { sessionId: string; shortId: string; title: string; kind: SessionKind; project: string | null; deletedAt: number }[] {
+  const rows = db.query("SELECT session_id, short_id, title, kind, project, deleted_at FROM sessions WHERE deleted_at > 0 ORDER BY deleted_at DESC").all() as Record<string, any>[];
+  return rows.map((r) => ({ sessionId: r.session_id, shortId: r.short_id, title: r.title, kind: asKind(r.kind), project: r.project, deletedAt: r.deleted_at }));
+}
+
+/** Empties what has been in the trash longer than `TRASH_DAYS`; daily. */
+export function purgeOld() {
+  const before = now() - TRASH_DAYS * 86_400_000;
+  const old = (db.query("SELECT session_id FROM sessions WHERE deleted_at > 0 AND deleted_at < ?").all(before) as { session_id: string }[]).map((r) => r.session_id);
+  if (old.length) log.info(`trash: ${purge(old).length} threads deleted for good after ${TRASH_DAYS} days`);
 }
 
 /** The session above one, as the database has it. */
@@ -228,7 +295,7 @@ export function recent(limit = 20, kind?: SessionKind): SessionRow[] {
   const rows = (
     kind
       ? db.query("SELECT * FROM sessions WHERE kind = ? ORDER BY last_activity DESC LIMIT ?").all(kind, limit)
-      : db.query("SELECT * FROM sessions WHERE kind != 'main' ORDER BY last_activity DESC LIMIT ?").all(limit)
+      : db.query("SELECT * FROM sessions WHERE kind != 'main' AND deleted_at IS NULL ORDER BY last_activity DESC LIMIT ?").all(limit)
   ) as Record<string, any>[];
   return rows.map((r) => ({
     sessionId: r.session_id,

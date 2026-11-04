@@ -39,6 +39,8 @@ interface Entry {
   subtype?: string;
   isSidechain?: boolean;
   isMeta?: boolean;
+  isCompactSummary?: boolean;
+  isVisibleInTranscriptOnly?: boolean;
   entrypoint?: string;
   aiTitle?: string;
   durationMs?: number;
@@ -137,7 +139,8 @@ export class TerminalThread implements HeldThread {
     }
     if (e.type === "system" && e.subtype === "turn_duration") return this.endTurn(emit, e.durationMs);
     const content = e.message?.content;
-    if (e.type === "user" && !e.isMeta && !e.toolUseResult) {
+    // A compaction's summary (idle compaction too) is written as a user entry, but no turn follows it.
+    if (e.type === "user" && !e.isMeta && !e.toolUseResult && !e.isCompactSummary && !e.isVisibleInTranscriptOnly) {
       const typed = typeof content === "string" ? content : (content ?? []).filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n");
       if (!typed.trim() || isInterruption(typed) || (Array.isArray(content) && content.some((b) => b.type === "tool_result"))) return;
       // A prompt arriving mid-turn means the last one was cut off (Esc) without a turn_duration.

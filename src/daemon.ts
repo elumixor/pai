@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { config, setting } from "./core/config.ts";
 import { restoreDaemonJob, startServer } from "./api/server.ts";
-import { killAll, noteInterrupted, reapIdle, relayToParent, resumeInterrupted, warmUp, watchMemory } from "./domain/sessions.ts";
+import { killAll, noteInterrupted, purgeOld, reapIdle, relayToParent, resumeInterrupted, warmUp, watchMemory } from "./domain/sessions.ts";
 import { closeAll as closeTerminals } from "./domain/terminals.ts";
 import { startBrowser } from "./domain/browser.ts";
 import { bus } from "./core/bus.ts";
@@ -84,12 +84,16 @@ const stopModels = models.start();
 const noticeTimer = setInterval(flushNotices, 60 * 1000);
 
 const reaper = setInterval(reapIdle, 60 * 1000);
+// The trash empties itself of what has been there 30 days.
+purgeOld();
+const trashTimer = setInterval(purgeOld, 60 * 60 * 1000);
 
 bus.emitEvent("daemon.started", { pid: process.pid, port: config.port });
 
 function shutdown(signal: string) {
   log.info(`${signal} — shutting down`);
   clearInterval(reaper);
+  clearInterval(trashTimer);
   clearInterval(noticeTimer);
   stopLinkedInCheck();
   stopBrowserCheck();

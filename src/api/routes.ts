@@ -398,6 +398,15 @@ export async function handle(req: Request): Promise<Response> {
       const withPages = <T extends { sessionId: string }>(s: T) => (pages.has(s.sessionId) ? { ...s, keep: pages.get(s.sessionId) } : s);
       return json({ live: sessions.list().map(withPages), recent: sessions.recent(Math.max(1, Math.min(1000, Number(url.searchParams.get("limit") ?? 30) || 30))).map(withPages) });
     }
+    // The trash: threads deleted, with what hangs under them; restored, or deleted for good (else after 30 days).
+    if (path === "/sessions/trash" && req.method === "GET") return json({ items: sessions.trashList(), days: sessions.TRASH_DAYS });
+    const trashAction = /^\/sessions\/(trash|restore|purge)$/.exec(path);
+    if (trashAction?.[1] && req.method === "POST") {
+      const { ids } = await body<{ ids: string[] }>(req);
+      if (!Array.isArray(ids)) return json({ error: "ids must be a list" }, 400);
+      const act = trashAction[1] === "trash" ? sessions.trash : trashAction[1] === "restore" ? sessions.restore : sessions.purge;
+      return json({ ids: act(ids) });
+    }
     // Threads put under another session, an agent (`agent:<slug>`, its current session) or at the top (`null`).
     if (path === "/sessions/move" && req.method === "POST") {
       const { ids, parent } = await body<{ ids: string[]; parent: string | null }>(req);
