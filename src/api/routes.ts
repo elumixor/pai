@@ -9,8 +9,9 @@ import * as peopleNotify from "../domain/people-notify.ts";
 import * as projects from "../domain/projects.ts";
 import * as automations from "../domain/automations.ts";
 import { context, save as saveContext } from "../domain/context.ts";
-import { byName as moduleByName, describeModules } from "../modules/index.ts";
 import * as external from "../connectors/loader.ts";
+import { update as updateConnectors } from "../connectors/source.ts";
+import { eventCatalog } from "../domain/event-catalog.ts";
 import { info as telegramInfo } from "../clients/telegram.ts";
 import { needsLogin, usage } from "../domain/usage.ts";
 import * as claudeLogin from "../domain/claude-login.ts";
@@ -76,7 +77,7 @@ export async function handle(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const path = url.pathname;
   try {
-    // Modules' paths outside /m/ (a mailbox's /gmail/connect), behind the same auth as everything here.
+    // Connectors' paths outside /m/ (a mailbox's /gmail/connect), behind the same auth as everything here.
     const mounted = await external.mounted(req, url);
     if (mounted) return mounted;
 
@@ -213,19 +214,7 @@ export async function handle(req: Request): Promise<Response> {
 
     if (path === "/update") return json(await updateStatus());
 
-    // A project is added by cloning a repository (through the module that keeps them), or as a context: a
-    // directory in the workspace with instructions and memory of its own.
-    if (path === "/projects" && req.method === "POST") {
-      const { url: source, name, about } = await body<{ url?: string; name?: string; about?: string }>(req);
-      try {
-        return json(source ? projects.clone(source, name) : projects.createContext(name ?? "", about), 201);
-      } catch (err) {
-        if (err instanceof projects.ProjectError) return json({ error: err.message }, 400);
-        throw err;
-      }
-    }
-
-    if (path === "/projects") return json(url.searchParams.get("refresh") ? projects.refresh() : projects.all());
+    if (path === "/projects" && req.method === "GET") return json(url.searchParams.get("refresh") ? projects.refresh() : projects.all());
 
     // The subscription's limits and what the sessions have cost, for the clients' status line.
     if (path === "/usage") return json({ ...(await usage()), needsLogin: needsLogin() });
@@ -263,7 +252,7 @@ export async function handle(req: Request): Promise<Response> {
 
     if (path === "/send" && req.method === "POST") {
       const { id, text, wait, cwd, title, images } = await body<{ id: string; text: string; wait?: boolean; cwd?: string; title?: string; images?: { media_type: string; data: string }[] }>(req);
-      // A conversation held elsewhere (a terminal's) goes there; its module resumes it here when it cannot.
+      // A conversation held elsewhere (a terminal's) goes there; this daemon resumes it when it cannot.
       const elsewhere = !sessions.find(id) ? held.find(id) : undefined;
       if (elsewhere && !wait) {
         elsewhere.send(text, { images });
@@ -320,8 +309,37 @@ export async function handle(req: Request): Promise<Response> {
       if (answered) return answered;
     }
 
-    // The channel connectors in one shape, with each one's status.
     if (path === "/connectors") return json(await external.connectors());
+    if (path === "/connectors/update" && req.method === "POST") return json(await updateConnectors());
+    const connectorSettings = /^\/connectors\/([a-z0-9-]+)\/settings$/.exec(path);
+    if (connectorSettings?.[1] && req.method === "PATCH") {
+      const name = connectorSettings[1];
+      if (!external.get(name)) return json({ error: "no such connector" }, 404);
+      try {
+        external.writeSettings(name, await body<Record<string, unknown>>(req));
+      } catch (err) {
+        if (err instanceof external.UnknownSettingError) return json({ error: err.message }, 400);
+        throw err;
+      }
+      await external.restart(name);
+      sessions.rewarmChat();
+      return json(await external.detail(name));
+    }
+    const connectorAction = /^\/connectors\/([a-z0-9-]+)\/actions\/([a-z0-9-]+)$/.exec(path);
+    if (connectorAction?.[1] && connectorAction[2] && req.method === "POST") {
+      const action = external.action(connectorAction[1], connectorAction[2]);
+      if (!action?.run) return json({ error: "no such action" }, 404);
+      try {
+        return json({ message: (await action.run()) ?? "" });
+      } catch (err) {
+        return json({ error: (err as Error).message }, 400);
+      }
+    }
+    const connectorPath = /^\/connectors\/([a-z0-9-]+)$/.exec(path);
+    if (connectorPath?.[1]) {
+      const page = await external.detail(connectorPath[1]);
+      return page ? json(page) : json({ error: "no such connector" }, 404);
+    }
     if (path === "/keep/events" && req.method === "POST") {
       try {
         return json(keep.receive(await req.text(), req.headers.get("x-keep-signature")));
@@ -339,40 +357,6 @@ export async function handle(req: Request): Promise<Response> {
         throw err;
       }
     }
-    if (path === "/modules")
-      return json([
-        ...describeModules(),
-        ...(await external.describe()).map((m) => ({
-          ...m,
-          title: m.title ?? m.name,
-          description: m.description ?? "",
-          status: { health: m.health, source: m.source, linked: m.linked, started: m.started, cli: m.cli, ui: m.ui },
-          live: true,
-          external: true,
-        })),
-      ]);
-
-    const modulePath = /^\/modules\/([a-z0-9-]+)(?:\/(poll|install|update|remove))?$/.exec(path);
-    if (modulePath?.[1] && external.get(modulePath[1])) {
-      const name = modulePath[1];
-      const l = external.get(name)!;
-      if (modulePath[2] === "install" && req.method === "POST") return json({ dir: await external.install(name, l.source), restartRequired: true });
-      if (modulePath[2] === "update" && req.method === "POST") return json({ ...(await external.update(name, l.source)), restartRequired: true });
-      if (modulePath[2] === "remove" && req.method === "POST") return json({ removed: external.remove(name), restartRequired: true });
-      return json((await external.describe()).find((m) => m.name === name));
-    }
-    if (modulePath?.[1]) {
-      const module = moduleByName(modulePath[1]);
-      if (!module) return json({ error: "no such module" }, 404);
-      if (req.method === "PATCH") {
-        const changes = await body<Record<string, unknown>>(req);
-        const allowed = new Set(module.settings?.map((s) => s.key) ?? []);
-        for (const key of Object.keys(changes)) if (!allowed.has(key)) return json({ error: `${key} is not a setting of ${module.name}` }, 400);
-        return json(await settings.write(changes));
-      }
-      return json(describeModules().find((m) => m.name === module.name));
-    }
-
     // Routines (the automations table): an event or a schedule, a check, an action.
     if ((path === "/automations" || path === "/routines") && req.method === "POST") {
       try {
@@ -382,6 +366,7 @@ export async function handle(req: Request): Promise<Response> {
       }
     }
     if (path === "/automations" || path === "/routines") return json(automations.all());
+    if (path === "/routines/events") return json(eventCatalog());
     const automationPath = /^\/(?:automations|routines)\/(\d+)$/.exec(path);
     if (automationPath?.[1]) {
       const id = Number(automationPath[1]);

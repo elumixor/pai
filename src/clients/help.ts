@@ -1,6 +1,6 @@
 /**
  * The help and the shell completion, from one table of commands. Colour when the terminal
- * has it (a tty, no NO_COLOR): `pai` in one colour, a module in another, commands, their
+ * has it (a tty, no NO_COLOR): `pai` in one colour, a connector in another, commands, their
  * arguments and options, and the descriptions each their own.
  */
 
@@ -11,16 +11,10 @@ export interface Command {
   readonly description: string;
 }
 
-/** A top-level word a module answers (`pai files`), with its own subcommands for the completion. */
-export interface Verb extends Command {
-  readonly subcommands?: readonly Command[];
-}
-
-export interface ModuleHelp {
+export interface ConnectorHelp {
   readonly name: string;
   readonly description: string;
   readonly commands: readonly Command[];
-  readonly verbs: readonly Verb[];
 }
 
 export const CORE: readonly Command[] = [
@@ -39,9 +33,9 @@ export const CORE: readonly Command[] = [
   { name: "recall", args: "<words…>", description: "search transcripts, the message log, mail and chats" },
   { name: "tools", args: "[server]", description: "what the sessions can call, by MCP server; a name lists its tools" },
   { name: "skills", args: "[name]", description: "the skills sessions load; a name prints one" },
-  { name: "instructions", args: "[name|--full]", description: "the system prompt in its parts: general, per module, per project; a name prints one" },
+  { name: "instructions", args: "[name|--full]", description: "the system prompt in its parts: general, per connector; a name prints one" },
   { name: "memories", args: "[name]", description: "what the assistant remembers: MEMORY.md and Claude Code's memory files" },
-  { name: "modules", args: "[update|restart]", description: "the modules: state, health" },
+  { name: "connectors", args: "[update|restart]", description: "the connectors: state; update pulls them, restart reloads the daemon" },
   { name: "completion", args: "[zsh]", description: "install shell completion (zsh); `zsh` prints the script" },
   { name: "version", description: "pai here and on the box" },
   { name: "update", args: "[--check] [--force]", description: "update pai on the box, and here when this is a laptop" },
@@ -70,7 +64,7 @@ const colour = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR && process
 const paint = (code: string) => (s: string) => (colour ? `\x1b[${code}m${s}\x1b[0m` : s);
 export const c = {
   pai: paint("1;36"),
-  module: paint("1;35"),
+  connector: paint("1;35"),
   command: paint("32"),
   args: paint("33"),
   text: paint("0"),
@@ -90,17 +84,16 @@ function table(prefix: string, cmds: readonly Command[]) {
   });
 }
 
-export function usage(modules: readonly ModuleHelp[] = []) {
+export function usage(connectors: readonly ConnectorHelp[] = []) {
   const lines = [`${c.pai("pai")} ${c.dim("— the assistant on the box, from here")}`, "", ...table("", CORE)];
-  if (modules.length) {
-    lines.push("", c.head("Modules:"));
-    for (const m of modules) {
-      lines.push("", `  ${c.pai("pai")} ${c.module(m.name)}${" ".repeat(Math.max(1, 14 - m.name.length))}${c.dim(m.description)}`);
-      if (m.verbs.length) lines.push(...table(`${c.pai("pai")} `, m.verbs).map((l) => `  ${l}`));
+  if (connectors.length) {
+    lines.push("", c.head("Connectors:"));
+    for (const m of connectors) {
+      lines.push("", `  ${c.pai("pai")} ${c.connector(m.name)}${" ".repeat(Math.max(1, 14 - m.name.length))}${c.dim(m.description)}`);
       const w = width(m.commands.map((x) => ({ ...x, name: `${m.name} ${x.name}`.trim() })));
       for (const x of m.commands) {
         const visible = `${m.name} ${x.name}${x.args ? ` ${x.args}` : ""}`.trim();
-        lines.push(`    ${c.pai("pai")} ${c.module(m.name)}${x.name ? ` ${c.command(x.name)}` : ""}${args(x.args)}${" ".repeat(Math.max(1, w - visible.length + 2))}${c.dim(x.description)}`);
+        lines.push(`    ${c.pai("pai")} ${c.connector(m.name)}${x.name ? ` ${c.command(x.name)}` : ""}${args(x.args)}${" ".repeat(Math.max(1, w - visible.length + 2))}${c.dim(x.description)}`);
       }
     }
   }
@@ -108,18 +101,15 @@ export function usage(modules: readonly ModuleHelp[] = []) {
   return lines.join("\n");
 }
 
-export const section = (title: string, cmds: readonly Command[], prefix = "") => [`${c.pai("pai")} ${c.module(title)}`, "", ...table(prefix, cmds)].join("\n");
+export const section = (title: string, cmds: readonly Command[], prefix = "") => [`${c.pai("pai")} ${c.connector(title)}`, "", ...table(prefix, cmds)].join("\n");
 
-/** A zsh completion function for everything above, modules included, as of now. */
-export function zshCompletion(modules: readonly ModuleHelp[]) {
+/** A zsh completion function for everything above, connectors included, as of now. */
+export function zshCompletion(connectors: readonly ConnectorHelp[]) {
   const q = (s: string) => s.replace(/'/g, "'\\''").replace(/:/g, "\\:");
   const entries = (cmds: readonly Command[]) => cmds.filter((x) => x.name).map((x) => `'${q(x.name.split(" ")[0]!)}:${q(x.description)}'`).join(" ");
-  const verbs = modules.flatMap((m) => m.verbs);
-  const dev = modules.find((m) => m.name === "dev");
-  const top = [...CORE, ...verbs, ...modules.filter((m) => m !== dev).map((m) => ({ name: m.name, description: m.description })), { name: "dev", description: "the daemon's own controls" }];
-  const subs: string[] = [`    dev) sub=(${entries([...DEV, ...(dev?.commands ?? [])])});;`, `    modules) sub=('update:pull them all' 'restart:reload');;`, `    completion) sub=('zsh:print the script');;`];
-  for (const v of verbs) if (v.subcommands?.length) subs.push(`    ${v.name}) sub=(${entries(v.subcommands)});;`);
-  for (const m of modules) if (m !== dev) subs.push(`    ${m.name}) sub=(${entries(m.commands)});;`);
+  const top = [...CORE, ...connectors.map((m) => ({ name: m.name, description: m.description })), { name: "dev", description: "the daemon's own controls" }];
+  const subs: string[] = [`    dev) sub=(${entries(DEV)});;`, `    connectors) sub=('update:pull them' 'restart:reload the daemon');;`, `    completion) sub=('zsh:print the script');;`];
+  for (const m of connectors) subs.push(`    ${m.name}) sub=(${entries(m.commands)});;`);
   return `#compdef pai
 # pai shell completion — generated by \`pai completion\`; regenerated by \`pai update\`.
 _pai() {

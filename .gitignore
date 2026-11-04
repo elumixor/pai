@@ -22,6 +22,7 @@ test-results/
 playwright-report/
 
 # external modules, installed from pai.config.ts
-/modules/
+/modules
+/modules.next
 pai.config.local.ts
 .devkit/

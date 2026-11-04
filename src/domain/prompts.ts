@@ -1,8 +1,7 @@
 import type { AgentSetup, SessionKind } from "./session.ts";
 import type { Agent } from "./agents.ts";
 import { config } from "../core/config.ts";
-import { modules } from "../modules/index.ts";
-import { prompts as externalPrompts } from "../connectors/loader.ts";
+import { prompts as connectorPrompts } from "../connectors/loader.ts";
 import { unavailable, unresolved } from "./capabilities.ts";
 import { KEEP_WORK } from "./keep-prompt.ts";
 
@@ -33,7 +32,6 @@ Changing pai itself:
 - Coding work in the pai project finishes the job end to end: once the checks pass, it releases (\`bun run release\`; CI builds and updates this host). Do not stop at a branch and ask the user to release; a change that is not released changed nothing. The release restarts the daemon, so release as the very last step, after reporting.
 - Restarting or updating the daemon cuts off every running turn, yours included. Do it only as the very last step of a turn, after reporting, and say the reply may arrive after the restart.`;
 
-/** The heading a module's paragraph sits under, so what each module adds can be told apart. */
 /**
  * How to write money so every client can convert it. The renderer takes a leading symbol or a
  * trailing code, `k`/`M` multipliers, ranges and `/mo`; what it cannot take is an amount with
@@ -60,14 +58,15 @@ Amounts are rendered and converted, so write them in a form that parses:
 - never dress up something that is not money (a version, an id, a count, a percentage); a number
   with no currency and no multiplier is left alone, which is what keeps \`v0.6.41\` and \`#87\` intact`;
 
-export const moduleHeading = (title: string) => `# Instructions (from ${title})`;
+// Measured on LinkedIn, 2026-10-07: with every non-GET request aborted in the browser, the
+// page still rendered the message as sent. Ten "sent" messages that never existed came from
+// trusting that render.
+const BROWSER = `# Writes in the browser
 
-/** Every module's paragraph for a session of `kind`, each under its own heading. */
-export const moduleSections = (kind: SessionKind) =>
-  [
-    ...modules.filter((m) => m.enabled() && m.prompt?.kinds.includes(kind)).map((m) => ({ module: m.name, title: m.title, text: m.prompt!.text })),
-    ...externalPrompts(kind),
-  ].map((m) => ({ ...m, section: `${moduleHeading(m.title)}\n${m.text}` }));
+The browser proves nothing by itself: a page will show a write as done — a message sent, a form submitted — even when nothing reached the site, so a click and the DOM that follows it are not evidence. Confirm a write by reading it back from the site's own data afterwards (the inbox, the thread, the profile, the confirmation page fetched fresh); if you cannot, say the write is unconfirmed and let the user check. Never report it as done, and never retry it blindly — the first attempt may have gone through.`;
+
+/** Every connector's paragraph, each under its own heading. */
+const connectorSections = () => connectorPrompts().map((p) => `# Instructions (from ${p.title})\n${p.text}`);
 
 const CHAT = `
 You are one conversation with the user — a Telegram topic, a terminal, or a thread in the app. There are others like it, each with its own context; none of them is the main one. Most messages are conversation or quick lookups: answer them directly. If this thread was opened by the user typing a message, that message is what it is about; there is no earlier conversation.
@@ -135,7 +134,6 @@ export function agentInstructions(a: Pick<Agent, "kind" | "name" | "slug">, own:
 
 export function instructionsFor(kind: SessionKind, _project?: string, agent?: AgentSetup): string {
   const role = agent ? agent.instructions : kind === "code" ? CODE : CHAT;
-  const sections = moduleSections(kind).map((m) => m.section);
   // pai's staff ask through ask_user rather than AskUserQuestion, and leave the profile to pai.
   const staff = agent && agent.slug !== "pai";
   const common = staff
@@ -144,7 +142,7 @@ export function instructionsFor(kind: SessionKind, _project?: string, agent?: Ag
       ? `${COMMON}\n- Facts about a person go into people/<name>.md here (search before creating one); a day's events into journal/; MEMORY.md is the profile, kept under about 150 lines.`
       : COMMON;
   // Money is rendered and converted in every client, so everyone who writes an amount writes it the same way.
-  return [`${common}\n${role}`, ...(kind === "code" && agent ? [CODE.trim()] : []), ATTACHMENTS, MONEY_FORMAT, KEEP_WORK, missingTools(agent), ...sections].filter(Boolean).join("\n\n");
+  return [`${common}\n${role}`, ...(kind === "code" && agent ? [CODE.trim()] : []), ATTACHMENTS, MONEY_FORMAT, KEEP_WORK, BROWSER, missingTools(agent), ...connectorSections()].filter(Boolean).join("\n\n");
 }
 
 /**
@@ -164,13 +162,14 @@ export function missingTools(agent?: AgentSetup): string {
   return lines.length ? `# Tools you do not have\n\n${lines.join("\n")}\n\nSay so rather than working around them.` : "";
 }
 
-/** The fixed paragraphs with the sessions they go to, for the dashboard's context view. */
+/** The fixed paragraphs with the sessions they go to, for the context view. */
 export function sections(): [name: string, text: string, kinds: SessionKind[]][] {
   return [
     ["general", COMMON.trim(), ["chat", "code"]],
     ["files he attached", ATTACHMENTS.trim(), ["chat", "code"]],
     ["writing money", MONEY_FORMAT.trim(), ["chat", "code"]],
     ["work in keep", KEEP_WORK.trim(), ["chat", "code"]],
+    ["browser", BROWSER.trim(), ["chat", "code"]],
     ["conversation", CHAT.trim(), ["chat"]],
     ["coding session", CODE.trim(), ["code"]],
     ["pai (orchestrator)", ORCHESTRATOR.trim(), ["chat"]],

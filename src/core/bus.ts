@@ -29,6 +29,13 @@ class Bus extends EventEmitter {
 export const bus = new Bus();
 bus.setMaxListeners(100);
 
+/** How often each kind fired and when it last did; a kind that never fired has no entry. */
+export function eventStats(kinds: readonly string[]): ReadonlyMap<string, { readonly count: number; readonly lastAt: number }> {
+  if (!kinds.length) return new Map();
+  const rows = db.query(`SELECT kind, COUNT(*) AS count, MAX(ts) AS lastAt FROM events WHERE kind IN (${kinds.map(() => "?").join(", ")}) GROUP BY kind`).all(...kinds) as { kind: string; count: number; lastAt: number }[];
+  return new Map(rows.map(({ kind, count, lastAt }) => [kind, { count, lastAt }]));
+}
+
 export function recentEvents(sessionId?: string, limit = 100): PaiEvent[] {
   const rows = sessionId
     ? (db

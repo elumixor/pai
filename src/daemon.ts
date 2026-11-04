@@ -10,7 +10,6 @@ import { startAutoUpdate } from "./domain/update.ts";
 import { startLinkedInCheck } from "./domain/linkedin-check.ts";
 import { startBrowserCheck } from "./domain/browser-check.ts";
 import { startAutomations } from "./domain/automations.ts";
-import { startModules } from "./modules/index.ts";
 import * as connectors from "./connectors/loader.ts";
 import * as telegram from "./clients/telegram.ts";
 import { logger } from "./core/log.ts";
@@ -67,7 +66,6 @@ const stopAutoUpdate = startAutoUpdate();
 const stopLinkedInCheck = startLinkedInCheck();
 const stopBrowserCheck = startBrowserCheck();
 const stopAutomations = startAutomations();
-const stopModules = startModules();
 await connectors.startAll();
 // pai's own Telegram client, the bot he talks to pai through; after the connectors, since his account transcribes its voice.
 const bot =
@@ -108,7 +106,6 @@ function shutdown(signal: string) {
   stopAutomations();
   stopMemoryWatch();
   stopClaudeLoginCheck();
-  stopModules();
   stopMirror();
   stopReleaseCheck();
   stopDev();

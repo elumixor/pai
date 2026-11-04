@@ -95,13 +95,19 @@ function summarize(e: any): string {
 }
 
 const help = await import("./help.ts");
-type ModuleHelp = import("./help.ts").ModuleHelp;
+type ConnectorHelp = import("./help.ts").ConnectorHelp;
 
-/** The modules on the box and what `pai <module> …` accepts, for the help and the completion. */
-async function moduleHelp(): Promise<ModuleHelp[]> {
-  const data = await api("/modules").catch(() => undefined);
-  const ext = Array.isArray(data) ? data.filter((m: any) => m.external) : [];
-  return ext.map((m: any) => ({ name: m.name, description: m.description ?? "", verbs: m.verbs ?? [], commands: (m.commands ?? []).map((x: any) => ({ name: x.name.split(" ")[0] === x.name ? x.name : x.name.split(" ")[0], args: x.name.includes(" ") ? x.name.slice(x.name.indexOf(" ") + 1) : x.args, description: x.description })) }));
+/** A connector's command as it declares it: the first word is the name, the rest its arguments. */
+function commandHelp(x: { name: string; description: string }) {
+  const [name = "", ...rest] = x.name.split(" ");
+  return { name, args: rest.join(" ") || undefined, description: x.description };
+}
+
+/** The connectors on the box and what `pai <connector> …` accepts, for the help and the completion. */
+async function connectorHelp(): Promise<ConnectorHelp[]> {
+  const data = await api("/connectors").catch(() => undefined);
+  const withCli = Array.isArray(data) ? data.filter((m: any) => m.cli) : [];
+  return withCli.map((m: any) => ({ name: m.name, description: m.description, commands: m.commands.map(commandHelp) }));
 }
 
 interface ThreadRow {
@@ -230,15 +236,14 @@ async function userCommand() {
       const data = await api("/context");
       const items = (data.items as any[]).filter((x) => x.kind === kind);
       const wanted = positional[0]?.toLowerCase();
-      const chosen = wanted ? items.filter((x) => x.name.toLowerCase().includes(wanted) || (x.project ?? "").toLowerCase() === wanted) : items;
+      const chosen = wanted ? items.filter((x) => x.name.toLowerCase().includes(wanted)) : items;
       if (wanted && !chosen.length) throw new Error(`no ${cmd} match "${positional[0]}"`);
       // A body is printed when asked for one thing, for memories (the content is the point), or with --full.
       const full = Boolean(wanted) || args.includes("--full") || cmd === "memories";
-      const where = (x: any) => (x.surfaces.length ? x.surfaces.join(", ") : "nowhere");
       out(chosen, () =>
         chosen
           .map((x) => {
-            const head = `${help.c.head(x.name)}  ${help.c.dim(`${x.description} · ${where(x)}`)}${x.editable ? `\n${help.c.dim(x.source)}` : ""}`;
+            const head = `${help.c.head(x.name)}  ${help.c.dim(x.description)}${x.editable ? `\n${help.c.dim(x.source)}` : ""}`;
             if (cmd === "tools") {
               const tools = (x.tools ?? []) as { name: string; description?: string }[];
               const w = Math.max(0, ...tools.map((t) => t.name.length));
@@ -250,28 +255,24 @@ async function userCommand() {
       );
       break;
     }
-    case "modules": {
-      const sub = positional[0] ?? "list";
+    case "connectors": {
+      const sub = positional[0];
       if (sub === "update") {
-        const data = await api("/modules");
-        const results: Record<string, unknown> = {};
-        for (const m of data.filter((x: any) => x.external)) results[m.name] = await post(`/modules/${m.name}/update`, {});
-        await post("/restart", {});
-        out(results, () => [...Object.entries(results).map(([name, r]: [string, any]) => `${name.padEnd(12)} ${r.updated ? `${r.from} → ${r.to}` : (r.reason ?? "up to date")}`), "daemon restarting"].join("\n"));
+        const result = await post("/connectors/update", {});
+        const { updateLine } = await import("../connectors/source.ts");
+        if (result.updated) await post("/restart", {});
+        out(result, () => `${updateLine(result)}${result.updated ? "; daemon restarting" : ""}`);
         break;
       }
       if (sub === "restart") {
-        out(await post("/restart", {}), () => "daemon restarting; modules reload with it");
+        out(await post("/restart", {}), () => "daemon restarting; connectors reload with it");
         break;
       }
-      const data = await api("/modules");
-      const ext = data.filter((x: any) => x.external);
+      const data = await api("/connectors");
       out(data, () =>
-        [
-          ...ext.map((m: any) => `${m.name.padEnd(12)} ${(m.status.health.ok ? (m.status.started ? "running" : m.enabled ? "loaded" : "off") : "broken").padEnd(8)} ${m.status.source}${m.status.linked ? " (linked)" : ""}${m.status.health.detail ? ` — ${m.status.health.detail}` : ""}${m.status.cli ? `  · pai ${m.name}` : ""}`),
-          ...(ext.length ? [""] : []),
-          ...data.filter((x: any) => !x.external).map((m: any) => `${m.name.padEnd(12)} ${(m.enabled ? "on" : "off").padEnd(8)} built in`),
-        ].join("\n"),
+        data
+          .map((m: any) => `${m.needsAction ? "!" : " "} ${m.name.padEnd(12)} ${(m.enabled ? m.status.state : "off").padEnd(10)} ${m.status.detail ?? ""}${m.cli ? `  · pai ${m.name}` : ""}`)
+          .join("\n"),
       );
       break;
     }
@@ -282,7 +283,7 @@ async function userCommand() {
       break;
     }
     case "completion": {
-      const script = help.zshCompletion(await moduleHelp());
+      const script = help.zshCompletion(await connectorHelp());
       if (positional[0] === "zsh") {
         console.log(script);
         break;
@@ -374,12 +375,12 @@ async function userCommand() {
     case "help":
     case "--help":
     case "-h":
-      console.log(help.usage(await moduleHelp()));
+      console.log(help.usage(await connectorHelp()));
       break;
     default: {
       // A connector's own command line (`pai <connector> …`).
-      if (!(await runModule(cmd!, args, positional[0]))) {
-        console.log(help.usage(await moduleHelp()));
+      if (!(await runConnector(cmd!, args, positional[0]))) {
+        console.log(help.usage(await connectorHelp()));
         process.exit(1);
       }
     }
@@ -390,7 +391,7 @@ async function userCommand() {
  * A connector's command line: on the box it runs here; from a laptop it runs there, except what the connector wants on
  * the laptop (`cliHere`: a browser, its files). False when no connector of that name is configured.
  */
-async function runModule(name: string, cliArgs: readonly string[], sub: string | undefined): Promise<boolean> {
+async function runConnector(name: string, cliArgs: readonly string[], sub: string | undefined): Promise<boolean> {
   const external = await import("../connectors/loader.ts");
   if (remoteBox && !(await external.runsHere(name, sub))) process.exit(await r.ssh(remoteBox, ["pai", ...argv].map(r.quote).join(" ")));
   const code = await external.runCli(name, cliArgs, { api, post, fetch: raw, out, json: jsonOut });

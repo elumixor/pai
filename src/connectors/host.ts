@@ -3,7 +3,7 @@
  * the one place a connector touches pai — its settings, database, bus, task list, log and
  * search, the Google OAuth client and the public address.
  */
-import type { Host, Problem } from "@desk/connector";
+import type { Host, Logger, Problem } from "@desk/connector";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { config, setting } from "../core/config.ts";
@@ -16,6 +16,7 @@ import { event } from "../domain/messages.ts";
 import { put } from "../domain/recall.ts";
 import * as smallModel from "../domain/small-model.ts";
 import * as tasks from "../domain/tasks.ts";
+import { connectorLogs, type LogLevel } from "./logs.ts";
 
 /** Where a connector keeps state: `data/modules/<name>/`, the directory it had as a module. */
 export const dataDirOf = (name: string) => join(dirname(config.dbPath), "modules", name);
@@ -51,6 +52,16 @@ function problems(name: string): Host["problems"] {
   };
 }
 
+/** The daemon's log, and the connector's own ring for its page. */
+function logOf(name: string): Logger {
+  const out = logger(name);
+  const tee = (level: LogLevel) => (msg: string, ...rest: unknown[]) => {
+    connectorLogs.add(name, level, msg, rest);
+    out[level](msg, ...rest);
+  };
+  return { debug: out.debug, info: tee("info"), warn: tee("warn"), error: tee("error") };
+}
+
 /** The host a connector named `name` is handed; `use` reaches the other loaded connectors' `api`. */
 export function hostFor(name: string, use: <T>(other: string) => T): Host {
   const dataDir = dataDirOf(name);
@@ -58,7 +69,7 @@ export function hostFor(name: string, use: <T>(other: string) => T): Host {
   const inbox = join(config.workspace, "inbox");
   return {
     name,
-    log: logger(name),
+    log: logOf(name),
     dataDir,
     inbox,
     setting,

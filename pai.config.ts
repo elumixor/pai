@@ -1,17 +1,12 @@
-import type { PaiConfig } from "./src/connectors/loader.ts";
+import type { PaiConfig } from "./src/connectors/source.ts";
 
 /**
- * The connectors this pai runs, each its own repository implementing `@desk/connector`, installed under `modules/`.
- * `pai.config.local.ts` (not committed) overrides an entry with a path while working on one. The order here is the
- * order the clients show them; they start in it too, after what each `requires`. dev is not a connector: it is a
+ * The connectors this pai runs, all from one repository cloned as `modules/`. `pai.config.local.ts` (not committed)
+ * overrides a key, usually `repo` with a path to a checkout. The order is the one the clients show; they start in it
+ * too, after what each `requires`. linkedin is off until its proxy works again. dev is not a connector: it is a
  * separate system pai talks to (`src/domain/dev.ts`).
  */
 export default {
-  connectors: {
-    telegram: "github:elumixor/desk-telegram",
-    email: "github:elumixor/desk-email",
-    // linkedin: "github:elumixor/desk-linkedin", (off until its proxy works again)
-    whatsapp: "github:elumixor/desk-whatsapp",
-    browser: "github:elumixor/desk-browser",
-  },
+  repo: "github:elumixor/desk-connectors",
+  connectors: ["telegram", "email", "whatsapp", "browser"],
 } satisfies PaiConfig;

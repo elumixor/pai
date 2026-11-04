@@ -1,7 +1,7 @@
 /**
  * `pai update` (and `pai dev update`): the daemon pulls what its channel says is new and restarts — core's own
- * `POST /update`, so it works whatever modules failed to load — and this checkout, when it is a laptop's, is
- * pulled too, with its module clones.
+ * `POST /update`, so it works whatever connectors failed to load — and this checkout, when it is a laptop's, is
+ * pulled too, with its connectors clone.
  */
 import { $ } from "bun";
 import { config } from "../core/config.ts";
@@ -42,15 +42,11 @@ async function updateClient() {
   const dirty = (await git("status", "--porcelain")).stdout.toString().trim().length > 0;
   if (!dirty) await git("pull", "--ff-only", "--quiet");
   const head = (await git("rev-parse", "--short", "HEAD")).stdout.toString().trim();
-  const external = await import("../connectors/loader.ts");
-  const modules: Record<string, string> = {};
-  for (const [name, source] of Object.entries((await external.readConfig()).connectors).filter(([n]) => external.isInstalled(n))) {
-    const r = await external.update(name, source);
-    modules[name] = r.updated ? `${r.from} → ${r.to}` : (r.reason ?? "up to date");
-  }
+  const { update, updateLine } = await import("../connectors/source.ts");
+  const connectors = updateLine(await update());
   const updated = head !== before;
   if (updated) await $`${process.execPath} install`.cwd(config.repo).quiet();
-  return { head, updated, dirty, modules };
+  return { head, updated, dirty, connectors };
 }
 
 /** The daemon's own update, through its API; with the daemon down on this machine, core's update runs right here. */
@@ -72,7 +68,7 @@ export async function updateCommand(cli: UpdateCli, rest: readonly string[]): Pr
   cli.out({ box: daemon, client }, () =>
     [
       `${laptop ? "box   " : "here  "}${line(daemon)}`,
-      ...(client ? [`client ${client.head}${client.updated ? " — updated" : " — up to date"}`, ...Object.entries(client.modules).map(([name, r]) => `  ${name.padEnd(10)} ${r}`)] : []),
+      ...(client ? [`client ${client.head}${client.updated ? " — updated" : " — up to date"}`, `  connectors ${client.connectors}`] : []),
     ].join("\n"),
   );
   return daemon.error ? 1 : 0;

@@ -1,14 +1,14 @@
 /**
  * Self-update, kept in core on purpose: whatever else fails to load, a box can always be brought to a new
  * version — `POST /update` (what CI calls) and the auto-update tick both land here. Fetch, check out the tag (or
- * fast-forward the branch), install, build the web client, pull every module clone, restart. The daemon restarts
+ * fast-forward the branch), install, build the web client, pull the connectors, restart. The daemon restarts
  * by exiting: the service manager brings it back on the new code.
  */
 import { $ } from "bun";
 import { config } from "../core/config.ts";
 import { bus } from "../core/bus.ts";
 import { logger } from "../core/log.ts";
-import * as external from "../connectors/loader.ts";
+import { update as pullConnectors, updateLine } from "../connectors/source.ts";
 import { list } from "./sessions.ts";
 
 const log = logger("update");
@@ -26,8 +26,8 @@ export interface UpdateResult extends UpdateStatus {
   readonly updated: boolean;
   readonly reason?: string;
   readonly restarting: boolean;
-  /** What each module clone did: moved, or why not. */
-  readonly modules?: Readonly<Record<string, string>>;
+  /** What the connectors clone did: moved, or why not. */
+  readonly connectors?: string;
 }
 
 export class UpdateError extends Error {
@@ -67,18 +67,8 @@ export async function status(): Promise<UpdateStatus> {
   return { branch, behind, dirty: dirty.length > 0, head, target };
 }
 
-/** Every module clone pulled: a module broken upstream is healed by the same update that brings pai. */
-async function pullModules() {
-  const out: Record<string, string> = {};
-  for (const m of external.all()) {
-    const r = await external.update(m.name, m.source).catch((err: Error) => ({ updated: false, reason: err.message }));
-    out[m.name] = r.updated && "to" in r ? `${r.from} → ${r.to}` : (("reason" in r ? r.reason : undefined) ?? "up to date");
-  }
-  return out;
-}
-
 /**
- * Pulls and rebuilds. `force` applies even with nothing to pull, which is how a local edit or a module's new
+ * Pulls and rebuilds. `force` applies even with nothing to pull, which is how a local edit or a connector's new
  * commit gets picked up; without it an up-to-date or dirty checkout is left alone.
  */
 export async function update(force = false): Promise<UpdateResult> {
@@ -94,15 +84,16 @@ export async function update(force = false): Promise<UpdateResult> {
   // process.execPath, not "bun": the service's PATH is not a login shell's.
   await run("bun install", $`${process.execPath} install`.cwd(config.repo).nothrow().quiet());
   await run("build client", $`${process.execPath} run build:web`.cwd(config.repo).nothrow().quiet());
-  const modules = await pullModules();
+  // A connector broken upstream is healed by the same update that brings pai.
+  const connectors = updateLine(await pullConnectors());
 
   const head = (await git("rev-parse", "--short", "HEAD")).stdout.toString().trim();
   const restarting = managed();
   log.info(`updated to ${head}${restarting ? " — restarting" : ""}`);
-  bus.emitEvent("daemon.updated", { from: s.head, to: head, restarting, modules, at: new Date().toISOString() });
+  bus.emitEvent("daemon.updated", { from: s.head, to: head, restarting, connectors, at: new Date().toISOString() });
   // SIGTERM rather than exit: the daemon's own shutdown runs, so interrupted turns are noted and picked up again.
   if (restarting) setTimeout(() => process.kill(process.pid, "SIGTERM"), 1200);
-  return { ...s, head, updated: true, restarting, modules };
+  return { ...s, head, updated: true, restarting, connectors };
 }
 
 const FIRST_LOOK_MS = 2 * 60_000;

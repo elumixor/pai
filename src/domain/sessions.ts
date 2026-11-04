@@ -321,14 +321,16 @@ export function reapIdle() {
   }
 }
 
-/** A changed MEMORY.md is a changed prompt: the warm task process is rebuilt so the next task reads it. */
+/** A changed prompt or tool set (memory, a connector's settings): the warm process is rebuilt so the next conversation gets it. */
+export const rewarmChat = () => rewarm("chat");
+
 export function watchMemory() {
   const file = join(config.workspace, "MEMORY.md");
   if (!existsSync(file)) return () => {};
   let timer: ReturnType<typeof setTimeout> | undefined;
   const watcher = watch(file, () => {
     clearTimeout(timer);
-    timer = setTimeout(() => rewarm("chat"), 2000);
+    timer = setTimeout(rewarmChat, 2000);
   });
   return () => watcher.close();
 }

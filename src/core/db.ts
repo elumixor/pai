@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS events (
   ts          INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS events_session ON events(session_id, id);
+CREATE INDEX IF NOT EXISTS events_kind ON events(kind, ts);
 
 -- Maps an outbound telegram message back to the session that produced it,
 -- so a reply routes deterministically without asking the model.

@@ -61,7 +61,7 @@ function build(
   const servers: NonNullable<Options["mcpServers"]> = {
     pai: paiTools(kind, ref, agent?.slug),
     playwright: browserMcp(),
-    ...externalMcpServers(kind, ref),
+    ...externalMcpServers(ref),
     ...keepMcp(sessionId),
   };
   // The `keep` server pai injects (Pai's key, this thread's client tag) is every agent's: each tracks its work there.

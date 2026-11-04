@@ -2,23 +2,19 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { config } from "../core/config.ts";
-import { allPrompts as externalPrompts } from "../connectors/loader.ts";
-import { modules } from "../modules/index.ts";
-import { all as allProjects } from "./projects.ts";
+import { prompts as connectorPrompts, serverConnectors } from "../connectors/loader.ts";
 import type { SessionKind } from "./session.ts";
 import { unavailable, type Unavailable } from "./capabilities.ts";
 import { seen as seenInventories, type Inventory } from "./inventory.ts";
-import { moduleHeading, sections } from "./prompts.ts";
+import { sections } from "./prompts.ts";
 
 /**
- * What each kind of Claude session is given, laid out so it can be read and edited in one
- * place: instructions, memories, skills, tools — and for each, which surfaces see it. The
- * surfaces are pai's own sessions (main, task, code) and a `claude` started in a terminal,
- * which gets the project's files and the user's global config but none of pai's tools.
+ * What pai's sessions are given, in one list that can be read and edited: instructions, memories, skills and tools,
+ * each named uniquely, since a name is how `save` finds it. Clients decode `surfaces` as required, so it stays, always
+ * chat. An item that comes from a connector says which, so a client can leave it to that connector's page.
  */
 
-export const SURFACES = ["chat", "code", "terminal"] as const;
-export type Surface = (typeof SURFACES)[number];
+const CHAT = ["chat"] as const;
 
 export interface ContextItem {
   readonly kind: "instruction" | "memory" | "skill" | "tool";
@@ -27,9 +23,9 @@ export interface ContextItem {
   /** Where it comes from: a file path that can be edited, or the source in code. */
   readonly source: string;
   readonly editable: boolean;
-  readonly surfaces: readonly Surface[];
-  /** For a project-scoped item. */
-  readonly project?: string;
+  readonly surfaces: typeof CHAT;
+  /** The connector it comes from. */
+  readonly connector?: string;
   readonly body?: string;
   /** For a tool server: each tool with what it does. */
   readonly tools?: readonly { name: string; description?: string }[];
@@ -79,70 +75,55 @@ const split = (name: string) => {
   return m ? { server: m[1]!, tool: m[2]! } : { server: "", tool: name };
 };
 
+const connectorDir = (name: string) => `modules/connectors/${name}`;
+
+const fileItem = (kind: "instruction" | "memory", name: string, description: string, source: string): ContextItem => ({ kind, name, description, source, editable: true, surfaces: CHAT, body: readIf(source) ?? "" });
+
 function instructions(): ContextItem[] {
-  const out: ContextItem[] = [];
-  const persona = join(config.workspace, "CLAUDE.md");
-  out.push({ kind: "instruction", name: "persona (workspace/CLAUDE.md)", description: "read by every pai session, as the cwd's CLAUDE.md", source: persona, editable: true, surfaces: ["chat"], body: readIf(persona) });
-  for (const [name, text, kinds] of sections())
-    out.push({ kind: "instruction", name, description: "appended to the system prompt by src/domain/prompts.ts", source: "src/domain/prompts.ts", editable: false, surfaces: kinds, body: text });
-  for (const m of modules)
-    if (m.prompt && m.enabled())
-      out.push({ kind: "instruction", name: moduleHeading(m.title), description: `what the ${m.title} module adds, appended after the general instructions`, source: `src/modules/${m.name}.ts`, editable: false, surfaces: m.prompt.kinds, body: m.prompt.text });
-  for (const p of externalPrompts())
-    out.push({ kind: "instruction", name: moduleHeading(p.title), description: `what the ${p.title} module adds, appended after the general instructions`, source: `modules/${p.module}`, editable: false, surfaces: p.kinds, body: p.text });
-  for (const project of allProjects()) {
-    const file = join(project.path, "CLAUDE.md");
-    if (existsSync(file))
-      out.push({ kind: "instruction", name: `${project.slug}/CLAUDE.md`, description: project.kind === "context" ? "the project's voice and rules" : "the repo's own instructions", source: file, editable: true, surfaces: [project.kind === "context" ? "chat" : "code", "terminal"], project: project.slug, body: readIf(file) });
-  }
   const global = join(homedir(), ".claude", "CLAUDE.md");
-  if (existsSync(global)) out.push({ kind: "instruction", name: "~/.claude/CLAUDE.md", description: "the user's global instructions — terminal sessions only, pai loads project settings alone", source: global, editable: true, surfaces: ["terminal"], body: readIf(global) });
-  return out;
+  return [
+    fileItem("instruction", "Persona", "How pai behaves", join(config.workspace, "CLAUDE.md")),
+    ...(existsSync(global) ? [fileItem("instruction", "Global", "Your own instructions", global)] : []),
+    ...sections().map(([name, text]): ContextItem => ({ kind: "instruction", name, description: "Built in", source: "src/domain/prompts.ts", editable: false, surfaces: CHAT, body: text })),
+    ...connectorPrompts().map((p): ContextItem => ({ kind: "instruction", name: p.title, description: `From ${p.title}`, source: connectorDir(p.connector), editable: false, surfaces: CHAT, connector: p.connector, body: p.text })),
+  ];
 }
 
-/** Claude Code's own memory for a directory: `~/.claude/projects/<cwd as a slug>/memory/`. */
-function autoMemories(cwd: string, surfaces: readonly Surface[], project?: string): ContextItem[] {
-  const dir = join(homedir(), ".claude", "projects", cwd.replace(/[/.]/g, "-"), "memory");
+const frontmatterDescription = (raw: string) => /^description:\s*(.+)$/m.exec(raw)?.[1] ?? "";
+
+/** Claude Code's own memory for the workspace: `~/.claude/projects/<cwd as a slug>/memory/`. */
+function autoMemories(): ContextItem[] {
+  const dir = join(homedir(), ".claude", "projects", config.workspace.replace(/[/.]/g, "-"), "memory");
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
     .filter((name) => name.endsWith(".md"))
     .sort((a, b) => (a === "MEMORY.md" ? -1 : b === "MEMORY.md" ? 1 : a.localeCompare(b)))
     .map((name) => {
       const file = join(dir, name);
-      const raw = readIf(file) ?? "";
-      const description = /^description:\s*(.+)$/m.exec(raw)?.[1] ?? (name === "MEMORY.md" ? "the index Claude Code loads each session" : "");
-      return { kind: "memory" as const, name: project ? `${project}: ${name}` : name, description, source: file, editable: true, surfaces, project, body: raw };
+      return fileItem("memory", `memory/${name}`, frontmatterDescription(readIf(file) ?? "") || (name === "MEMORY.md" ? "Memory index" : ""), file);
     });
 }
 
-function memories(): ContextItem[] {
-  const file = join(config.workspace, "MEMORY.md");
-  const out: ContextItem[] = [{ kind: "memory", name: "MEMORY.md", description: "what the assistant remembers, a markdown file it edits itself", source: file, editable: true, surfaces: ["chat", "code"], body: readIf(file) ?? "" }];
-  out.push(...autoMemories(config.workspace, ["chat"]));
-  for (const project of allProjects()) out.push(...autoMemories(project.path, [project.kind === "context" ? "chat" : "code", "terminal"], project.slug));
-  return out;
-}
+const memories = (): ContextItem[] => [fileItem("memory", "Memory", "What pai remembers", join(config.workspace, "MEMORY.md")), ...autoMemories()];
 
-function skillsIn(dir: string, surfaces: readonly Surface[], project?: string): ContextItem[] {
+function skillsIn(dir: string): ContextItem[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
     .filter((name) => statSync(join(dir, name)).isDirectory() && existsSync(join(dir, name, "SKILL.md")))
     .map((name) => {
-      const file = join(dir, name, "SKILL.md");
-      const raw = readIf(file) ?? "";
-      const description = /^description:\s*(.+)$/m.exec(raw)?.[1] ?? "";
-      return { kind: "skill" as const, name, description, source: file, editable: true, surfaces, project, body: raw };
+      const source = join(dir, name, "SKILL.md");
+      const body = readIf(source) ?? "";
+      return { kind: "skill" as const, name, description: frontmatterDescription(body), source, editable: true, surfaces: CHAT, body };
     });
 }
 
+/** The workspace's skills, then the user's; a workspace skill wins over one of the same name. */
 function skills(): ContextItem[] {
-  const out = skillsIn(join(config.workspace, ".claude", "skills"), ["chat"]);
-  for (const project of allProjects()) out.push(...skillsIn(join(project.path, ".claude", "skills"), project.kind === "context" ? ["chat", "terminal"] : ["code", "terminal"], project.slug));
-  out.push(...skillsIn(join(homedir(), ".claude", "skills"), ["terminal"]));
-  return out;
+  const own = skillsIn(join(config.workspace, ".claude", "skills"));
+  const taken = new Set(own.map((s) => s.name));
+  return [...own, ...skillsIn(join(homedir(), ".claude", "skills")).filter((s) => !taken.has(s.name))];
 }
 
-/** What a running session actually has, server by server, from the newest init of each kind. */
 /** For a server that cannot answer: why, and the live one that covers the same capability. */
 function deadNote(server: string, dead: ReadonlyMap<string, Unavailable>) {
   const u = dead.get(server);
@@ -150,67 +131,51 @@ function deadNote(server: string, dead: ReadonlyMap<string, Unavailable>) {
   return ` · ${u.reason === "off" ? "off for every session" : "not signed in"}${u.instead ? `, use ${u.instead.server} (the ${u.instead.capability} capability)` : ""}`;
 }
 
-function liveTools(): ContextItem[] {
+const BUILT_IN_SOURCE = "claude code";
+
+const serverSource = (server: string, connectors: ReadonlyMap<string, string>) => {
+  const connector = connectors.get(server);
+  return connector ? connectorDir(connector) : server.startsWith("claude.ai ") ? "claude.ai connector" : "mcp server";
+};
+
+/** What a running session actually has, server by server, from the newest init of each kind; nothing before the first one. */
+function tools(): ContextItem[] {
+  const connectors = serverConnectors();
   const out: ContextItem[] = [];
   const dead = new Map(unavailable().map((u) => [u.server, u]));
   const inventories = Object.fromEntries(seenInventories()) as Partial<Record<SessionKind, Inventory>>;
   const kinds = Object.keys(inventories) as SessionKind[];
-  const byServer = new Map<string, { tools: Set<string>; kinds: Set<SessionKind> }>();
+  const byServer = new Map<string, Set<string>>();
   for (const kind of kinds)
     for (const name of inventories[kind]!.tools) {
       const { server, tool } = split(name);
-      const entry = byServer.get(server) ?? { tools: new Set(), kinds: new Set() };
-      entry.tools.add(tool);
-      entry.kinds.add(kind);
-      byServer.set(server, entry);
+      byServer.set(server, (byServer.get(server) ?? new Set<string>()).add(tool));
     }
   // Tool names carry the server with dots and spaces turned into underscores ("claude.ai Balance"
   // → "claude_ai_Balance"); the status list has the name as configured.
   const key = (name: string) => name.replace(/[^A-Za-z0-9_-]/g, "_");
   const status = new Map<string, Inventory["mcpServers"][number]>();
   for (const kind of kinds) for (const s of inventories[kind]!.mcpServers) status.set(key(s.name), s);
-  for (const [server, entry] of byServer) {
-    const names = [...entry.tools].sort();
+  for (const [server, found] of byServer) {
+    const names = [...found].sort();
     const described = new Map((status.get(server)?.tools ?? []).map((t) => [t.name, t.description]));
     const tools = names.map((name) => ({ name, description: server ? described.get(name) : BUILTIN[name] }));
     out.push({
       kind: "tool",
       name: server ? (status.get(server)?.name ?? server) : "Claude Code built-ins",
-      description: server
-        ? `MCP server, ${status.get(server)?.status ?? "connected"} · ${names.length} tools${deadNote(status.get(server)?.name ?? server, dead)}`
-        : `${names.length} tools`,
-      source: server.startsWith("claude.ai ") ? "claude.ai connector" : server ? (modules.some((m) => m.tools?.server === server) ? `src/modules/${server}.ts` : `modules/${server}`) : "claude code",
+      description: server ? `${status.get(server)?.status ?? "connected"} · ${names.length} tools${deadNote(status.get(server)?.name ?? server, dead)}` : `${names.length} tools`,
+      source: server ? serverSource(status.get(server)?.name ?? server, connectors) : BUILT_IN_SOURCE,
       editable: false,
-      surfaces: [...entry.kinds],
+      surfaces: CHAT,
+      connector: connectors.get(status.get(server)?.name ?? server),
       body: names.join("\n"),
       tools,
     });
   }
   // A server that came up without tools (failed, needs auth) still deserves a line.
   for (const [server, s] of status)
-    if (!byServer.has(server)) out.push({ kind: "tool", name: s.name, description: `MCP server, ${s.status} · no tools${deadNote(s.name, dead)}`, source: s.name.startsWith("claude.ai ") ? "claude.ai connector" : `modules/${s.name}`, editable: false, surfaces: [] });
-  return out.sort((a, b) => (a.source === "claude code" ? -1 : b.source === "claude code" ? 1 : a.name.localeCompare(b.name)));
-}
-
-function tools(): ContextItem[] {
-  const live = liveTools();
-  if (live.length) return live;
-  const out: ContextItem[] = [];
-  for (const m of modules) {
-    if (!m.tools) continue;
-    const on = m.enabled();
-    out.push({
-      kind: "tool",
-      name: `${m.tools.server}: ${m.tools.names.join(", ")}`,
-      description: `${m.title}${on ? "" : " (off)"} — ${m.description}`,
-      source: `src/modules/${m.name}.ts`,
-      editable: false,
-      surfaces: on ? m.tools.kinds : [],
-    });
-  }
-  out.push({ kind: "tool", name: "claude.ai connectors (Gmail, Calendar, Drive, Notion, …)", description: "whatever is connected in the Claude account on the box", source: "claude.ai", editable: false, surfaces: ["chat", "code", "terminal"] });
-  out.push({ kind: "tool", name: "Claude Code built-ins (Bash, Read, Edit, WebSearch, …)", description: "the standard tool set", source: "claude code", editable: false, surfaces: ["chat", "code", "terminal"] });
-  return out;
+    if (!byServer.has(server)) out.push({ kind: "tool", name: s.name, description: `${s.status} · no tools${deadNote(s.name, dead)}`, source: serverSource(s.name, connectors), editable: false, surfaces: CHAT, connector: connectors.get(s.name) });
+  return out.sort((a, b) => (a.source === BUILT_IN_SOURCE ? -1 : b.source === BUILT_IN_SOURCE ? 1 : a.name.localeCompare(b.name)));
 }
 
 /** Writes an editable item's file; the name is how the context lists it. */
@@ -223,5 +188,5 @@ export function save(name: string, text: string) {
 
 export function context() {
   const seen = seenInventories().map(([kind, inv]) => ({ kind, model: inv.model, at: inv.at, skills: inv.skills, agents: inv.agents }));
-  return { surfaces: SURFACES, items: [...instructions(), ...memories(), ...skills(), ...tools()], sessions: seen };
+  return { surfaces: CHAT, items: [...instructions(), ...memories(), ...skills(), ...tools()], sessions: seen };
 }
