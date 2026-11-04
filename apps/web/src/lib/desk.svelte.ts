@@ -1,6 +1,6 @@
 import { api } from "./api";
 import { live } from "./stores/live.svelte";
-import type { Agent, LogMessage, Need, ProjectSummary, SessionSummary, TaskItem, Usage } from "./types";
+import type { Agent, LogMessage, Need, SessionSummary, TaskItem, Usage } from "./types";
 
 export const PAI = "pai";
 
@@ -18,7 +18,6 @@ class Desk {
   /** Every task by id, closed ones included, so `#20` in a message can say what it was. */
   taskIndex = $state<Record<number, TaskItem>>({});
   needs = $state<Need[]>([]);
-  projects = $state<ProjectSummary[]>([]);
   paiSession = $state<SessionSummary | undefined>();
   /** The daemon's model for the main chat, for when the session has not answered yet. */
   mainModel = $state<string | undefined>();
@@ -53,18 +52,16 @@ class Desk {
   }
 
   async load() {
-    const [agents, tasks, needs, projects, all] = await Promise.all([
+    const [agents, tasks, needs, all] = await Promise.all([
       api.agents().catch(() => this.agents),
       api.tasks().catch(() => this.tasks),
       api.needs().catch(() => this.needs),
-      api.projects().catch(() => this.projects),
       api.allTasks().catch(() => [] as TaskItem[]),
       this.refreshSessions(),
     ]);
     this.agents = agents;
     this.tasks = tasks;
     this.needs = needs;
-    this.projects = projects;
     this.taskIndex = Object.fromEntries(all.map((t) => [t.id, t]));
     this.loaded = true;
     void this.refreshPai();

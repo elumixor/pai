@@ -1,64 +1,70 @@
 <script lang="ts">
+  import { Clock, Plus } from "lucide-svelte";
   import { api } from "../api";
   import { ago } from "../format";
-  import type { Automation, ModuleInfo } from "../types";
-  import { dialogs } from "../ui/dialogs.svelte";
-  import Icon from "../ui/Icon.svelte";
+  import type { Routine, RoutineEvent } from "../types";
+  import Switch from "../ui/Switch.svelte";
+  import { ERROR, PILL, ROW, ROW_BUTTON, SKELETON } from "./controls";
+  import EventPill from "./EventPill.svelte";
+  import RoutineSheet from "./RoutineSheet.svelte";
+  import { ACTION_LABELS, describeSchedule } from "./routines";
 
-  /** What makes pai act on its own: on an event (or a schedule), a check, an action. */
-  let rules = $state<Automation[] | undefined>();
-  let mods = $state<ModuleInfo[]>([]);
+  /** What makes pai act on its own: one row per routine, switched in place, its sheet a press away. */
+  let routines = $state<Routine[] | undefined>();
+  let catalog = $state<RoutineEvent[]>([]);
   let error = $state("");
-  const ACTIONS: Record<string, string> = { notify: "notify me", turn: "open a conversation with it", task: "start a task in a project", wake: "wake its agent", triage: "triage it" };
-  const load = () =>
-    Promise.all([api.automations(), api.modules().catch(() => [] as ModuleInfo[])]).then(
-      ([r, m]) => ((rules = r), (mods = m)),
-      (e: Error) => (error = e.message),
-    );
-  $effect(() => void load());
-  const events = $derived([...mods.flatMap((m) => m.events?.map((e) => e.kind) ?? []), "session.turn_end", "session.question", "task.created", "daemon.started", "daemon.updated"]);
+  /** The routine whose sheet is open; `null` for a new one. */
+  let open = $state<Routine | null | undefined>();
 
-  async function form(initial?: Automation) {
-    const answer = await dialogs.ask({
-      title: initial ? "Edit routine" : "New routine",
-      description: "When an event with this kind (and, if given, this text somewhere in its payload) happens, run the action. {field} in the message reads the event.",
-      fields: [
-        { name: "name", label: "Name", value: initial?.name ?? "", required: true },
-        { name: "event", label: `Event (${events.slice(0, 4).join(", ")}, …)`, value: initial?.event ?? "", required: true },
-        { name: "filter", label: "Only when the payload contains", value: initial?.filter ?? "" },
-        { name: "action", label: "Action: notify · turn · task", value: initial?.action ?? "notify", required: true },
-        { name: "project", label: "Project for a task", value: initial?.project ?? "" },
-        { name: "template", label: "Message, e.g. New LinkedIn message from {from}: {text}", value: initial?.template ?? "" },
-      ],
-      submit: initial ? "Save" : "Create",
-    });
-    if (!answer) return;
-    const result = initial ? await api.updateAutomation(initial.id, answer as Partial<Automation>) : await api.createAutomation(answer as Partial<Automation>);
-    if (result.error) error = result.error;
+  const load = () => api.routines().then((list) => (routines = list), (e: Error) => (error = e.message));
+  $effect(() => {
+    void load();
+    void api.routineEvents().then((events) => (catalog = events), (e: Error) => (error = e.message));
+  });
+
+  const withEnabled = (id: number, enabled: boolean) => routines?.map((r) => (r.id === id ? { ...r, enabled } : r));
+  async function toggle(rule: Routine, enabled: boolean) {
+    routines = withEnabled(rule.id, enabled);
+    const result = await api.updateRoutine(rule.id, { enabled });
+    error = result.error ?? "";
+    if (result.error) routines = withEnabled(rule.id, !enabled);
+  }
+  function closed() {
+    open = undefined;
     void load();
   }
 </script>
 
-<h2 class="dash-title">Routines <span class="grow"></span><button class="btn primary" onclick={() => void form()}><Icon name="plus" size={13} /><span>New</span></button></h2>
-<p class="hint">on &lt;event&gt; → &lt;action&gt;. Tasks are capped at 6 an hour: each one is a Claude session.</p>
-{#if error}<p class="hint">{error}</p>{/if}
-{#if rules?.length}
-  <div class="auto-list" data-testid="routines">
-    {#each rules as rule (rule.id)}
-      <div class="auto-row" class:off={!rule.enabled}>
-        <span class="dot {rule.enabled ? 'idle' : 'dead'}"></span>
-        <div class="auto-text"><span class="setting-title">{rule.name}</span><span class="dim">on {rule.event || "a schedule"}{rule.filter ? ` containing "${rule.filter}"` : ""} → {ACTIONS[rule.action] ?? rule.action}{rule.project ? ` ${rule.project}` : ""}</span></div>
-        <span class="dim">{rule.runs ? `${rule.runs}× · last ${rule.lastRun ? ago(rule.lastRun) : ""}` : "never ran"}</span>
-        <button class="iconbtn" title={rule.enabled ? "disable" : "enable"} aria-label={rule.enabled ? "Disable" : "Enable"} onclick={async () => (await api.updateAutomation(rule.id, { enabled: !rule.enabled }), load())}><Icon name={rule.enabled ? "stop" : "play"} size={13} /></button>
-        <button class="iconbtn" title="edit" aria-label="Edit" onclick={() => void form(rule)}><Icon name="settings" size={13} /></button>
-        <button class="iconbtn" title="delete" aria-label="Delete" onclick={async () => (await api.deleteAutomation(rule.id), load())}><Icon name="x" size={13} /></button>
-      </div>
+{#if error}<p class={ERROR} role="alert">{error}</p>{/if}
+{#if routines}
+  <ul class="m-0 list-none p-0" data-testid="routines">
+    {#each routines as rule (rule.id)}
+      <li class={ROW}>
+        <Switch checked={rule.enabled} label="{rule.name} on" onchange={(next) => void toggle(rule, next)} />
+        <button type="button" class="grid min-h-10 min-w-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_5.5rem_3.5rem] items-center gap-3 rounded-sm px-1 py-1.5 text-left max-sm:grid-cols-1 max-sm:gap-1 {ROW_BUTTON}" onclick={() => (open = rule)}>
+          <span class="truncate {rule.enabled ? '' : 'text-ink-45'}">{rule.name}</span>
+          <span class="min-w-0">
+            {#if rule.event}
+              <EventPill kind={rule.event} {catalog} />
+            {:else}
+              <span class={PILL}><span class="text-ink-45"><Clock size={14} /></span><span class="truncate">{describeSchedule(rule.schedule)}</span></span>
+            {/if}
+          </span>
+          <span class="truncate text-[12px] text-ink-45 max-sm:hidden">{ACTION_LABELS[rule.action] ?? rule.action}</span>
+          <span class="text-right text-[12px] text-ink-45 tabular-nums max-sm:hidden" title={rule.lastRun ? `Last ${ago(rule.lastRun)} ago` : "Never ran"}>{rule.runs}×</span>
+        </button>
+      </li>
     {/each}
+    <li class={ROW}>
+      <button type="button" class="flex min-h-10 flex-1 items-center gap-2 rounded-sm px-1 text-ink-45 hover:text-ink {ROW_BUTTON}" onclick={() => (open = null)}><Plus size={16} /> New routine</button>
+    </li>
+  </ul>
+{:else if !error}
+  <div class="space-y-2" aria-hidden="true">
+    {#each [0, 1, 2] as i (i)}<div class="h-8 {SKELETON}"></div>{/each}
   </div>
-{:else if rules}
-  <div class="empty"><p class="dim">No routines yet. Try: on linkedin.message → notify.</p></div>
-{:else}
-  <p class="hint">…</p>
 {/if}
-<h3 class="section-title">Events you can listen to</h3>
-<div class="chips">{#each events as e (e)}<span class="tag">{e}</span>{/each}</div>
+
+{#if open !== undefined}
+  <RoutineSheet routine={open} {catalog} onclose={closed} />
+{/if}

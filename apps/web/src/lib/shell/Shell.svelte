@@ -9,7 +9,7 @@
   import { fillTaskPills, referencePills } from "../markdown";
   import { conversions, fillMoney, moneyRates } from "../money";
   import { current, navigate, type Route } from "../router.svelte";
-  import Settings, { type Section } from "../settings/Settings.svelte";
+  import Settings, { isSection, type Section } from "../settings/Settings.svelte";
   import Sidebar from "../sidebar/Sidebar.svelte";
   import { sidebar } from "../sidebar/state.svelte";
   import { agentIcon, ancestors, buildTree, threadIcon, threadTitle } from "../sidebar/tree";
@@ -19,7 +19,6 @@
   import Menus from "../ui/Menus.svelte";
   import { bodyPeek } from "../ui/peek.svelte";
   import Progress from "../ui/Progress.svelte";
-  import Prompt from "../ui/Prompt.svelte";
   import { installTooltips } from "../ui/tooltip";
   import { openAgent } from "./open.svelte";
 
@@ -38,7 +37,7 @@
   let settingsSection = $state<Section>("appearance");
   $effect(() => {
     if (route.name !== "settings") return;
-    settingsSection = (route.param as Section | undefined) ?? "appearance";
+    settingsSection = route.param && isSection(route.param) ? route.param : "appearance";
     settingsOpen = true;
   });
   let paletteOpen = $state(false);
@@ -200,5 +199,4 @@
 <Settings bind:open={settingsOpen} bind:active={settingsSection} onclose={() => route.name === "settings" && navigate(behind)} />
 <CommandPalette {items} bind:open={paletteOpen} placeholder="Find a thread, an agent, or run a command…" />
 <Menus />
-<Prompt />
 <BodyPeek />

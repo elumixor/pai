@@ -1,5 +1,7 @@
 <script lang="ts" module>
-  export type Section = "appearance" | "usage" | "shortcuts" | "account" | "snapshot" | "modules" | "connectors" | "automations" | "projects" | "context" | "agents" | "spend";
+  const SECTION_IDS = ["appearance", "usage", "shortcuts", "account", "snapshot", "connectors", "automations", "context", "agents", "spend"] as const;
+  export type Section = (typeof SECTION_IDS)[number];
+  export const isSection = (id: string): id is Section => (SECTION_IDS as readonly string[]).includes(id);
 
   export const SHORTCUTS: [keys: string, what: string][] = [
     ["⌘K", "Find a thread, an agent, a setting, or run a command"],
@@ -17,7 +19,7 @@
 <script lang="ts">
   import { PALETTES, type Palette, type ThemeKind, type ThemeMode } from "@desk/core";
   import { SettingsDialog, type SettingsSection } from "@desk/core/settings";
-  import { Archive, BookOpen, Bot, Clock, Download, Folder, Gauge, Keyboard, LogOut, Monitor, Moon, Palette as PaletteIcon, Plug, Puzzle, Sun, Upload, User, Wallet } from "lucide-svelte";
+  import { Archive, BookOpen, Bot, Clock, Download, Gauge, Keyboard, LogOut, Monitor, Moon, Palette as PaletteIcon, Plug, Sun, Upload, User, Wallet } from "lucide-svelte";
   import { api } from "../api";
   import { auth } from "../auth.svelte";
   import { desk } from "../desk.svelte";
@@ -25,8 +27,6 @@
   import { theme } from "../theme.svelte";
   import Connectors from "./Connectors.svelte";
   import Context from "./Context.svelte";
-  import Modules from "./Modules.svelte";
-  import Projects from "./Projects.svelte";
   import Routines from "./Routines.svelte";
   import SettingsBlock from "./SettingsBlock.svelte";
   import Spend from "./Spend.svelte";
@@ -34,8 +34,8 @@
 
   /**
    * The suite's settings dialog (`@desk/core/settings`, Keep's too): how this client looks, which rings it shows, the
-   * keys, the account, the snapshot, then the pages about the daemon itself — its modules, connectors, routines,
-   * projects, context, staff and spend.
+   * keys, the account, the snapshot, then the pages about the daemon itself: its connectors, routines, context, staff
+   * and spend.
    */
   let { open = $bindable(false), active = $bindable<Section>("appearance"), onclose }: { open?: boolean; active?: Section; onclose?: () => void } = $props();
 
@@ -45,10 +45,8 @@
     { id: "shortcuts", label: "Keyboard", icon: Keyboard, keywords: "shortcuts keys keybinding" },
     { id: "account", label: "Account", icon: User, keywords: "sign out daemon host box clerk" },
     { id: "snapshot", label: "Snapshot", icon: Archive, keywords: "export import backup restore memory" },
-    { id: "modules", label: "Modules", icon: Puzzle, keywords: "connectors capabilities restart settings" },
-    { id: "connectors", label: "Connectors", icon: Plug, keywords: "telegram email gmail linkedin whatsapp browser signed in" },
+    { id: "connectors", label: "Connectors", icon: Plug, keywords: "modules capabilities telegram email gmail linkedin whatsapp browser signed in" },
     { id: "automations", label: "Routines", icon: Clock, keywords: "automations cron events triggers" },
-    { id: "projects", label: "Projects", icon: Folder, keywords: "repos contexts" },
     { id: "context", label: "Context", icon: BookOpen, keywords: "instructions memories skills tools prompt" },
     { id: "agents", label: "Agents", icon: Bot, keywords: "staff team rename close bubble" },
     { id: "spend", label: "Spend", icon: Wallet, keywords: "cost money tokens usage price" },
@@ -87,9 +85,9 @@
     const file = picker?.files?.[0];
     if (picker) picker.value = "";
     if (!file) return;
-    importNote = "handing it to pai…";
+    importNote = "Handing it to pai";
     const result = await api.importSnapshot(await file.text());
-    importNote = result.error ?? "pai is rebuilding from it; watch General";
+    importNote = result.error ?? "Pai is rebuilding from it. Watch General.";
   }
 </script>
 
@@ -116,7 +114,7 @@
 <SettingsDialog sections={SECTIONS} bind:open bind:active {onclose}>
   {#snippet section(entry)}
     {#if entry.id === "appearance"}
-      <SettingsBlock title="Appearance" about="pai follows the system until you pick a mode on this device. Picking a theme switches to its mode.">
+      <SettingsBlock title="Appearance">
         <div class="flex gap-2" role="radiogroup" aria-label="Mode">
           {#each MODES as m (m.value)}
             {@const on = theme.choice.mode === m.value}
@@ -133,7 +131,7 @@
         {/each}
       </SettingsBlock>
     {:else if entry.id === "usage"}
-      <SettingsBlock title="Usage rings" about="The subscription's windows shown by the message box.">
+      <SettingsBlock title="Usage rings" about="Shown by the message box.">
         {#each desk.usage?.windows ?? [] as w (w.name)}
           <label class="flex h-8 items-center gap-2.5">
             <input type="checkbox" class="size-4 accent-[var(--accent)]" checked={!prefs.hiddenRings.includes(w.name)} onchange={(e) => prefs.toggleRing(w.name, e.currentTarget.checked)} />
@@ -144,7 +142,7 @@
         {/each}
       </SettingsBlock>
     {:else if entry.id === "shortcuts"}
-      <SettingsBlock title="Keyboard" about="The keys every page here answers to.">
+      <SettingsBlock title="Keyboard">
         <dl class="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[13px]">
           {#each SHORTCUTS as [keys, what] (keys)}
             <dt><kbd class="rounded-xs bg-ink-5 px-1.5 py-0.5 font-mono text-[12px] text-ink-70">{keys}</kbd></dt>
@@ -153,12 +151,12 @@
         </dl>
       </SettingsBlock>
     {:else if entry.id === "account"}
-      <SettingsBlock title="Account" about="The desk account shared with Keep and People, or the token link this page was opened with.">
+      <SettingsBlock title="Account">
         <p class="m-0 text-[13px]"><span class="text-ink-45">Daemon</span> <span class="font-mono text-[12px]">{desk.hostname || location.host}</span></p>
         <button class={button} onclick={() => auth.signOut()}><LogOut size={16} /> Sign out</button>
       </SettingsBlock>
     {:else if entry.id === "snapshot"}
-      <SettingsBlock title="Snapshot" about="Memory, staff with their notes, open tasks, decisions, routines and project contexts as one markdown file. Importing one hands it to pai, which rebuilds what is missing.">
+      <SettingsBlock title="Snapshot" about="Memory, agents, tasks and routines as one markdown file. Importing hands it to pai.">
         <div class="flex flex-wrap items-center gap-2">
           <button class={button} onclick={exportSnapshot}><Download size={16} /> Export</button>
           <button class={button} onclick={() => picker?.click()}><Upload size={16} /> Import</button>
@@ -166,14 +164,16 @@
           <span class="text-[13px] text-ink-45">{exportNote || importNote}</span>
         </div>
       </SettingsBlock>
-    {:else if entry.id === "agents"}
-      <div class="dash-body full settings-page settings-tall"><Staff /></div>
+    {:else if entry.id === "connectors"}
+      <SettingsBlock title="Connectors"><Connectors /></SettingsBlock>
+    {:else if entry.id === "automations"}
+      <SettingsBlock title="Routines"><Routines /></SettingsBlock>
     {:else if entry.id === "context"}
-      <div class="dash-body settings-page"><Context /></div>
-    {:else}
-      <div class="dash-body settings-page">
-        {#if entry.id === "modules"}<Modules />{:else if entry.id === "connectors"}<Connectors />{:else if entry.id === "automations"}<Routines />{:else if entry.id === "projects"}<Projects />{:else if entry.id === "spend"}<Spend />{/if}
-      </div>
+      <SettingsBlock title="Context"><Context /></SettingsBlock>
+    {:else if entry.id === "agents"}
+      <SettingsBlock title="Agents"><div class="settings-tall flex min-w-0"><Staff /></div></SettingsBlock>
+    {:else if entry.id === "spend"}
+      <SettingsBlock title="Spend"><Spend /></SettingsBlock>
     {/if}
   {/snippet}
 </SettingsDialog>

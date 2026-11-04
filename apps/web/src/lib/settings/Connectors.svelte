@@ -1,40 +1,55 @@
 <script lang="ts">
+  import { Plug, TriangleAlert } from "lucide-svelte";
   import { api } from "../api";
-  import type { Connector, ConnectorState } from "../types";
-  import Icon from "../ui/Icon.svelte";
+  import type { ConnectorSummary } from "../types";
+  import ConnectorSheet from "./ConnectorSheet.svelte";
+  import { ERROR, SKELETON } from "./controls";
 
-  /** The signed-in outside channels: whether each is connected, and the link that fixes it when it is not. */
-  let connectors = $state<Connector[] | undefined>();
+  /** The outside channels and capabilities as a grid of tiles; a tile opens everything about that connector. */
+  const SKELETON_TILES = [0, 1, 2, 3];
+  const GRID = "grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-x-2 gap-y-4";
+  let connectors = $state<ConnectorSummary[] | undefined>();
   let error = $state("");
-  const LABEL: Record<ConnectorState, string> = { signed_in: "connected", signed_out: "not connected", broken: "needs attention" };
-  const STATE: Record<ConnectorState, string> = { signed_in: "on", signed_out: "off", broken: "not-configured" };
-  $effect(() => void api.connectors().then((list) => (connectors = list), (e: Error) => (error = e.message)));
+  let open = $state<ConnectorSummary | undefined>();
+  const load = () => api.connectors().then((list) => (connectors = list), (e: Error) => (error = e.message));
+  $effect(() => void load());
+  function closed() {
+    open = undefined;
+    void load();
+  }
 </script>
 
-<h2 class="dash-title">Connectors <span class="dim">the channels pai acts in, signed in as you</span></h2>
 {#if error}
-  <p class="hint">{error}</p>
+  <p class={ERROR} role="alert">{error}</p>
 {:else if !connectors}
-  <p class="hint">…</p>
-{:else if !connectors.length}
-  <div class="empty"><Icon name="link" size={24} /><p class="dim">No connectors are installed on this pai.</p></div>
-{:else}
-  <div class="cards wide" data-testid="connectors">
-    {#each connectors as c (c.name)}
-      <section class="card module {c.status.state === 'signed_in' ? 'on' : 'off'}">
-        <header class="mod-head">
-          <span class="mod-icon"><Icon name={c.name.includes("mail") ? "mail" : c.name.includes("telegram") ? "send" : c.name.includes("linkedin") ? "users" : "message"} size={15} /></span>
-          <h3>{c.title}</h3>
-          <span class="chip state-{STATE[c.status.state]}">{LABEL[c.status.state]}</span>
-          <span class="grow"></span>
-          {#if c.status.fix}<a class="btn primary" href={c.status.fix.url} target="_blank" rel="noreferrer">{c.status.fix.label}</a>{/if}
-        </header>
-        <p class="dim">{c.description}</p>
-        {#if c.status.detail}<div class="kv"><span class="k">status</span><span class="v">{c.status.detail}</span></div>{/if}
-        {#if c.tools.length}<div class="chips tools">{#each c.tools as name (name)}<span class="chip tool">{name}</span>{/each}</div>{/if}
-        {#if c.events.length}<div class="kv"><span class="k">events</span><span class="v">{c.events.map((e) => e.kind).join(", ")}</span></div>{/if}
-        {#if c.canSend}<div class="kv"><span class="k">sends</span><span class="v">read back after every send</span></div>{/if}
-      </section>
+  <div class={GRID} aria-hidden="true">
+    {#each SKELETON_TILES as i (i)}
+      <div class="flex flex-col items-center gap-2 p-1.5">
+        <div class="size-16 rounded-[14px] {SKELETON}"></div>
+        <div class="h-3 w-12 {SKELETON}"></div>
+      </div>
     {/each}
   </div>
+{:else if !connectors.length}
+  <p class="m-0 text-[13px] text-ink-45">No connectors on this pai.</p>
+{:else}
+  <div class={GRID} data-testid="connectors">
+    {#each connectors as c (c.name)}
+      <button type="button" class="group flex min-w-0 flex-col items-center gap-2 rounded-md p-1.5 transition-colors hover:bg-ink-5" onclick={() => (open = c)}>
+        <span class="relative block size-16 transition-transform group-active:scale-95">
+          <span class="grid size-full place-items-center overflow-hidden rounded-[14px] bg-ink-5 text-ink-45 {c.enabled ? '' : 'opacity-40 grayscale'}">
+            {#if c.icon}<img src={c.icon} alt="" class="size-full object-cover" />{:else}<Plug size={26} />{/if}
+          </span>
+          {#if c.needsAction}
+            <span class="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full bg-warn text-surface ring-2 ring-surface" role="img" aria-label="Needs attention"><TriangleAlert size={12} /></span>
+          {/if}
+        </span>
+        <span class="w-full truncate text-center text-[13px] {c.enabled ? '' : 'text-ink-45'}">{c.title}</span>
+      </button>
+    {/each}
+  </div>
+{/if}
+
+{#if open}
+  <ConnectorSheet summary={open} onclose={closed} />
 {/if}

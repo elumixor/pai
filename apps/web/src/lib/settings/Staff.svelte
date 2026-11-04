@@ -9,6 +9,7 @@
   import type { Agent, AgentStatus, Ask, LogMessage, MessageKind, Routine, TaskStatus } from "../types";
   import Icon from "../ui/Icon.svelte";
   import { KIND_ORDER } from "../sidebar/tree";
+  import { ACTION_LABELS, describeSchedule } from "./routines";
 
   /**
    * The staff: pai and the agents it runs, as a tree; one agent's log — every message to and from it — with a box to
@@ -158,14 +159,14 @@
 </script>
 
 {#snippet party(slug: string)}
-  {#if desk.bySlug(slug)}<button class="party" title="open {who(slug)}" onclick={() => select(slug)}>{who(slug)}</button>{:else}<span class="party">{who(slug)}</span>{/if}
+  {#if desk.bySlug(slug)}<button class="party" title="Open {who(slug)}" onclick={() => select(slug)}>{who(slug)}</button>{:else}<span class="party">{who(slug)}</span>{/if}
 {/snippet}
 {#snippet time(at: number)}<time title={new Date(at).toLocaleString()}>{ago(at)}</time>{/snippet}
 {#snippet controls(ask: Ask)}
   <div class="ask-controls">
     {#if ask.options.length}<div class="q-options">{#each ask.options as option (option)}<button class="btn" onclick={() => void answer(ask, option)}>{option}</button>{/each}</div>{/if}
     {#if ask.freeText || !ask.options.length}
-      <div class="row-inline ask-free"><input type="text" placeholder={ask.options.length ? "or answer in words…" : "your answer…"} bind:value={typed[ask.id]} onkeydown={(e) => e.key === "Enter" && void answer(ask, typed[ask.id] ?? "")} /><button class="iconbtn" title="answer" aria-label="Answer" onclick={() => void answer(ask, typed[ask.id] ?? "")}><Icon name="send" size={12} /></button></div>
+      <div class="row-inline ask-free"><input type="text" placeholder={ask.options.length ? "or answer in words…" : "your answer…"} bind:value={typed[ask.id]} onkeydown={(e) => e.key === "Enter" && void answer(ask, typed[ask.id] ?? "")} /><button class="iconbtn" title="Answer" aria-label="Answer" onclick={() => void answer(ask, typed[ask.id] ?? "")}><Icon name="send" size={12} /></button></div>
     {/if}
   </div>
 {/snippet}
@@ -175,7 +176,7 @@
 
 <div class="staff" data-testid="staff">
   <aside class="staff-tree">
-    <header class="panel-head"><Icon name="users" size={13} /><h2>Staff</h2><span class="grow"></span><button class="iconbtn slim" class:on={showClosed} title="show closed agents" aria-label="Show closed agents" onclick={() => (showClosed = !showClosed)}><Icon name="power" size={12} /></button><button class="iconbtn slim" title="refresh" aria-label="Refresh" onclick={() => void desk.load()}><Icon name="refresh" size={12} /></button></header>
+    <header class="panel-head"><Icon name="users" size={13} /><h2>Staff</h2><span class="grow"></span><button class="iconbtn slim" class:on={showClosed} title="Show closed agents" aria-label="Show closed agents" onclick={() => (showClosed = !showClosed)}><Icon name="power" size={12} /></button><button class="iconbtn slim" title="Refresh" aria-label="Refresh" onclick={() => void desk.load()}><Icon name="refresh" size={12} /></button></header>
     <div class="staff-tree-list">
       {#each ordered as { agent: a, depth } (a.slug)}
         {@const status = STATUS[a.status] ?? STATUS.idle}
@@ -185,7 +186,7 @@
           <span class="dot {status.dot}"></span><span class="label">{a.name}</span>
           {#if waiting}<span class="badge ask">?{waiting}</span>{/if}
           {#if open}<span class="badge">{open}</span>{/if}
-          <span class="agent-stats" title="turns today · cost">{a.turnsToday}t · {money(a.costUsd)}</span>
+          <span class="agent-stats" title="Turns today · cost">{a.turnsToday}t · {money(a.costUsd)}</span>
         </button>
       {:else}
         <p class="hint">No agents yet.</p>
@@ -199,18 +200,18 @@
         <Icon name={agent.kind === "orchestrator" ? "bot" : "user"} size={13} />
         <nav class="crumbs">{#each lineage as a, i (a.slug)}{#if i}<span class="crumb-sep">›</span>{/if}<button class="crumb" class:on={a.slug === selected} onclick={() => select(a.slug)}>{a.name}</button>{/each}</nav>
         <span class="tag status-{agent.status}">{(STATUS[agent.status] ?? STATUS.idle).label}</span>
-        <span class="tag" title="what kind of agent">{agent.kind}</span>
+        <span class="tag">{agent.kind}</span>
         {#if agent.model}<span class="tag model" title={agent.model}>{modelName(agent.model)}</span>{/if}
-        {#if agent.unresolvedTools?.length}<span class="tag warn" title="declared for it, but no MCP server here provides it">no server for {agent.unresolvedTools.join(", ")}</span>{/if}
+        {#if agent.unresolvedTools?.length}<span class="tag warn" title="No MCP server here provides it">no server for {agent.unresolvedTools.join(", ")}</span>{/if}
         <span class="grow"></span>
-        <span class="dim" title="turns today · what it has cost">{agent.turnsToday} turns · {money(agent.costUsd)}</span>
-        {#if agent.slug !== PAI && agent.status !== "closed"}<button class="iconbtn" title="close {agent.name}" aria-label="Close {agent.name}" onclick={() => void closeAgent(agent)}><Icon name="power" size={13} /></button>{/if}
+        <span class="dim">{agent.turnsToday} turns · {money(agent.costUsd)}</span>
+        {#if agent.slug !== PAI && agent.status !== "closed"}<button class="iconbtn" title="Close {agent.name}" aria-label="Close {agent.name}" onclick={() => void closeAgent(agent)}><Icon name="power" size={13} /></button>{/if}
       </header>
       {#if agent.brief || ownRoutines.length}
         <div class="staff-brief">
           <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
           {#if agent.brief}<p class="staff-brief-text" title={agent.brief} onclick={(e) => e.currentTarget.classList.toggle("open")}>{agent.brief}</p>{/if}
-          {#if ownRoutines.length}<div class="chips">{#each ownRoutines as r (r.id)}<span class="chip" class:off={!r.enabled} title="{r.schedule ? `schedule ${r.schedule}` : `on ${r.event}`} → {r.action}"><Icon name="clock" size={10} />{r.name}</span>{/each}</div>{/if}
+          {#if ownRoutines.length}<div class="chips">{#each ownRoutines as r (r.id)}<span class="chip" class:off={!r.enabled} title="{r.schedule ? describeSchedule(r.schedule) : r.event}: {ACTION_LABELS[r.action]}"><Icon name="clock" size={10} />{r.name}</span>{/each}</div>{/if}
         </div>
       {/if}
     {/if}
@@ -218,7 +219,7 @@
       {#if !rows}
         <p class="hint">…</p>
       {:else if !rows.length}
-        <p class="hint">Nothing said here yet.</p>
+        <p class="hint">Nothing yet.</p>
       {/if}
       {#each grouped as group (group[0]!.id)}
         {@const m = group[0]!}
@@ -235,7 +236,7 @@
           {@const mine = m.from === "user"}
           {@const toward = m.to !== selected && m.to !== "user" && !mine}
           <div class="msg chat" class:mine>
-            <div class="msg-meta"><Icon name={mine ? "user" : "message"} size={11} />{@render party(m.from)}{#if toward}<span class="dim">→</span>{@render party(m.to)}{/if}{@render time(m.createdAt)}</div>
+            <div class="msg-meta"><Icon name={mine ? "user" : "message"} size={11} />{@render party(m.from)}{#if toward}<span class="dim">to</span>{@render party(m.to)}{/if}{@render time(m.createdAt)}</div>
             <div class="msg-body" {@attach md(m.body)}></div>
           </div>
         {:else if m.kind === "ask"}
@@ -251,9 +252,9 @@
           <div class="msg-line notice"><Icon name="bell" size={11} /><div class="msg-body" {@attach md(m.body)}></div>{@render time(m.createdAt)}</div>
         {:else}
           <div class="msg-card {m.kind}">
-            <div class="msg-meta"><Icon name={KIND_ICON[m.kind]} size={11} /><span class="kind">{m.kind}</span>{@render party(m.from)}<span class="dim">→</span>{@render party(m.to)}{#if m.taskId}<span class="tag">#{m.taskId}</span>{/if}<span class="grow"></span>{@render time(m.createdAt)}</div>
+            <div class="msg-meta"><Icon name={KIND_ICON[m.kind]} size={11} /><span class="kind">{m.kind}</span>{@render party(m.from)}<span class="dim">to</span>{@render party(m.to)}{#if m.taskId}<span class="tag">#{m.taskId}</span>{/if}<span class="grow"></span>{@render time(m.createdAt)}</div>
             <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-            <div class="msg-body clamped" title="click to expand" onclick={(e) => e.currentTarget.classList.toggle("clamped")} {@attach md(m.body)}></div>
+            <div class="msg-body clamped" title="Expand" onclick={(e) => e.currentTarget.classList.toggle("clamped")} {@attach md(m.body)}></div>
           </div>
         {/if}
       {/each}
@@ -261,9 +262,9 @@
     <footer class="staff-compose">
       <div class="compose-row">
         <textarea rows="1" placeholder={agent?.status === "closed" ? `${agent.name} is closed` : selected === PAI ? "Message pai…" : `Message ${agent?.name ?? selected}…`} disabled={agent?.status === "closed"} bind:value={input} aria-label="Message" onkeydown={(e) => e.key === "Enter" && !e.shiftKey && !e.isComposing && (e.preventDefault(), void submit())}></textarea>
-        <button class="iconbtn" title="send (enter)" aria-label="Send" onclick={submit}><Icon name="send" size={14} /></button>
+        <button class="iconbtn" title="Send" aria-label="Send" onclick={submit}><Icon name="send" size={14} /></button>
       </div>
-      <div class="compose-foot"><span class="note">{note}</span><span class="grow"></span><span class="dim">enter to send · shift+enter newline</span></div>
+      <div class="compose-foot"><span class="note">{note}</span></div>
     </footer>
   </section>
 
@@ -294,7 +295,7 @@
             {#each g.items as t (t.id)}
               <div class="task-row status-{t.status}">
                 <div class="task-text"><span class="task-title" title={t.title}>{t.title}</span><span class="task-sub">{@render party(t.owner)}{#if t.due}<span class="tag">{t.due}</span>{/if}{#if t.nextAction}<span class="dim ellipsis">{t.nextAction}</span>{/if}</span></div>
-                <button class="iconbtn slim" title="done" aria-label="Done" onclick={async () => { const r = await api.updateTask(t.id, { status: "done" }); if (r.data) desk.upsertTask(r.data); }}><Icon name="check" size={12} /></button>
+                <button class="iconbtn slim" title="Done" aria-label="Done" onclick={async () => { const r = await api.updateTask(t.id, { status: "done" }); if (r.data) desk.upsertTask(r.data); }}><Icon name="check" size={12} /></button>
               </div>
             {/each}
           </div>

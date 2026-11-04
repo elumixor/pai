@@ -19,7 +19,7 @@ export interface Route {
 export function parse(raw: string): Route {
   const [first = "", second] = raw.replace(/^[/#]+|\/+$/g, "").split("/");
   // The dashboard's pages became sections of the settings.
-  if (["agents", "modules", "automations", "projects", "context", "spend", "connectors", "skills"].includes(first)) return { name: "settings", param: first === "skills" ? "context" : first };
+  if (["agents", "automations", "context", "spend", "connectors", "skills"].includes(first)) return { name: "settings", param: first === "skills" ? "context" : first };
   const name = first as RouteName;
   if (!NAMES.includes(name) || name === "home") return { name: "home" };
   if (NEEDS_PARAM.includes(name) && !second) return { name: "home" };

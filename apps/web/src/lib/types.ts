@@ -56,8 +56,11 @@ export interface ContextItem {
   readonly source: string;
   readonly editable: boolean;
   readonly surfaces: readonly string[];
-  readonly project?: string;
+  /** The connector it comes from; its sheet shows it, so the context page leaves it out. */
+  readonly connector?: string;
   readonly body?: string;
+  /** For a tool server: each tool with what it does. */
+  readonly tools?: readonly { readonly name: string; readonly description?: string }[];
 }
 
 export interface Question {
@@ -196,16 +199,72 @@ export interface Need {
 
 export type ConnectorState = "signed_in" | "signed_out" | "broken";
 
+export interface ConnectorStatus {
+  readonly state: ConnectorState;
+  readonly detail?: string;
+  readonly fix?: { readonly label: string; readonly url: string };
+}
+
 /** One connector as `GET /connectors` lists it: a channel (`connector`) or something the others use (`capability`). */
-export interface Connector {
+export interface ConnectorSummary {
   readonly name: string;
   readonly kind: "connector" | "capability";
   readonly title: string;
   readonly description: string;
-  readonly status: { readonly state: ConnectorState; readonly detail?: string; readonly fix?: { readonly label: string; readonly url: string } };
-  readonly events: readonly { readonly kind: string; readonly description: string }[];
-  readonly tools: readonly string[];
-  readonly canSend: boolean;
+  /** A data URI. */
+  readonly icon?: string;
+  readonly server: string | null;
+  readonly enabled: boolean;
+  readonly needsAction: boolean;
+  readonly status: ConnectorStatus;
+  readonly commands: readonly { readonly name: string; readonly description: string }[];
+  readonly cli: boolean;
+}
+
+export interface ConnectorSetting {
+  readonly key: string;
+  readonly label: string;
+  readonly hint?: string;
+  readonly secret?: boolean;
+  readonly type?: "text" | "toggle" | "number" | "select";
+  readonly options?: readonly string[];
+  /** A secret reads `set` or nothing. */
+  readonly value: string;
+}
+
+export interface ConnectorAccounts {
+  readonly items: readonly { readonly label: string; readonly detail: string }[];
+  /** Both hold `{label}`. */
+  readonly connectPath: string;
+  readonly removePath: string;
+  readonly hint: string;
+}
+
+export interface ConnectorAction {
+  readonly id: string;
+  readonly label: string;
+  readonly url: string | null;
+  readonly danger: boolean;
+  readonly runnable: boolean;
+}
+
+export interface ConnectorLogLine {
+  readonly at: number;
+  readonly level: "info" | "warn" | "error";
+  readonly text: string;
+}
+
+/** Everything a connector's sheet shows, from `GET /connectors/:name`. */
+export interface ConnectorDetail extends ConnectorSummary {
+  readonly tools: readonly { readonly name: string; readonly description: string }[];
+  readonly events: readonly { readonly kind: string; readonly title: string; readonly description: string; readonly lastAt: number | null; readonly count: number }[];
+  readonly actions: readonly ConnectorAction[];
+  readonly accounts: ConnectorAccounts | null;
+  readonly settings: readonly ConnectorSetting[];
+  readonly instructions: string | null;
+  readonly problems: readonly { readonly title: string; readonly detail: string; readonly action: string | null }[];
+  readonly error: string | null;
+  readonly logs: readonly ConnectorLogLine[];
 }
 
 /** What the daemon tells a browser before it signs in. */
@@ -229,59 +288,6 @@ export interface DiskSession {
   readonly cwd: string;
   readonly title: string;
   readonly lastActivity: string;
-}
-
-export interface ProjectSummary {
-  readonly slug: string;
-  readonly path: string;
-  readonly summary: string;
-  readonly kind?: "repo" | "context";
-  readonly repo?: string;
-}
-
-export interface ModuleSetting {
-  readonly key: string;
-  readonly label: string;
-  readonly hint?: string;
-  readonly secret?: boolean;
-  readonly type?: "text" | "toggle" | "number";
-  readonly value: string;
-}
-
-export interface ModuleInfo {
-  readonly name: string;
-  readonly title: string;
-  readonly description: string;
-  readonly kind: "channel" | "tools" | "source" | "service";
-  readonly enabled: boolean;
-  readonly status: Record<string, unknown>;
-  readonly tools?: { readonly server: string; readonly names: readonly string[]; readonly kinds: readonly string[] };
-  readonly prompt?: { readonly text: string; readonly kinds: readonly string[] };
-  readonly events?: readonly { readonly kind: string; readonly description: string }[];
-  readonly settings?: readonly ModuleSetting[];
-  readonly accounts?: {
-    readonly items: readonly { readonly label: string; readonly detail: string }[];
-    readonly connectPath: string;
-    readonly removePath: string;
-    readonly hint: string;
-  };
-  readonly live: boolean;
-  /** A module from its own repository with a page of its own: its path under the daemon. */
-  readonly ui?: string;
-  readonly external?: boolean;
-}
-
-export interface Automation {
-  readonly id: number;
-  readonly name: string;
-  readonly event: string;
-  readonly filter: string;
-  readonly action: "notify" | "turn" | "task";
-  readonly project: string;
-  readonly template: string;
-  readonly enabled: boolean;
-  readonly runs: number;
-  readonly lastRun: number | null;
 }
 
 export interface SlashCommand {
@@ -346,17 +352,41 @@ export interface Ask {
   readonly createdAt: number;
 }
 
+export type RoutineAction = "notify" | "turn" | "task" | "wake" | "triage";
+
 export interface Routine {
   readonly id: number;
   readonly name: string;
+  /** The event it reacts to; empty for a scheduled routine. */
   readonly event: string;
+  /** Five-field cron; empty for an event routine. */
   readonly schedule: string;
-  readonly action: string;
+  readonly filter: string;
+  /** Set by agents; no client writes it. */
+  readonly check: Readonly<Record<string, unknown>>;
+  readonly action: RoutineAction;
   readonly agent: string;
+  readonly project: string;
+  readonly template: string;
+  readonly owner: string;
   readonly enabled: boolean;
+  readonly createdAt: number;
   readonly runs: number;
   readonly lastRun: number | null;
-  readonly owner: string;
+}
+
+export type RoutineFields = Partial<Pick<Routine, "name" | "event" | "schedule" | "filter" | "action" | "agent" | "template" | "enabled">>;
+
+/** What a routine can be triggered by, from `GET /routines/events`. */
+export interface RoutineEvent {
+  readonly kind: string;
+  readonly title: string;
+  readonly description: string;
+  /** `pai`, `keep`, `people` or a connector's name. */
+  readonly source: string;
+  readonly sourceTitle: string;
+  /** A data URI; connectors only. */
+  readonly icon?: string;
 }
 
 /** One outward tool call as `GET /audit` lists them: a send, a write, a click in a signed-in site. */

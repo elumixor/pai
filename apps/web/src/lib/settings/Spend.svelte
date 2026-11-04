@@ -1,11 +1,16 @@
 <script lang="ts">
   import { api } from "../api";
-  import { usd } from "../format";
+  import { capital, usd } from "../format";
   import type { SpendBucket, SpendReport } from "../types";
+  import Segmented from "../ui/Segmented.svelte";
+  import { ERROR, SKELETON } from "./controls";
 
   /** Where the time, tokens and money went: what it would cost at API prices, beside what it actually costs. */
-  let days = $state<7 | 30 | 90>(30);
-  let by = $state<"agent" | "project" | "model" | "source">("agent");
+  const DAYS = [7, 30, 90] as const;
+  const GROUPINGS = ["agent", "project", "model", "source"] as const;
+  const PAID_NOTE = "Paid is the plan's fee for the period, shared out by each one's API price, plus what the gateway metered. The plan's price comes from the login's tier; PAI_CLAUDE_PLAN_USD overrides it.";
+  let days = $state<(typeof DAYS)[number]>(30);
+  let by = $state<(typeof GROUPINGS)[number]>("agent");
   let report = $state<SpendReport | undefined>();
   let error = $state("");
   $effect(() => {
@@ -21,23 +26,21 @@
   const top = $derived(Math.max(...rows.map((b) => b.apiUsd), 0.01));
 </script>
 
-<h2 class="dash-title wrap">Spend <span class="dim">every Claude Code call, terminals included</span><span class="grow"></span>
-  <div class="segmented">{#each [7, 30, 90] as const as d (d)}<button class="seg" class:on={d === days} onclick={() => (days = d)}>{d}d</button>{/each}</div>
-</h2>
+<div class="mb-3"><Segmented options={DAYS.map((d) => ({ value: d, label: `${d}d` }))} value={days} label="Period" onchange={(next) => (days = next)} /></div>
 {#if error}
-  <p class="hint">{error}</p>
+  <p class={ERROR} role="alert">{error}</p>
 {:else if !report}
-  <p class="hint">…</p>
+  <div class="h-40 {SKELETON}" aria-hidden="true"></div>
 {:else}
   {@const t = report.total}
   {@const box = report.box?.periodUsd ?? 0}
   <div class="spend-tiles" data-testid="spend">
-    <div class="spend-tile"><span class="dim">At API prices</span><strong>{usd(t.apiUsd)}</strong><span class="dim">what this would cost without the plan</span></div>
-    <div class="spend-tile"><span class="dim">Actually paid</span><strong>{usd(t.realUsd + box)}</strong><span class="dim">Claude {tierName(report.plan.tier)} {usd(report.plan.periodUsd)} ({usd(report.plan.monthlyUsd)}/mo){box ? ` · box ${usd(box)}` : ""}</span></div>
-    <div class="spend-tile"><span class="dim">Saved</span><strong>{usd(t.savedUsd)}</strong>{#if t.realUsd}<span class="dim">{(t.apiUsd / t.realUsd).toFixed(1)}× the plan's worth</span>{/if}</div>
-    <div class="spend-tile"><span class="dim">Tokens</span><strong>{tokens(all(t))}</strong><span class="dim">{tokens(t.output)} out · {t.calls} calls</span></div>
+    <div class="spend-tile"><span class="dim">At API prices</span><strong>{usd(t.apiUsd)}</strong><span class="dim">without the plan</span></div>
+    <div class="spend-tile" title="{PAID_NOTE}&#10;Claude {tierName(report.plan.tier)} {usd(report.plan.periodUsd)} ({usd(report.plan.monthlyUsd)}/mo){box ? `, box ${usd(box)}` : ''}"><span class="dim">Actually paid</span><strong>{usd(t.realUsd + box)}</strong><span class="dim">Claude {tierName(report.plan.tier)}</span></div>
+    <div class="spend-tile"><span class="dim">Saved</span><strong>{usd(t.savedUsd)}</strong>{#if t.realUsd}<span class="dim">{(t.apiUsd / t.realUsd).toFixed(1)}× the plan</span>{/if}</div>
+    <div class="spend-tile"><span class="dim">Tokens</span><strong>{tokens(all(t))}</strong><span class="dim">{t.calls} calls</span></div>
     <div class="spend-tile"><span class="dim">Time in turns</span><strong>{hours(t.ms)}</strong></div>
-    {#if report.credits.monthlyUsd}<div class="spend-tile"><span class="dim">API credits</span><strong>{usd(report.credits.usedUsd)}</strong><span class="dim">of {usd(report.credits.monthlyUsd)} a month, included in the plan</span></div>{/if}
+    {#if report.credits.monthlyUsd}<div class="spend-tile"><span class="dim">API credits</span><strong>{usd(report.credits.usedUsd)}</strong><span class="dim">of {usd(report.credits.monthlyUsd)} a month</span></div>{/if}
   </div>
   <div class="spend-days">
     {#each report.daily as d (d.key)}
@@ -45,15 +48,14 @@
     {/each}
   </div>
   {#if report.daily.length}<div class="spend-axis dim"><span>{report.daily[0]!.key}</span><span>{report.daily.at(-1)!.key}</span></div>{/if}
-  <div class="spend-legend dim"><span class="key api"></span>API price<span class="key real"></span>paid</div>
-  <div class="row-inline"><div class="segmented">{#each ["agent", "project", "model", "source"] as const as v (v)}<button class="seg" class:on={v === by} onclick={() => (by = v)}>{v}</button>{/each}</div></div>
+  <div class="spend-legend dim"><span class="key api"></span>API price<span class="key real"></span>Paid</div>
+  <Segmented options={GROUPINGS.map((v) => ({ value: v, label: capital(v) }))} value={by} label="Group by" onchange={(next) => (by = next)} />
   <div class="spend-table">
-    <div class="spend-row head"><span>{by}</span><span></span><span>API price</span><span>paid</span><span>tokens</span><span>time</span></div>
+    <div class="spend-row head"><span>{capital(by)}</span><span></span><span>API price</span><span>Paid</span><span>Tokens</span><span>Time</span></div>
     {#each rows as b (b.key)}
       <div class="spend-row" title="{tokens(b.input + b.cacheWrite)} in · {tokens(b.cacheRead)} cached · {tokens(b.output)} out · {b.calls} calls">
         <span class="ellipsis">{b.key}</span><span class="spend-share"><span style="width:{(b.apiUsd / top) * 100}%"></span></span><span class="num">{usd(b.apiUsd)}</span><span class="num">{usd(b.realUsd)}</span><span class="num dim">{tokens(all(b))}</span><span class="num dim">{b.ms ? hours(b.ms) : ""}</span>
       </div>
     {/each}
   </div>
-  <p class="hint">Paid is the plan's fee for the period, shared out by each one's API price, plus what the gateway metered. The plan's price comes from the login's tier; PAI_CLAUDE_PLAN_USD overrides it.</p>
 {/if}

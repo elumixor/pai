@@ -125,11 +125,6 @@
   .home-centre .chat-scrollbar {
     top: 16px;
   }
-  /* A settings page from the old sheet, laid into the dialog's one scroll. */
-  .settings-page {
-    overflow: visible;
-    padding: 0;
-  }
   .settings-tall {
     height: min(560px, 70dvh);
     border-radius: var(--r);
