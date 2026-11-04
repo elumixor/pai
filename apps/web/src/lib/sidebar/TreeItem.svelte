@@ -33,6 +33,10 @@
     const at = active ? node.children.findIndex((c) => has(c, active)) : -1;
     return node.children.slice(0, Math.max(limit, at + 1));
   });
+  /** The children "N more" stands for; ⌘/⇧-clicking it picks them instead of listing them. */
+  const hidden = $derived(node.children.slice(shown.length).map((c) => c.id));
+  const hiddenPicked = $derived(selection.allPicked(hidden));
+  const moreKey = $derived(`more:${node.id}`);
   const devUrl = $derived(node.project ? `https://dev.${DESK_DOMAIN}/?project=${encodeURIComponent(node.project)}${thread ? `&session=${thread}` : ""}` : undefined);
   const keepPage = (urn: string) => `${(auth.config.keepUrl ?? `https://keep.${DESK_DOMAIN}`).replace(/\/$/, "")}/p/${urn.replace(/^keep:page\//, "")}`;
 
@@ -207,7 +211,13 @@
     <TreeItem node={child} depth={depth + 1} {active} {onnew} />
   {/each}
   {#if shown.length < node.children.length}
-    <button class="flex h-7 w-full items-center rounded-sm text-[13px] text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink" style="padding-left: {(depth + 1) * 12 + 30}px" onclick={() => (limit = shown.length + BATCH)}>
+    <button
+      class="flex h-7 w-full items-center rounded-sm text-[13px] text-ink-45 transition-colors hover:text-ink {hiddenPicked && selection.last === moreKey ? 'bg-accent/25 hover:bg-accent/30' : hiddenPicked ? 'bg-accent-soft hover:bg-accent/20' : 'hover:bg-ink-5'}"
+      style="padding-left: {(depth + 1) * 12 + 30}px"
+      data-tree-more={hidden.join(" ")}
+      oncontextmenu={(e) => selection.moreMenu(e, hidden)}
+      onclick={(e) => { if (!selection.more(e, hidden, moreKey, active)) limit = shown.length + BATCH; }}
+    >
       {node.children.length - shown.length} more
     </button>
   {/if}

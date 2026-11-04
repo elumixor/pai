@@ -29,6 +29,8 @@
     const at = active ? roots.findIndex((r) => has(r, active)) : -1;
     return roots.slice(0, Math.max(limit, at + 1));
   });
+  const hidden = $derived(roots.slice(shown.length).map((r) => r.id));
+  const hiddenPicked = $derived(selection.allPicked(hidden));
   const row = "flex h-7 w-full items-center gap-2 rounded-sm px-2 text-ink-70 transition-colors hover:bg-ink-5 hover:text-ink [&>svg]:text-ink-45";
   const action = "grid size-6 place-items-center rounded-xs text-ink-45 hover:bg-ink-10 hover:text-ink";
 
@@ -86,7 +88,7 @@
   /** A click anywhere but on a tree row (or a menu acting on the selection) lets the selection go. */
   function clearOutside(event: PointerEvent) {
     if (!selection.selected.size) return;
-    if ((event.target as Element).closest('[data-tree-id], [role="menu"], [role="dialog"], .ctx-menu')) return;
+    if ((event.target as Element).closest('[data-tree-id], [data-tree-more], [role="menu"], [role="dialog"], .ctx-menu')) return;
     selection.clear();
   }
 
@@ -143,7 +145,12 @@
         <p class="m-0 px-2 py-1 text-[13px] text-ink-45">No threads yet.</p>
       {/each}
       {#if shown.length < roots.length}
-        <button class="flex h-7 w-full items-center rounded-sm pl-[30px] text-[13px] text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink" onclick={() => (limit = shown.length + ROOT_BATCH)}>
+        <button
+          class="flex h-7 w-full items-center rounded-sm pl-[30px] text-[13px] text-ink-45 transition-colors hover:text-ink {hiddenPicked && selection.last === 'more:' ? 'bg-accent/25 hover:bg-accent/30' : hiddenPicked ? 'bg-accent-soft hover:bg-accent/20' : 'hover:bg-ink-5'}"
+          data-tree-more={hidden.join(" ")}
+          oncontextmenu={(e) => selection.moreMenu(e, hidden)}
+          onclick={(e) => { if (!selection.more(e, hidden, "more:", active)) limit = shown.length + ROOT_BATCH; }}
+        >
           {roots.length - shown.length} more
         </button>
       {/if}

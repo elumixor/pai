@@ -1,3 +1,5 @@
+import { menus } from "../ui/menu-state.svelte";
+import { mover } from "./move.svelte";
 import type { TreeNode } from "./tree";
 import { recall, remember } from "../storage";
 
@@ -94,7 +96,10 @@ class Selection {
 
   /** Picks every visible row between the anchor and `id`. */
   range(id: string, from: string | null) {
-    const rows = [...document.querySelectorAll<HTMLElement>('[role="tree"] [role="treeitem"][data-tree-id]')].map((r) => r.dataset.treeId!).filter((r) => r !== "pai");
+    // The rows in tree order, an "N more" standing for the rows it hides.
+    const rows = [...document.querySelectorAll<HTMLElement>('[role="tree"] [role="treeitem"][data-tree-id], [role="tree"] [data-tree-more]')].flatMap((r) =>
+      r.dataset.treeMore ? r.dataset.treeMore.split(" ") : r.dataset.treeId === "pai" ? [] : [r.dataset.treeId!],
+    );
     const start = from ? rows.indexOf(from) : -1;
     const end = rows.indexOf(id);
     if (end < 0) return;
@@ -102,6 +107,50 @@ class Selection {
     this.selected = new Set(rows.slice(a, b + 1));
     this.anchor ??= from ?? id;
     this.last = id;
+  }
+
+  pick(ids: readonly string[]) {
+    this.selected = new Set([...this.selected, ...ids]);
+  }
+
+  unpick(ids: readonly string[]) {
+    const next = new Set(this.selected);
+    for (const id of ids) next.delete(id);
+    this.selected = next;
+  }
+
+  /** Whether every row an "N more" hides is picked. */
+  allPicked(hidden: readonly string[]) {
+    return hidden.length > 0 && hidden.every((id) => this.selected.has(id));
+  }
+
+  /**
+   * A click on "N more" (`key` names it): ⌘ picks or drops the rows it hides, ⇧ runs the range to them and takes them
+   * all. Answers whether the click was a pick, not "list the next batch".
+   */
+  more(event: MouseEvent, hidden: readonly string[], key: string, open: string | undefined) {
+    if (!event.metaKey && !event.ctrlKey && !event.shiftKey) return false;
+    event.preventDefault();
+    const from = open && open !== "pai" ? open : null;
+    const all = this.allPicked(hidden);
+    if (event.shiftKey) {
+      this.range(hidden[0]!, this.anchor ?? from);
+      this.pick(hidden);
+    } else if (all) this.unpick(hidden);
+    else {
+      if (!this.selected.size && from && !hidden.includes(from)) this.pick([from]);
+      this.pick(hidden);
+    }
+    this.anchor ??= hidden[0]!;
+    this.last = this.allPicked(hidden) ? key : null;
+    return true;
+  }
+
+  /** Right click on "N more": moves what is picked, or else the rows it hides. */
+  moreMenu(event: MouseEvent, hidden: readonly string[]) {
+    event.preventDefault();
+    const ids = this.selected.size ? [...this.selected] : hidden;
+    menus.openContext(event.clientX, event.clientY, [{ label: `Move ${ids.length} into…`, icon: "arrows", run: () => mover.start(ids) }]);
   }
 
   clear() {
