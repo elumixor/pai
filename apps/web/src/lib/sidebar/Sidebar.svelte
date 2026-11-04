@@ -161,33 +161,35 @@
     {/if}
   </div>
 
-  <div class="space-y-px px-2 py-2">
-    <Popover bind:open={inboxOpen} width="w-96" block>
+  <div class="flex items-center gap-0.5 px-2 py-2">
+    <div class="min-w-0 flex-1">
+      <Popover bind:open={accountOpen} width="w-56" block>
+        {#snippet trigger({ toggle })}
+          <button class="{row} h-9" aria-label="Account" onclick={toggle}>
+            {#if auth.user?.avatar}
+              <img src={auth.user.avatar} alt="" class="size-5 shrink-0 rounded-full" />
+            {:else}
+              <span class="grid size-5 shrink-0 place-items-center rounded-full bg-ink-10 text-[11px] font-semibold text-ink-70">{(auth.user?.name ?? "?").slice(0, 1).toUpperCase()}</span>
+            {/if}
+            <span class="min-w-0 flex-1 truncate text-left">{auth.user?.name ?? "Account"}</span>
+          </button>
+        {/snippet}
+        {#snippet children({ close })}
+          <MenuItem onclick={() => { close(); onsettings(); }}><Settings size={16} /> Settings <kbd class="ml-auto font-mono text-[11px] text-ink-30" aria-hidden="true">⌘⇧,</kbd></MenuItem>
+          <Separator />
+          <MenuItem onclick={() => { close(); void auth.signOut(); }}><LogOut size={16} /> Sign out</MenuItem>
+        {/snippet}
+      </Popover>
+    </div>
+    <Popover bind:open={inboxOpen} width="w-96" align="end">
       {#snippet trigger({ toggle })}
-        <button class={row} aria-expanded={inboxOpen} onclick={toggle}>
-          <InboxIcon size={16} /> Inbox
-          {#if inbox.unread}<span class="ml-auto rounded-full bg-accent px-1.5 text-[11px] leading-4 font-medium text-accent-ink" aria-label="{inbox.unread} unread">{inbox.unread > 99 ? "99+" : inbox.unread}</span>{/if}
+        <button class="relative grid size-9 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink" aria-label={inbox.unread ? `Inbox, ${inbox.unread} unread` : "Inbox"} title="Inbox" aria-expanded={inboxOpen} onclick={toggle}>
+          <InboxIcon size={17} />
+          {#if inbox.unread}<span class="absolute top-1 right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[10px] leading-4 font-medium text-accent-ink tabular-nums" aria-hidden="true">{inbox.unread > 99 ? "99+" : inbox.unread}</span>{/if}
         </button>
       {/snippet}
       {#snippet children({ close })}
         <Inbox onclose={close} />
-      {/snippet}
-    </Popover>
-    <Popover bind:open={accountOpen} width="w-56" block>
-      {#snippet trigger({ toggle })}
-        <button class="{row} h-9" aria-label="Account" onclick={toggle}>
-          {#if auth.user?.avatar}
-            <img src={auth.user.avatar} alt="" class="size-5 shrink-0 rounded-full" />
-          {:else}
-            <span class="grid size-5 shrink-0 place-items-center rounded-full bg-ink-10 text-[11px] font-semibold text-ink-70">{(auth.user?.name ?? "?").slice(0, 1).toUpperCase()}</span>
-          {/if}
-          <span class="min-w-0 flex-1 truncate text-left">{auth.user?.name ?? "Account"}</span>
-        </button>
-      {/snippet}
-      {#snippet children({ close })}
-        <MenuItem onclick={() => { close(); onsettings(); }}><Settings size={16} /> Settings <kbd class="ml-auto font-mono text-[11px] text-ink-30" aria-hidden="true">⌘⇧,</kbd></MenuItem>
-        <Separator />
-        <MenuItem onclick={() => { close(); void auth.signOut(); }}><LogOut size={16} /> Sign out</MenuItem>
       {/snippet}
     </Popover>
   </div>
