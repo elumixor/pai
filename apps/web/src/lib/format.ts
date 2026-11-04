@@ -1,12 +1,7 @@
 /** How things are said on screen: times, durations, sizes, model names. */
 
-export function ago(at: string | number) {
-  const seconds = Math.max(0, (Date.now() - new Date(at).getTime()) / 1000);
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-  if (seconds < 86400) return `${Math.round(seconds / 3600)}h`;
-  return `${Math.round(seconds / 86400)}d`;
-}
+// Relative times and day headings, said the way every desk app says them ("5 minutes ago", "Yesterday").
+export { ago, day as dayLabel } from "@desk/core";
 
 /** "Today 14:13", "Yesterday 09:02", "Oct 7 10:40" — an instant as a person says it. */
 export function stamp(at: number | string) {
@@ -32,14 +27,6 @@ export function until(iso: string | undefined) {
 export const clock = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
 export const duration = (ms: number) => (ms < 60_000 ? `${Math.max(1, Math.round(ms / 1000))}s` : `${Math.round(ms / 60_000)} min`);
 export const dayOf = (at: number) => new Date(at).toDateString();
-export function dayLabel(at: number) {
-  const day = new Date(at);
-  const today = new Date();
-  if (day.toDateString() === today.toDateString()) return "Today";
-  if (day.toDateString() === new Date(today.getTime() - 86_400_000).toDateString()) return "Yesterday";
-  return day.toLocaleDateString(undefined, { day: "numeric", month: "long", ...(day.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}) });
-}
-
 export const sizeOf = (bytes: number) => (bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
 export const basename = (path: string) => path.split("/").filter(Boolean).pop() ?? path;
 export const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);

@@ -102,7 +102,7 @@
               <li class="space-y-0.5">
                 <EventPill kind={e.kind} {catalog} />
                 <span class="block">{capital(e.description)}</span>
-                <span class="block text-ink-30">{e.lastAt ? `Last ${ago(e.lastAt)} ago` : "Never"}</span>
+                <span class="block text-ink-30">{e.lastAt ? `Last ${ago(e.lastAt)}` : "Never"}</span>
               </li>
             {/each}
           </ul>

@@ -51,7 +51,7 @@
             {/if}
           </span>
           <span class="truncate text-[12px] text-ink-45 max-sm:hidden">{ACTION_LABELS[rule.action] ?? rule.action}</span>
-          <span class="text-right text-[12px] text-ink-45 tabular-nums max-sm:hidden" title={rule.lastRun ? `Last ${ago(rule.lastRun)} ago` : "Never ran"}>{rule.runs}×</span>
+          <span class="text-right text-[12px] text-ink-45 tabular-nums max-sm:hidden" title={rule.lastRun ? `Last ${ago(rule.lastRun)}` : "Never ran"}>{rule.runs}×</span>
         </button>
       </li>
     {/each}
