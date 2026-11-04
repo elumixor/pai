@@ -4,13 +4,13 @@ import { config } from "../core/config.ts";
 import * as agents from "./agents.ts";
 import * as asks from "./asks.ts";
 import * as automations from "./automations.ts";
+import * as drafts from "./drafts.ts";
 import * as tasks from "./tasks.ts";
 
 /**
  * The state of things as one markdown document: what pai remembers, who its staff are and what each
- * knows, every open task and decision, the routines. Written so
- * that a person can read it — and so that handed to a fresh pai as a prompt, it has enough to
- * rebuild all of it: the agents with their briefs and notes, the tasks, the memory.
+ * knows, every open task, decision and draft, the routines. Written so that a person can read it, and
+ * so that handed to a fresh pai as a prompt, it has enough to check all of it and file what holds in Keep.
  */
 
 const readIf = (path: string) => (existsSync(path) ? readFileSync(path, "utf8").trim() : "");
@@ -25,6 +25,7 @@ export function snapshot(): string {
   const open = tasks.list();
   const decisions = asks.open();
   const routines = automations.all();
+  const waiting = drafts.open();
 
   const agentBlock = (a: agents.Agent) =>
     [
@@ -53,7 +54,7 @@ export function snapshot(): string {
   return [
     `# pai snapshot — ${day}`,
     "",
-    "The state of things in one document: memory, staff, tasks, decisions, routines, projects. Handed to pai as a prompt, it rebuilds them: create the agents that are missing (with these briefs, parents, tools), write each one's STATE.md from its notes, add the tasks that are not there, put the memory into MEMORY.md.",
+    "The state of things in one document: memory, staff, tasks, decisions, drafts, routines. Handed to pai as a prompt, it is fact-checked and filed in Keep.",
     "",
     "## Memory (MEMORY.md)",
     "",
@@ -71,6 +72,10 @@ export function snapshot(): string {
     "",
     decisions.length ? decisions.map(askLine).join("\n") : "_none_",
     "",
+    `## Pending drafts (${waiting.length})`,
+    "",
+    waiting.length ? waiting.map((d) => `### #${d.id}, ${d.channel}, by ${d.agent}\n\n${fence(drafts.asText(d))}`).join("\n\n") : "_none_",
+    "",
     `## Routines (${routines.length})`,
     "",
     routines.length ? routines.map(routineLine).join("\n") : "_none_",
@@ -78,15 +83,17 @@ export function snapshot(): string {
   ].join("\n");
 }
 
-/** What pai is told with a snapshot: rebuild what is in it, change nothing that is not. */
+/** What pai is told with a snapshot: the old state is a lead to check, not a state to restore. Work lives in Keep, not in staff. */
 export const importPrompt = (text: string) =>
   [
-    "[snapshot import] Below is a snapshot of the state of things, exported from a pai. Bring this one into line with it, in this order:",
-    "1. Memory: merge its MEMORY.md section into MEMORY.md (keep what is here and not there; take what is there and not here; where they differ, the snapshot wins).",
-    "2. Staff: for each agent, create it if no agent with that slug or name exists (create_agent with the kind, parent, brief, tools, model, project), else configure it to match; then write its STATE.md from its notes (Write the file in its folder under workspace/agents/<slug>/).",
-    "3. Tasks: add the ones not here (task_add with the owner, status, due, next action, notes); leave the ones already here alone.",
-    "4. Routines: create what is missing (routine_add).",
-    "Do not delete or close anything the snapshot does not mention. When done, report in a few lines what was created, what was updated and what was already in place.",
+    "[snapshot import] Below is an export of how things stood. Parts of it are out of date, so every line is a lead to check, not a fact. Rebuild the current picture, in this order:",
+    "1. Fact-check. For each claim, open task and decision look at the latest evidence: mail, Telegram, WhatsApp, calendar, Keep, dev, recall, the web. Work out what is done, dead, changed or still true.",
+    "2. Memory: rewrite MEMORY.md from what survives the check. Durable facts stay, anything stale goes.",
+    "3. Keep: projects, tasks and docs live there. Search first and update what exists; otherwise create pages: a project per area, a task per thing still open, a doc for notes worth keeping.",
+    "4. Workers: anything too big for your own context goes to a worker (create_agent), several at once when the work splits. Each writes its results to Keep pages and reports the page. Do not create standing agents, and do not recreate the agents named in the export: their areas become Keep projects.",
+    "5. Send nothing as the user. A pending draft or a message that is due becomes a Keep task, or a card for the user (offer_draft).",
+    "6. Routines stay as they are, unless the check shows one is useless: then ask.",
+    "When done, report in a few lines: what is in Keep now (name the pages), what you dropped as stale, and which decisions are the user's, asked one at a time with ask_user.",
     "",
     text,
   ].join("\n");

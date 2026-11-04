@@ -30,14 +30,3 @@
   .find-input { width: 140px; }
 }
 
-/* ---- the staff inside the settings dialog: three columns that fit it -------------------------------------- */
-.settings-tall .staff { grid-template-columns: minmax(150px, 190px) minmax(0, 1fr) minmax(180px, 230px); }
-.staff-log { text-align: left; }
-.staff-log > * { flex-shrink: 0; }
-@media (max-width: 760px) {
-  .settings-tall .staff { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-  .settings-tall .staff-tree, .settings-tall .staff-side { display: none; }
-}
-/* `.chat` is also the chat column's class: a staff message must not become one. */
-.staff-log .msg.chat { flex: none; width: auto; min-height: auto; align-items: stretch; }
-.staff-log .msg.chat.mine { align-items: stretch; }

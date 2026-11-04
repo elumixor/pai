@@ -30,7 +30,7 @@ class Auth {
   error = $state<string | null>(null);
   config = $state<AuthConfig>({ clerkPublishableKey: null, keepUrl: null });
   /** Who is signed in, as the sidebar's account row shows them; a token link has nobody. */
-  user = $state<{ name: string; avatar?: string } | null>(null);
+  user = $state<{ name: string; fullName: string; email?: string; avatar?: string } | null>(null);
   readonly #token = storedToken();
   #clerk: Clerk | null = null;
   #ready: Promise<void> | null = null;
@@ -60,7 +60,8 @@ class Auth {
     this.#clerk = clerk;
     const who = () => {
       const u = clerk.user;
-      this.user = u ? { name: u.firstName || u.fullName || u.primaryEmailAddress?.emailAddress || "You", avatar: u.imageUrl || undefined } : null;
+      const email = u?.primaryEmailAddress?.emailAddress;
+      this.user = u ? { name: u.firstName || u.fullName || email || "You", fullName: u.fullName || u.firstName || email || "You", email, avatar: u.imageUrl || undefined } : null;
     };
     this.signedIn = Boolean(clerk.session);
     who();

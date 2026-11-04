@@ -295,11 +295,10 @@ export function staffTools(me: string | undefined) {
       tool(
         isPai ? "create_agent" : "spawn_subagent",
         isPai
-          ? "Create an agent. standing: owns an area (more than one task or a routine). sub: one bounded job, reports once and closes. service: answers requests (no tasks). The brief is its CLAUDE.md: goal, context, voice, rules, what done means. task is the first job, sent right away."
+          ? "Start a worker for one bounded job: it writes its results to Keep pages, reports once and closes. The brief is its CLAUDE.md: goal, context, voice, rules, what done means. task is the first job."
           : "Start a sub-agent for one bounded job ('screen these 12 profiles'). It gets at most your tools, reports back to you once and closes.",
         {
           name: z.string().describe("short display name: 'Hiring', 'Travel', 'Screener'"),
-          ...(isPai ? { kind: z.enum(["standing", "sub", "service"]) } : {}),
           brief: z.string(),
           task: z.string().optional().describe("the first job"),
           tools: z.array(z.string()).optional().describe("What it may use, by capability: gmail, linkedin, telegram, notion, drive, browser, calendar, balance. Omit for all of yours."),
@@ -309,9 +308,9 @@ export function staffTools(me: string | undefined) {
           turn_minutes: z.number().optional().describe("how long one turn may run (default 20); up to 90 for a long read-through"),
           task_id: z.number().optional(),
         },
-        guard((a: { name: string; kind?: "standing" | "sub" | "service"; brief: string; task?: string; tools?: string[]; model?: string; project?: string; turns_per_day?: number; turn_minutes?: number; task_id?: number }) => {
+        guard((a: { name: string; brief: string; task?: string; tools?: string[]; model?: string; project?: string; turns_per_day?: number; turn_minutes?: number; task_id?: number }) => {
           const created = agents.create(
-            { name: a.name, kind: isPai ? (a.kind ?? "standing") : "sub", parent: isPai && a.kind !== "sub" ? agents.PAI : self, brief: a.brief, tools: a.tools, model: a.model, project: a.project, budget: a.turns_per_day || a.turn_minutes ? { ...(a.turns_per_day ? { turnsPerDay: a.turns_per_day } : {}), ...(a.turn_minutes ? { turnMinutes: Math.min(90, a.turn_minutes) } : {}) } : undefined },
+            { name: a.name, kind: "sub", parent: self, brief: a.brief, tools: a.tools, model: a.model, project: a.project, budget: a.turns_per_day || a.turn_minutes ? { ...(a.turns_per_day ? { turnsPerDay: a.turns_per_day } : {}), ...(a.turn_minutes ? { turnMinutes: Math.min(90, a.turn_minutes) } : {}) } : undefined },
             self,
           );
           if (a.task?.trim()) agents.message(created.slug, a.task, { from: self, kind: "delegate", taskId: a.task_id });

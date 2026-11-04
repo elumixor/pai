@@ -3,7 +3,6 @@ import { track } from "./progress.svelte";
 import type {
   Agent,
   TrashedThread,
-  AgentInstructions,
   Ask,
   AuditEntry,
   ConnectorDetail,
@@ -79,8 +78,6 @@ export const api = {
   pai: () => get<{ session: SessionSummary; thread: number | null; lastRotation: unknown }>("/pai"),
   sendPai: (text: string, images: readonly Upload[] = []) => send<SessionSummary>("/pai", { text, images }),
   agents: () => get<Agent[]>("/agents"),
-  agent: (slug: string) => get<Agent & { children: Agent[]; tasks: TaskItem[] }>(`/agents/${slug}`),
-  agentInstructions: (slug: string) => get<AgentInstructions>(`/agents/${slug}/instructions`),
   messageAgent: (slug: string, text: string, taskId?: number, images: readonly Upload[] = []) => send<LogMessage>(`/agents/${slug}/message`, { text, taskId, images }),
   /** The trash: threads deleted, newest first, and how many days they wait there before going for good. */
   trash: () => get<{ items: TrashedThread[]; days: number }>("/sessions/trash", true),
@@ -90,7 +87,6 @@ export const api = {
   /** Puts threads under a session, an agent (`agent:<slug>`) or at the top (`null`). */
   moveThreads: (ids: readonly string[], parent: string | null) => send<{ moved: string[] }>("/sessions/move", { ids, parent }),
   configureAgent: (slug: string, changes: { bubble?: boolean; name?: string; parent?: string }) => send(`/agents/${slug}`, changes, "PATCH"),
-  closeAgent: (slug: string) => send(`/agents/${slug}/close`, {}),
   messages: (agent: string, options: { before?: number; limit?: number; task?: number } = {}) =>
     get<LogMessage[]>(`/messages?${options.task ? `task=${options.task}` : `agent=${q(agent)}`}&limit=${options.limit ?? 100}${options.before ? `&before=${options.before}` : ""}`),
   /** The newest rows of the given kinds, whoever they are between: what the bell lists. */

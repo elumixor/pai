@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  const SECTION_IDS = ["appearance", "usage", "shortcuts", "account", "snapshot", "connectors", "automations", "context", "agents", "spend"] as const;
+  const SECTION_IDS = ["appearance", "usage", "shortcuts", "account", "snapshot", "connectors", "automations", "context", "spend"] as const;
   export type Section = (typeof SECTION_IDS)[number];
   export const isSection = (id: string): id is Section => (SECTION_IDS as readonly string[]).includes(id);
 
@@ -19,7 +19,7 @@
 <script lang="ts">
   import { PALETTES, type Palette, type ThemeKind, type ThemeMode } from "@desk/core";
   import { SettingsDialog, type SettingsSection } from "@desk/core/settings";
-  import { Archive, BookOpen, Bot, Clock, Download, Gauge, Keyboard, LogOut, Monitor, Moon, Palette as PaletteIcon, Plug, Sun, Upload, User, Wallet } from "lucide-svelte";
+  import { Archive, BookOpen, Clock, Download, Gauge, Keyboard, LogOut, Monitor, Moon, Palette as PaletteIcon, Plug, Sun, Upload, User, Wallet } from "lucide-svelte";
   import { api } from "../api";
   import { auth } from "../auth.svelte";
   import { desk } from "../desk.svelte";
@@ -30,12 +30,10 @@
   import Routines from "./Routines.svelte";
   import SettingsBlock from "./SettingsBlock.svelte";
   import Spend from "./Spend.svelte";
-  import Staff from "./Staff.svelte";
 
   /**
    * The suite's settings dialog (`@desk/core/settings`, Keep's too): how this client looks, which rings it shows, the
-   * keys, the account, the snapshot, then the pages about the daemon itself: its connectors, routines, context, staff
-   * and spend.
+   * keys, the account, the snapshot, then the pages about the daemon itself: its connectors, routines, context and spend.
    */
   let { open = $bindable(false), active = $bindable<Section>("appearance"), onclose }: { open?: boolean; active?: Section; onclose?: () => void } = $props();
 
@@ -48,7 +46,6 @@
     { id: "connectors", label: "Connectors", icon: Plug, keywords: "modules capabilities telegram email gmail linkedin whatsapp browser signed in" },
     { id: "automations", label: "Routines", icon: Clock, keywords: "automations cron events triggers" },
     { id: "context", label: "Context", icon: BookOpen, keywords: "instructions memories skills tools prompt" },
-    { id: "agents", label: "Agents", icon: Bot, keywords: "staff team rename close bubble" },
     { id: "spend", label: "Spend", icon: Wallet, keywords: "cost money tokens usage price" },
   ];
   const MODES: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
@@ -152,11 +149,25 @@
       </SettingsBlock>
     {:else if entry.id === "account"}
       <SettingsBlock title="Account">
-        <p class="m-0 text-[13px]"><span class="text-ink-45">Daemon</span> <span class="font-mono text-[12px]">{desk.hostname || location.host}</span></p>
+        {#if auth.user}
+          <div class="flex items-center gap-3">
+            {#if auth.user.avatar}
+              <img src={auth.user.avatar} alt="" class="size-9 shrink-0 rounded-full" />
+            {:else}
+              <span class="grid size-9 shrink-0 place-items-center rounded-full bg-ink-10 text-[14px] font-semibold text-ink-70">{auth.user.fullName.slice(0, 1).toUpperCase()}</span>
+            {/if}
+            <div class="min-w-0">
+              <p class="m-0 truncate text-[13px] font-medium">{auth.user.fullName}</p>
+              {#if auth.user.email}<p class="m-0 truncate text-[12px] text-ink-45">{auth.user.email}</p>{/if}
+            </div>
+          </div>
+        {:else}
+          <p class="m-0 text-[13px] text-ink-45">Opened with a token link, so no person is signed in.</p>
+        {/if}
         <button class={button} onclick={() => auth.signOut()}><LogOut size={16} /> Sign out</button>
       </SettingsBlock>
     {:else if entry.id === "snapshot"}
-      <SettingsBlock title="Snapshot" about="Memory, agents, tasks and routines as one markdown file. Importing hands it to pai.">
+      <SettingsBlock title="Snapshot" about="Memory, tasks, decisions and routines as one markdown file. Importing hands it to pai to fact-check and file in Keep.">
         <div class="flex flex-wrap items-center gap-2">
           <button class={button} onclick={exportSnapshot}><Download size={16} /> Export</button>
           <button class={button} onclick={() => picker?.click()}><Upload size={16} /> Import</button>
@@ -170,8 +181,6 @@
       <SettingsBlock title="Routines"><Routines /></SettingsBlock>
     {:else if entry.id === "context"}
       <SettingsBlock title="Context"><Context /></SettingsBlock>
-    {:else if entry.id === "agents"}
-      <SettingsBlock title="Agents"><div class="settings-tall flex min-w-0"><Staff /></div></SettingsBlock>
     {:else if entry.id === "spend"}
       <SettingsBlock title="Spend"><Spend /></SettingsBlock>
     {/if}

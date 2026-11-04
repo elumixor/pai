@@ -1,7 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { api } from "../api";
-  import { desk } from "../desk.svelte";
   import type { Routine, RoutineAction, RoutineEvent, RoutineFields } from "../types";
   import ConfirmButton from "../ui/ConfirmButton.svelte";
   import Segmented from "../ui/Segmented.svelte";
@@ -22,8 +21,8 @@
   let { routine, catalog, onclose }: { routine: Routine | null; catalog: readonly RoutineEvent[]; onclose: () => void } = $props();
   const initial = untrack(() => routine);
   const TRIGGERS: readonly { value: Trigger; label: string }[] = [{ value: "event", label: "Event" }, { value: "schedule", label: "Schedule" }];
-  const OFFERED: readonly RoutineAction[] = ["notify", "turn", "wake", "triage"];
-  const ACTIONS = [...OFFERED, ...(initial?.action === "task" ? (["task"] as const) : [])].map((value) => ({ value, label: ACTION_LABELS[value] }));
+  const OFFERED: readonly RoutineAction[] = ["notify", "turn", "triage"];
+  const ACTIONS = [...new Set<RoutineAction>([...OFFERED, ...(initial ? [initial.action] : [])])].map((value) => ({ value, label: ACTION_LABELS[value] }));
   const SAYS_SOMETHING: readonly RoutineAction[] = ["notify", "turn", "wake", "task"];
 
   let sheet = $state<Sheet>();
@@ -33,7 +32,6 @@
   let schedule = $state(initial?.schedule ?? "");
   let filter = $state(initial?.filter ?? "");
   let action = $state<RoutineAction>(initial?.action ?? "notify");
-  let agent = $state(initial?.agent ?? "");
   let template = $state(initial?.template ?? "");
   let errors = $state<Partial<Record<ErrorSlot, string>>>({});
   let busy = $state(false);
@@ -41,9 +39,8 @@
   /** What the daemon holds, so committing an untouched field sends nothing. */
   const saved: Record<TextField, string> = { name: initial?.name ?? "", schedule: initial?.schedule ?? "", filter: initial?.filter ?? "", template: initial?.template ?? "" };
 
-  const agents = $derived(desk.agents.filter((a) => a.status !== "closed" || a.slug === agent));
   const preview = $derived(describeSchedule(schedule));
-  const valid = $derived(Boolean(name.trim()) && Boolean(trigger === "event" ? event : schedule.trim()) && (action !== "wake" || Boolean(agent)));
+  const valid = $derived(Boolean(name.trim()) && Boolean(trigger === "event" ? event : schedule.trim()));
 
   async function patch(slot: ErrorSlot, changes: RoutineFields) {
     if (!initial) return true;
@@ -77,13 +74,7 @@
 
   function chooseAction(next: RoutineAction) {
     action = next;
-    // A wake with no agent would be refused; it goes out once the agent is chosen.
-    if (next !== "wake" || agent) void patch("action", next === "wake" ? { action: next, agent } : { action: next });
-  }
-
-  function chooseAgent(slug: string) {
-    agent = slug;
-    if (slug) void patch("action", { action, agent: slug });
+    void patch("action", { action: next });
   }
 
   async function create() {
@@ -93,7 +84,6 @@
       action,
       template: template.trim(),
       ...(trigger === "event" ? { event, filter: filter.trim() } : { schedule: schedule.trim() }),
-      ...(action === "wake" ? { agent } : {}),
     });
     busy = false;
     errors = { ...errors, form: result.error };
@@ -159,12 +149,6 @@
 
     <Field label="Action" group error={errors.action}>
       <Segmented options={ACTIONS} value={action} label="Action" onchange={chooseAction} />
-      {#if action === "wake"}
-        <select class={INPUT} aria-label="Agent" value={agent} onchange={(e) => chooseAgent(e.currentTarget.value)}>
-          <option value="" disabled>Choose an agent</option>
-          {#each agents as a (a.slug)}<option value={a.slug}>{a.name}</option>{/each}
-        </select>
-      {/if}
     </Field>
 
     {#if SAYS_SOMETHING.includes(action)}
