@@ -90,6 +90,13 @@ export function hostFor(name: string, use: <T>(other: string) => T): Host {
     problems: problems(name),
     record: ({ action, text, by, link }) => void event(by ?? "pai", action, text, { meta: link ? { link } : {} }),
     archive: ({ source, id, title, body, at }) => put(source, id, title, body, at),
+    // Imported here: sessions reach the connectors through the loader, and configuration is frozen at import.
+    startThread: async ({ title, text }) => {
+      const { spawnTask } = await import("../domain/sessions.ts");
+      const session = spawnTask({ title, origin: "general" });
+      session.send(text);
+      return { id: session.id };
+    },
     complete: ({ system, prompt, maxTokens, what }) => smallModel.complete(system, prompt, maxTokens, `${name}: ${what}`),
   };
 }

@@ -330,7 +330,8 @@ export async function handle(req: Request): Promise<Response> {
       const action = external.action(connectorAction[1], connectorAction[2]);
       if (!action?.run) return json({ error: "no such action" }, 404);
       try {
-        return json({ message: (await action.run()) ?? "" });
+        const outcome = (await action.run()) ?? {};
+        return json(typeof outcome === "string" ? { message: outcome } : { message: outcome.message ?? "", thread: outcome.thread });
       } catch (err) {
         return json({ error: (err as Error).message }, 400);
       }

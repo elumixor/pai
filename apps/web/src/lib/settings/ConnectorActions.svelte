@@ -1,10 +1,11 @@
 <script lang="ts">
   import { api } from "../api";
+  import { navigate } from "../router.svelte";
   import type { ConnectorAction, ConnectorDetail } from "../types";
   import ConfirmButton from "../ui/ConfirmButton.svelte";
   import { BLOCK_TITLE, BUTTON, ERROR } from "./controls";
 
-  /** What a connector offers: a page opened in a new tab, or something it runs here, answering with a line. */
+  /** What a connector offers: a page opened in a new tab, or something it runs here, answering with a line or a thread to go to. */
   let { name, actions, onupdate }: { name: string; actions: readonly ConnectorAction[]; onupdate: (fresh: ConnectorDetail) => void } = $props();
   const usable = $derived(actions.filter((a) => a.url || a.runnable));
   let running = $state<string | undefined>();
@@ -21,6 +22,7 @@
     running = undefined;
     error = result.error ?? "";
     message = result.data?.message ?? "";
+    if (result.data?.thread) return navigate({ name: "thread", param: result.data.thread });
     if (!result.error) await api.connector(name, true).then(onupdate, (e: Error) => (error = e.message));
   }
 </script>

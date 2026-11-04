@@ -42,10 +42,10 @@ default-exports an instance of a class extending `BaseConnector` from `@desk/con
 `pai.config.local.ts` (not committed) overrides keys, a path as `repo` while working on them. `src/connectors/source.ts` makes `modules/`
 (gitignored) that repository: one clone with its dependencies at the root, or a link to a checkout. A clone is built in `modules.next` and swapped in, so a failure leaves
 what was there, and every self-update pulls it. `src/connectors/loader.ts` imports the named ones, checks each with `problemsOf`, calls `attach(host)`, starts
-them after what each `requires`; `restart(name)` applies a settings change without a daemon restart. `src/connectors/host.ts` is the `Host` each is handed:
+them after what each `requires`; `restart(name)` applies a settings change without a daemon restart, what `requires` it restarting too. `src/connectors/host.ts` is the `Host` each is handed:
 settings (`setting()`), its store (kv `module:<name>:…`), pai's db, the bus (`emit`), `use(name)` for another
 connector's `api`, `http` (`/m/<name>/` and the public url), Google OAuth (`oauth`, the one `/auth/google/callback`),
-`problems` (one task per title), `record` (a `sent` row in the log) and `archive` (recall). Its `log` also feeds a 200-line ring per connector
+`problems` (one task per title), `record` (a `sent` row in the log), `archive` (recall) and `startThread` (a conversation an action hands work to). Its `log` also feeds a 200-line ring per connector
 (`src/connectors/logs.ts`). Its data dir stays `data/modules/<name>/`. Data and kv are keyed by name, so nothing about the repository's layout touches them.
 
 A connector's `tools` become one in-process MCP server each (`server`, default its name; the

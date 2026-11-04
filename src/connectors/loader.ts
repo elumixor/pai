@@ -159,14 +159,22 @@ export async function stopAll() {
   for (const l of all()) if (isLive(l) && l.started) await stopOne(l);
 }
 
-/** Applies what changed in its settings: it stops if it was running and starts again if it is still on. */
+async function restartOne(name: string, step: (l: Live) => Promise<void>) {
+  const l = loaded.get(name);
+  if (isLive(l)) await step(l);
+}
+
+/** Applies what changed in its settings: it stops if it was running and starts again if it is still on, and what builds on it with it. */
 export async function restart(name: string) {
-  const before = loaded.get(name);
-  if (!isLive(before)) return;
-  loaded.set(name, { ...before, error: undefined });
-  if (before.started) await stopOne(loaded.get(name) as Live);
-  const after = loaded.get(name) as Live;
-  if (isEnabled(after)) await startOne(after);
+  if (!isLive(loaded.get(name))) return;
+  const above = all().filter((l) => l.connector?.requires?.includes(name)).map((l) => l.name);
+  for (const n of [...above, name]) await restartOne(n, async (l) => {
+    loaded.set(n, { ...l, error: undefined });
+    if (l.started) await stopOne(loaded.get(n) as Live);
+  });
+  for (const n of [name, ...above]) await restartOne(n, async (l) => {
+    if (isEnabled(l)) await startOne(l);
+  });
 }
 
 /** The status of one connector, whatever state it is in: one that failed to load or to answer is broken. */
