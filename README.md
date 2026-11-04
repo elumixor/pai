@@ -74,17 +74,10 @@ address and the rest of the host are dev's; see its README.
 
 ## Modules, automations, context
 
-The dashboard (⌘2 in the client) is where pai is put together. **Modules** are what it is made
-of — the Telegram bot, your own Telegram account, the browser, memory, tasks, LinkedIn, the
-browser — each with the tools it gives sessions, the paragraph it adds
-to the prompt, the events it emits and its switches. **Automations** are `on <event> →
-<action>` rules: notify you on Telegram, open a conversation with the text, or start a task in a
-project — the LinkedIn module's `linkedin.message` into a notification is the two-click case.
-**Projects** are repositories, or *contexts*: a directory with a `CLAUDE.md` for its voice and
-rules of its own, for work that has no code — travel, hiring. **Context**
-lists everything a session is given (instructions, memory, skills, tools) with which surfaces
-see it — pai's main, task and code sessions, or a `claude` started in a terminal — and edits it
-in place.
+Settings hold the rest. **Connectors** is a grid of what pai is signed in to; opening one shows its tools, the
+events it feeds pai, what it needs from you, and its logs. **Routines** run on an event or a schedule: notify
+you, ask pai, wake an agent, or triage. **Context** lists what a chat is given (instructions, memory, skills,
+tools) and edits it in place. Projects and their instructions are [dev](https://github.com/elumixor/desk-dev)'s.
 
 ## The same files on two machines
 

@@ -2,11 +2,11 @@
 
 Personal assistant that runs on a box (Hetzner) and is used from a browser (the web client at `/`),
 a Mac (`pai …`, the menu bar app) and from Telegram. The core here is the daemon: sessions (one Claude Code
-session each, over the Agent SDK), the HTTP API, the clients (web, CLI, the Telegram bot). The outside channels are **connectors**, each its own
-repository (`pai.config.ts`, see Connectors below): `desk-telegram` (the user's own account), `desk-email` (Gmail
-mailboxes), `desk-linkedin` (requires browser), `desk-whatsapp` (his own number over the WhatsApp Web protocol, linked
+session each, over the Agent SDK), the HTTP API, the clients (web, CLI, the Telegram bot). The outside channels are **connectors**, all in one
+repository, `elumixor/desk-connectors` (see Connectors below): `telegram` (the user's own account), `email` (Gmail
+mailboxes), `linkedin` (requires browser), `whatsapp` (his own number over the WhatsApp Web protocol, linked
 by QR — unofficial, so the risk is a ban on his number and it never sends in bulk; a send is read back out of the
-chat and answers `verified`/`unverified`/`not_sent`), and `desk-browser` (a capability: a signed-in headless browser on
+chat and answers `verified`/`unverified`/`not_sent`), and `browser` (a capability: a signed-in headless browser on
 the box, one session per site, logins captured from the Mac's Arc). pai is one chat (the
 orchestrator, `main.ts`): Telegram's pai topic, Paigram's bot chat, `pai dev say`. Its staff are agents
 (`agents.ts`): standing (own an area, own topic), sub (one job, reports once, closes), service (answers
@@ -37,28 +37,31 @@ the central sign-in, URNs).
 
 ## Connectors
 
-A connector is a repository implementing `@desk/connector` (`github:elumixor/desk-connector`, `~/dev/@desk/connector`,
-pinned by tag): its `index.ts` default-exports a `Connector` and it imports nothing of pai. pai is its host:
-`src/connectors/loader.ts` reads `pai.config.ts` (`connectors: { name: "github:elumixor/desk-<name>" }`; `pai.config.local.ts`,
-not committed, overrides with a path while working on one), clones each under `modules/<name>/` (gitignored) and runs
-`bun install` there (a checkout from the old module system, its `node_modules` linked into pai's, is cleared first),
-checks the export with `problemsOf`, starts them after what each `requires`, and pulls them on every self-update (onto
-the configured remote, so a renamed repo is followed). `src/connectors/host.ts` is the `Host` each one is handed:
+A connector is a directory `connectors/<name>/` of `elumixor/desk-connectors` (`~/dev/@desk/connectors`): its `index.ts`
+default-exports an instance of a class extending `BaseConnector` from `@desk/connector` (`github:elumixor/desk-connector`,
+`~/dev/@desk/connector`, pinned by tag), and it imports nothing of pai. pai is its host. `pai.config.ts` is `{ repo, connectors: [names] }`;
+`pai.config.local.ts` (not committed) overrides keys, a path as `repo` while working on them. `src/connectors/source.ts` makes `modules/`
+(gitignored) that repository: one clone with its dependencies at the root, or a link to a checkout. A clone is built in `modules.next` and swapped in, so a failure leaves
+what was there, and every self-update pulls it. `src/connectors/loader.ts` imports the named ones, checks each with `problemsOf`, calls `attach(host)`, starts
+them after what each `requires`; `restart(name)` applies a settings change without a daemon restart. `src/connectors/host.ts` is the `Host` each is handed:
 settings (`setting()`), its store (kv `module:<name>:…`), pai's db, the bus (`emit`), `use(name)` for another
 connector's `api`, `http` (`/m/<name>/` and the public url), Google OAuth (`oauth`, the one `/auth/google/callback`),
-`problems` (one task per title), `record` (a `sent` row in the log) and `archive` (recall). Its data dir stays
-`data/modules/<name>/`. A connector's `tools` become one in-process MCP server each (`server`, default its name; the
+`problems` (one task per title), `record` (a `sent` row in the log) and `archive` (recall). Its `log` also feeds a 200-line ring per connector
+(`src/connectors/logs.ts`). Its data dir stays `data/modules/<name>/`. Data and kv are keyed by name, so nothing about the repository's layout touches them.
+
+A connector's `tools` become one in-process MCP server each (`server`, default its name; the
 calling agent passed as `call.agent`) for chat and code sessions, its `instructions` a prompt paragraph, its `routes`
 `/m/<name>/…`, `mounts` other prefixes (`/gmail/`), `ui` `/m/<name>/ui/`, its `cli` `pai <name> …` (run on the box;
-a Mac forwards over ssh unless `cliHere`). `kind: "connector"` must answer `status` (signed in / signed out / broken
-with the link that fixes it) and may `send` (`verified | unverified | not_sent`); `GET /connectors` lists them all in that
-shape (a capability without a status answers with its health), `GET /modules` with the built-in pieces, `pai modules [update]` lists or pulls them. pai's own code reads a
+a Mac forwards over ssh unless `cliHere`; a command line has no host attached). Every connector says `check()` (signed in / signed out / broken
+with the link that fixes it; `status()` answers it unless turned off), and may `send` (`verified | unverified | not_sent`) and offer `actions()`.
+
+`GET /connectors` lists them (title, icon as a data URI, `needsAction`, status), `GET /connectors/:name` adds tools with descriptions, events with when each last fired,
+actions, accounts, settings with secrets masked, open problems, logs; `PATCH /connectors/:name/settings`, `POST /connectors/:name/actions/:id`, `POST /connectors/update`.
+`pai connectors [update|restart]` is the same from a terminal. pai's own code reads a
 connector's `api` with `connectors.api(name)` (email's `addresses`, telegram's `transcribe`). The Telegram bot pai is
 talked to through is pai's own client (`src/clients/telegram.ts`), not a connector; `/m/telegram/info` is its public
-face for Paigram. Connector repos: `index.ts`, a one-paragraph `CLAUDE.md`, `README.md`, tests next to the code
-(`@desk/connector/testing` is an in-memory host), `tsconfig.json`/`biome.json` extending `@desk/connector`'s.
-pai's `biome.json` is lint only (formatter off): `bun run lint`.
-Self-update stays in core (`src/domain/update.ts`: `POST /update` + the auto-update tick, then every connector clone pulled), so a connector that fails to load never leaves the box unable to update.
+face for Paigram. pai's `biome.json` is lint only (formatter off): `bun run lint`.
+Self-update stays in core (`src/domain/update.ts`: `POST /update` + the auto-update tick, then the connectors pulled), so a connector that fails to load never leaves the box unable to update.
 
 ## Feedback loop
 
@@ -115,7 +118,7 @@ project's `CLAUDE.md`.
 Google OAuth: while the consent screen's publishing status is **Testing**, every refresh token Google
 issues expires after 7 days, so the mailboxes die weekly whatever the code does — publishing the app
 (unverified Production still works: a warning screen and a 100-user cap) is the only fix, and it is a
-click in the Cloud console, not code. The email connector (`desk-email`) asks every mailbox for its grant at start and
+click in the Cloud console, not code. The email connector asks every mailbox for its grant at start and
 daily, and an expired or short grant becomes a `waiting_user` task with the reconnect link.
 
 A connector's grant is fixed at the moment it was connected: an account connected before a connector
@@ -144,7 +147,7 @@ reconnect every account, so say so in the same breath as shipping it.
 - `src/domain/browser.ts` — one Playwright MCP server per daemon over HTTP (pinned version, `--browser chromium`, its build installed at start); sessions connect instead of spawning `npx`.
   The install check costs ~1.6s per start when the browser is there, and needs the network when it is not: a cold box with no network cannot start the browser.
 - `src/domain/prompts.ts` — instructions appended to the Claude Code system prompt, per session kind: the general part, the role, then `# Instructions (from <connector>)` per connector that adds a paragraph.
-- `src/domain/projects.ts` — the projects sessions run in: the workspace's contexts plus `ProjectSource`s (dev's repos under `~/dev`, `dev.ts`, refreshed every 5 min). `src/domain/held.ts` — threads held outside the daemon (a terminal's) that a message still reaches (`mirror.ts`).
+- `src/domain/projects.ts` — the projects sessions run in: `ProjectSource`s (dev's repos under `~/dev`, `dev.ts`, refreshed every 5 min). Kinds are `repo | folder`. `src/domain/held.ts` — threads held outside the daemon (a terminal's) that a message still reaches (`mirror.ts`).
 - `src/domain/dev-tasks.ts` — Keep → dev: a `keep.page.created|changed` for a task whose effective properties have a dev `project` and no `session` gets one dev session (`start_session` over dev's MCP), its `dev:session/<id>` written back with Keep's `edit_page` (a page without a session property gets an own `dev-session` one via `define`; a page holding the project as its own value is the project, not a task) (`callKeep` in `keep.ts`, one key `PAI_KEEP_KEY`, calls tagged `x-keep-client`), one event row; claimed by URN in `dev_tasks`, so never twice. Every minute the status select follows the session (In progress / In review, when the database has them). Off with `PAI_DEV_TASKS=0`.
 - `src/domain/people-notify.ts` — People → pai: `POST /people/notify` (HMAC `PAI_PEOPLE_WEBHOOK_SECRET`) routes each notification by client tag, then linked page (`keep-links.ts`), then Jev: existing thread, new child thread, or general.
 - `src/domain/mirror.ts` — terminal conversations (Mac, box, dev-run `claude -p`) followed through their transcripts and told to the bus as threads; a message for one goes to dev's channel, else the daemon resumes it. `src/domain/release-check.ts` — a `v*` tag older than 15 min with the box behind it becomes one task.
@@ -165,22 +168,22 @@ reconnect every account, so say so in the same breath as shipping it.
 - `src/domain/models.ts` — Claude models from the Models API (daily, `data/models.json`); a family name (`opus`, `sonnet`, `haiku`, `fable`) resolves to its newest id for every session, triage and the picker (`GET /models`). Claude Code's own aliases lag the SDK.
 - `src/domain/credits.ts` — small jobs (summaries, headlines) on the Max plan's monthly API credits via `PAI_ANTHROPIC_API_KEY` (Console org ATMA), falling back to the gateway when they run out. Never name it `ANTHROPIC_API_KEY`: Claude Code would bill every session to it.
 - Sessions compact at `PAI_COMPACT_WINDOW` tokens (200k, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`): a 1M context re-read on every tool step made long-lived agents cost ~$300/day at API prices. pai rotates at 75% of it.
-- `src/modules/index.ts` — the registry of the built-in pieces (browser, threads): each = tools + a prompt paragraph + bus events + settings, described for the dashboard (`GET /modules`, one list with `external: true` on the connectors). `src/connectors/` — the connector host and loader (above); `PAI_MODULES_CONFIG`/`PAI_MODULES_DIR` point a scratch daemon at connectors of its own. The box's ssh key is on the GitHub account, so private connector repos clone. Mailboxes are the `email` connector: MCP server `gmail`, `gmail_*` tools, table `gmail_accounts`, `/gmail/connect?label=<name>`; its README holds the OAuth and scope rules.
+- `src/domain/event-catalog.ts` — what a routine can be triggered by, as people name it (`GET /routines/events`): connector events plus a curated core list. Not `session.turn_end` or `session.error`: a routine answering those with a turn would feed itself, and `automations.ts` caps a routine's event-fired turns at 20 an hour for the same reason. `src/connectors/` — the connector host and loader (above). `PAI_MODULES_CONFIG`/`PAI_MODULES_DIR` point a scratch daemon at connectors of its own. The box's ssh key is on the GitHub account, so the private repository clones. Mailboxes are the `email` connector: MCP server `gmail`, `gmail_*` tools, table `gmail_accounts`, `/gmail/connect?label=<name>`; its README holds the OAuth and scope rules.
 - `src/domain/triage.ts` — 5-min batches, Jev (decision model) routes. A group message is the one thing it may not delegate on its own judgement (`delegatable`): a chat post reaches an agent only when he wrote it, Telegram says he was addressed in it, or the agent's brief names that chat by title — otherwise it stays an event in the log. A small model will tie anything to a brief that mentions chats at all, and his groups are personal, so a misroute has to cost nothing.
 - An agent's status is **derived, not written**: `settle()` runs every minute and both clears `working` when no live session of its own exists and marks `working` when one is busy, because a turn that never ends (the daemon restarted by the release that turn cut) and a turn the daemon never sent (one resumed after a restart) are the same lie in opposite directions. Thinking and tool calls on the bus say the same thing for a turn nothing woke.
 - `src/domain/limits.ts` — the account's own limit as it actually arrives: the turn's own reply text ("You've hit your session limit · resets 5:10pm (UTC)"). Shown as a message it reads as something pai said, and the work the turn was doing is lost — two agents had to be re-sent their briefs by hand on 19 October. So a turn ending this way is not a report: it becomes one quiet `rate_limited` event row, and the same turn is held (on disk, so a restart keeps it) and sent again a minute past the reset. pai's own turn holds his message instead and asks it again.
 - `src/domain/watch.ts` — what an observer does with what it found: one task per fault, its reason kept current, closed when the thing answers, and **reopened** when a flapping fault comes back, with the return counted in its notes. LinkedIn's fault came and went eleven times between 12 and 15 October and each episode opened its own row — nothing duplicated at any instant, eleven identical tasks all the same, and a watcher that floods is one he learns to scroll past. A task he dropped himself is never reopened.
 - `src/domain/browser-check.ts` — does the browser still work? Every connector reading a signed-in site and every session's browser tools go through the one Playwright MCP server, and nothing watched it. Both questions are ones that cannot be answered from inside it: does it answer a read made **now** (a dead server makes callers hang, not fail — `/inbox` returning nothing in 280s was this), and has it been dying under the sessions holding it (`mcpState()` counts the restarts). Its own timer, one task through `watch.ts`.
 - `src/domain/linkedin-check.ts` — does pai still see LinkedIn? Both edges are faults: a session that cannot read (not started, signed out, a failed or stopped poll) and one that reads but has heard nothing for longer than his own traffic ever goes quiet — from the inside those look the same, which is what the phantom sends were. One task, its reason current, closed when LinkedIn answers again; its own timer, outside the connector, because an observer sharing a loop with what it watches dies with it. A read it could not make says nothing at all.
-- `src/domain/snapshot.ts` — the state of things as one markdown document (MEMORY.md, each agent with its brief and STATE.md, open tasks, open asks, routines, project contexts): `GET /snapshot`, `pai snapshot [export [file]]`, settings › Snapshot › Export. `POST /snapshot {text}` / `pai snapshot import <file>` / Import hands it to pai as a turn with instructions to rebuild what is missing and change nothing else.
+- `src/domain/snapshot.ts` — the state of things as one markdown document (MEMORY.md, each agent with its brief and STATE.md, open tasks, open asks, routines): `GET /snapshot`, `pai snapshot [export [file]]`, settings › Snapshot › Export. `POST /snapshot {text}` / `pai snapshot import <file>` / Import hands it to pai as a turn with instructions to rebuild what is missing and change nothing else.
 - `src/domain/audit.ts` — the trail of outward tool calls (sends, writes, clicks in signed-in sites; a verb in the tool name, pai's own servers excluded) with full input and result; `GET /audit`, `pai audit`, the `audit` tool.
 - `src/domain/automations.ts` — `on <event> → notify | turn | task`, rows in the `automations` table, run from the bus; tasks capped at 6/h. `GET/POST/PATCH/DELETE /automations`.
 - `src/domain/drafts.ts` — an outbound message as a **card**, which is the approval. A draft used to be markdown in a chat row approved by typing "send", so changing a word meant copying the text out. Now an agent offers one (`offer_draft`: email with from/to/cc/subject/body, a Telegram or WhatsApp message, a LinkedIn reply, a post) and it becomes a row he edits in place, with Send and Discard on it. Two rules shape it: **what goes out is what the card holds when he presses Send** (the fields live in `drafts`, his last keystrokes ride along with the Send, and the wake reads them at that moment — never what the agent first wrote), and **the agent that offered it sends it**, through its own channel tool, so the read-back verification stays where it is and comes back onto the card as `verified` / `unverified` / `not_sent` (`draft_result`). A pending draft is a need, so the hand counts it; the chat row is updated in place (`messages.update`), so a client that only has the log is never shown the old words. **Two pending drafts of the same message cannot exist**: on 21 October pai and Job search each offered the identical Amin follow-up, and a Send on both would have put the same mail in a founder's inbox twice — so `offer_draft` refuses a clash (same channel and recipient, and either the same subject or a body ≥0.7 alike by word overlap) and **hands back the pending card's id**, which is what lets the caller report the collision instead of guessing. Its answer always lists what is already pending for that channel, because nothing else in an agent's tool set could tell it; and `withdraw_draft` lets an agent take back its own pending draft — a rule that can only be obeyed with a database write is not a rule but a trap.
 - `src/domain/attachments.ts` — attached images kept by hash next to the db (`GET /attachments/<name>`); a terminal gets them through its channel as `[image: <local path>]` lines, which the transcript turns back into images.
 - `src/domain/inventory.ts` — what each session kind reported at its start (tools, MCP servers and their status), in memory and in `data/inventory.json`. Its own module because both `context.ts` and `capabilities.ts` read it and must not import each other: configuration is frozen at import, so a cycle in this layer is a startup-order bug waiting for a different entry point.
 - `src/domain/capabilities.ts` — where an agent's tools list (capabilities) meets the MCP server names: the aliases (`browser` → `playwright`, `calendar` → Balance), `serverAllowed`, `narrowed` (a sub-agent against its parent), `unresolved` (declared, no server) and `unavailable` (offered but dead — denied or never signed in, each paired through the aliases with the live server that answers the same capability). `prompts.ts`'s `missingTools` turns both into one generated "# Tools you do not have" paragraph in every session; the context view says the same on the server's line. Generated, never a written list, so it cannot go stale.
-- `src/domain/context.ts` — what each session kind is given (instructions, memories, skills, tools) with the surfaces that see it (`GET /context`, `pai tools|skills|instructions|memories`, the dashboard, Paigram's settings). Tools come from the newest session init per kind (`noteInit`: the SDK's tool list and MCP server states), memories from `workspace/MEMORY.md` plus Claude Code's own `~/.claude/projects/<cwd>/memory/`.
-- Projects are repos under `devRoot` or **contexts**: `workspace/projects/<slug>/` with a `CLAUDE.md` (voice, rules, what to remember about it). `POST /projects {name, about}` creates one; a task in it runs with that directory as cwd.
+- `src/domain/context.ts` — what chats are given: instructions (`Persona`, `Global`, code sections, connector paragraphs), memories (`Memory`, `memory/<file>`), skills (workspace over `~/.claude/skills`), tools (`GET /context`, `pai tools|skills|instructions|memories`, settings › Context, Paigram's settings; Paigram decodes `surfaces`, always `["chat"]`). Project instructions and skills are dev's, not listed here. Tools come from the newest session init per kind (`noteInit`: the SDK's tool list and MCP server states), memories from `workspace/MEMORY.md` plus Claude Code's own `~/.claude/projects/<cwd>/memory/`. `connector` marks what the connector sheet shows instead.
+- Projects are repos dev knows, under `devRoot`; pai has none of its own.
 - `infra/` (Hetzner provision, cloud-init, bootstrap, firewall, borg) and `menubar/` are dev's: `dev infra`, `dev menubar`.
 - `workspace/` — the assistant's cwd; `CLAUDE.md` there is the persona, `inbox/` gets attachments.
 
@@ -204,8 +207,7 @@ falls back to `pai update`, which builds the daemon and the web client on the bo
 ## Tests
 
 `bun run test` runs every `*.test.ts` in its own process (`scripts/test.ts`), because
-configuration is frozen at import. Unit suites cover the protocol, memory and terminals (the connectors' suites run
-too, under `modules/`); `test/api.e2e.test.ts` boots the real server on a scratch database and drives it
+configuration is frozen at import. Unit suites cover the protocol, memory and terminals; `test/api.e2e.test.ts` boots the real server on a scratch database and drives it
 over HTTP, including a websocket terminal. No test spends model tokens.
 
 ## Not done yet
@@ -214,5 +216,5 @@ over HTTP, including a websocket terminal. No test spends model tokens.
 - Concurrency is unbounded and there is no usage readout.
 - Project routing is explicit only — no `@project` prefix, no inference.
 - The Telegram fork is designed but not built.
-- Cloning a repository is dev's (`POST /projects` there); `projects.clone` here refuses.
+- Cloning a repository is dev's (`POST /projects` there).
 - Documents other than images are saved to `inbox/` and mentioned by path only.

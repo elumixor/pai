@@ -372,8 +372,13 @@ export async function handle(req: Request): Promise<Response> {
       const id = Number(automationPath[1]);
       if (req.method === "DELETE") return json({ removed: automations.remove(id) });
       if (req.method === "PATCH") {
-        const updated = automations.update(id, await body<Partial<automations.AutomationInput>>(req));
-        return updated ? json(updated) : json({ error: "no such automation" }, 404);
+        try {
+          const updated = automations.update(id, await body<Partial<automations.AutomationInput>>(req));
+          return updated ? json(updated) : json({ error: "no such automation" }, 404);
+        } catch (err) {
+          if (err instanceof automations.RoutineError) return json({ error: err.message }, 400);
+          throw err;
+        }
       }
     }
 
