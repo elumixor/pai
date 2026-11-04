@@ -1,19 +1,21 @@
 <script lang="ts">
   import { CommandPalette, type PaletteItem } from "@desk/core/palette";
-  import { ArrowUpToLine, Hand, House, LogOut, PanelLeftClose, Plus, Settings } from "lucide-svelte";
+  import { ArrowUpToLine, Hand, House, Inbox as InboxIcon, LogOut, PanelLeftClose, Plus, Settings } from "lucide-svelte";
   import { auth } from "../auth.svelte";
   import { desk } from "../desk.svelte";
   import { href, navigate } from "../router.svelte";
   import MenuItem from "../ui/MenuItem.svelte";
   import Popover from "../ui/Popover.svelte";
   import Separator from "../ui/Separator.svelte";
+  import { inbox } from "../stores/inbox.svelte";
+  import Inbox from "./Inbox.svelte";
   import { mover } from "./move.svelte";
   import { SIDEBAR_COLLAPSE, selection, sidebar } from "./state.svelte";
   import { ancestors, type TreeNode, generalWaiting } from "./tree";
   import TreeItem from "./TreeItem.svelte";
 
   /**
-   * The sidebar, Keep's: General at the top where Keep has its workspace, every thread under it as a tree, the account
+   * The sidebar, Keep's: General at the top where Keep has its workspace, every thread under it as a tree, its inbox and the account
    * at the bottom. Resized by its edge, dragged shut past a point.
    */
   let { roots, active, onsettings }: { roots: readonly TreeNode[]; active?: string; onsettings: () => void } = $props();
@@ -22,6 +24,8 @@
 
   let limit = $state(ROOT_BATCH);
   let accountOpen = $state(false);
+  let inboxOpen = $state(false);
+  inbox.start();
   const home = $derived(active === "pai");
   const waiting = $derived(generalWaiting(desk.agents, desk.sessions, desk.needs, desk.paiSession?.sessionId));
   const has = (of: TreeNode, id: string): boolean => of.id === id || of.children.some((c) => has(c, id));
@@ -158,6 +162,17 @@
   </div>
 
   <div class="space-y-px px-2 py-2">
+    <Popover bind:open={inboxOpen} width="w-96" block>
+      {#snippet trigger({ toggle })}
+        <button class={row} aria-expanded={inboxOpen} onclick={toggle}>
+          <InboxIcon size={16} /> Inbox
+          {#if inbox.unread}<span class="ml-auto rounded-full bg-accent px-1.5 text-[11px] leading-4 font-medium text-accent-ink" aria-label="{inbox.unread} unread">{inbox.unread > 99 ? "99+" : inbox.unread}</span>{/if}
+        </button>
+      {/snippet}
+      {#snippet children({ close })}
+        <Inbox onclose={close} />
+      {/snippet}
+    </Popover>
     <Popover bind:open={accountOpen} width="w-56" block>
       {#snippet trigger({ toggle })}
         <button class="{row} h-9" aria-label="Account" onclick={toggle}>
