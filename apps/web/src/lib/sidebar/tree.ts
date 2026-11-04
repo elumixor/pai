@@ -134,8 +134,9 @@ export function buildTree({ agents, sessions, needs, open, pai }: TreeInput): Tr
     if (holder) holder.children.push(node);
     else roots.push(node);
   }
-  // Agents first (they stand), each level newest first after them.
-  const order = (x: TreeNode, y: TreeNode) => Number(y.id.startsWith("agent:")) - Number(x.id.startsWith("agent:")) || y.lastActivity - x.lastActivity;
+  // Agents first (they stand), then what is running now, then the most recently worked on.
+  const order = (x: TreeNode, y: TreeNode) =>
+    Number(y.id.startsWith("agent:")) - Number(x.id.startsWith("agent:")) || Number(workingIn(y)) - Number(workingIn(x)) || y.lastActivity - x.lastActivity;
   const sort = (list: TreeNode[]) => {
     list.sort(order);
     for (const n of list) sort(n.children);

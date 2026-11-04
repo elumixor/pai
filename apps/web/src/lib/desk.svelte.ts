@@ -1,6 +1,6 @@
 import { api } from "./api";
 import { live } from "./stores/live.svelte";
-import type { Agent, LogMessage, Need, SessionSummary, TaskItem, Usage } from "./types";
+import type { Agent, LogMessage, Need, SessionSummary, TaskItem, TrashedThread, Usage } from "./types";
 
 export const PAI = "pai";
 
@@ -13,6 +13,9 @@ class Desk {
   agents = $state<Agent[]>([]);
   /** Every session the daemon ran lately, live or not, each once: the threads of the tree. */
   sessions = $state<SessionSummary[]>([]);
+  /** Threads in the trash (`null` until asked), and the days they wait there. */
+  trashed = $state<TrashedThread[] | null>(null);
+  trashDays = $state(30);
   /** Open tasks: what the tree and the desks show. */
   tasks = $state<TaskItem[]>([]);
   /** Every task by id, closed ones included, so `#20` in a message can say what it was. */
@@ -58,6 +61,7 @@ class Desk {
       api.needs().catch(() => this.needs),
       api.allTasks().catch(() => [] as TaskItem[]),
       this.refreshSessions(),
+      this.refreshTrash(),
     ]);
     this.agents = agents;
     this.tasks = tasks;
@@ -110,6 +114,42 @@ class Desk {
     const agentParent = target === null ? PAI : target.startsWith("agent:") ? target.slice("agent:".length) : null;
     if (agentParent) for (const slug of agents) if (slug !== agentParent) await api.configureAgent(slug, { parent: agentParent });
     await Promise.all([this.refreshSessions(), agents.length ? this.refreshAgents() : undefined]);
+  }
+
+  async refreshTrash() {
+    const found = await api.trash().catch(() => undefined);
+    if (!found) return;
+    this.trashed = found.items;
+    this.trashDays = found.days;
+  }
+
+  trashedOf = (id: string) => this.trashed?.find((t) => t.sessionId === id || t.shortId === id);
+
+  /** Moves tree rows to the trash: threads only (with what hangs under them), at once, then read back. */
+  async trash(ids: readonly string[]) {
+    const threads = ids.filter((id) => id.startsWith("thread:")).map((id) => id.slice("thread:".length));
+    if (!threads.length) return;
+    const gone = new Set(threads);
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const s of this.sessions) if (s.parent && gone.has(s.parent) && !gone.has(s.sessionId)) (gone.add(s.sessionId), (grew = true));
+    }
+    this.sessions = this.sessions.filter((s) => !gone.has(s.sessionId));
+    const sent = await api.trashThreads(threads);
+    if (sent.error) console.warn("[trash]", sent.error);
+    await Promise.all([this.refreshSessions(), this.refreshTrash()]);
+  }
+
+  async restore(ids: readonly string[]) {
+    this.trashed = this.trashed?.filter((t) => !ids.includes(t.sessionId)) ?? null;
+    await api.restoreThreads(ids);
+    await Promise.all([this.refreshSessions(), this.refreshTrash()]);
+  }
+
+  async purge(ids: readonly string[]) {
+    this.trashed = this.trashed?.filter((t) => !ids.includes(t.sessionId)) ?? null;
+    await api.purgeThreads(ids);
+    await this.refreshTrash();
   }
 
   /** A session's state as an event says it, before the next refresh brings the rest. */

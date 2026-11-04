@@ -2,6 +2,7 @@ import { auth } from "./auth.svelte";
 import { track } from "./progress.svelte";
 import type {
   Agent,
+  TrashedThread,
   AgentInstructions,
   Ask,
   AuditEntry,
@@ -81,6 +82,11 @@ export const api = {
   agent: (slug: string) => get<Agent & { children: Agent[]; tasks: TaskItem[] }>(`/agents/${slug}`),
   agentInstructions: (slug: string) => get<AgentInstructions>(`/agents/${slug}/instructions`),
   messageAgent: (slug: string, text: string, taskId?: number, images: readonly Upload[] = []) => send<LogMessage>(`/agents/${slug}/message`, { text, taskId, images }),
+  /** The trash: threads deleted, newest first, and how many days they wait there before going for good. */
+  trash: () => get<{ items: TrashedThread[]; days: number }>("/sessions/trash", true),
+  trashThreads: (ids: readonly string[]) => send<{ ids: string[] }>("/sessions/trash", { ids }),
+  restoreThreads: (ids: readonly string[]) => send<{ ids: string[] }>("/sessions/restore", { ids }),
+  purgeThreads: (ids: readonly string[]) => send<{ ids: string[] }>("/sessions/purge", { ids }),
   /** Puts threads under a session, an agent (`agent:<slug>`) or at the top (`null`). */
   moveThreads: (ids: readonly string[], parent: string | null) => send<{ moved: string[] }>("/sessions/move", { ids, parent }),
   configureAgent: (slug: string, changes: { bubble?: boolean; name?: string; parent?: string }) => send(`/agents/${slug}`, changes, "PATCH"),

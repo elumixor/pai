@@ -1,6 +1,7 @@
 <script lang="ts">
   import { CommandPalette, type PaletteItem } from "@desk/core/palette";
-  import { ArrowUpToLine, Hand, House, Inbox as InboxIcon, LogOut, PanelLeftClose, Plus, Settings } from "lucide-svelte";
+  import { TrashList } from "@desk/core/trash";
+  import { ArrowUpToLine, Code, Hand, MessageSquare, Trash2, House, Inbox as InboxIcon, LogOut, PanelLeftClose, Plus, Settings } from "lucide-svelte";
   import { auth } from "../auth.svelte";
   import { desk } from "../desk.svelte";
   import { href, navigate } from "../router.svelte";
@@ -21,6 +22,11 @@
   let { roots, active, onsettings }: { roots: readonly TreeNode[]; active?: string; onsettings: () => void } = $props();
 
   let accountOpen = $state(false);
+  let trashOpen = $state(false);
+  $effect(() => {
+    if (trashOpen) void desk.refreshTrash();
+  });
+  const trashItems = $derived(desk.trashed?.map((t) => ({ ...t, id: t.sessionId, title: t.title || t.shortId })) ?? null);
   let inboxOpen = $state(false);
   inbox.start();
   const home = $derived(active === "pai");
@@ -171,6 +177,24 @@
         {/snippet}
       </Popover>
     </div>
+    <Popover bind:open={trashOpen} width="w-80" align="end">
+      {#snippet trigger({ toggle })}
+        <button class="grid size-9 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink" aria-label="Trash" title="Trash" aria-expanded={trashOpen} onclick={toggle}>
+          <Trash2 size={17} />
+        </button>
+      {/snippet}
+      {#snippet children({ close })}
+        <TrashList
+          items={trashItems}
+          href={(item) => href({ name: "thread", param: item.id })}
+          onopen={(item) => { close(); navigate({ name: "thread", param: item.id }); }}
+          onrestore={(item) => void desk.restore([item.id])}
+          onpurge={(item) => void desk.purge([item.id])}
+        >
+          {#snippet lead(item)}{#if item.kind === "code"}<Code size={16} />{:else}<MessageSquare size={16} />{/if}{/snippet}
+        </TrashList>
+      {/snippet}
+    </Popover>
     <Popover bind:open={inboxOpen} width="w-96" align="end">
       {#snippet trigger({ toggle })}
         <button class="relative grid size-9 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink" aria-label={inbox.unread ? `Inbox, ${inbox.unread} unread` : "Inbox"} title="Inbox" aria-expanded={inboxOpen} onclick={toggle}>

@@ -451,3 +451,13 @@ export interface Settings {
   readonly effective: Record<string, string>;
   readonly overrides: Record<string, string>;
 }
+
+/** A thread in the trash. */
+export interface TrashedThread {
+  readonly sessionId: string;
+  readonly shortId: string;
+  readonly title: string;
+  readonly kind: string;
+  readonly project: string | null;
+  readonly deletedAt: number;
+}

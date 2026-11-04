@@ -6,7 +6,7 @@
       "name": "@pai/web",
       "dependencies": {
         "@clerk/clerk-js": "^6.26.0",
-        "@desk/core": "github:elumixor/desk-core#7e81727",
+        "@desk/core": "github:elumixor/desk-core#39cf74a",
         "lucide-svelte": "^1.0.1",
       },
       "devDependencies": {
@@ -33,7 +33,7 @@
 
     "@coinbase/wallet-sdk": ["@coinbase/wallet-sdk@4.3.7", "", { "dependencies": { "@noble/hashes": "^1.4.0", "clsx": "^1.2.1", "eventemitter3": "^5.0.1", "preact": "^10.24.2", "viem": "^2.27.2" } }, "sha512-z6e5XDw6EF06RqkeyEa+qD0dZ2ZbLci99vx3zwDY//XO8X7166tqKJrR2XlQnzVmtcUuJtCd5fCvr9Cu6zzX7w=="],
 
-    "@desk/core": ["@desk/core@github:elumixor/desk-core#7e81727", { "peerDependencies": { "@clerk/clerk-js": ">=6.26.0", "svelte": ">=5.0.0" }, "optionalPeers": ["svelte"] }, "elumixor-desk-core-7e81727"],
+    "@desk/core": ["@desk/core@github:elumixor/desk-core#39cf74a", { "peerDependencies": { "@clerk/clerk-js": ">=6.26.0", "svelte": ">=5.0.0" }, "optionalPeers": ["svelte"] }, "elumixor-desk-core-39cf74a"],
 
     "@jridgewell/gen-mapping": ["@jridgewell/gen-mapping@0.3.13", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA=="],
 

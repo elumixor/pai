@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { PanelLeftOpen } from "lucide-svelte";
+  import { TrashBanner } from "@desk/core/trash";
+  import { PanelLeftOpen, Trash2 } from "lucide-svelte";
   import { fly } from "svelte/transition";
   import { api } from "../api";
   import ChatView, { type ChatSpec } from "../chat/ChatView.svelte";
@@ -12,6 +13,7 @@
   import { ancestors, type TreeNode, threadTitle } from "../sidebar/tree";
   import type { Effort, Need, SessionSummary, Upload } from "../types";
   import Icon from "../ui/Icon.svelte";
+  import { menus } from "../ui/menu-state.svelte";
 
   /**
    * What the sidebar opened: General, an agent's chat, a thread, or a new thread (under the one it was started from).
@@ -49,6 +51,17 @@
     const label = find(roots, here)?.label ?? (route.name === "chat" ? (desk.bySlug(route.param ?? "")?.name ?? route.param) : (desk.threadOf(route.param ?? "") ? threadTitle(desk.threadOf(route.param ?? "")!) : "Thread"));
     return [general, ...way.map((id) => ({ id, label: find(roots, id)?.label ?? "…", href: crumbHref(id) })), { id: here, label: label ?? "", href: undefined }];
   });
+
+  // ---- the trash: the open thread can go there from the bar or its crumb, and says so while it is there ----------
+
+  const openThread = $derived(route.name === "thread" ? (desk.threadOf(route.param ?? "")?.sessionId ?? route.param) : undefined);
+  const trashedHere = $derived(openThread ? desk.trashedOf(openThread) : undefined);
+  const trashThread = (id: string) => void desk.trash([`thread:${id}`]);
+  function crumbMenu(event: MouseEvent, id: string) {
+    if (!id.startsWith("thread:") || desk.trashedOf(id.slice(7))) return;
+    event.preventDefault();
+    menus.openContext(event.clientX, event.clientY, [{ label: "Move to trash", icon: "trash", run: () => trashThread(id.slice(7)) }]);
+  }
 
   // ---- the chats -------------------------------------------------------------------------------------------------
 
@@ -155,14 +168,27 @@
       {#each crumbs as crumb, i (crumb.id)}
         {#if i}<span class="shrink-0 text-ink-20" aria-hidden="true">/</span>{/if}
         {#if crumb.href && i < crumbs.length - 1}
-          <a href={crumb.href} class="flex h-7 min-w-0 shrink items-center truncate rounded-sm px-1.5 text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink">{crumb.label}</a>
+          <a href={crumb.href} oncontextmenu={(e) => crumbMenu(e, crumb.id)} class="flex h-7 min-w-0 shrink items-center truncate rounded-sm px-1.5 text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink">{crumb.label}</a>
         {:else}
-          <span class="flex h-7 min-w-0 shrink items-center truncate px-1.5 text-ink" title={crumb.label}>{crumb.label}</span>
+          <span class="flex h-7 min-w-0 shrink items-center truncate px-1.5 text-ink" title={crumb.label} role="presentation" oncontextmenu={(e) => crumbMenu(e, crumb.id)}>{crumb.label}</span>
         {/if}
       {/each}
     </nav>
     <div class="crumb-under flex shrink-0 items-center"></div>
+    {#if openThread && !trashedHere}
+      <button class="grid size-7 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink" aria-label="Move to trash" title="Move to trash" onclick={() => trashThread(openThread)}><Trash2 size={16} /></button>
+    {/if}
   </header>
+  {#if trashedHere}
+    <div class="shrink-0 py-2">
+      <TrashBanner
+        since={trashedHere.deletedAt}
+        days={desk.trashDays}
+        onrestore={() => void desk.restore([trashedHere.sessionId])}
+        onpurge={() => void desk.purge([trashedHere.sessionId]).then(() => navigate("home"))}
+      />
+    </div>
+  {/if}
   <section class="home-centre">
     {#key chatKey}
       <div class="centre-page" in:fly={{ y: 8, duration: 260 }}>

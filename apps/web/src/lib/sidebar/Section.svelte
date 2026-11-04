@@ -1,5 +1,6 @@
 <script lang="ts">
   import { ChevronRight } from "lucide-svelte";
+  import { flip } from "svelte/animate";
   import { selection, sidebar } from "./state.svelte";
   import type { TreeNode } from "./tree";
   import TreeItem from "./TreeItem.svelte";
@@ -10,7 +11,7 @@
    */
   let { key, label, nodes, active, onnew }: { key: string; label?: string; nodes: readonly TreeNode[]; active?: string; onnew: (parent: string) => void } = $props();
 
-  const BATCH = 20;
+  const BATCH = 10;
   let limit = $state(BATCH);
   const folded = $derived(label ? sidebar.expanded.has(`section:${key}`) : false);
   const has = (of: TreeNode, id: string): boolean => of.id === id || of.children.some((c) => has(c, id));
@@ -27,7 +28,11 @@
   <button
     class="group/section mt-3 flex h-7 w-full items-center gap-1 rounded-sm px-2 text-[12px] font-medium text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink"
     aria-expanded={!folded}
-    onclick={() => sidebar.set(`section:${key}`, !folded)}
+    onclick={() => {
+      // Folded, it forgets how far it was listed: opened again, it shows the first batch.
+      if (!folded) limit = BATCH;
+      sidebar.set(`section:${key}`, !folded);
+    }}
   >
     {label}
     <span class="tabular-nums text-ink-30">{nodes.length}</span>
@@ -36,7 +41,7 @@
 {/if}
 {#if !folded}
   {#each shown as node (node.id)}
-    <TreeItem {node} {active} {onnew} />
+    <div animate:flip={{ duration: 220 }}><TreeItem {node} {active} {onnew} /></div>
   {/each}
   {#if shown.length < nodes.length}
     <button

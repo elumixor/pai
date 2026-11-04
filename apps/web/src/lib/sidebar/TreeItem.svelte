@@ -1,5 +1,6 @@
 <script lang="ts">
   import { DESK_DOMAIN } from "@desk/core";
+  import { flip } from "svelte/animate";
   import { ChevronRight, CircleCheck, FolderGit2, Hand, Plus } from "lucide-svelte";
   import { auth } from "../auth.svelte";
   import { desk } from "../desk.svelte";
@@ -84,6 +85,7 @@
     menus.openContext(event.clientX, event.clientY, [
       { label: ids.length > 1 ? `Move ${ids.length} into…` : "Move into…", icon: "arrows", run: () => mover.start(ids) },
       ...(thread ? [{ label: "New thread under this one", icon: "plus" as const, run: () => onnew(thread) }] : []),
+      ...(ids.some((id) => id.startsWith("thread:")) ? [{ label: ids.length > 1 ? `Move ${ids.length} to trash` : "Move to trash", icon: "trash" as const, run: () => void remove(ids) }] : []),
       ...(devUrl ? [{ label: `Open ${node.project} in Dev`, icon: "code" as const, run: () => window.open(devUrl, "_blank", "noopener") }] : []),
     ]);
   }
@@ -110,9 +112,21 @@
       if (openable && expanded) sidebar.set(node.id, false);
       else links.slice(0, at).reverse().find((l) => Number(l.dataset.depth) < depth)?.focus();
     } else if (event.key === "m") mover.start(carried());
+    else if (event.key === "d" || event.key === "Delete" || event.key === "Backspace") {
+      // Focus goes on to the next row still there, as in Keep.
+      const listed = (of: TreeNode): number => of.children.reduce((n, c) => n + 1 + listed(c), 0);
+      const next = links[at + 1 + (expanded ? listed(node) : 0)] ?? links[at - 1];
+      const nextId = next?.closest<HTMLElement>("[data-tree-id]")?.dataset.treeId;
+      void remove(carried()).then(() => document.querySelector<HTMLElement>(`[data-tree-id="${nextId}"] a`)?.focus());
+    }
     else if (event.key === "Escape" && selection.selected.size) selection.clear();
     else return;
     event.preventDefault();
+  }
+
+  async function remove(ids: readonly string[]) {
+    selection.clear();
+    await desk.trash(ids);
   }
 
   function ondragstart(event: DragEvent) {
@@ -163,7 +177,11 @@
         class="absolute top-1/2 z-10 grid size-5 -translate-y-1/2 place-items-center rounded-xs text-ink-45 opacity-0 transition-opacity hover:bg-ink-10 hover:text-ink group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-100"
         style="left: {depth * 12 + 4}px"
         aria-label={expanded ? "Collapse" : "Expand"}
-        onclick={() => sidebar.set(node.id, !expanded)}
+        onclick={() => {
+          // Folded, the row forgets how many children it listed.
+          if (expanded) limit = BATCH;
+          sidebar.set(node.id, !expanded);
+        }}
       >
         <ChevronRight size={14} class="transition-transform {expanded ? 'rotate-90' : ''}" />
       </button>
@@ -217,7 +235,7 @@
 </div>
 {#if expanded}
   {#each shown as child (child.id)}
-    <TreeItem node={child} depth={depth + 1} {active} {onnew} />
+    <div animate:flip={{ duration: 220 }}><TreeItem node={child} depth={depth + 1} {active} {onnew} /></div>
   {/each}
   {#if shown.length < node.children.length}
     <button
