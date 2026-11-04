@@ -56,7 +56,11 @@
   async function commit(field: TextField) {
     const values: Record<TextField, string> = { name, schedule, filter, template };
     const value = values[field].trim();
-    if (!initial || value === saved[field]) return;
+    if (!initial) return;
+    if (value === saved[field]) {
+      errors = { ...errors, [field]: undefined };
+      return;
+    }
     if ((field === "name" || field === "schedule") && !value) return;
     const changes: RoutineFields = field === "schedule" ? { schedule: value, event: "" } : { [field]: value };
     if (!(await patch(field, changes))) return;
@@ -93,7 +97,9 @@
     });
     busy = false;
     errors = { ...errors, form: result.error };
-    if (!result.error) sheet?.close();
+    if (result.error) return;
+    finished = true;
+    void sheet?.close();
   }
 
   async function remove() {
@@ -102,18 +108,27 @@
     const result = await api.deleteRoutine(initial.id);
     busy = false;
     errors = { ...errors, form: result.error };
-    if (!result.error) sheet?.close();
+    if (result.error) return;
+    finished = true;
+    void sheet?.close();
   }
 
+  /** Created or deleted: nothing is left to commit. */
+  let finished = false;
+  /** A field the daemon refuses holds the sheet once, with its error showing; closing again gives it up. */
+  let warned = false;
   // Escape closes without a blur, so what was being typed is committed here.
-  async function closed() {
+  async function leave() {
+    if (finished) return true;
     const fields: readonly TextField[] = trigger === "schedule" ? ["name", "schedule", "template"] : ["name", "filter", "template"];
     await Promise.all(fields.map(commit));
-    onclose();
+    if (warned || !fields.some((field) => errors[field])) return true;
+    warned = true;
+    return false;
   }
 </script>
 
-<Sheet bind:this={sheet} label={initial ? initial.name : "New routine"} onclose={() => void closed()}>
+<Sheet bind:this={sheet} label={initial ? initial.name : "New routine"} {onclose} beforeclose={leave}>
   {#snippet head()}
     <h2 class="m-0 truncate text-[14px] font-medium">{initial ? name || initial.name : "New routine"}</h2>
   {/snippet}

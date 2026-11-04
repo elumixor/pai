@@ -66,6 +66,17 @@ export interface Automation {
 
 const MAX_TASKS_PER_HOUR = 6;
 const taskStarts: number[] = [];
+/** A routine's own turn can raise the event it listens to, so each routine's event-fired turns stop here. */
+const MAX_EVENT_TURNS_PER_HOUR = 20;
+const HOUR_MS = 3600_000;
+const eventTurns = new Map<number, readonly number[]>();
+
+function overEventFuse(id: number) {
+  const recent = (eventTurns.get(id) ?? []).filter((t) => now() - t < HOUR_MS);
+  const over = recent.length >= MAX_EVENT_TURNS_PER_HOUR;
+  eventTurns.set(id, over ? recent : [...recent, now()]);
+  return over;
+}
 /** Above this share of the weekly limit, routines slow down; above the second they stop, the briefs aside. */
 const SLOW_AT = 70;
 const STOP_AT = 90;
@@ -230,6 +241,7 @@ async function run(rule: Automation, event: PaiEvent, opts: { scheduled?: boolea
     if (load >= STOP_AT && !brief) return log.info(`${rule.name}: skipped, weekly limit at ${load}%`);
     if (load >= SLOW_AT && !brief && rule.lastRun && now() - rule.lastRun < 60 * 60_000) return log.info(`${rule.name}: slowed, weekly limit at ${load}%`);
   }
+  if ((rule.action === "turn" || rule.action === "wake") && !opts.scheduled && overEventFuse(rule.id)) return log.warn(`${rule.name}: skipped, ${MAX_EVENT_TURNS_PER_HOUR} event turns this hour`);
   const target = rule.agent || agents.PAI;
   switch (rule.action) {
     case "notify":

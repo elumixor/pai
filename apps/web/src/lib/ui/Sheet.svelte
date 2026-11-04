@@ -5,9 +5,9 @@
   /**
    * A modal sheet in the page's style, above everything including the settings dialog: a native modal sits in the top
    * layer. It and its backdrop fade in, and fade out before it is gone: on Escape, a click outside, its own close
-   * button, or the owner calling `close`.
+   * button, or the owner calling `close`. `beforeclose` answering false keeps it open.
    */
-  let { label, onclose, head, children }: { label: string; onclose: () => void; head: Snippet; children: Snippet } = $props();
+  let { label, onclose, beforeclose, head, children }: { label: string; onclose: () => void; beforeclose?: () => Promise<boolean>; head: Snippet; children: Snippet } = $props();
   let box = $state<HTMLDialogElement>();
   let closing = $state(false);
   const motionMs = () => (matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 200);
@@ -18,8 +18,13 @@
   });
 
   /** Fades, then tells the owner, which unmounts the sheet. */
-  export function close() {
+  export async function close() {
     if (closing) return;
+    if (beforeclose && !(await beforeclose())) {
+      // The browser may have closed it already: it goes back up with the reason showing.
+      if (box && !box.open) box.showModal();
+      return;
+    }
     closing = true;
     setTimeout(onclose, motionMs());
   }
@@ -28,6 +33,18 @@
   function keydown(event: KeyboardEvent) {
     if (event.key === "Escape") event.stopPropagation();
   }
+
+  // Focus falls back to the body when the focused control is removed, and then Escape never passes through the sheet.
+  $effect(() => {
+    const stray = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || box?.contains(event.target as Node)) return;
+      event.stopPropagation();
+      event.preventDefault();
+      void close();
+    };
+    addEventListener("keydown", stray, true);
+    return () => removeEventListener("keydown", stray, true);
+  });
 </script>
 
 <!-- A press on plain text must leave focus inside the dialog, or Escape goes past its keydown to the window. -->
@@ -39,13 +56,13 @@
   class:closing
   bind:this={box}
   onkeydown={keydown}
-  oncancel={(event) => (event.preventDefault(), close())}
-  onclose={close}
-  onclick={(event) => event.target === box && close()}
+  oncancel={(event) => (event.preventDefault(), void close())}
+  onclose={() => void close()}
+  onclick={(event) => event.target === box && void close()}
 >
   <header class="flex shrink-0 items-center gap-3 border-b border-line py-3 pr-3 pl-5 max-sm:pl-4">
     <div class="min-w-0 flex-1">{@render head()}</div>
-    <button type="button" class="grid size-8 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink" aria-label="Close" onclick={close}><X size={16} /></button>
+    <button type="button" class="grid size-8 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink" aria-label="Close" onclick={() => void close()}><X size={16} /></button>
   </header>
   <div class="min-h-0 overflow-y-auto px-5 py-4 max-sm:px-4">{@render children()}</div>
 </dialog>

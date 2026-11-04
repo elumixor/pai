@@ -44,13 +44,18 @@
   // The settings dialog can close the sheet from outside it, which skips `closed`.
   $effect(() => () => void flush());
 
-  async function closed() {
+  /** A save that fails holds the sheet once, with the reason showing; closing again means it is given up. */
+  let warned = false;
+  async function leave() {
     await flush();
-    onclose();
+    if (!failed || warned) return true;
+    warned = true;
+    note = `Not saved: ${note}. Close again to discard.`;
+    return false;
   }
 </script>
 
-<Sheet label={title} onclose={() => void closed()}>
+<Sheet label={title} {onclose} beforeclose={leave}>
   {#snippet head()}
     <div class="flex items-baseline gap-3">
       <h2 class="m-0 min-w-0 flex-1 truncate text-[14px] font-medium">{title}</h2>

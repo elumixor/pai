@@ -2,6 +2,7 @@
   import { Plug } from "lucide-svelte";
   import { api } from "../api";
   import { ago, capital, clock } from "../format";
+  import { md } from "../markdown";
   import type { ConnectorDetail, ConnectorLogLine, ConnectorState, ConnectorSummary, RoutineEvent } from "../types";
   import Sheet from "../ui/Sheet.svelte";
   import Switch from "../ui/Switch.svelte";
@@ -69,7 +70,7 @@
             <div class="text-[13px]">
               <p class="m-0 font-medium text-warn">{p.title}</p>
               {#if p.detail}<p class="m-0 text-ink-45">{p.detail}</p>{/if}
-              {#if p.action}<p class="m-0 text-ink-45">{p.action}</p>{/if}
+              {#if p.action}<div class="text-ink-45" {@attach md(p.action)}></div>{/if}
             </div>
           {/each}
           {#if fix}<a class="{BUTTON} text-ink no-underline hover:no-underline" href={fix.url} target="_blank" rel="noreferrer">{fix.label}</a>{/if}
@@ -100,7 +101,7 @@
             {#each detail.events as e (e.kind)}
               <li class="space-y-0.5">
                 <EventPill kind={e.kind} {catalog} />
-                <span class="block">{e.description}</span>
+                <span class="block">{capital(e.description)}</span>
                 <span class="block text-ink-30">{e.lastAt ? `Last ${ago(e.lastAt)} ago` : "Never"}</span>
               </li>
             {/each}

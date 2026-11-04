@@ -318,7 +318,7 @@ export async function handle(req: Request): Promise<Response> {
       try {
         external.writeSettings(name, await body<Record<string, unknown>>(req));
       } catch (err) {
-        if (err instanceof external.UnknownSettingError) return json({ error: err.message }, 400);
+        if (err instanceof external.SettingError) return json({ error: err.message }, 400);
         throw err;
       }
       await external.restart(name);

@@ -4,7 +4,7 @@
  * their instructions into prompt paragraphs, serves their routes, and describes them for the clients (`GET /connectors`).
  */
 import { createSdkMcpServer, tool as sdkTool } from "@anthropic-ai/claude-agent-sdk";
-import { broken, problemsOf, startOrder, type Cli, type Connector, type ConnectorAction, type Host, type Status } from "@desk/connector";
+import { broken, problemsOf, startOrder, type Cli, type Connector, type ConnectorAction, type Host, type Status, type SettingDef } from "@desk/connector";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { eventStats } from "../core/bus.ts";
@@ -28,10 +28,11 @@ interface Loaded {
 }
 type Live = Loaded & { readonly connector: Connector; readonly host: Host };
 
-export class UnknownSettingError extends Error {
-  constructor(connector: string, key: string) {
-    super(`${key} is not a setting of ${connector}`);
-    this.name = "UnknownSettingError";
+/** A setting the connector does not have, or a value that does not fit it. */
+export class SettingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SettingError";
   }
 }
 
@@ -249,12 +250,21 @@ export async function detail(name: string) {
   };
 }
 
+/** An empty value clears a setting, which always fits. */
+function checkSetting(connector: string, def: SettingDef | undefined, key: string, value: string) {
+  if (!def) throw new SettingError(`${key} is not a setting of ${connector}`);
+  if (!value) return;
+  if (def.type === "number" && !(Number(value) > 0)) throw new SettingError(`${def.label} takes a positive number`);
+  if (def.type === "select" && !def.options?.includes(value)) throw new SettingError(`${def.label} takes one of: ${def.options?.join(", ")}`);
+}
+
 /** Writes settings into the connector's store, all or nothing; an empty value deletes. The caller applies them with `restart`. */
 export function writeSettings(name: string, changes: Readonly<Record<string, unknown>>) {
   const l = loaded.get(name);
-  const known = new Set(isLive(l) ? l.connector.settings.map((s) => s.key) : []);
-  for (const key of Object.keys(changes)) if (!known.has(key)) throw new UnknownSettingError(name, key);
-  if (isLive(l)) for (const [key, value] of Object.entries(changes)) l.host.store.set(key, String(value ?? "") || undefined);
+  const defs = isLive(l) ? l.connector.settings : [];
+  const values = Object.entries(changes).map(([key, value]) => [key, String(value ?? "")] as const);
+  for (const [key, value] of values) checkSetting(name, defs.find((d) => d.key === key), key, value);
+  if (isLive(l)) for (const [key, value] of values) l.host.store.set(key, value || undefined);
 }
 
 export function action(name: string, id: string) {
