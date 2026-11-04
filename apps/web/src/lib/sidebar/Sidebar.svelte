@@ -12,7 +12,7 @@
   import { mover } from "./move.svelte";
   import { SIDEBAR_COLLAPSE, selection, sidebar } from "./state.svelte";
   import { ancestors, type TreeNode, generalWaiting } from "./tree";
-  import TreeItem from "./TreeItem.svelte";
+  import Section from "./Section.svelte";
 
   /**
    * The sidebar, Keep's: General at the top where Keep has its workspace, every thread under it as a tree, its inbox and the account
@@ -20,21 +20,19 @@
    */
   let { roots, active, onsettings }: { roots: readonly TreeNode[]; active?: string; onsettings: () => void } = $props();
 
-  const ROOT_BATCH = 20;
-
-  let limit = $state(ROOT_BATCH);
   let accountOpen = $state(false);
   let inboxOpen = $state(false);
   inbox.start();
   const home = $derived(active === "pai");
   const waiting = $derived(generalWaiting(desk.agents, desk.sessions, desk.needs, desk.paiSession?.sessionId));
-  const has = (of: TreeNode, id: string): boolean => of.id === id || of.children.some((c) => has(c, id));
-  const shown = $derived.by(() => {
-    const at = active ? roots.findIndex((r) => has(r, active)) : -1;
-    return roots.slice(0, Math.max(limit, at + 1));
+  /** The top level in three: agents and threads on a Keep task, then the dev threads, then the chats on no task. */
+  const groups = $derived.by(() => {
+    const main: TreeNode[] = [];
+    const dev: TreeNode[] = [];
+    const chats: TreeNode[] = [];
+    for (const node of roots) (node.id.startsWith("agent:") ? main : node.project ? dev : node.keep?.length ? main : chats).push(node);
+    return { main, dev, chats };
   });
-  const hidden = $derived(roots.slice(shown.length).map((r) => r.id));
-  const hiddenPicked = $derived(selection.allPicked(hidden));
   const row = "flex h-7 w-full items-center gap-2 rounded-sm px-2 text-ink-70 transition-colors hover:bg-ink-5 hover:text-ink [&>svg]:text-ink-45";
   const action = "grid size-6 place-items-center rounded-xs text-ink-45 hover:bg-ink-10 hover:text-ink";
 
@@ -143,20 +141,12 @@
         {#each [72, 54, 86, 40, 66] as w, i (i)}<div class="h-4 animate-pulse rounded-sm bg-ink-5" style="width: {w}%"></div>{/each}
       </div>
     {:else}
-      {#each shown as node (node.id)}
-        <TreeItem {node} {active} onnew={newThread} />
+      {#if roots.length}
+        <Section key="main" nodes={groups.main} {active} onnew={newThread} />
+        {#if groups.dev.length}<Section key="dev" label="Dev" nodes={groups.dev} {active} onnew={newThread} />{/if}
+        {#if groups.chats.length}<Section key="chats" label="Chats" nodes={groups.chats} {active} onnew={newThread} />{/if}
       {:else}
         <p class="m-0 px-2 py-1 text-[13px] text-ink-45">No threads yet.</p>
-      {/each}
-      {#if shown.length < roots.length}
-        <button
-          class="flex h-7 w-full items-center rounded-sm pl-[30px] text-[13px] text-ink-45 transition-colors hover:text-ink {hiddenPicked && selection.last === 'more:' ? 'bg-accent/25 hover:bg-accent/30' : hiddenPicked ? 'bg-accent-soft hover:bg-accent/20' : 'hover:bg-ink-5'}"
-          data-tree-more={hidden.join(" ")}
-          oncontextmenu={(e) => selection.moreMenu(e, hidden)}
-          onclick={(e) => { if (!selection.more(e, hidden, "more:", active)) limit = shown.length + ROOT_BATCH; }}
-        >
-          {roots.length - shown.length} more
-        </button>
       {/if}
     {/if}
   </div>
