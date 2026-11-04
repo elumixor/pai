@@ -3,7 +3,7 @@ import type { Image } from "./attachments.ts";
 
 /**
  * Conversations the daemon does not run but a message can still reach: a terminal's `claude`
- * (the mirror, `mirror.ts`, follows their transcripts). A module that holds such threads registers a
+ * (the mirror, `mirror.ts`, follows their transcripts). Whatever holds such threads registers a
  * `HeldThreads`; the frontends route a message to one before they fall back to a daemon session.
  */
 
@@ -37,8 +37,7 @@ export interface HeldThreads {
 
 const holders = new Map<string, HeldThreads>();
 
-/** Called by the module loader for a module that has `held`. */
-export const provide = (module: string, threads: HeldThreads) => void holders.set(module, threads);
+export const provide = (name: string, threads: HeldThreads) => void holders.set(name, threads);
 
 const first = <T>(pick: (h: HeldThreads) => T | undefined) => {
   for (const h of holders.values()) {

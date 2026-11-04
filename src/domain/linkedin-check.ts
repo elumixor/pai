@@ -3,7 +3,7 @@
  * nothing arrives either way, and the ten phantom sends of 6 October were exactly that — the page
  * said yes, the account never heard it, and nine people waited two weeks. The state changes without
  * announcing itself in both directions (it signed itself back in overnight, too), so the observer
- * watches both edges and lives outside the module: its own liveness must not depend on LinkedIn,
+ * watches both edges and lives outside the connector: its own liveness must not depend on LinkedIn,
  * the browser, or the poller it is watching.
  */
 import { db, kv } from "../core/db.ts";
@@ -17,12 +17,12 @@ const EVENT = "linkedin.message";
 
 /** The poller runs every five minutes; this only has to notice a fault that lasts hours. */
 const EVERY_MS = 30 * 60_000;
-/** The first look, late enough that the module has started and polled once. */
+/** The first look, late enough that the connector has started and polled once. */
 const FIRST_MS = 3 * 60_000;
-/** A read is late after this many of the module's own intervals, and never sooner than half an hour. */
+/** A read is late after this many of the connector's own intervals, and never sooner than half an hour. */
 const LATE_POLLS = 3;
 const LATE_FLOOR_MS = 30 * 60_000;
-/** The module's default, used when he has not set one. */
+/** The connector's default, used when he has not set one. */
 const POLL_EVERY_MS = 5 * 60_000;
 /** Even in a quiet month, this much nothing is worth a question. */
 const QUIET_FLOOR_MS = 36 * 3600_000;
@@ -30,7 +30,7 @@ const QUIET_FLOOR_MS = 36 * 3600_000;
 const WINDOW_MS = 30 * 24 * 3600_000;
 
 export interface Signal {
-  /** The module answered its own status route; false when it is installed but did not start. */
+  /** The connector answered its own status route; false when it is installed but did not start. */
   readonly answering: boolean;
   /** Whether the browser session is signed in; undefined when it could not be asked. */
   readonly signedIn?: boolean;
@@ -56,7 +56,7 @@ const mins = (ms: number) => `${Math.round(ms / 60_000)} min`;
  */
 export function unwell(s: Readonly<Signal>, nowMs = Date.now()): string | undefined {
   if (!s.answering)
-    return `the LinkedIn module did not answer its own status route within ${ASK_TIMEOUT_MS / 1000}s. Either it never started, or the browser page it reads through is wedged — a dead page makes its callers hang rather than fail, so from here the two look the same.`;
+    return `the LinkedIn connector did not answer its own status route within ${ASK_TIMEOUT_MS / 1000}s. Either it never started, or the browser page it reads through is wedged — a dead page makes its callers hang rather than fail, so from here the two look the same.`;
   if (s.signedIn === false)
     return `LinkedIn is signed out${s.lastPollAt ? `; the inbox was last read ${hours(nowMs - s.lastPollAt)} ago` : ""}. Nothing arrives until the session is captured again: \`pai browser login linkedin\` on the Mac.`;
   const late = Math.max(LATE_POLLS * s.pollEveryMs, LATE_FLOOR_MS);
@@ -86,10 +86,10 @@ export function traffic(nowMs = Date.now()) {
 }
 
 /**
- * Asking the module costs a cookie check and a live read, both through the one page a site has, and
+ * Asking the connector costs a cookie check and a live read, both through the one page a site has, and
  * that page serves one caller at a time — so a healthy answer can queue behind the poller. This has
- * to stay well above the module's own caps, or a slow answer is reported as a dead module: the first
- * look after v0.6.31 said "it never started" about a module that answered in six seconds.
+ * to stay well above the connector's own caps, or a slow answer is reported as a dead connector: the first
+ * look after v0.6.31 said "it never started" about a connector that answered in six seconds.
  */
 const ASK_TIMEOUT_MS = 45_000;
 

@@ -40,7 +40,7 @@ export function startBrowser() {
 /**
  * Nothing should have to be installed by hand on the box: a missing browser only shows up as a
  * failed navigation inside an agent's turn. A second or two when it is already there. `--no-remove`
- * keeps it from evicting the build another playwright (the browser module's) is pinned to.
+ * keeps it from evicting the build another playwright (the browser connector's) is pinned to.
  */
 async function installBrowser() {
   const install = Bun.spawn(["npx", MCP, "install-browser", BUILD, "--no-progress", "--no-remove"], { stdout: "ignore", stderr: "pipe", env: { ...process.env } });

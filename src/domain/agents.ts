@@ -696,7 +696,7 @@ function checkState(a: Agent) {
 /** Follows agent sessions' turns on the bus. */
 export function start() {
   ensurePai();
-  // Revived sessions find their agent's role and tools through this; registered here, not at import, because the modules import each other.
+  // Revived sessions find their agent's role and tools through this; registered here, not at import, because these files import each other.
   sessions.resolveAgentsWith((slug) => {
     const a = get(slug);
     return a ? setupOf(a) : undefined;
@@ -865,7 +865,7 @@ export interface AgentThread {
 
 const THREADS_SHOWN_FOR_MS = 7 * 86_400_000;
 
-/** Where a thread came from when no origin was recorded (older rows, modules that do not say): a repo is the builder, a topic the phone, the rest a terminal. */
+/** Where a thread came from when no origin was recorded (older rows, sources that do not say): a repo is the builder, a topic the phone, the rest a terminal. */
 const originOf = (r: sessions.SessionRow, owned: boolean) => r.origin ?? (r.kind === "code" ? "builder" : owned ? "agent" : r.threadId !== null ? "phone" : "terminal");
 
 /** Each agent's threads, by who started them: the session a thread's parent is belongs to an agent, or else to pai. */

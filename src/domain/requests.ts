@@ -131,7 +131,7 @@ export function respond(id: number, text: string, by: string = agents.PAI): Requ
   return get(id)!;
 }
 
-/** A turn that was answering a request is its response; called once at start, after the modules have loaded. */
+/** A turn that was answering a request is its response; called once at start, after the connectors have loaded. */
 export function wire() {
   agents.onRequestAnswered((id, by, text) => {
     try {

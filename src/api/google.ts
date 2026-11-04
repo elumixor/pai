@@ -74,7 +74,7 @@ export async function handleAuth(req: Request, url: URL): Promise<Response | und
     const stored = /(?:^|;\s*)pai_oauth=([^;]+)/.exec(req.headers.get("cookie") ?? "")?.[1];
     const claims = verify<{ next: string; exp: number } & Record<string, unknown>>(state);
     if (!claims || stored !== state || claims.exp < Date.now()) return json({ error: "the sign-in attempt expired; start again" }, 400);
-    // The same redirect URI serves the modules' consents (a mailbox): one registered URI, several flows.
+    // The same redirect URI serves the connectors' consents (a mailbox): one registered URI, several flows.
     for (const [claim, finish] of callbacks) if (claims[claim]) return finish(req, url, claims);
     const code = url.searchParams.get("code");
     if (!code) return json({ error: url.searchParams.get("error") ?? "google sent no code" }, 400);

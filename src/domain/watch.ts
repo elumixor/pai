@@ -1,6 +1,6 @@
 /**
  * What an observer does with what it found. pai watches the channels it cannot test from the
- * inside — a release that never arrived, LinkedIn's two edges, the browser every module leans on —
+ * inside — a release that never arrived, LinkedIn's two edges, the browser every connector leans on —
  * and each of them wants the same thing from the task list: one row, raised when the fault appears,
  * its reason kept current, closed when the thing answers again.
  *

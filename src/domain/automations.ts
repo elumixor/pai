@@ -173,12 +173,12 @@ function render(template: string, event: PaiEvent) {
   return template.replace(/\{(\w+)\}/g, (_, key: string) => (key === "kind" ? event.kind : typeof payload[key] === "object" ? JSON.stringify(payload[key]) : String(payload[key] ?? "")));
 }
 
-/** What the email module tells about the user's own mailboxes. */
+/** What the email connector tells about the user's own mailboxes. */
 interface Mailboxes {
   readonly addresses: () => readonly string[];
 }
 
-/** The user's own addresses, from the connected mailboxes; none when the email module is not loaded. */
+/** The user's own addresses, from the connected mailboxes; none when the email connector is not loaded. */
 const ownAddresses = () => (external.api<Mailboxes>("email")?.addresses() ?? []).map((a) => a.toLowerCase());
 
 /** Their domains, so "outside" means someone else. */

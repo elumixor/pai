@@ -1,5 +1,5 @@
 /**
- * Does the browser still work? Every module that reads a signed-in site leans on it — LinkedIn
+ * Does the browser still work? Every connector that reads a signed-in site leans on it — LinkedIn
  * through its own headless pages, every session through the Playwright MCP server — and nothing
  * watched it. On 15 October that cost a morning: the MCP server died and came back while a session
  * held it, the site handle kept a page whose world had gone, and the symptoms were all hangs —
