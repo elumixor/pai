@@ -94,6 +94,10 @@
     flex-shrink: 0;
   }
   /* The tree's spinner, in the place of a row's icon while that thread works. */
+  /* A sidebar title too long for its row: clipped, its last letters fading out. */
+  .tree-label.clipped {
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  }
   .tree-spinner {
     width: 13px;
     height: 13px;

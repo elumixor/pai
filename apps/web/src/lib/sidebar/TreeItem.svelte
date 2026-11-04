@@ -40,6 +40,15 @@
   const devUrl = $derived(node.project ? `https://dev.${DESK_DOMAIN}/?project=${encodeURIComponent(node.project)}${thread ? `&session=${thread}` : ""}` : undefined);
   const keepPage = (urn: string) => `${(auth.config.keepUrl ?? `https://keep.${DESK_DOMAIN}`).replace(/\/$/, "")}/p/${urn.replace(/^keep:page\//, "")}`;
 
+  /** The title fades out at its end, instead of an ellipsis, only when it does not fit. */
+  function fadeWhenClipped(el: HTMLElement) {
+    const check = () => el.classList.toggle("clipped", el.scrollWidth > el.clientWidth + 1);
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    check();
+    return () => observer.disconnect();
+  }
+
   /** What a drag or a move carries from this row: the picked rows when it is one of them, else itself. */
   const carried = () => (picked ? [...selection.selected] : [node.id]);
 
@@ -173,7 +182,7 @@
       <span class="grid w-4 shrink-0 place-items-center transition-opacity {openable ? 'group-hover:opacity-0 group-focus-within:opacity-0 max-md:opacity-0' : ''}">
         {#if working}<span class="tree-spinner"></span>{:else}<node.icon size={16} class="text-ink-45" />{/if}
       </span>
-      <span class="min-w-0 truncate">{node.label}</span>
+      <span class="tree-label min-w-0 overflow-hidden whitespace-nowrap" {@attach fadeWhenClipped}>{node.label}</span>
       {#if devUrl}
         <span
           role="link"
@@ -182,7 +191,7 @@
           title="{node.project} in Dev"
           onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(devUrl, "_blank", "noopener"); }}
           onkeydown={() => {}}
-        ><FolderGit2 size={11} /></span>
+        ><FolderGit2 size={11} /><span class="whitespace-nowrap">{node.project?.slice(0, 10)}</span></span>
       {/if}
       {#each node.keep ?? [] as task (task.urn)}
         <span
