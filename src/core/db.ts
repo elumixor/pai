@@ -246,6 +246,22 @@ CREATE TABLE IF NOT EXISTS keep_notifications (
   error       TEXT
 );
 
+-- What came in and what Pai did with it (mail, chats, meetings, Keep's notifications); see domain/inbox.ts.
+CREATE TABLE IF NOT EXISTS inbox (
+  id          TEXT PRIMARY KEY,
+  source      TEXT NOT NULL,            -- mail | telegram | linkedin | calendar | keep | …
+  kind        TEXT NOT NULL,            -- the event it came as: gmail.new, keep.mention, …
+  title       TEXT NOT NULL,
+  body        TEXT NOT NULL DEFAULT '',
+  link        TEXT,
+  at          INTEGER NOT NULL,
+  action      TEXT NOT NULL DEFAULT 'pending', -- pending | ignored | muted | filed | woke | told | routed | failed
+  target      TEXT,                     -- main | agent:<slug> | thread:<session id> | task:<id>
+  note        TEXT,                     -- why, in a line
+  read_at     INTEGER
+);
+CREATE INDEX IF NOT EXISTS inbox_at ON inbox(at);
+
 -- Transcripts, the message log, mail and chat copies, searched with the recall tool; see domain/recall.ts.
 CREATE VIRTUAL TABLE IF NOT EXISTS archive USING fts5(source, ref UNINDEXED, title, body, ts UNINDEXED, tokenize = 'porter unicode61');
 `);

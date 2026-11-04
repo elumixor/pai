@@ -4,6 +4,7 @@ import { db, now } from "../core/db.ts";
 import { logger } from "../core/log.ts";
 import * as agents from "./agents.ts";
 import * as decide from "./decide.ts";
+import * as inbox from "./inbox.ts";
 import type { KeepPage } from "./dev-tasks.ts";
 import { callKeep, type KeepChange, pageId, signedWith } from "./keep.ts";
 import * as keepLinks from "./keep-links.ts";
@@ -92,6 +93,7 @@ export function receive(body: string, signature: string | null, event: string | 
   if (typeof n?.id !== "string" || !n.id || typeof n.type !== "string" || typeof n.subject !== "string") throw new PeopleNotifyError("not a notification", 400);
   const res = db.prepare("INSERT OR IGNORE INTO keep_notifications (id, body, received_at) VALUES (?, ?, ?)").run(n.id, body, now());
   if (res.changes === 0) return { ok: true, duplicate: true };
+  inbox.record({ id: n.id, source: "keep", kind: `keep.${n.type}`, title: n.title, body: n.text ?? "", link: n.url });
   bus.emitEvent("people.notification", { id: n.id, type: n.type, subject: n.subject, title: n.title, ...(n.actor ? { actor: n.actor } : {}), ...(n.client ? { client: n.client } : {}) });
   enqueue?.(n.id);
   return { ok: true };
@@ -144,8 +146,17 @@ async function handle(id: string) {
     }
   }
   db.prepare("UPDATE keep_notifications SET routed_at = ?, via = ?, routed_to = ?, error = ? WHERE id = ?").run(now(), via, label(target), error, id);
+  inbox.settle(id, { action: "routed", target: label(target), note: error ? `${VIA[via]}; ${error}` : VIA[via] });
   log.info(`${id} ${n.type} ${n.subject} → ${label(target)} (${via})`);
 }
+
+/** Why it went where it went, for the inbox. */
+const VIA: Record<Via, string> = {
+  client: "the thread that watches the page",
+  link: "the thread that owns the page",
+  decide: "Jev's choice",
+  general: "nothing claimed it",
+};
 
 const label = (t: Target) => (t.kind === "main" ? "main" : t.kind === "agent" ? `agent:${t.slug}` : `thread:${t.sessionId}`);
 

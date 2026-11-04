@@ -2,6 +2,7 @@ import { MAX_FILES, readable, serve as serveAttachment, type Upload } from "../d
 import * as drafts from "../domain/drafts.ts";
 import { mapResponse } from "../domain/maps.ts";
 import { ratesResponse } from "../domain/rates.ts";
+import * as inbox from "../domain/inbox.ts";
 import * as reads from "../domain/reads.ts";
 import * as keep from "../domain/keep.ts";
 import * as peopleNotify from "../domain/people-notify.ts";
@@ -129,6 +130,13 @@ export async function handle(req: Request): Promise<Response> {
       return json({ marks: reads.mark(String(place ?? ""), Number(at ?? 0)) });
     }
     if (path === "/reads") return json({ marks: reads.marks() });
+
+    // What came in and what Pai did with it; "relevant" leaves out what it ignored or muted.
+    if (path === "/inbox/read" && req.method === "POST") {
+      const { ids } = await body<{ ids?: unknown }>(req);
+      return json(inbox.read(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : undefined));
+    }
+    if (path === "/inbox") return json(inbox.list(url.searchParams.get("filter") === "all" ? "all" : "relevant", Number(url.searchParams.get("limit") ?? 100) || 100));
 
     // What a currency is worth, for showing an amount in the ones he thinks in.
     if (path === "/rates") return await ratesResponse();

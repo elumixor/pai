@@ -3,6 +3,7 @@ import { db, now } from "../core/db.ts";
 import { logger } from "../core/log.ts";
 import * as agents from "./agents.ts";
 import * as asks from "./asks.ts";
+import * as inbox from "./inbox.ts";
 import { decideItems } from "./triage-jev.ts";
 import type { Automation } from "./automations.ts";
 import * as messages from "./messages.ts";
@@ -31,6 +32,8 @@ export interface Item {
   readonly link?: string;
   readonly payload: Record<string, unknown>;
   readonly at: number;
+  /** Its row in the inbox (`inbox.ts`), which the decision settles. */
+  readonly id?: string;
 }
 
 export type Decision =
@@ -105,13 +108,19 @@ export function noteWith(notes: string, line: string, keep = KEPT_LINES): string
   return [...body, ...log].join("\n").trim();
 }
 
+/** An item as its inbox row starts: arrived, not decided yet. */
+const arrived = (item: Item) => ({ source: item.source, kind: item.kind, title: item.title, body: item.body, link: item.link, at: item.at });
+
 /** The routines' sink: the item waits for the rest of its burst. */
 export function add(e: PaiEvent, _rule?: Automation) {
   const item = toItem(e);
   const muted = asks.mutedBy(`${item.title}\n${item.body}`, item.source);
-  if (muted) return log.debug(`muted (${muted.pattern}): ${item.title}`);
+  if (muted) {
+    inbox.record({ ...arrived(item), action: "muted", note: `muted: ${muted.pattern}` });
+    return log.debug(`muted (${muted.pattern}): ${item.title}`);
+  }
   messages.event(agents.PAI, item.kind === "calendar.upcoming" ? "calendar.upcoming" : "item.arrived", item.title, { meta: { source: item.source, link: item.link } });
-  batch.push(item);
+  batch.push({ ...item, id: inbox.record(arrived(item)) });
   if (batch.length >= MAX_BATCH) void flush();
   else timer ??= setTimeout(() => void flush(), WINDOW_MS);
 }
@@ -129,6 +138,7 @@ export async function flush() {
     // Without a decision nothing is lost: the items go to the user as one quiet notice.
     log.warn(`triage failed, passing ${items.length} items on: ${(err as Error).message}`);
     asks.notify(agents.PAI, `${items.length} new: ${items.map((i) => i.title).join("; ").slice(0, 1200)}`, "normal");
+    for (const item of items) inbox.settle(item.id, { action: "told", note: "triage failed: passed on as one notice" });
     return;
   }
   apply(items, decisions);
@@ -144,31 +154,44 @@ export function apply(items: Item[], decisions: Decision[]) {
     if (!item || seen.has(d.i)) continue;
     seen.add(d.i);
     try {
-      if (d.action === "ignore") continue;
+      if (d.action === "ignore") {
+        inbox.settle(item.id, { action: "ignored", note: d.reason });
+        continue;
+      }
       if (d.action === "file") {
-        if (d.task && tasks.get(d.task))
-          tasks.update(d.task, { notes: noteWith(tasks.get(d.task)!.notes, `${new Date(item.at).toISOString().slice(0, 10)} ${item.title}${item.link ? ` ${item.link}` : ""}`) });
-        else tasks.add({ title: d.title || item.title, owner: d.owner && agents.get(d.owner) ? d.owner : agents.PAI, source: item.link, notes: item.body.slice(0, 1000), createdBy: "event" });
+        let task = d.task && tasks.get(d.task) ? d.task : undefined;
+        if (task) tasks.update(task, { notes: noteWith(tasks.get(task)!.notes, `${new Date(item.at).toISOString().slice(0, 10)} ${item.title}${item.link ? ` ${item.link}` : ""}`) });
+        else task = tasks.add({ title: d.title || item.title, owner: d.owner && agents.get(d.owner) ? d.owner : agents.PAI, source: item.link, notes: item.body.slice(0, 1000), createdBy: "event" }).id;
+        inbox.settle(item.id, { action: "filed", target: `task:${task}`, note: d.reason });
       } else if (d.action === "wake") {
         const a = agents.get(d.agent);
         if (!a || a.status === "closed" || a.kind === "orchestrator") {
           told.push(`${item.title}${d.note ? ` — ${d.note}` : ""}`);
+          inbox.settle(item.id, { action: "told", note: d.note ?? d.reason });
           continue;
         }
         if (!delegatable(item, a.brief)) {
           log.info(`not waking ${a.slug}: "${item.title}" is group chatter with no signal`);
+          inbox.settle(item.id, { action: "ignored", note: `group chatter, not for ${a.name}` });
           continue;
         }
         agents.message(a.slug, `[new ${item.source}] ${item.title}\n${item.body.slice(0, 3000)}${item.link ? `\n${item.link}` : ""}${d.note ? `\n\ntriage: ${d.note}` : ""}`, { from: `watcher:${item.source}`, kind: "event", taskId: d.task ?? null });
+        inbox.settle(item.id, { action: "woke", target: `agent:${a.slug}`, note: d.note ?? d.reason });
       } else if (d.action === "tell") {
         if (d.urgent) asks.notify(agents.PAI, `${d.note || item.title}${item.link ? `\n${item.link}` : ""}`, "urgent");
         else told.push(`${d.note || item.title}${item.link ? ` ${item.link}` : ""}`);
+        inbox.settle(item.id, { action: "told", note: d.note || d.reason });
       }
     } catch (err) {
       log.warn(`item ${d.i}: ${(err as Error).message}`);
+      inbox.settle(item.id, { action: "failed", note: (err as Error).message });
     }
   }
-  for (const [i, item] of items.entries()) if (!seen.has(i)) tasks.add({ title: item.title, owner: agents.PAI, source: item.link, notes: item.body.slice(0, 1000), createdBy: "event" });
+  for (const [i, item] of items.entries()) {
+    if (seen.has(i)) continue;
+    const task = tasks.add({ title: item.title, owner: agents.PAI, source: item.link, notes: item.body.slice(0, 1000), createdBy: "event" });
+    inbox.settle(item.id, { action: "filed", target: `task:${task.id}`, note: "triage skipped it" });
+  }
   if (told.length) asks.notify(agents.PAI, told.length === 1 ? told[0]! : told.map((t) => `- ${t}`).join("\n"), "normal");
   const counts = decisions.reduce<Record<string, number>>((acc, d) => ({ ...acc, [d.action]: (acc[d.action] ?? 0) + 1 }), {});
   log.info(`${items.length} items: ${Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(", ")}`);
