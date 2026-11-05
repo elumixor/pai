@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  const SECTION_IDS = ["appearance", "usage", "shortcuts", "account", "snapshot", "connectors", "automations", "context", "spend"] as const;
+  const SECTION_IDS = ["account", "usage", "appearance", "shortcuts", "snapshot", "connectors", "automations", "context", "spend"] as const;
   export type Section = (typeof SECTION_IDS)[number];
   export const isSection = (id: string): id is Section => (SECTION_IDS as readonly string[]).includes(id);
 
@@ -32,16 +32,16 @@
   import Spend from "./Spend.svelte";
 
   /**
-   * The suite's settings dialog (`@desk/core/settings`, Keep's too): how this client looks, which rings it shows, the
-   * keys, the account, the snapshot, then the pages about the daemon itself: its connectors, routines, context and spend.
+   * The suite's settings dialog (`@desk/core/settings`, Keep's too): the account, which rings it shows, how this client looks, the
+   * keys, the snapshot, then the pages about the daemon itself: its connectors, routines, context and spend.
    */
-  let { open = $bindable(false), active = $bindable<Section>("appearance"), onclose }: { open?: boolean; active?: Section; onclose?: () => void } = $props();
+  let { open = $bindable(false), active = $bindable<Section>("account"), onclose }: { open?: boolean; active?: Section; onclose?: () => void } = $props();
 
   const SECTIONS: SettingsSection<Section>[] = [
-    { id: "appearance", label: "Appearance", icon: PaletteIcon, keywords: "theme dark light mode palette" },
-    { id: "usage", label: "Usage rings", icon: Gauge, keywords: "limits windows session weekly rings" },
-    { id: "shortcuts", label: "Keyboard", icon: Keyboard, keywords: "shortcuts keys keybinding" },
     { id: "account", label: "Account", icon: User, keywords: "sign out daemon host box clerk" },
+    { id: "usage", label: "Usage rings", icon: Gauge, keywords: "limits windows session weekly rings" },
+    { id: "appearance", label: "Appearance", icon: PaletteIcon, keywords: "theme dark light mode palette" },
+    { id: "shortcuts", label: "Keyboard", icon: Keyboard, keywords: "shortcuts keys keybinding" },
     { id: "snapshot", label: "Snapshot", icon: Archive, keywords: "export import backup restore memory" },
     { id: "connectors", label: "Connectors", icon: Plug, keywords: "modules capabilities telegram email gmail linkedin whatsapp browser signed in" },
     { id: "automations", label: "Routines", icon: Clock, keywords: "automations cron events triggers" },
