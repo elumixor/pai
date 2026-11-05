@@ -263,7 +263,7 @@ async function summaryOf(l: Loaded) {
     server: l.connector?.tools?.length ? serverOf(l) : null,
     enabled,
     connected: isConnected(l.name),
-    needsAction: Boolean(l.error) || status.state === "broken" || (enabled && (status.state !== "signed_in" || problemsFor(l.name).length > 0)),
+    needsAction: isConnected(l.name) && (Boolean(l.error) || status.state === "broken" || (enabled && (status.state !== "signed_in" || problemsFor(l.name).length > 0))),
     status,
     commands: l.connector?.commands ?? [],
     cli: Boolean(l.connector?.cli),
