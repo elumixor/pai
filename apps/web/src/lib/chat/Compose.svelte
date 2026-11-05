@@ -305,7 +305,7 @@
       if (node.nodeName === "BR") return void (text += "\n");
       const chip = node instanceof HTMLElement ? chips.get(node) : undefined;
       if (chip?.kind === "image" || chip?.kind === "file") return void images.push({ media_type: chip.attachment.media_type, data: chip.attachment.data, name: chip.attachment.name });
-      if (chip?.kind === "text") return void (text += chip.text);
+      if (chip?.kind === "text") return void (text += `\n<pasted_content>\n${chip.text}\n</pasted_content>\n`);
       node.childNodes.forEach(walk);
     };
     input?.childNodes.forEach(walk);
