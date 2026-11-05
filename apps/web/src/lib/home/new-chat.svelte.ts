@@ -9,11 +9,9 @@ const MIN_CHARS = 8;
 class NewChat {
   kind = $state<NewKind | undefined>();
   project = $state<string | undefined>();
-  model = $state("sonnet");
+  model = $state("opus");
   effort = $state<Effort>("medium");
   dirty = $state(false);
-  /** Between typing and Jev's answer. */
-  thinking = $state(false);
   failed = $state(false);
   confidence = $state<ChatConfidence | undefined>();
   private chosen = new Set<string>();
@@ -25,10 +23,10 @@ class NewChat {
     this.asked++;
     this.chosen.clear();
     this.kind = this.project = undefined;
-    this.model = "sonnet";
+    this.model = "opus";
     this.effort = "medium";
     this.dirty = false;
-    this.thinking = this.failed = false;
+    this.failed = false;
     this.confidence = undefined;
   }
 
@@ -38,11 +36,11 @@ class NewChat {
   private forget() {
     clearTimeout(this.timer);
     this.asked++;
-    this.thinking = this.failed = false;
+    this.failed = false;
     this.confidence = undefined;
     if (!this.chosen.has("kind")) this.kind = undefined;
     if (!this.chosen.has("project")) this.project = undefined;
-    if (!this.chosen.has("model")) this.model = "sonnet";
+    if (!this.chosen.has("model")) this.model = "opus";
     if (!this.chosen.has("effort")) this.effort = "medium";
   }
 
@@ -59,7 +57,6 @@ class NewChat {
     if (text.length < MIN_CHARS) return this.forget();
     clearTimeout(this.timer);
     this.asked++;
-    this.thinking = true;
     this.timer = setTimeout(() => void this.suggest(text), WAIT_MS);
   }
 
@@ -67,10 +64,8 @@ class NewChat {
   async suggest(text: string) {
     clearTimeout(this.timer);
     const asked = ++this.asked;
-    this.thinking = true;
     const { data } = await api.suggestChat(text);
     if (asked !== this.asked) return;
-    this.thinking = false;
     this.failed = !data;
     if (!data) return;
     this.confidence = data.confidence;

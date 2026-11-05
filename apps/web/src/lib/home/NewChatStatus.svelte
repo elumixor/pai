@@ -2,7 +2,7 @@
   import { capital } from "../format";
   import { newChat } from "./new-chat.svelte";
 
-  /** Above the box of a blank chat: Jev working, then what it picked and how sure it is; a pick the user made says so. */
+  /** Above the box of a blank chat: what Jev picked and how sure it is; a pick the user made says so. */
   const percent = (p?: number) => (p === undefined ? "" : `${Math.round(p * 100)}%`);
   const picks = $derived(
     newChat.confidence
@@ -16,10 +16,10 @@
   const sureOf = (key: string) => (key === "project" ? newChat.confidence?.project : key === "model" ? newChat.confidence?.model : newChat.confidence?.effort);
 </script>
 
-{#if newChat.thinking || newChat.failed || picks.length}
+{#if newChat.failed || picks.length}
   <div class="flex min-h-6 w-full flex-wrap items-center gap-1.5 px-1 text-[12px]" role="status" aria-live="polite">
-    {#if newChat.thinking}<span class="spinner"></span><span class="text-ink-45">Choosing</span>{:else if newChat.failed}<span class="text-ink-45">Jev is unavailable, choose yourself</span>{/if}
-    <div class="flex flex-wrap items-center gap-1.5 transition-opacity {newChat.thinking ? 'opacity-50' : ''}">
+    {#if newChat.failed}<span class="text-ink-45">Jev is unavailable, choose yourself</span>{/if}
+    <div class="flex flex-wrap items-center gap-1.5">
       {#each picks as p (p.key)}
         <span class="inline-flex h-6 items-center gap-1.5 rounded-sm border border-accent bg-ink-5 px-2 font-medium">
           {p.label}
