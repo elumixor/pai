@@ -37,6 +37,7 @@
    */
   let {
     placeholder,
+    ontext,
     submit,
     draftKey,
     session,
@@ -48,6 +49,8 @@
     disabled = "",
   }: {
     placeholder: string;
+    /** What is in the box, on every change. */
+    ontext?: (text: string, attached: boolean) => void;
     submit: Submit;
     draftKey?: string;
     /** The session whose slash commands `/` offers. */
@@ -293,6 +296,10 @@
     return out.filter((p) => p.kind !== "text" || p.text);
   }
   function keepDraft() {
+    if (ontext) {
+      const { text, images } = contents();
+      ontext(text, images.length > 0);
+    }
     const key = storeKey;
     if (!key) return;
     clearTimeout(saving);
@@ -414,7 +421,7 @@
       {#if prefsShown?.model}<button class="compose-tool model" title="the model this conversation runs with" bind:this={modelButton} disabled={!setPrefs} onclick={openModels}>{capital(modelName(prefsShown.model))}</button>{/if}
       {#if prefsShown?.effort}<button class="compose-tool effort" title="how hard it thinks" bind:this={effortButton} disabled={!setPrefs} onclick={openEfforts}>{prefsShown.effort}</button>{/if}
       {@render extra?.()}
-      <Rings model={prefsShown?.model} />
+      <Rings model={prefsShown?.model} session={session?.()} />
       <span class="grow"></span>
       <span class="note">{note}</span>
       <button class="iconbtn compose-send" title="send (enter)" aria-label="Send" onclick={() => void send()}><Icon name="enter" size={15} /></button>

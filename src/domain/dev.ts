@@ -98,12 +98,13 @@ export interface StartedSession {
 }
 
 /** A Claude Code session dev runs for a Keep task: in a worktree of the project when the project asks for one. */
-export async function startSession(input: { project: string | { urn: string; fields?: unknown }; keepUrn: string; title: string; brief: string }): Promise<StartedSession> {
+export async function startSession(input: { project: string | { urn: string; fields?: unknown }; keepUrn?: string; title: string; brief: string; model?: string }): Promise<StartedSession> {
   const started = await tool<{ session?: string; id?: string; url?: string }>("start_session", {
     project: input.project,
     keep_urn: input.keepUrn,
     title: input.title,
     brief: input.brief,
+    model: input.model,
     // dev before the keep flow took the brief as `prompt`.
     prompt: input.brief,
   });

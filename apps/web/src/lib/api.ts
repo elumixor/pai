@@ -118,7 +118,11 @@ export const api = {
   toolCall: (session: string, tool: string) => get<{ name: string; input: unknown; result?: string }>(`/transcript/tool?session=${q(session)}&tool=${q(tool)}`),
   threadsIn: (cwd: string, limit?: number) => get<DiskSession[]>(`/threads?cwd=${q(cwd)}${limit ? `&limit=${limit}` : ""}`),
   /** A new plain thread, on its own or under the thread it is started from; its first message goes with it. */
-  startThread: (text: string, images: readonly Upload[] = [], parent?: string) => send<SessionSummary>("/task", { title: "", text, images, parent, origin: "general" }),
+  startThread: (text: string, images: readonly Upload[] = [], parent?: string, prefs: { model?: string; effort?: Effort } = {}) => send<SessionSummary>("/task", { title: "", text, images, parent, origin: "general", ...prefs }),
+  startDevTask: (text: string, project: string, model?: string) => send<{ sessionId: string }>("/dev-task", { text, project, model }),
+  suggestChat: (text: string) => send<{ kind: "detached" | "dev" | "goal"; project?: string; model: string; effort: Effort }>("/new/suggest", { text }),
+  projects: () => get<{ slug: string }[]>("/projects", true),
+  contextUsage: (session: string) => get<{ percentage?: number; totalTokens?: number; maxTokens?: number }>(`/context-usage?session=${q(session)}`, true),
   sendThread: (id: string, text: string, images: readonly Upload[] = [], adopt?: { cwd?: string; title?: string }) => send("/send", { id, text, images, ...adopt }),
   stop: (id: string) => send("/stop", { id }),
   reconfigure: (id: string, changes: { model?: string | null; effort?: Effort | null }) => send("/reconfigure", { id, ...changes }),

@@ -424,7 +424,9 @@ export function relayToParent() {
     if (!e.sessionId) return;
     const s = find(e.sessionId);
     if (!s?.parent || s.agent) return;
-    const m = find(s.parent);
+    // General rotates daily: a thread under it reports to its current session.
+    const general = db.query("SELECT a.session_id AS id FROM sessions s JOIN agents a ON a.slug = s.agent WHERE s.session_id = ? AND a.slug = 'pai'").get(s.parent) as { id: string | null } | undefined;
+    const m = find(general?.id ?? s.parent);
     if (!m || m.state === "dead" || m === s) return;
     const tag = `[thread ${s.shortId} · ${s.title}]`;
     const report = (body: string, kind: "report" | "event" = "report") =>

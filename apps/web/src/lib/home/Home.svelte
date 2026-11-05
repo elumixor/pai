@@ -12,6 +12,9 @@
   import { sidebar } from "../sidebar/state.svelte";
   import { ancestors, type TreeNode, threadTitle } from "../sidebar/tree";
   import GeneralActions from "./GeneralActions.svelte";
+  import { newChat } from "./new-chat.svelte";
+  import NewChatOptions from "./NewChatOptions.svelte";
+  import Sheet from "../ui/Sheet.svelte";
   import type { Effort, Need, SessionSummary, Upload } from "../types";
   import Icon from "../ui/Icon.svelte";
   import { menus } from "../ui/menu-state.svelte";
@@ -84,6 +87,26 @@
     navigate({ name: "thread", param: started.sessionId }, true);
   };
 
+  /** Starts a blank chat as what it was made; with nothing chosen yet, Jev gets one last say. */
+  const startNew = async (text: string, images: readonly Upload[]) => {
+    if (!newChat.kind && text) await newChat.suggest(text);
+    if (newChat.kind === "dev") {
+      if (images.length) return void chat?.setNote("attachments cannot go to a Dev task yet");
+      if (!newChat.project) return void chat?.setNote("pick a project first");
+      const result = await api.startDevTask(text, newChat.project, newChat.model);
+      if (result.error || !result.data?.sessionId) return void chat?.setNote(result.error ?? "no session came back");
+      seed = { id: result.data.sessionId, text };
+      return navigate({ name: "thread", param: result.data.sessionId }, true);
+    }
+    const prefs = { model: newChat.model, effort: newChat.effort };
+    const result = await api.startThread(text, images, newChat.kind === "goal" ? "general" : undefined, prefs);
+    const started = result.data as SessionSummary | undefined;
+    if (result.error || !started?.sessionId) return void chat?.setNote(result.error ?? "no thread came back");
+    seed = { id: started.sessionId, text: text || "(image)" };
+    void desk.refreshSessions();
+    navigate({ name: "thread", param: started.sessionId }, true);
+  };
+
   const spec = $derived.by((): ChatSpec | undefined => {
     if (route.name === "home" || route.name === "settings")
       return { key: PAI, agent: PAI, parent: "user", live: () => desk.refreshPai(), prefs: paiPrefs, setPrefs: setPaiPrefs, send: (text, images) => api.sendPai(text, images), placeholder: "Message pai…" };
@@ -119,15 +142,48 @@
     }
     if (route.name === "new") {
       const parent = route.param;
-      return { key: `new:${parent ?? ""}`, agent: "thread", parent: "user", send: async () => ({ error: "start the thread first" }), placeholder: parent ? "Start a thread under this one…" : "Start a new thread…", divert: () => startThread(parent) };
+      if (!parent)
+        return {
+          key: "new:",
+          agent: "thread",
+          parent: "user",
+          send: async () => ({ error: "start the thread first" }),
+          placeholder: "Start a new thread…",
+          divert: () => startNew,
+          blank: options,
+          ephemeral: true,
+          ontext: (text, attached) => newChat.typed(text, attached),
+          prefs: () => ({ model: newChat.model, effort: newChat.effort }),
+          setPrefs: async (changes) => (newChat.choose(changes), {}),
+        };
+      return { key: `new:${parent ?? ""}`, agent: "thread", parent: "user", send: async () => ({ error: "start the thread first" }), placeholder: "Start a thread under this one…", divert: () => startThread(parent), ephemeral: true, ontext: (text, attached) => newChat.typed(text, attached) };
     }
     return undefined;
   });
   /** What remounts the chat: another place. */
   const chatKey = $derived(route.name === "settings" ? "home" : `${route.name}:${route.param ?? ""}`);
   $effect(() => {
-    if (route.name === "new") setTimeout(() => chat?.focus(), 80);
+    if (route.name === "new") {
+      newChat.reset();
+      setTimeout(() => chat?.focus(), 80);
+    }
   });
+
+  // ---- closing a chat not started: back where he came from, asking first if something was typed ------------------
+
+  let cameFrom: Route = { name: "home" };
+  $effect(() => {
+    if (route.name !== "new" && route.name !== "settings") cameFrom = route;
+  });
+  let discarding = $state(false);
+  let discardSheet = $state<Sheet>();
+  const leaveNew = () => navigate(cameFrom, true);
+  function closeKey(event: KeyboardEvent) {
+    if (route.name !== "new" || !(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey || event.key.toLowerCase() !== "w") return;
+    event.preventDefault();
+    if (newChat.dirty) discarding = true;
+    else leaveNew();
+  }
 
   // ---- the hand: what waits on him; a press goes to the next one, oldest first --------------------------------
 
@@ -153,6 +209,10 @@
     openAgent(where);
   }
 </script>
+
+{#snippet options()}<NewChatOptions />{/snippet}
+
+<svelte:window onkeydown={closeKey} />
 
 {#snippet hand()}
   {#if needs.length}
@@ -198,4 +258,14 @@
       </div>
     {/key}
   </section>
+  {#if discarding}
+    <Sheet bind:this={discardSheet} label="Discard this message?" onclose={() => (discarding = false)}>
+      {#snippet head()}<h2 class="m-0 text-[15px] font-medium">Discard this message?</h2>{/snippet}
+      <p class="m-0 text-[13px] text-ink-70">What you typed here will be lost.</p>
+      <div class="mt-4 flex justify-end gap-2">
+        <button class="h-8 rounded-sm bg-ink-5 px-3 text-[13px] transition-colors hover:bg-ink-10" onclick={() => void discardSheet?.close()}>Keep writing</button>
+        <button class="h-8 rounded-sm bg-ink-5 px-3 text-[13px] font-medium text-hot transition-colors hover:bg-ink-10" onclick={() => { discarding = false; leaveNew(); }}>Discard</button>
+      </div>
+    </Sheet>
+  {/if}
 </main>

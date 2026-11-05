@@ -138,7 +138,7 @@
         <span class="flex items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 max-md:opacity-100">
           <button class={action} aria-label="Hide sidebar" title="Hide sidebar (⌘\)" onclick={() => sidebar.toggle()}><PanelLeftClose size={16} /></button>
         </span>
-        <button class={action} aria-label="New thread" title="New thread (⌃N)" onclick={() => newThread()}><Plus size={16} /></button>
+        <button class={action} aria-label="New thread" title="New thread (⌘N)" onclick={() => newThread()}><Plus size={16} /></button>
       </div>
       <div class="mx-2 mb-1.5 h-px bg-line"></div>
     </div>

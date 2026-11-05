@@ -27,6 +27,11 @@
     readonly divert?: () => Submit | undefined;
     /** Why the box takes nothing (a closed agent). */
     readonly disabled?: string;
+    /** Shown where the conversation will be while it is empty. */
+    readonly blank?: Snippet;
+    readonly ontext?: (text: string, attached: boolean) => void;
+    /** Nothing typed here is kept as a draft. */
+    readonly ephemeral?: boolean;
   }
 </script>
 
@@ -1006,7 +1011,7 @@
       {#if working}
         <div class="row working"><span class="spinner"></span><b>Working on it…</b><span class="elapsed">{duration(now - working.since)}</span></div>
       {/if}
-      {#if !loading && !items.length && !pending.length}<p class="hint">Nothing said here yet.</p>{/if}
+      {#if spec.blank}{@render spec.blank()}{:else if !loading && !items.length && !pending.length}<p class="hint">Nothing said here yet.</p>{/if}
     </div>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="chat-scrollbar" class:moving={barMoving} class:dragging={barDragging} bind:this={scrollbar} onpointerdown={pageTrack} hidden>
@@ -1017,7 +1022,7 @@
         {#if !atBottom}<button class="to-bottom" title="to the latest" aria-label="To the latest" onclick={() => log?.scrollTo({ top: log.scrollHeight, behavior: "smooth" })}><Icon name="chevron" size={13} /></button>{/if}
         <div class="chat-slot">{@render slot?.()}</div>
       </div>
-      <Compose bind:this={box} placeholder={spec.placeholder} draftKey={spec.key} session={() => liveSession} prefs={spec.prefs} setPrefs={spec.setPrefs} {extra} disabled={spec.disabled} {submit} />
+      <Compose bind:this={box} placeholder={spec.placeholder} draftKey={spec.ephemeral ? undefined : spec.key} ontext={spec.ontext} session={() => liveSession} prefs={spec.prefs} setPrefs={spec.setPrefs} {extra} disabled={spec.disabled} {submit} />
     </div>
   </div>
 </section>

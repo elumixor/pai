@@ -34,6 +34,7 @@ import * as keepLinks from "../domain/keep-links.ts";
 import * as push from "../domain/push.ts";
 import * as composer from "../domain/compose.ts";
 import * as asks from "../domain/asks.ts";
+import * as dev from "../domain/dev.ts";
 import * as main from "../domain/main.ts";
 import * as messages from "../domain/messages.ts";
 import * as summaries from "../domain/summaries.ts";
@@ -41,6 +42,7 @@ import * as recall from "../domain/recall.ts";
 import * as audit from "../domain/audit.ts";
 import * as tasks from "../domain/tasks.ts";
 import { resetGeneral, ResetError } from "../domain/reset.ts";
+import { suggest as suggestChat } from "../domain/new-chat.ts";
 import { importPrompt, snapshot } from "../domain/snapshot.ts";
 
 const log = logger("api");
@@ -242,10 +244,25 @@ export async function handle(req: Request): Promise<Response> {
       return json({ session: m.shortId, ...e.payload });
     }
 
+    if (path === "/new/suggest" && req.method === "POST") {
+      const { text } = await body<{ text: string }>(req);
+      if (!text?.trim()) return json({ error: "text required" }, 400);
+      return json(await suggestChat(text));
+    }
+    if (path === "/context-usage") {
+      const usage = await sessions.find(url.searchParams.get("session") ?? "")?.contextUsage();
+      return json(usage ?? {});
+    }
+    if (path === "/dev-task" && req.method === "POST") {
+      const { text, project, model } = await body<{ text: string; project: string; model?: string }>(req);
+      if (!text?.trim() || !project) return json({ error: "text and project required" }, 400);
+      const started = await dev.startSession({ project, title: text.trim().split("\n")[0]!.slice(0, 60), brief: text, model });
+      return json({ sessionId: started.id });
+    }
     if (path === "/task" && req.method === "POST") {
       const { title, text, project, model, effort, origin, images, parent } = await body<{ title: string; text: string; project?: string; model?: string | null; effort?: "low" | "medium" | "high" | "xhigh" | "max" | null; origin?: "general" | "cli"; images?: { media_type: string; data: string }[]; parent?: string }>(req);
       // A thread started under another (the web client's tree) reports to it, as one an agent starts does.
-      const parentId = parent ? (sessions.find(parent)?.id ?? sessions.resolveId(parent) ?? null) : null;
+      const parentId = parent === "general" ? main.session().id : parent ? (sessions.find(parent)?.id ?? sessions.resolveId(parent) ?? null) : null;
       const s = sessions.spawnTask({ title: title ?? "", project, model, effort, parent: parentId, origin: origin === "general" ? "general" : project ? "builder" : "cli" });
       if (text || images?.length) s.send(text ?? "", { images });
       return json(s.summary());

@@ -150,7 +150,7 @@
       { key: "dev", label: "Dev", group: "Go to", icon: ArrowUpRight, hint: "repos, editor, terminals", run: () => window.open("https://dev.desk.atmagaming.com", "_blank", "noopener") },
     ];
     const actions: PaletteItem[] = [
-      { key: "new-thread", label: "New thread", group: "Commands", icon: Plus, hint: "⌃N", run: () => navigate("new") },
+      { key: "new-thread", label: "New thread", group: "Commands", icon: Plus, hint: "⌘N", run: () => navigate("new") },
       { key: "sidebar", label: sidebar.open ? "Hide the sidebar" : "Show the sidebar", group: "Commands", icon: PanelLeft, hint: "⌘\\", run: () => sidebar.toggle() },
       { key: "refresh", label: "Refresh", group: "Commands", icon: RefreshCw, run: () => void desk.load() },
       { key: "settings", label: "Settings", group: "Commands", icon: SettingsIcon, hint: "⌘⇧,", run: () => openSettings() },
@@ -173,7 +173,7 @@
     } else if (event.ctrlKey && !event.metaKey && !event.altKey && key === "l") {
       event.preventDefault();
       document.querySelector<HTMLElement>(".chat-compose .input")?.focus();
-    } else if (event.ctrlKey && !event.metaKey && !event.altKey && key === "n") {
+    } else if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && key === "n") {
       event.preventDefault();
       navigate("new");
     }
