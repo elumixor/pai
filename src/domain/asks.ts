@@ -54,7 +54,8 @@ export interface AskAction {
   readonly label: string;
   readonly url: string;
   readonly verify?: string;
-  readonly baseline?: readonly string[];
+  /** The workspaces as they were when asked, for telling what changed. */
+  readonly baseline?: readonly { readonly id: string; readonly title: string }[];
 }
 
 /** How a card ended, given to the agent as data: what the button led to, whether it was checked, what changed. */

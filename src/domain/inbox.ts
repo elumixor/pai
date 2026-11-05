@@ -98,6 +98,9 @@ export const get = (id: string) => {
   return row ? entryOf(row) : undefined;
 };
 
+/** What triage was still deciding when the daemon stopped: its batch is memory only. */
+export const undecided = (): readonly Entry[] => (db.query(`SELECT * FROM inbox WHERE action = 'pending' AND NOT (${ADDRESSED}) ORDER BY at`).all() as Row[]).map(entryOf);
+
 /** What was addressed to Pai, newest first. */
 export function list(limit = 100): { readonly items: readonly Entry[]; readonly unread: number } {
   const rows = db.query(`SELECT * FROM inbox WHERE ${ADDRESSED} ORDER BY at DESC LIMIT ?`).all(Math.max(1, Math.min(500, limit))) as Row[];

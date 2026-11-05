@@ -36,7 +36,7 @@ export function connectUrl() {
 export async function resolve(requests: readonly ActionRequest[]): Promise<readonly asks.AskAction[]> {
   return Promise.all(
     requests.map(async (r): Promise<asks.AskAction> => {
-      if (r.kind === "connect_workspaces") return { kind: "link", label: r.label ?? "Connect workspaces", url: connectUrl(), verify: "keep_workspaces", baseline: (await ownWorkspaces()).map((w) => w.id) };
+      if (r.kind === "connect_workspaces") return { kind: "link", label: r.label ?? "Connect workspaces", url: connectUrl(), verify: "keep_workspaces", baseline: await ownWorkspaces() };
       if (r.kind === "connect_connector") {
         if (!r.connector || !connectors.available().includes(r.connector)) throw new ActionError(`no connector ${r.connector}`);
         return { kind: "link", label: r.label ?? `Connect ${r.connector}`, url: `${base()}/#/settings/connectors`, verify: `connector:${r.connector}` };
@@ -50,10 +50,9 @@ export async function resolve(requests: readonly ActionRequest[]): Promise<reado
 async function settled(action: asks.AskAction) {
   if (action.verify === "keep_workspaces") {
     const now = await ownWorkspaces();
-    const before = new Set(action.baseline ?? []);
-    const ids = new Set(now.map((w) => w.id));
-    const added = now.filter((w) => !before.has(w.id)).map((w) => w.title);
-    const removed = (action.baseline ?? []).filter((id) => !ids.has(id));
+    const baseline = action.baseline ?? [];
+    const added = now.filter((w) => !baseline.some((b) => b.id === w.id)).map((w) => w.title);
+    const removed = baseline.filter((b) => !now.some((w) => w.id === b.id)).map((b) => b.title);
     return added.length || removed.length ? { added, removed } : undefined;
   }
   const name = action.verify?.startsWith("connector:") ? action.verify.slice("connector:".length) : undefined;

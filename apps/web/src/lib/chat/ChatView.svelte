@@ -133,7 +133,7 @@
   const placeKey = $derived(`pai.scroll:${spec.key}`);
   const replyKey = $derived(`pai.reply:${spec.key}`);
   const isMine = (m: LogMessage) => m.from === spec.parent || (spec.parent !== "user" && m.from === "user");
-  const nameOf = (party: string) => (party === "user" ? "you" : party === PAI ? "Orchestrator" : (desk.bySlug(party)?.name ?? party.replace(/^(watcher|routine):/, "")));
+  const nameOf = (party: string) => (party === "user" ? "you" : party === PAI ? "General" : (desk.bySlug(party)?.name ?? party.replace(/^(watcher|routine):/, "")));
   const said = (item: Item): item is Row => item.kind === "message" && SAID.includes(item.m.kind) && !isMine(item.m) && item.m.from !== "user" && !item.m.meta.place && Boolean(item.m.body.trim());
   const isEvent = (item: Item): item is Row => item.kind === "message" && item.m.kind === "event" && !item.m.meta.draft;
   const messageItem = (m: LogMessage): Row => ({ kind: "message", key: `m${m.id}`, at: m.createdAt, m: { ...m, body: withoutRewriteNote(m.body) } });

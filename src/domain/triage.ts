@@ -43,6 +43,7 @@ export type Decision =
   | { i: number; action: "tell"; note: string; urgent?: boolean; reason?: string };
 
 const batch: Item[] = [];
+const RESUME_WITHIN_MS = 24 * 3600_000;
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 /** How each watcher's event reads as an item. */
@@ -129,6 +130,16 @@ export function add(e: PaiEvent, _rule?: Automation) {
   batch.push({ ...item, id: inbox.record(arrived(item)) });
   if (batch.length >= MAX_BATCH) void flush();
   else timer ??= setTimeout(() => void flush(), WINDOW_MS);
+}
+
+/** Picks up what a restart cut off, or it would say "Deciding…" forever and nobody would be told. A long outage's leftovers are stale news. */
+export function resume() {
+  const cutoff = now() - RESUME_WITHIN_MS;
+  for (const e of inbox.undecided()) {
+    if (e.at < cutoff) inbox.settle(e.id, { action: "failed", note: "pai was down too long to decide this" });
+    else batch.push({ source: e.source, kind: e.kind, title: e.title, body: e.body, link: e.link ?? undefined, payload: {}, at: e.at, id: e.id });
+  }
+  if (batch.length) timer ??= setTimeout(() => void flush(), WINDOW_MS);
 }
 
 /** Routes what has gathered. */

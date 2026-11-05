@@ -64,6 +64,7 @@ const stopMain = main.start();
 const stopPeopleNotify = peopleNotify.start();
 automations.link({ turn: main.system, triage: triage.add, fields: { brief: briefs.morning, digest: briefs.evening } });
 automations.seed();
+triage.resume();
 const stopMemoryWatch = watchMemory();
 moveUserContext();
 forgetOldInventory();
