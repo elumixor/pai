@@ -35,10 +35,10 @@
 {:else}
   <div class={GRID} data-testid="connectors">
     {#each connectors as c (c.name)}
-      <button type="button" class="group flex min-w-0 flex-col items-center gap-2 rounded-md p-1.5 transition-colors hover:bg-ink-5" onclick={() => (open = c)}>
+      <button type="button" class="group flex min-w-0 flex-col items-center gap-2 p-1.5" onclick={() => (open = c)}>
         <span class="relative block size-16 transition-transform group-active:scale-95">
-          <span class="grid size-full place-items-center overflow-hidden rounded-[14px] bg-ink-5 text-ink-45 {c.enabled ? '' : 'opacity-40 grayscale'}">
-            {#if c.icon}<img src={c.icon} alt="" class="size-full object-cover" />{:else}<Plug size={26} />{/if}
+          <span class="grid size-full place-items-center overflow-hidden rounded-[14px] bg-white p-2.5 text-ink-45 shadow-md transition-shadow group-hover:shadow-lg {c.enabled ? '' : 'opacity-40 grayscale'}">
+            {#if c.icon}<img src={c.icon} alt="" class="size-full object-contain" />{:else}<Plug size={26} />{/if}
           </span>
           {#if c.needsAction}
             <span class="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full bg-warn text-surface ring-2 ring-surface" role="img" aria-label="Needs attention"><TriangleAlert size={12} /></span>
