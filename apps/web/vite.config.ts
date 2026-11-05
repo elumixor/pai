@@ -5,8 +5,11 @@ import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 
-/** The API paths of the daemon, proxied in dev; the client's own routes are in the hash and never reach it. */
-const API = /^\/(?!@|_app|src|node_modules|\.svelte-kit)[^./][^.]*$/;
+/**
+ * The API paths of the daemon, proxied in dev; the client's own routes are in the hash and never reach it.
+ * A dot means a file of Vite's, except under `/attachments/`, whose names carry their extension.
+ */
+const API = /^\/(?:attachments\/|(?!@|_app|src|node_modules|\.svelte-kit)[^./][^.]*$)/;
 
 /**
  * `bun run dev` talks to the box: its https address and token are what `pai` learned over ssh into
