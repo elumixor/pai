@@ -43,7 +43,7 @@
           {#if c.needsAction}
             <span class="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full bg-warn text-surface ring-2 ring-surface" role="img" aria-label="Needs attention"><TriangleAlert size={12} /></span>
           {:else if c.enabled}
-            <span class="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full bg-[var(--ok,#16a34a)] text-white ring-2 ring-surface" role="img" aria-label="Working"><Check size={12} strokeWidth={3} /></span>
+            <span class="absolute -top-1 -right-1 grid size-4 place-items-center rounded-full bg-white text-[var(--ok,#16a34a)] shadow-sm" role="img" aria-label="Working"><Check size={10} strokeWidth={2.5} /></span>
           {/if}
         </span>
         <span class="w-full truncate text-center text-[13px] {c.enabled ? '' : 'text-ink-45'}">{c.title}</span>
