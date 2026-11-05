@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Plug, TriangleAlert } from "lucide-svelte";
+  import { Check, Plug, TriangleAlert } from "lucide-svelte";
   import { api } from "../api";
   import type { ConnectorSummary } from "../types";
   import ConnectorSheet from "./ConnectorSheet.svelte";
@@ -42,6 +42,8 @@
           </span>
           {#if c.needsAction}
             <span class="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full bg-warn text-surface ring-2 ring-surface" role="img" aria-label="Needs attention"><TriangleAlert size={12} /></span>
+          {:else if c.enabled}
+            <span class="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full bg-[var(--ok,#16a34a)] text-white ring-2 ring-surface" role="img" aria-label="Working"><Check size={12} strokeWidth={3} /></span>
           {/if}
         </span>
         <span class="w-full truncate text-center text-[13px] {c.enabled ? '' : 'text-ink-45'}">{c.title}</span>
