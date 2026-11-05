@@ -209,8 +209,7 @@ falls back to `pai update`, which builds the daemon and the web client on the bo
 ## Tests
 
 `bun run test` runs every `*.test.ts` in its own process (`scripts/test.ts`), because
-configuration is frozen at import. Unit suites cover the protocol, memory and terminals; `test/api.e2e.test.ts` boots the real server on a scratch database and drives it
-over HTTP, including a websocket terminal. No test spends model tokens.
+configuration is frozen at import. Unit suites cover the protocol, memory and terminals. No test spends model tokens.
 
 ## Not done yet
 
