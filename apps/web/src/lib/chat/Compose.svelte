@@ -28,7 +28,9 @@
   import type { SlashCommand } from "../types";
   import Icon from "../ui/Icon.svelte";
   import { menus } from "../ui/menu-state.svelte";
+  import { vim } from "../vim.svelte";
   import Rings from "./Rings.svelte";
+  import { attach as attachVim, type CaretBox, type VimLayer, type VimMode } from "./vim";
 
   /**
    * The message box every conversation shares: `/` at the start offers the session's slash commands, a pasted image
@@ -78,6 +80,7 @@
     probe.contentEditable = "plaintext-only";
     return probe.contentEditable === "plaintext-only";
   })();
+  const TOUCH = matchMedia("(pointer: coarse)").matches;
 
   interface Attachment extends Upload {
     /** A data URL for a picture's thumbnail; a document has none. */
@@ -102,6 +105,33 @@
   let menuStart = -1;
   let saving: ReturnType<typeof setTimeout> | undefined;
   const storeKey = $derived(draftKey ? `pai.draft:${draftKey}` : undefined);
+  let vimLayer: VimLayer | undefined;
+  let vimMode = $state<VimMode>("insert");
+  let vimCaret = $state<CaretBox | null>(null);
+
+  $effect(() => {
+    const box = input;
+    if (!box || !vim.enabled || TOUCH) return;
+    const layer = attachVim(box, {
+      onmode: (mode) => {
+        vimMode = mode;
+        if (mode !== "insert") closeMenu();
+      },
+      oncaret: (caret) => (vimCaret = caret),
+      onchange: () => {
+        closeMenu();
+        keepDraft();
+      },
+      cloneChip: (chip) => chipNode(chips.get(chip)!),
+    });
+    vimLayer = layer;
+    return () => {
+      layer.detach();
+      vimLayer = undefined;
+      vimMode = "insert";
+      vimCaret = null;
+    };
+  });
 
   $effect(() => {
     void desk.usage;
@@ -251,6 +281,7 @@
     input?.normalize();
     settle();
     keepDraft();
+    if (vimLayer && vimLayer.mode !== "insert") return closeMenu();
     const range = selectionRange();
     const node = range?.collapsed ? range.startContainer : undefined;
     if (!node || node.nodeType !== Node.TEXT_NODE) return closeMenu();
@@ -323,6 +354,7 @@
           }
       }
       settle();
+      vimLayer?.load();
     });
   });
 
@@ -333,6 +365,7 @@
     input?.replaceChildren();
     settle();
     closeMenu();
+    vimLayer?.load();
     if (storeKey) void clearDraft(storeKey);
     await submit(text, images);
   }
@@ -351,6 +384,7 @@
       }
       if (event.key === "Escape") return closeMenu();
     }
+    if (vimLayer?.keydown(event)) return;
     if (event.key === "Escape" && pin) return dismissPin();
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
@@ -396,11 +430,12 @@
     for (const file of picker?.files ?? []) await offer(file);
     if (picker) picker.value = "";
   }} />
-  <div class="compose-row">
+  <div class="compose-row" class:vim-row={vim.enabled && !TOUCH}>
     {#if mono}<span class="prompt-char">❯</span>{/if}
     <div
       class="input"
       class:disabled={Boolean(disabled)}
+      class:vim-block={vimMode !== "insert"}
       bind:this={input}
       contenteditable={disabled ? "false" : PLAINTEXT ? "plaintext-only" : "true"}
       role="textbox"
@@ -412,6 +447,10 @@
       onpaste={paste}
       onkeydown={keydown}
     ></div>
+    {#if vimMode !== "insert"}
+      {#if vimCaret}<span class="vim-caret" aria-hidden="true" style:left="{vimCaret.left}px" style:top="{vimCaret.top}px" style:width="{vimCaret.width}px" style:height="{vimCaret.height}px"></span>{/if}
+      <span class="vim-badge">{vimMode === "normal" ? "NORMAL" : "VISUAL"}</span>
+    {/if}
   </div>
   {#if mono}
     <div class="compose-foot"><span class="dim">{foot}</span><span class="grow"></span><span class="note">{note}</span><span class="dim">enter to send · shift+enter newline</span></div>
@@ -428,3 +467,11 @@
     </div>
   {/if}
 </footer>
+
+<style>
+  .vim-row { position: relative; }
+  .vim-block { caret-color: transparent; }
+  .vim-caret { position: absolute; border-radius: 2px; background: var(--ink-30); pointer-events: none; }
+  .vim-badge { display: none; position: absolute; top: 0; right: 0; padding: 1px 5px; border-radius: 4px; background: var(--code-bg); color: var(--ink-45); font: 600 10px/1.4 var(--mono); letter-spacing: 0.04em; pointer-events: none; }
+  .input:focus ~ .vim-badge { display: block; }
+</style>
