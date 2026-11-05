@@ -5,4 +5,4 @@
   let { size = 16, class: classes = "" }: { size?: number; class?: string } = $props();
 </script>
 
-<img src={keepLogo()} width={size} height={size} alt="" class="shrink-0 rounded-[3px] {classes}" />
+<img src={keepLogo()} width={size} height={size} alt="" class="shrink-0 {classes}" />
