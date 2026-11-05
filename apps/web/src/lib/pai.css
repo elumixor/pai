@@ -681,7 +681,7 @@ body.in-home .tooltip .dim { color: color-mix(in srgb, var(--canvas) 65%, transp
 .ctx-row .icon { width: 14px; height: 14px; color: var(--ink-45); }
 .ctx-row:hover, .ctx-row:focus-visible { background: var(--ink-10); outline: none; }
 
-/* Spend: tiles, a day per bar (API price behind, paid in front), a table by group. */
+/* Spend: tiles, a day per bar (API price behind, paid in front). */
 .spend-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(150px, 40%), 1fr)); gap: 8px; margin-bottom: 14px; }
 .spend-tile { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); min-width: 0; }
 .spend-tile strong { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -695,12 +695,4 @@ body.in-home .tooltip .dim { color: color-mix(in srgb, var(--canvas) 65%, transp
 .spend-axis { display: flex; justify-content: space-between; margin-top: 4px; font-size: 10.5px; font-variant-numeric: tabular-nums; }
 .spend-legend { display: flex; align-items: center; gap: 6px; margin: 6px 0 14px; font-size: 11px; }
 .spend-legend .key { width: 10px; height: 10px; border-radius: 2px; margin-left: 6px; }
-.spend-table { display: flex; flex-direction: column; margin-top: 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
-.spend-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(40px, 1fr) 76px 70px 64px 52px; gap: 10px; align-items: center; padding: 6px 12px; border-bottom: 1px solid var(--line); font-size: 12.5px; }
-.spend-row:last-child { border-bottom: 0; }
-.spend-row.head { color: var(--dim); font-size: 11px; }
-.spend-row .num { text-align: right; font-variant-numeric: tabular-nums; }
-.spend-share { height: 6px; border-radius: 3px; background: var(--code-bg); overflow: hidden; }
-.spend-share span { display: block; height: 100%; background: var(--accent); }
-@media (max-width: 560px) { .spend-row { grid-template-columns: minmax(0, 1fr) 70px 64px; } .spend-row > :nth-child(2), .spend-row > :nth-child(5), .spend-row > :nth-child(6) { display: none; } }
 

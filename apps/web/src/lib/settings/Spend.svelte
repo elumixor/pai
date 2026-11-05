@@ -1,16 +1,14 @@
 <script lang="ts">
   import { api } from "../api";
-  import { capital, usd } from "../format";
+  import { usd } from "../format";
   import type { SpendBucket, SpendReport } from "../types";
   import Segmented from "../ui/Segmented.svelte";
   import { ERROR, SKELETON } from "./controls";
 
   /** Where the time, tokens and money went: what it would cost at API prices, beside what it actually costs. */
   const DAYS = [7, 30, 90] as const;
-  const GROUPINGS = ["agent", "project", "model", "source"] as const;
   const PAID_NOTE = "Paid is the plan's fee for the period, shared out by each one's API price, plus what the gateway metered. The plan's price comes from the login's tier; PAI_CLAUDE_PLAN_USD overrides it.";
   let days = $state<(typeof DAYS)[number]>(30);
-  let by = $state<(typeof GROUPINGS)[number]>("agent");
   let report = $state<SpendReport | undefined>();
   let error = $state("");
   $effect(() => {
@@ -22,8 +20,6 @@
   const tierName = (tier?: string) => (tier ? tier.replace(/^default_claude_/, "").replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()) : "plan");
   const all = (b: SpendBucket) => b.input + b.output + b.cacheRead + b.cacheWrite;
   const peak = $derived(Math.max(...(report?.daily ?? []).map((d) => d.apiUsd), 0.01));
-  const rows = $derived(report?.by[by] ?? []);
-  const top = $derived(Math.max(...rows.map((b) => b.apiUsd), 0.01));
 </script>
 
 <div class="mb-3"><Segmented options={DAYS.map((d) => ({ value: d, label: `${d}d` }))} value={days} label="Period" onchange={(next) => (days = next)} /></div>
@@ -49,13 +45,4 @@
   </div>
   {#if report.daily.length}<div class="spend-axis dim"><span>{report.daily[0]!.key}</span><span>{report.daily.at(-1)!.key}</span></div>{/if}
   <div class="spend-legend dim"><span class="key api"></span>API price<span class="key real"></span>Paid</div>
-  <Segmented options={GROUPINGS.map((v) => ({ value: v, label: capital(v) }))} value={by} label="Group by" onchange={(next) => (by = next)} />
-  <div class="spend-table">
-    <div class="spend-row head"><span>{capital(by)}</span><span></span><span>API price</span><span>Paid</span><span>Tokens</span><span>Time</span></div>
-    {#each rows as b (b.key)}
-      <div class="spend-row" title="{tokens(b.input + b.cacheWrite)} in · {tokens(b.cacheRead)} cached · {tokens(b.output)} out · {b.calls} calls">
-        <span class="ellipsis">{b.key}</span><span class="spend-share"><span style="width:{(b.apiUsd / top) * 100}%"></span></span><span class="num">{usd(b.apiUsd)}</span><span class="num">{usd(b.realUsd)}</span><span class="num dim">{tokens(all(b))}</span><span class="num dim">{b.ms ? hours(b.ms) : ""}</span>
-      </div>
-    {/each}
-  </div>
 {/if}
