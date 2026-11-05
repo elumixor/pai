@@ -88,6 +88,10 @@ function resolveLive(id: string) {
   return full ? sessions.ensureLive(full) : undefined;
 }
 
+async function answerHeld(thread: held.HeldThread, text: string) {
+  return (await thread.answer(text)) ? { answered: true } : { answered: false, error: "No terminal is waiting for this answer: answer it in the terminal." };
+}
+
 /** Every route is here so the transport (`server.ts`) knows nothing about the domain. */
 export async function handle(req: Request): Promise<Response> {
   const url = new URL(req.url);
@@ -335,6 +339,8 @@ export async function handle(req: Request): Promise<Response> {
 
     if (path === "/answer" && req.method === "POST") {
       const { id, text } = await body<{ id: string; text: string }>(req);
+      const elsewhere = !sessions.find(id) ? held.find(id) : undefined;
+      if (elsewhere?.question) return json(await answerHeld(elsewhere, text));
       const s = resolveLive(id);
       if (!s) return json({ error: "no such session" }, 404);
       if (!s.pending) return json({ answered: false, error: "no question pending" });
@@ -744,6 +750,8 @@ export async function handle(req: Request): Promise<Response> {
         // Resume sets a paused agent going as it was; anything else is what the user has to say to it.
         if (kind === "paused") return json({ answered: true, agent: text === RESUME ? agents.resume(ref) : text === KILL ? agents.kill(ref) : agents.fromUser(ref, text) });
         if (kind === "q") {
+          const elsewhere = !sessions.find(ref.split(":")[0]!) ? held.find(ref.split(":")[0]!) : undefined;
+          if (elsewhere?.question) return json(await answerHeld(elsewhere, text));
           const s = resolveLive(ref.split(":")[0]!);
           if (!s?.pending) return json({ answered: false, error: "no question pending" });
           return json({ answered: s.answer(text) });

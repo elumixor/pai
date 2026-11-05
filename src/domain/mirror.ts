@@ -7,9 +7,9 @@ import { db, now } from "../core/db.ts";
 import { logger } from "../core/log.ts";
 import type { Image } from "./attachments.ts";
 import * as dev from "./dev.ts";
-import type { HeldThread, HeldThreads } from "./held.ts";
+import type { HeldQuestion, HeldThread, HeldThreads } from "./held.ts";
 import { all as allProjects } from "./projects.ts";
-import { summarizeTool, type SessionKind } from "./session.ts";
+import { summarizeTool, type Question, type SessionKind } from "./session.ts";
 import * as sessions from "./sessions.ts";
 import { fromChannel, isInjected, PASTE_TAG, transcript, transcriptDirs } from "./transcript.ts";
 
@@ -46,8 +46,10 @@ interface Entry {
   durationMs?: number;
   toolUseResult?: unknown;
   origin?: { kind?: string };
-  message?: { content?: string | { type: string; text?: string; name?: string; input?: Record<string, unknown> }[] };
+  message?: { content?: string | { type: string; text?: string; id?: string; tool_use_id?: string; name?: string; input?: Record<string, unknown> }[] };
 }
+
+type Emit = (kind: string, payload: Record<string, unknown>) => unknown;
 
 /** A conversation one of the terminals holds, with what the frontends need to show it as a thread. */
 export class TerminalThread implements HeldThread {
@@ -64,6 +66,7 @@ export class TerminalThread implements HeldThread {
   turns: number;
   readonly costUsd = 0;
   recentTools: string[] = [];
+  question: HeldQuestion | undefined;
   private busy = false;
   private turnStarted = 0;
   /** The last text block of the turn, held back until a tool call or the turn's end says whether it was the answer. */
@@ -113,6 +116,29 @@ export class TerminalThread implements HeldThread {
     void dev.deliver(this.id, text, opts.images).then((delivered) => delivered || this.#continue(text, opts));
   }
 
+  /**
+   * One answer to the open question, by order. When each has one they go to the terminal's dialog through dev;
+   * the transcript's tool result then closes the question, however it got answered. No dialog waiting (the terminal
+   * has gone, or runs a channel without the question hook) closes it here.
+   */
+  async answer(text: string) {
+    const q = this.question;
+    const index = q?.questions.findIndex((_, i) => q.answers[i] === undefined) ?? -1;
+    if (!q || index < 0) return false;
+    q.answers[index] = text;
+    if (Object.keys(q.answers).length < q.questions.length) return true;
+    const answers = Object.fromEntries(q.questions.map((question, i) => [question.question, q.answers[i]!]));
+    if (await dev.answerQuestion(this.id, answers)) return true;
+    this.question = undefined;
+    return false;
+  }
+
+  #closeQuestion(emit: Emit, answers?: unknown) {
+    if (!this.question) return;
+    emit("session.answer", { id: this.question.id, ...(answers ? { answers } : {}) });
+    this.question = undefined;
+  }
+
   #continue(text: string, opts: { images?: Image[] }) {
     if (this.busy) {
       bus.emitEvent("session.progress", { text: "Not sent: this conversation is mid-turn in a terminal started without the pai channel. Try again once it is done, and I will continue it here.", terminal: true }, this.id);
@@ -146,6 +172,7 @@ export class TerminalThread implements HeldThread {
     const content = e.message?.content;
     if (e.isCompactSummary) emit("session.status", { status: "compacting" });
     // A compaction's summary (idle compaction too) is written as a user entry, but no turn follows it.
+    if (e.type === "user" && Array.isArray(content) && content.some((b) => b.type === "tool_result" && b.tool_use_id === this.question?.id)) this.#closeQuestion(emit, (e.toolUseResult as { answers?: unknown } | undefined)?.answers);
     const viaChannel = e.origin?.kind === "channel";
     if (e.type === "user" && (!e.isMeta || viaChannel) && !e.toolUseResult && !e.isCompactSummary && !e.isVisibleInTranscriptOnly) {
       const typed = typeof content === "string" ? content : (content ?? []).filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n");
@@ -172,17 +199,22 @@ export class TerminalThread implements HeldThread {
         const summary = summarizeTool(block.name, block.input);
         this.recentTools = [...this.recentTools.slice(-(RECENT_TOOLS - 1)), summary];
         emit("session.tool", { name: block.name, summary });
+        if (block.name === "AskUserQuestion" && block.id && Array.isArray(block.input?.questions)) {
+          this.question = { id: block.id, questions: block.input.questions as Question[], answers: {} };
+          emit("session.question", { id: block.id, questions: this.question.questions });
+        }
       }
     }
   }
 
-  private flushText(emit: (kind: string, payload: Record<string, unknown>) => unknown) {
+  private flushText(emit: Emit) {
     if (!this.text) return;
     emit("session.text", { text: this.text, flush: true });
     this.text = "";
   }
 
-  private endTurn(emit: (kind: string, payload: Record<string, unknown>) => unknown, durationMs?: number) {
+  private endTurn(emit: Emit, durationMs?: number) {
+    this.#closeQuestion(emit);
     if (!this.busy) return;
     this.busy = false;
     this.turns += 1;
@@ -209,7 +241,7 @@ export function byThread(threadId: number): TerminalThread | undefined {
 }
 
 /** What core routes to: a message for a conversation a terminal holds goes through here. */
-export const held: HeldThreads = { find, byThread };
+export const held: HeldThreads = { all: () => [...threads.values()], find, byThread };
 
 /** Transcript directories of the places a conversation can be resumed in here: every project, and the workspace. */
 function places(): Map<string, Place> {

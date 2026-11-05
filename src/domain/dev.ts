@@ -88,6 +88,16 @@ export async function deliver(sessionId: string, text: string, images: readonly 
   }
 }
 
+/** An answer for the question a terminal's dialog has open; false when no dialog is waiting. */
+export async function answerQuestion(sessionId: string, answers: Record<string, string>): Promise<boolean> {
+  try {
+    return (await call<{ delivered: boolean }>(`/sessions/${sessionId}/answer`, { method: "POST", body: JSON.stringify({ answers }) })).delivered;
+  } catch (err) {
+    log.warn(`answer ${sessionId.slice(0, 6)}: ${(err as Error).message}`);
+    return false;
+  }
+}
+
 /** One tool of dev's MCP server, its text result read back as JSON. */
 async function tool<T>(name: string, args: Record<string, unknown>): Promise<T> {
   const reply = await call<{ error?: { message: string }; result?: { isError?: boolean; content?: { text?: string }[] } }>("/mcp", {

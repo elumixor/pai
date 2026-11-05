@@ -1,6 +1,8 @@
+import { now } from "../core/db.ts";
 import * as agents from "./agents.ts";
 import * as asks from "./asks.ts";
 import * as drafts from "./drafts.ts";
+import * as held from "./held.ts";
 import * as sessions from "./sessions.ts";
 import * as tasks from "./tasks.ts";
 
@@ -53,6 +55,27 @@ export function needs() {
         priority: "normal",
         link: tasks.firstUrl(q.question),
         createdAt: summary.lastActivity,
+      },
+    ];
+  });
+  // A terminal's open question, unless the daemon has since taken that conversation over.
+  const fromTerminals = held.all().flatMap((t) => {
+    const index = t.question?.questions.findIndex((_, i) => t.question!.answers[i] === undefined) ?? -1;
+    const q = t.question?.questions[index];
+    if (!q || sessions.find(t.id)) return [];
+    return [
+      {
+        kind: "question" as const,
+        id: `q:${t.id}:${t.question!.id}:${index}`,
+        session: t.id,
+        agent: null,
+        from: t.title,
+        question: q.question,
+        options: q.options.map((o) => o.label),
+        freeText: true,
+        priority: "normal",
+        link: tasks.firstUrl(q.question),
+        createdAt: now(),
       },
     ];
   });

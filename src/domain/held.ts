@@ -1,4 +1,4 @@
-import type { SessionKind } from "./session.ts";
+import type { Question, SessionKind } from "./session.ts";
 import type { Image } from "./attachments.ts";
 
 /**
@@ -6,6 +6,13 @@ import type { Image } from "./attachments.ts";
  * (the mirror, `mirror.ts`, follows their transcripts). Whatever holds such threads registers a
  * `HeldThreads`; the frontends route a message to one before they fall back to a daemon session.
  */
+
+/** The question a held conversation has open in its terminal's dialog, with the answers collected here so far. */
+export interface HeldQuestion {
+  readonly id: string;
+  readonly questions: readonly Question[];
+  readonly answers: Record<number, string>;
+}
 
 /** A held conversation, with what the frontends need to show it as a thread. */
 export interface HeldThread {
@@ -16,6 +23,7 @@ export interface HeldThread {
   readonly project?: string;
   readonly parent: null;
   readonly pending: undefined;
+  readonly question: HeldQuestion | undefined;
   readonly costUsd: number;
   readonly state: "busy" | "idle";
   title: string;
@@ -26,10 +34,12 @@ export interface HeldThread {
   persist(): void;
   summary(): Record<string, unknown>;
   send(text: string, opts?: { images?: Image[] }): void;
+  answer(text: string): Promise<boolean>;
   interrupt(): Promise<boolean>;
 }
 
 export interface HeldThreads {
+  readonly all: () => readonly HeldThread[];
   readonly find: (idOrShort: string) => HeldThread | undefined;
   /** The held thread a chat topic belongs to, unless the daemon runs that conversation itself right now. */
   readonly byThread: (threadId: number) => HeldThread | undefined;
@@ -47,5 +57,6 @@ const first = <T>(pick: (h: HeldThreads) => T | undefined) => {
   return undefined;
 };
 
+export const all = () => [...holders.values()].flatMap((h) => h.all());
 export const find = (idOrShort: string) => first((h) => h.find(idOrShort));
 export const byThread = (threadId: number) => first((h) => h.byThread(threadId));
