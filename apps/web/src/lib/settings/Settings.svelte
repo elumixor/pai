@@ -19,7 +19,7 @@
 <script lang="ts">
   import { PALETTES, type Palette, type ThemeKind, type ThemeMode } from "@desk/core";
   import { SettingsDialog, type SettingsSection } from "@desk/core/settings";
-  import { Archive, BookOpen, Clock, Download, Gauge, Keyboard, LogOut, Monitor, Moon, Palette as PaletteIcon, Plug, Sun, Upload, User, Wallet } from "lucide-svelte";
+  import { Archive, BookOpen, Clock, Download, Gauge, Keyboard, LogOut, Monitor, Moon, Palette as PaletteIcon, Plug, Sun, SunMoon, Upload, User, Wallet } from "lucide-svelte";
   import { api } from "../api";
   import { auth } from "../auth.svelte";
   import { desk } from "../desk.svelte";
@@ -49,16 +49,15 @@
     { id: "spend", label: "Spend", icon: Wallet, keywords: "cost money tokens usage price" },
   ];
   const MODES: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
-    { value: "system", label: "System", icon: Monitor },
     { value: "light", label: "Light", icon: Sun },
     { value: "dark", label: "Dark", icon: Moon },
+    { value: "system", label: "System", icon: Monitor },
   ];
   const KINDS: { kind: ThemeKind; label: string }[] = [
     { kind: "light", label: "Light theme" },
     { kind: "dark", label: "Dark theme" },
   ];
   const LINES = [46, 70, 58, 80, 40];
-  const option = "flex h-8 items-center gap-2 rounded-sm px-3 transition-colors [&>svg]:text-ink-45";
   const button = "inline-flex h-8 items-center gap-2 rounded-sm bg-ink-5 px-3 transition-colors hover:bg-ink-10 [&>svg]:text-ink-45";
 
   let exportNote = $state("");
@@ -111,12 +110,16 @@
 <SettingsDialog sections={SECTIONS} bind:open bind:active {onclose}>
   {#snippet section(entry)}
     {#if entry.id === "appearance"}
-      <SettingsBlock title="Appearance">
-        <div class="flex gap-2" role="radiogroup" aria-label="Mode">
-          {#each MODES as m (m.value)}
-            {@const on = theme.choice.mode === m.value}
-            <button role="radio" aria-checked={on} class="{option} {on ? 'bg-ink-10 font-medium' : 'bg-ink-5 hover:bg-ink-10'}" onclick={() => theme.choose({ mode: m.value })}><m.icon size={16} /> {m.label}</button>
-          {/each}
+      <div class="space-y-4">
+        <div class="flex items-center gap-3">
+          <SunMoon size={18} class="shrink-0 text-ink-45" />
+          <span class="flex-1 text-[14px]">Appearance</span>
+          <div class="flex gap-1" role="radiogroup" aria-label="Mode">
+            {#each MODES as m (m.value)}
+              {@const on = theme.choice.mode === m.value}
+              <button role="radio" aria-checked={on} aria-label={m.label} title={m.label} class="grid size-8 place-items-center rounded-sm transition-colors {on ? 'bg-ink text-surface' : 'text-ink-45 hover:bg-ink-5 hover:text-ink'}" onclick={() => theme.choose({ mode: m.value })}><m.icon size={16} /></button>
+            {/each}
+          </div>
         </div>
         {#each KINDS as k (k.kind)}
           <div class="space-y-2 pt-2">
@@ -126,7 +129,7 @@
             </div>
           </div>
         {/each}
-      </SettingsBlock>
+      </div>
     {:else if entry.id === "usage"}
       <SettingsBlock title="Usage rings" about="Shown by the message box.">
         {#each desk.usage?.windows ?? [] as w (w.name)}
