@@ -117,7 +117,7 @@
           <div class="flex gap-1" role="radiogroup" aria-label="Mode">
             {#each MODES as m (m.value)}
               {@const on = theme.choice.mode === m.value}
-              <button role="radio" aria-checked={on} aria-label={m.label} title={m.label} class="grid size-8 place-items-center rounded-sm transition-colors {on ? 'bg-ink text-surface' : 'text-ink-45 hover:bg-ink-5 hover:text-ink'}" onclick={() => theme.choose({ mode: m.value })}><m.icon size={16} /></button>
+              <button role="radio" aria-checked={on} aria-label={m.label} title={m.label} class="grid size-8 place-items-center rounded-sm transition-colors {on ? 'bg-accent text-surface' : 'text-ink-45 hover:bg-ink-5 hover:text-ink'}" onclick={() => theme.choose({ mode: m.value })}><m.icon size={16} /></button>
             {/each}
           </div>
         </div>
