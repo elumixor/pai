@@ -1055,7 +1055,8 @@ export function kill(slug: string, reason = ""): Agent {
 
 // ---- the trash -------------------------------------------------------------
 
-export const TRASH_DAYS = sessions.TRASH_DAYS;
+/** Read when asked: this file and sessions.ts import each other, so it is not there yet at import. */
+export const trashDays = () => sessions.TRASH_DAYS;
 
 /** To the trash, those below it too: nothing runs, its chat and sessions are out of sight, and it can come back for 30 days. */
 export function trash(slug: string): readonly string[] {
@@ -1110,9 +1111,9 @@ export function forgetPerson(a: Agent) {
   if (a.personId) void people.removeMember(a.personId).catch((err: Error) => log.warn(`${a.slug}: person not removed: ${err.message}`));
 }
 
-/** The trash empties itself of agents there longer than `TRASH_DAYS`. */
+/** The trash empties itself of agents there longer than `trashDays`. */
 export function purgeOld() {
-  const before = now() - TRASH_DAYS * 86_400_000;
+  const before = now() - trashDays() * 86_400_000;
   for (const a of trashList()) if (a.trashedAt! < before && get(a.slug)) purge(a.slug);
 }
 

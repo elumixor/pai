@@ -619,7 +619,7 @@ export async function handle(req: Request): Promise<Response> {
       }
     }
     if (path === "/agents") return json(agents.tree(tasks.openCounts()));
-    if (path === "/agents/trash") return json({ items: agents.trashList(), days: agents.TRASH_DAYS });
+    if (path === "/agents/trash") return json({ items: agents.trashList(), days: agents.trashDays() });
     const agentPath = /^\/agents\/([a-z0-9-]+)(?:\/(message|close|stop|resume|instructions|sheet|trash|restore|purge))?$/.exec(path);
     if (agentPath?.[1]) {
       const slug = agentPath[1];
