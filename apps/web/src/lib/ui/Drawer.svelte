@@ -37,14 +37,16 @@
 
 <svelte:window onkeydown={keydown} />
 
-<div class="relative flex min-h-0 flex-1 overflow-clip" bind:clientWidth={width}>
+<!-- Not clipped here: the panel's edge reaches up through the bar. The page clips what lies past the screen's right. -->
+<div class="relative flex min-h-0 flex-1" bind:clientWidth={width}>
   <div class="isolate flex min-w-0 flex-1 flex-col overflow-clip">{@render children()}</div>
   {#if open && !docked}
     <div class="absolute inset-0 z-10 bg-[var(--backdrop)]" role="presentation" transition:fade={{ duration: motionMs() }} onclick={onclose}></div>
   {/if}
   {#if open}
-    <aside class="z-20 shrink-0 overflow-clip bg-page {docked ? 'relative' : 'absolute inset-y-0 right-0 shadow-[var(--soft-shadow)]'}" style:width="{panelWidth}px" transition:slide>
-      <div class="h-full border-l border-line" style:width="{panelWidth}px">{@render panel()}</div>
+    <aside class="z-20 shrink-0 bg-page {docked ? 'relative' : 'absolute inset-y-0 right-0 shadow-[var(--soft-shadow)]'}" style:width="{panelWidth}px" transition:slide>
+      <div class="pointer-events-none absolute -top-11 bottom-0 left-0 border-l border-line" aria-hidden="true"></div>
+      <div class="h-full bg-page" style:width="{panelWidth}px">{@render panel()}</div>
     </aside>
   {/if}
 </div>
