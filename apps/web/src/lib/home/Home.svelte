@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { forkMounts } from "../chat/model";
   import { TrashBanner } from "@desk/core/trash";
   import { PanelLeftOpen, SlidersHorizontal, Trash2 } from "lucide-svelte";
   import { fly } from "svelte/transition";
@@ -158,7 +159,9 @@
         },
         setPrefs: async (changes) => ({ error: (await api.reconfigure(id, changes)).error }),
         send: (text, images) => api.sendThread(id, text, images),
-        placeholder: desk.threadOf(id)?.private ? "Private: erased when you leave…" : "Message this thread…",
+        get placeholder() {
+          return desk.threadOf(id)?.private ? "Private: erased when you leave…" : "Message this thread…";
+        },
       };
     }
     if (route.name === "new") {
@@ -183,7 +186,7 @@
     return undefined;
   });
   /** What remounts the chat: another place. */
-  const chatKey = $derived(route.name === "settings" ? "home" : `${route.name}:${route.param ?? ""}`);
+  const chatKey = $derived(route.name === "settings" ? "home" : `${route.name}:${(route.name === "thread" && forkMounts.get(route.param ?? "")) || (route.param ?? "")}`);
   $effect(() => {
     if (route.name === "new") {
       newChat.reset();

@@ -38,7 +38,7 @@
 </script>
 
 <script lang="ts">
-  import { tick, type Snippet } from "svelte";
+  import { tick, type Snippet, untrack } from "svelte";
   import { SvelteMap, SvelteSet } from "svelte/reactivity";
   import { api } from "../api";
   import { desk, PAI } from "../desk.svelte";
@@ -56,7 +56,7 @@
   import FindBar, { type FindTarget } from "./FindBar.svelte";
   import MessageRow from "./MessageRow.svelte";
   import { navigate } from "../router.svelte";
-  import { copyOf, forkSeeds, splitPastes, describeTools, eventIcon, eventType, excerptOf, type Item, type LiveQuestion, type ReplyQuote, type Row, textOf, type ToolGroup, typeLabel, withReply } from "./model";
+  import { copyOf, forkMounts, forkSeeds, splitPastes, describeTools, eventIcon, eventType, excerptOf, type Item, type LiveQuestion, type ReplyQuote, type Row, textOf, type ToolGroup, typeLabel, withReply } from "./model";
   import Pictures from "./Pictures.svelte";
   import QuestionRow from "./QuestionRow.svelte";
   import QuoteRef from "./QuoteRef.svelte";
@@ -98,6 +98,15 @@
   let hiddenAts = new Set<number>();
   let rewriting = false;
   let rewriteTurn: number | undefined;
+  let rewriteAt = 0;
+  let keepPlace = false;
+  let loads = 0;
+  /** Another version of this thread, in this same chat: rows they share stay on screen. */
+  function openVersion(id: string) {
+    const here = spec.session!;
+    forkMounts.set(id, forkMounts.get(here) ?? here);
+    navigate({ name: "thread", param: id });
+  }
   let nextTurn = 0;
   let forks = $state<{ turn: number; ids: string[] }[]>([]);
   let pinnedAnswer: ((text: string) => Promise<unknown>) | undefined;
@@ -270,7 +279,10 @@
       const ids = forks.find((f) => f.turn === turn)?.ids;
       const at = ids && spec.session ? ids.indexOf(spec.session) : -1;
       if (!ids || at < 0) return undefined;
-      return { at, total: ids.length, go: (step) => navigate({ name: "thread", param: ids[at + step]! }) };
+      return { at, total: ids.length, go: (step) => {
+        keepPlace = true;
+        openVersion(ids[at + step]!);
+      } };
     },
     rewrite: (m) => {
       const { text, pastes } = splitPastes(textOf(m));
@@ -279,6 +291,7 @@
       replyTarget = { from: nameOf(m.from), at: m.createdAt, excerpt: excerptOf(textOf(m)), messageId: m.id > 0 ? m.id : undefined };
       rewriting = true;
       rewriteTurn = (m.meta as { turn?: number }).turn;
+      rewriteAt = m.createdAt;
       box?.setPin({ icon: "pencil", from: "Rewriting", text: replyTarget.excerpt, onDismiss: dropReply });
     },
   };
@@ -339,11 +352,21 @@
     // A plain thread branches: the old version and what followed stay, one switch away.
     if (rewrote && spec.session && turn !== undefined) {
       box?.setPin(null);
+      const before = items;
+      items = items.filter((i) => i.at < rewriteAt);
+      items.push(spoken("user", text, Date.now(), undefined, turn, "rewrite"));
+      working = { since: Date.now() };
+      liveText = null;
+      void scrollSoon(true);
       const result = await api.fork(spec.session, turn, text, images);
-      if (result.error || !result.data?.sessionId) return void box?.setNote(result.error ?? "no thread came back");
+      if (result.error || !result.data?.sessionId) {
+        items = before;
+        working = null;
+        return void box?.setNote(result.error ?? "no thread came back");
+      }
       forkSeeds.set(result.data.sessionId, text);
       void desk.refreshSessions();
-      return navigate({ name: "thread", param: result.data.sessionId });
+      return openVersion(result.data.sessionId);
     }
     box?.setPin(null);
     const body = withReply(quote, rewrote ? `(This rewrites the quoted message: disregard it and anything that followed from it.)\n${text}` : text);
@@ -418,15 +441,23 @@
   }
 
   /** A line of a plain thread as a row of the log, so it is drawn as the log's are. */
-  function spoken(from: string, body: string, at: number, images?: readonly string[], turn?: number): Row {
+  function spoken(from: string, body: string, at: number, images?: readonly string[], turn?: number, key?: string): Row {
     spokenCount += 1;
     const m = { id: -spokenCount, from, to: from === "user" ? spec.agent : "user", kind: "chat", body, taskId: null, meta: { ...(images?.length ? { images } : {}), ...(turn !== undefined ? { turn } : {}) }, createdAt: at } as unknown as LogMessage;
-    return { kind: "message", key: `s${spokenCount}`, at, m };
+    return { kind: "message", key: key ?? `s${spokenCount}`, at, m };
   }
 
   /** A plain thread's transcript as rows: what he said, each turn's tool calls folded, the turn's last text as its reply. */
   function turnsOf(history: Transcript[]): Item[] {
     const out: Item[] = [];
+    // By time, which a version shares with the thread it came from: the rows they have in common are not redrawn.
+    const used = new Set<string>();
+    const keyOf = (prefix: string, at: number) => {
+      let key = `${prefix}${at}`;
+      while (used.has(key)) key += "+";
+      used.add(key);
+      return key;
+    };
     let group: ToolGroup | undefined;
     let reply: { text: string; at: number } | undefined;
     const ensure = (at: number) => {
@@ -437,7 +468,7 @@
       return group;
     };
     const close = () => {
-      if (reply && !hiddenAts.has(reply.at)) out.push(spoken(spec.agent, reply.text, reply.at));
+      if (reply && !hiddenAts.has(reply.at)) out.push(spoken(spec.agent, reply.text, reply.at, undefined, undefined, keyOf("r", reply.at)));
       reply = undefined;
       group = undefined;
     };
@@ -447,7 +478,7 @@
         if (entry.meta || (!entry.text.trim() && !entry.images?.length) || entry.text.startsWith("[Request interrupted")) continue;
         close();
         nextTurn = (entry.turn ?? nextTurn) + 1;
-        if (!hiddenAts.has(at)) out.push(spoken("user", entry.text, at, entry.images, entry.turn));
+        if (!hiddenAts.has(at)) out.push(spoken("user", entry.text, at, entry.images, entry.turn, keyOf("u", at)));
         continue;
       }
       // The texts before a turn's last one were the model thinking aloud.
@@ -508,25 +539,36 @@
 
   async function load() {
     if (spec.session) {
-      const history = await api.transcript(spec.session).catch(() => [] as Transcript[]);
-      hiddenAts = new Set(await api.hiddenTurns(spec.session).catch(() => [] as number[]));
+      const session = spec.session;
+      const load = ++loads;
+      const keep = keepPlace;
+      keepPlace = false;
+      liveSession = session;
+      liveGroup = undefined;
+      liveText = null;
+      working = forkSeeds.has(session) ? working : null;
+      pending = [];
+      nextTurn = 0;
+      const history = await api.transcript(session).catch(() => [] as Transcript[]);
+      if (load !== loads) return;
+      hiddenAts = new Set(await api.hiddenTurns(session).catch(() => [] as number[]));
       const rows = turnsOf(history);
-      forks = await api.forks(spec.session).catch(() => []);
-      const forked = forkSeeds.get(spec.session);
+      forks = await api.forks(session).catch(() => []);
+      const forked = forkSeeds.get(session);
       if (forked !== undefined) {
-        forkSeeds.delete(spec.session);
+        forkSeeds.delete(session);
         if (!rows.some((i) => i.kind === "message" && i.m.from === "user" && i.m.body === forked)) {
-          rows.push(spoken("user", forked, Date.now(), undefined, nextTurn++));
+          rows.push(spoken("user", forked, Date.now(), undefined, nextTurn++, "rewrite"));
           working = { since: Date.now() };
-          forks = await api.forks(spec.session).catch(() => []);
         }
       }
       if (spec.seed && !rows.some((i) => i.kind === "message" && i.m.from === "user")) rows.push(spoken("user", spec.seed, Date.now(), undefined, nextTurn++));
-      liveSession = spec.session;
-      items = [...rows, ...questionsFrom(await api.needs().catch(() => [] as Need[]))];
+      const asked = questionsFrom(await api.needs().catch(() => [] as Need[]));
+      if (load !== loads) return;
+      items = [...rows, ...asked];
       loading = false;
       await tick();
-      holdBottom();
+      if (!keep) holdBottom();
       return;
     }
     const [page, open, needs] = await Promise.all([api.messages(spec.agent, { limit: PAGE, task: spec.task }).catch(() => [] as LogMessage[]), api.asks().catch(() => []), api.needs().catch(() => [] as Need[])]);
@@ -709,7 +751,9 @@
   }
 
   $effect(() => {
-    void load();
+    // Only another conversation loads again: not whatever else a chat's description happens to read.
+    void spec.key;
+    untrack(() => void load());
     const stop = stream.on((event) => {
       if (event.sessionId && event.sessionId === liveSession && event.kind.startsWith("session.")) onLive(event.kind, event.ts, event.payload);
       onLog(event.kind, event.payload, event.sessionId);

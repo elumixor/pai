@@ -91,6 +91,8 @@ export const copyOf = (body: string) => {
 };
 /** What a rewrite said, shown in its new thread until the transcript has it. */
 export const forkSeeds = new Map<string, string>();
+/** Versions of a thread share one mounted chat: which thread each was first opened from. */
+export const forkMounts = new Map<string, string>();
 export const textOf = (m: LogMessage) => parseReply(m.body)?.text ?? m.body;
 
 /** "Created a file, ran 5 commands" — what a turn's tool calls amount to, by family. */

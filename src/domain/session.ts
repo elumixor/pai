@@ -60,7 +60,7 @@ function build(
   ref: SessionRef,
   sessionId: string,
   project?: string,
-  prefs?: { model?: string | null; effort?: Effort | null; private?: boolean },
+  prefs?: { model?: string | null; effort?: Effort | null; private?: boolean; wholeContext?: boolean },
   agent?: AgentSetup,
 ): Options {
   const servers: NonNullable<Options["mcpServers"]> = {
@@ -104,7 +104,8 @@ function build(
     stderr: (data) => ref.session && log.debug(`${ref.session.shortId} stderr`, data.trim().slice(0, 300)),
     // A token in the environment makes claude skip the account's claude.ai connectors; the box is
     // logged in through ~/.claude, so the sessions use that and the token stays for `usage.ts`.
-    env: sessionEnv(),
+    // A conversation that grew in a terminal goes on as it was: compacting it here would swap its context for a summary.
+    env: { ...sessionEnv(), ...(prefs?.wholeContext ? { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "1000000" } : {}) },
   };
 }
 
@@ -288,6 +289,7 @@ export class Session {
   }
 
   readonly private: boolean;
+  private readonly wholeContext: boolean;
 
   constructor(opts: SessionOptions) {
     // A fresh session of a warmable kind adopts the pre-spawned process and its id.
@@ -311,6 +313,7 @@ export class Session {
     this.agent = opts.agent?.slug ?? null;
     this.agentSetup = opts.agent;
     this.origin = opts.origin ?? null;
+    this.wholeContext = (opts.origin ?? (db.query("SELECT origin FROM sessions WHERE session_id = ?").get(this.id) as { origin: string | null } | undefined)?.origin) === "terminal";
     if (opts.resume) {
       const row = db.query("SELECT card_id, cost_usd, turns, model, model_pref, effort FROM sessions WHERE session_id = ?").get(this.id) as
         | { card_id: number | null; cost_usd: number; turns: number; model: string | null; model_pref: string | null; effort: Effort | null }
@@ -330,7 +333,7 @@ export class Session {
   private start(resume: boolean) {
     this.resuming = resume;
     const ref: SessionRef = { session: this };
-    const options = build(this.kind, this.cwd, ref, this.id, this.project, { model: this.modelPref, effort: this.effort, private: this.private }, this.agentSetup);
+    const options = build(this.kind, this.cwd, ref, this.id, this.project, { model: this.modelPref, effort: this.effort, private: this.private, wholeContext: this.wholeContext }, this.agentSetup);
     this.mcpConfig = options.mcpServers;
     options.title = this.title;
     if (resume) options.resume = this.id;

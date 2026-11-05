@@ -86,6 +86,8 @@ interface Entry {
   timestamp?: string;
   isMeta?: boolean;
   isSidechain?: boolean;
+  isCompactSummary?: boolean;
+  isVisibleInTranscriptOnly?: boolean;
   cwd?: string;
   sessionId?: string;
   origin?: { kind?: string };
@@ -140,6 +142,7 @@ export async function transcript(sessionId: string, cwd?: string, limit = 200): 
           if (tool) tool.result = resultPreview(block.content);
         }
       }
+    if (isSynthetic(entry)) continue;
     const message = toMessage(entry);
     if (!message) continue;
     for (const tool of message.tools ?? []) if (tool.id) tools.set(tool.id, tool as { name: string; input?: string; result?: string });
@@ -155,7 +158,7 @@ const isTurn = (m: TranscriptMessage) => m.role === "user" && !m.meta && Boolean
 export async function forkTranscript(sessionId: string, turn: number, newId: string, cwd: string): Promise<boolean> {
   const path = transcriptPath(sessionId, cwd);
   if (!path) return false;
-  const kept: string[] = [];
+  const kept: Entry[] = [];
   let seen = 0;
   let reached = false;
   for (const line of (await Bun.file(path).text()).split("\n")) {
@@ -172,11 +175,15 @@ export async function forkTranscript(sessionId: string, turn: number, newId: str
       reached = true;
       break;
     }
-    kept.push(JSON.stringify(entry.sessionId ? { ...entry, sessionId: newId } : entry));
+    kept.push(entry.sessionId ? { ...entry, sessionId: newId } : entry);
   }
   if (!reached) return false;
+  // What was queued for the next turn stays out: a conversation ending on a user entry resumes as an interrupted one.
+  const isAnswered = (e: Entry) => e.type === "assistant" || (e.type === "user" && Array.isArray(e.message?.content) && e.message.content.some((b) => b.type === "tool_result"));
+  const last = kept.findLastIndex(isAnswered);
+  const lines = [...kept.slice(0, last + 1), ...kept.slice(last + 1).filter((e) => e.type === "system")].map((e) => JSON.stringify(e));
   mkdirSync(join(projectsDir, slug(cwd)), { recursive: true });
-  await Bun.write(join(projectsDir, slug(cwd), `${newId}.jsonl`), kept.length ? `${kept.join("\n")}\n` : "");
+  await Bun.write(join(projectsDir, slug(cwd), `${newId}.jsonl`), lines.length ? `${lines.join("\n")}\n` : "");
   return true;
 }
 
@@ -374,7 +381,15 @@ export async function sessionsIn(cwd: string, limit = 30): Promise<DiskSession[]
   return out;
 }
 
+/** What Claude Code writes in on a resume that ends on a user entry: not something the model said. */
+const isSynthetic = (entry: Entry) => {
+  const content = entry.message?.content;
+  return entry.type === "assistant" && Array.isArray(content) && content.length === 1 && content[0]?.text === "No response requested.";
+};
+
 function toMessage(entry: Entry): TranscriptMessage | undefined {
+  // A compaction's summary is written as a user entry; nobody said it.
+  if (entry.isCompactSummary || entry.isVisibleInTranscriptOnly) return { role: "user", ts: entry.timestamp ?? "", text: "", meta: true };
   const role = entry.type === "assistant" ? "assistant" : "user";
   const ts = entry.timestamp ?? new Date().toISOString();
   const content = entry.message?.content;
