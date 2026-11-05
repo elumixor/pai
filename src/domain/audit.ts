@@ -93,7 +93,7 @@ function outcomeOf(result: string | null) {
 }
 
 /** What went out, newest first, with what came of each. */
-export const sent = (limit = 100) => list({ limit }).map((e) => ({ id: e.toolUseId, agent: e.agent, tool: e.tool, summary: e.summary, ts: e.ts, outcome: e.ok === false ? "not_sent" : outcomeOf(e.result) }));
+export const sent = (limit = 100) => list({ limit: limit * 2 }).filter((e) => !e.tool.startsWith("mcp__keep__")).slice(0, limit).map((e) => ({ id: e.toolUseId, agent: e.agent, tool: e.tool, summary: e.summary, ts: e.ts, outcome: e.ok === false ? "not_sent" : outcomeOf(e.result) }));
 
 export function list(opts: { agent?: string; since?: number; limit?: number; search?: string } = {}): Entry[] {
   const where: string[] = [];

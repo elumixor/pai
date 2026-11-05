@@ -201,7 +201,7 @@ export async function connect(name: string) {
     const l = loaded.get(n);
     if (isLive(l) && isEnabled(l) && !l.started) await startOne(l);
   }
-  await watchSignIn();
+  await watchSignIn(true);
 }
 
 /** Turns one off, with what builds on it. Its data stays, so connecting it again picks up where it was. */
@@ -219,19 +219,23 @@ export async function disconnect(name: string) {
 
 const signInTitle = (l: Live) => `Connect ${l.connector.title}`;
 const SIGN_IN_EVERY_MS = 5 * 60_000;
+/** A connector still connecting after a restart is not signed out: that takes two looks in a row. */
+const signedOutOnce = new Set<string>();
 
 /** A connected connector that lost its sign-in waits on the user, with the link that fixes it. */
-async function watchSignIn() {
+async function watchSignIn(now = false) {
   for (const l of active()) {
     const status = await statusOf(l);
-    if (status.state === "signed_in" || !status.fix) l.host.problems.resolve(signInTitle(l));
+    if (status.state === "signed_in" || !status.fix) {
+      signedOutOnce.delete(l.name);
+      l.host.problems.resolve(signInTitle(l));
+    } else if (!now && !signedOutOnce.has(l.name)) signedOutOnce.add(l.name);
     else l.host.problems.raise({ title: signInTitle(l), detail: status.detail ?? "", action: `[${status.fix.label}](${new URL(status.fix.url, config.baseUrl).href})`, waitsOnUser: true });
   }
 }
 
 export function startSignInWatch() {
   const tick = () => void watchSignIn().catch((err: Error) => log.warn(`sign-in watch: ${err.message}`));
-  tick();
   const timer = setInterval(tick, SIGN_IN_EVERY_MS);
   return () => clearInterval(timer);
 }

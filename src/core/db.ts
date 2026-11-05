@@ -303,6 +303,8 @@ if (!askColumns.includes("result")) db.exec("ALTER TABLE asks ADD COLUMN result 
 // Who let a draft go: the user's Send, or their standing pin for that channel.
 const draftColumns = (db.query("PRAGMA table_info(drafts)").all() as { name: string }[]).map((c) => c.name);
 if (!draftColumns.includes("approved_by")) db.exec("ALTER TABLE drafts ADD COLUMN approved_by TEXT");
+// General has no page of its own: what was set up for it before goes.
+db.exec("UPDATE agents SET keep_page = NULL, page_session = NULL WHERE kind = 'orchestrator' AND keep_page IS NOT NULL");
 // What waits on the user and was said again, by the need's id.
 db.exec("CREATE TABLE IF NOT EXISTS reminders (need TEXT PRIMARY KEY, at INTEGER NOT NULL, times INTEGER NOT NULL)");
 // Routines: a schedule next to the event, an agent next to the action, a check in code before any model runs.

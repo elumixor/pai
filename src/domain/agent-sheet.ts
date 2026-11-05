@@ -29,7 +29,7 @@ export async function agentSheet(a: agents.Agent) {
   const general = a.kind === "orchestrator";
   const { who, instructions, tools } = chatConfig(general ? "general" : "worker", a.tools ?? undefined);
   const [page, keep, assigned] = await Promise.all([
-    a.keepPage
+    a.keepPage && !general
       ? agentPage.shown(a.keepPage).catch((err: Error) => {
           log.warn(`${a.slug}: ${err.message}`);
           return { urn: a.keepPage, error: err.message };

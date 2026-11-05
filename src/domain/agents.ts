@@ -235,7 +235,7 @@ export function ensurePai(): Agent {
   const existing = get(PAI);
   if (existing?.name === GENERAL) return existing;
   // What it is called in every crumb and row is General, whoever made the row.
-  if (existing) return set(PAI, { name: GENERAL, keep_page: null, page_session: null })!;
+  if (existing) return set(PAI, { name: GENERAL })!;
   db.prepare(
     "INSERT INTO agents (slug, name, kind, parent, brief, folder, status, created_at, last_active, budget) VALUES (?, ?, 'orchestrator', NULL, ?, ?, 'idle', ?, ?, '{}')",
   ).run(PAI, GENERAL, "The orchestrator: the one voice the user hears.", config.workspace, now(), now());
