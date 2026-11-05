@@ -73,8 +73,8 @@
       <div class="space-y-1.5">
         {#each entries as token (token.id)}
           {@const value = current.tokens[token.id]}
-          <div class="flex min-h-7 items-center gap-2">
-            <span class="w-24 shrink-0 truncate text-[12px] text-ink-70">{token.label}</span>
+          <div class="flex min-h-8 items-center gap-2">
+            <span class="w-24 shrink-0 truncate text-[12px] text-ink-45">{token.label}</span>
             {#if token.kind === "color"}
               <ColorField {value} inherited={() => `var(${token.vars[0]})`} label={token.label} onchange={setToken(token.id)} />
             {:else if token.kind === "font"}

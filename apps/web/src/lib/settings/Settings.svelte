@@ -7,10 +7,11 @@
 <script lang="ts">
   import { PEOPLE_URL, type ThemeMode } from "@desk/core";
   import { SettingsDialog, type SettingsSection } from "@desk/core/settings";
-  import { BookOpen, ChevronRight, Clock, Contact, LogOut, Monitor, Moon, Palette as PaletteIcon, Plug, Sun, SunMoon, User, Wallet } from "lucide-svelte";
+  import { BookOpen, Clock, Contact, LogOut, Monitor, Moon, Palette as PaletteIcon, Plug, Sun, SunMoon, User, Wallet } from "lucide-svelte";
   import { auth } from "../auth.svelte";
   import { theme } from "../theme.svelte";
   import ThemesSheet from "./themes/ThemesSheet.svelte";
+  import { BUTTON } from "./controls";
   import Connectors from "./Connectors.svelte";
   import Context from "./Context.svelte";
   import Routines from "./Routines.svelte";
@@ -44,23 +45,16 @@
 <SettingsDialog sections={SECTIONS} bind:open bind:active {onclose}>
   {#snippet section(entry)}
     {#if entry.id === "appearance"}
-      <div class="space-y-4">
-        <div class="flex items-center gap-3">
-          <SunMoon size={18} class="shrink-0 text-ink-45" />
-          <span class="flex-1 text-[14px]">Appearance</span>
-          <div class="flex gap-1" role="radiogroup" aria-label="Mode">
-            {#each MODES as m (m.value)}
-              {@const on = theme.choice.mode === m.value}
-              <button role="radio" aria-checked={on} aria-label={m.label} title={m.label} class="grid size-8 place-items-center rounded-sm transition-colors {on ? 'bg-accent text-surface' : 'text-ink-45 hover:bg-ink-5 hover:text-ink'}" onclick={() => theme.choose({ mode: m.value })}><m.icon size={16} /></button>
-            {/each}
-          </div>
+      <div class="flex items-center gap-3 pr-8 max-md:pr-0">
+        <SunMoon size={18} class="shrink-0 text-ink-45" />
+        <span class="min-w-0 flex-1 truncate text-[14px]">Appearance</span>
+        <button type="button" class={BUTTON} aria-label="Themes" onclick={() => (themesOpen = true)}><PaletteIcon size={16} /><span class="max-sm:hidden">Themes</span></button>
+        <div class="flex gap-1" role="radiogroup" aria-label="Mode">
+          {#each MODES as m (m.value)}
+            {@const on = theme.choice.mode === m.value}
+            <button role="radio" aria-checked={on} aria-label={m.label} title={m.label} class="grid size-8 place-items-center rounded-sm transition-colors {on ? 'bg-accent text-surface' : 'text-ink-45 hover:bg-ink-5 hover:text-ink'}" onclick={() => theme.choose({ mode: m.value })}><m.icon size={16} /></button>
+          {/each}
         </div>
-        <button type="button" class="flex min-h-10 w-full items-center gap-3 rounded-sm text-left transition-colors hover:bg-ink-5" onclick={() => (themesOpen = true)}>
-          <PaletteIcon size={18} class="shrink-0 text-ink-45" />
-          <span class="text-[14px]">Themes</span>
-          <span class="min-w-0 flex-1 truncate text-right text-[13px] text-ink-45">{theme.nameOf(theme.choice.light)} · {theme.nameOf(theme.choice.dark)}</span>
-          <ChevronRight size={16} class="shrink-0 text-ink-30" />
-        </button>
       </div>
       {#if themesOpen}<ThemesSheet onclose={() => (themesOpen = false)} />{/if}
     {:else if entry.id === "account"}

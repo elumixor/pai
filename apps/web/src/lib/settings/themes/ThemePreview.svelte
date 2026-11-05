@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { ChevronRight, Wrench } from "lucide-svelte";
   import type { ElementId } from "../../theme/catalog";
+  import Icon from "../../ui/Icon.svelte";
 
   /**
    * A short conversation drawn with the chat's own classes, so what shows here is what the app will show. A click on
@@ -32,7 +32,7 @@
       <div class="mine-text" {...part("mine")}><div class="bubble">Did the landlord answer? Draft a reply if so.</div></div>
     </div>
     <div class="row tools tint-muted open">
-      <div class="tools-head" {...part("toolLine")}><Wrench size={13} />2 tools<ChevronRight size={11} /></div>
+      <div class="tools-head" {...part("toolLine")}><span>Searched mail</span><Icon name="chevron" size={9} /></div>
       <div class="tools-body">
         <div class="tool-call">
           <div class="tool-call-head"><span class="tool-call-what" {...part("toolCall")}>Search mail</span><span class="tool-call-arg">from:landlord</span></div>

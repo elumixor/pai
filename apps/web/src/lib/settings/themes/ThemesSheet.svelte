@@ -77,7 +77,7 @@
             {#each shown(kind) as palette (palette.id)}
               <ThemeSwatch {palette} on={theme.choice[kind] === palette.id} onpick={() => theme.pick(palette)} onedit={() => open(palette.id, kind)} ondelete={() => theme.remove(palette.id)} />
             {/each}
-            <button type="button" class="flex flex-col gap-1.5 rounded-md p-1 text-left text-[12px] text-ink-45 transition-colors hover:text-ink" onclick={() => create(kind)}>
+            <button type="button" class="flex flex-col gap-1.5 rounded-md border-2 border-transparent p-1 text-left text-[12px] text-ink-45 transition-colors hover:text-ink" onclick={() => create(kind)}>
               <span class="grid h-14 w-full place-items-center rounded-sm border border-dashed border-line-2 transition-colors"><Plus size={16} /></span>
               <span class="truncate px-0.5">New theme</span>
             </button>

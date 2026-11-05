@@ -29,14 +29,14 @@
     return (prop === "color" ? sample?.color : sample?.backgroundColor) ?? "transparent";
   }
 
-  const toggle = (on: boolean) => `grid size-7 place-items-center rounded-xs transition-colors ${on ? "bg-ink-10 text-ink" : "text-ink-45 hover:bg-ink-5 hover:text-ink"}`;
+  const toggle = (on: boolean) => `grid size-8 place-items-center rounded-sm transition-colors ${on ? "bg-ink-10 text-ink" : "text-ink-45 hover:bg-ink-5 hover:text-ink"}`;
   const italic = $derived(style.italic ?? def.looks?.italic ?? false);
   const underline = $derived(style.underline ?? def.looks?.underline ?? false);
 </script>
 
 {#snippet row(label: string, control: import("svelte").Snippet)}
-  <div class="flex min-h-7 items-center gap-2">
-    <span class="w-20 shrink-0 text-[12px] text-ink-45">{label}</span>
+  <div class="flex min-h-8 items-center gap-2">
+    <span class="w-24 shrink-0 text-[12px] text-ink-45">{label}</span>
     {@render control()}
   </div>
 {/snippet}
@@ -71,5 +71,5 @@
     {/snippet}
     {@render row("Style", control)}
   {/if}
-  {#if Object.keys(style).length}<button type="button" class="{BUTTON} h-7 text-[12px]" onclick={() => edit.resetElement(id)}>Reset {def.label.toLowerCase()}</button>{/if}
+  {#if Object.keys(style).length}<button type="button" class="{BUTTON} mt-1" onclick={() => edit.resetElement(id)}>Reset {def.label.toLowerCase()}</button>{/if}
 </div>
