@@ -8,8 +8,9 @@ data="$repo/data"
 ctl() { systemctl --user "$@"; }
 say() { echo "$(date -u +%FT%TZ) rollback: $*" >>"$data/daemon.log"; }
 
-# OnFailure can also fire on a single failed start on some systemd versions: only a spent restart limit counts.
-[ "$(ctl show "$service" -p Result --value)" = "start-limit-hit" ] || exit 0
+# While restarts remain the service is "activating", and it is "failed" only once the limit is spent. Result is no
+# guide: after a crash loop it says exit-code, not start-limit-hit.
+[ "$(ctl show "$service" -p ActiveState --value)" = "failed" ] || exit 0
 
 head=$(git -C "$repo" rev-parse HEAD)
 tag=$(git -C "$repo" describe --tags --exact-match HEAD 2>/dev/null || echo "$head")
