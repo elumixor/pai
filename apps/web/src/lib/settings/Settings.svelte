@@ -1,26 +1,13 @@
 <script lang="ts" module>
-  const SECTION_IDS = ["account", "appearance", "shortcuts", "connectors", "automations", "context", "spend"] as const;
+  const SECTION_IDS = ["account", "appearance", "connectors", "automations", "context", "spend"] as const;
   export type Section = (typeof SECTION_IDS)[number];
   export const isSection = (id: string): id is Section => (SECTION_IDS as readonly string[]).includes(id);
-
-  export const SHORTCUTS: [keys: string, what: string][] = [
-    ["⌘K", "Find a thread, an agent, a setting, or run a command"],
-    ["⌘⇧,", "Settings"],
-    ["⌘\\", "Show or hide the sidebar"],
-    ["⌘N", "A new thread"],
-    ["⌘W", "Close a new thread that was not started"],
-    ["⌃L", "Focus the message box"],
-    ["⌘F", "Find in the open conversation"],
-    ["j k · h l", "Move · fold, unfold, in the sidebar"],
-    ["/", "At the start of a message: a slash command (skills, plugins, built-ins)"],
-    ["Right click · two-finger swipe left", "On a message: reply to it"],
-  ];
 </script>
 
 <script lang="ts">
   import { PALETTES, PEOPLE_URL, type Palette, type ThemeKind, type ThemeMode } from "@desk/core";
   import { SettingsDialog, type SettingsSection } from "@desk/core/settings";
-  import { BookOpen, Clock, Contact, Keyboard, LogOut, Monitor, Moon, Palette as PaletteIcon, Plug, Sun, SunMoon, User, Wallet } from "lucide-svelte";
+  import { BookOpen, Clock, Contact, LogOut, Monitor, Moon, Palette as PaletteIcon, Plug, Sun, SunMoon, User, Wallet } from "lucide-svelte";
   import { auth } from "../auth.svelte";
   import { theme } from "../theme.svelte";
   import Connectors from "./Connectors.svelte";
@@ -30,15 +17,14 @@
   import Spend from "./Spend.svelte";
 
   /**
-   * The suite's settings dialog (`@desk/core/settings`, Keep's too): the account, how this client looks, the
-   * keys, then the pages about the daemon itself: its connectors, routines, context and spend.
+   * The suite's settings dialog (`@desk/core/settings`, Keep's too): the account, how this client looks, then the
+   * pages about the daemon itself: its connectors, routines, context and spend.
    */
   let { open = $bindable(false), active = $bindable<Section>("account"), onclose }: { open?: boolean; active?: Section; onclose?: () => void } = $props();
 
   const SECTIONS: SettingsSection<Section>[] = [
     { id: "account", label: "Account", icon: User, keywords: "sign out daemon host box clerk" },
     { id: "appearance", label: "Appearance", icon: PaletteIcon, keywords: "theme dark light mode palette" },
-    { id: "shortcuts", label: "Keyboard", icon: Keyboard, keywords: "shortcuts keys keybinding" },
     { id: "connectors", label: "Connectors", icon: Plug, keywords: "modules capabilities telegram email gmail linkedin whatsapp browser signed in" },
     { id: "automations", label: "Routines", icon: Clock, keywords: "automations cron events triggers" },
     { id: "context", label: "Context", icon: BookOpen, keywords: "instructions memories skills tools prompt" },
@@ -101,15 +87,6 @@
           </div>
         {/each}
       </div>
-    {:else if entry.id === "shortcuts"}
-      <SettingsBlock title="Keyboard">
-        <dl class="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[13px]">
-          {#each SHORTCUTS as [keys, what] (keys)}
-            <dt><kbd class="rounded-xs bg-ink-5 px-1.5 py-0.5 font-mono text-[12px] text-ink-70">{keys}</kbd></dt>
-            <dd class="m-0 text-ink-45">{what}</dd>
-          {/each}
-        </dl>
-      </SettingsBlock>
     {:else if entry.id === "account"}
       <div class="flex items-center gap-4 pt-3 pr-8">
         {#if auth.user}

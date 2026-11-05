@@ -1,7 +1,7 @@
 <script lang="ts">
   import { PALETTES } from "@desk/core";
   import { CommandPalette, type PaletteItem } from "@desk/core/palette";
-  import { ArrowUpRight, House, Monitor, Moon, PanelLeft, Plus, RefreshCw, Settings as SettingsIcon, Sun } from "lucide-svelte";
+  import { ArrowUpRight, House, Keyboard, Monitor, Moon, PanelLeft, Plus, RefreshCw, Settings as SettingsIcon, Sun } from "lucide-svelte";
   import { fade } from "svelte/transition";
   import { api } from "../api";
   import { desk, PAI } from "../desk.svelte";
@@ -20,6 +20,7 @@
   import { bodyPeek } from "../ui/peek.svelte";
   import Progress from "../ui/Progress.svelte";
   import { installTooltips } from "../ui/tooltip";
+  import Keybindings from "./Keybindings.svelte";
   import { openAgent } from "./open.svelte";
 
   /**
@@ -41,6 +42,7 @@
     settingsOpen = true;
   });
   let paletteOpen = $state(false);
+  let keybindingsOpen = $state(false);
 
   /** The row the open place is in the tree. */
   const active = $derived.by(() => {
@@ -154,6 +156,7 @@
       { key: "sidebar", label: sidebar.open ? "Hide the sidebar" : "Show the sidebar", group: "Commands", icon: PanelLeft, hint: "⌘\\", run: () => sidebar.toggle() },
       { key: "refresh", label: "Refresh", group: "Commands", icon: RefreshCw, run: () => void desk.load() },
       { key: "settings", label: "Settings", group: "Commands", icon: SettingsIcon, hint: "⌘⇧,", run: () => openSettings() },
+      { key: "keybindings", label: "Keyboard shortcuts", group: "Commands", icon: Keyboard, hint: "⌘?", keywords: "keys keybindings hotkeys", run: () => (keybindingsOpen = true) },
       ...(["system", "light", "dark"] as const).map<PaletteItem>((mode) => ({ key: `mode:${mode}`, label: `Mode: ${mode}`, group: "Commands", icon: mode === "dark" ? Moon : mode === "light" ? Sun : Monitor, run: () => theme.choose({ mode }) })),
       ...PALETTES.map<PaletteItem>((p) => ({ key: `theme:${p.id}`, label: `Theme: ${p.name}`, group: "Commands", icon: p.kind === "dark" ? Moon : Sun, hint: p.kind, quiet: true, run: () => theme.choose(p.kind === "dark" ? { dark: p.id, mode: "dark" } : { light: p.id, mode: "light" }) })),
     ];
@@ -197,6 +200,7 @@
 <Home route={view} {roots} {active} />
 
 <Settings bind:open={settingsOpen} bind:active={settingsSection} onclose={() => route.name === "settings" && navigate(behind)} />
+<Keybindings bind:open={keybindingsOpen} />
 <CommandPalette {items} bind:open={paletteOpen} placeholder="Find a thread, an agent, or run a command…" />
 <Menus />
 <BodyPeek />
