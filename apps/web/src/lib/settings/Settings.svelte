@@ -17,9 +17,9 @@
 </script>
 
 <script lang="ts">
-  import { PALETTES, type Palette, type ThemeKind, type ThemeMode } from "@desk/core";
+  import { PALETTES, PEOPLE_URL, type Palette, type ThemeKind, type ThemeMode } from "@desk/core";
   import { SettingsDialog, type SettingsSection } from "@desk/core/settings";
-  import { Archive, BookOpen, Clock, Download, Gauge, Keyboard, LogOut, Monitor, Moon, Palette as PaletteIcon, Plug, Sun, SunMoon, Upload, User, Wallet } from "lucide-svelte";
+  import { Archive, BookOpen, Clock, Contact, Download, Gauge, Keyboard, LogOut, Monitor, Moon, Palette as PaletteIcon, Plug, Sun, SunMoon, Upload, User, Wallet } from "lucide-svelte";
   import { api } from "../api";
   import { auth } from "../auth.svelte";
   import { desk } from "../desk.svelte";
@@ -58,6 +58,7 @@
     { kind: "dark", label: "Dark theme" },
   ];
   const LINES = [46, 70, 58, 80, 40];
+  const iconButton = "grid size-8 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink";
   const button = "inline-flex h-8 items-center gap-2 rounded-sm bg-ink-5 px-3 transition-colors hover:bg-ink-10 [&>svg]:text-ink-45";
 
   let exportNote = $state("");
@@ -158,14 +159,17 @@
           {:else}
             <span class="grid size-14 shrink-0 place-items-center rounded-full bg-ink-10 text-[20px] font-semibold text-ink-70">{auth.user.fullName.slice(0, 1).toUpperCase()}</span>
           {/if}
-          <div class="min-w-0 flex-1">
+          <div class="min-w-0">
             <p class="m-0 truncate text-[16px] font-medium">{auth.user.fullName}</p>
             {#if auth.user.email}<p class="m-0 truncate text-[13px] text-ink-45">{auth.user.email}</p>{/if}
           </div>
         {:else}
           <p class="m-0 min-w-0 flex-1 text-[13px] text-ink-45">Opened with a token link, so no person is signed in.</p>
         {/if}
-        <button class="grid size-8 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink" aria-label="Sign out" title="Sign out" onclick={() => auth.signOut()}><LogOut size={18} /></button>
+        <div class="flex shrink-0 gap-1">
+          {#if auth.user}<a class={iconButton} href={PEOPLE_URL} target="_blank" rel="noreferrer" aria-label="View in People" title="View in People"><Contact size={18} /></a>{/if}
+          <button class={iconButton} aria-label="Sign out" title="Sign out" onclick={() => auth.signOut()}><LogOut size={18} /></button>
+        </div>
       </div>
     {:else if entry.id === "snapshot"}
       <SettingsBlock title="Snapshot" about="Memory, tasks, decisions and routines as one markdown file. Importing hands it to pai to fact-check and file in Keep.">
