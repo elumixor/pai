@@ -40,7 +40,52 @@ export class UpdateError extends Error {
   }
 }
 
-const git = (...args: string[]) => $`git ${args}`.cwd(config.repo).nothrow().quiet();
+const git = (...args: string[]) => /**
+ * Self-update, kept in core on purpose: whatever else fails to load, a box can always be brought to a new
+ * version — `POST /update` (what CI calls) and the auto-update tick both land here. Fetch, check out the tag (or
+ * fast-forward the branch), install, build the web client, pull the connectors, restart. The daemon restarts
+ * by exiting: the service manager brings it back on the new code.
+ */
+import { $ } from "bun";
+import { config } from "../core/config.ts";
+import { bus } from "../core/bus.ts";
+import { logger } from "../core/log.ts";
+import { update as pullConnectors, updateLine } from "../connectors/source.ts";
+import { list } from "./sessions.ts";
+
+const log = logger("update");
+
+export interface UpdateStatus {
+  readonly branch: string;
+  readonly behind: number;
+  readonly dirty: boolean;
+  readonly head: string;
+  /** What the daemon is following: the newest `v*` tag, or the branch's upstream. */
+  readonly target?: string;
+}
+
+export interface UpdateResult extends UpdateStatus {
+  readonly updated: boolean;
+  readonly reason?: string;
+  readonly restarting: boolean;
+  /** What the connectors clone did: moved, or why not. */
+  readonly connectors?: string;
+}
+
+export class UpdateError extends Error {
+  constructor(
+    readonly step: string,
+    readonly output: string,
+  ) {
+    super(`update failed at ${step}: ${output.slice(0, 400)}`);
+    this.name = "UpdateError";
+  }
+}
+
+git ${args}`.cwd(config.repo).nothrow().quiet();
+
+/** The box's own `bun install` rewrites these (another bun version words a git dependency differently), which is no local edit: left counting as one, it refuses every update after. */
+const LOCKFILES = ["bun.lock", "apps/web/bun.lock"];
 
 async function run(step: string, cmd: ReturnType<typeof git>) {
   const res = await cmd;
@@ -60,7 +105,7 @@ async function latestTag() {
 export async function status(): Promise<UpdateStatus> {
   await git("fetch", "--quiet", "--tags", "--force");
   const branch = (await git("rev-parse", "--abbrev-ref", "HEAD")).stdout.toString().trim();
-  const dirty = (await git("status", "--porcelain")).stdout.toString().trim();
+  const dirty = (await git("status", "--porcelain", "--", ".", ...LOCKFILES.map((f) => `:!${f}`))).stdout.toString().trim();
   const head = (await git("rev-parse", "--short", "HEAD")).stdout.toString().trim();
   const target = config.updateChannel === "tag" ? await latestTag() : "@{u}";
   const behind = target ? Number((await git("rev-list", "--count", `HEAD..${target}`)).stdout.toString().trim()) || 0 : 0;
@@ -77,6 +122,7 @@ export async function update(force = false): Promise<UpdateResult> {
   if (s.dirty && s.behind > 0) return { ...s, updated: false, reason: "working tree is dirty", restarting: false };
 
   if (s.behind > 0 && s.target) {
+    await run("restore lockfiles", git("checkout", "--quiet", "--", ...LOCKFILES));
     // A tag is not a branch, so it is checked out by name rather than pulled.
     if (config.updateChannel === "tag") await run("git checkout", git("checkout", "--quiet", s.target));
     else await run("git pull", git("pull", "--ff-only"));
