@@ -163,30 +163,36 @@ export function missingTools(agent?: AgentSetup): string {
 }
 
 /** A paragraph of the system prompt: what it is for and who gets it, so nobody has to read the code to find out. */
+export type Audience = "general" | "thread" | "code" | "worker";
+
 export interface Section {
   readonly id: string;
+  readonly to: readonly Audience[];
   readonly title: string;
   readonly what: string;
   readonly goesTo: string;
   readonly fallback: string;
 }
 
+const ALL: readonly Audience[] = ["general", "thread", "code", "worker"];
+const NOT_WORKER: readonly Audience[] = ["general", "thread", "code"];
+
 const SECTIONS: readonly Section[] = [
-  { id: "general", title: "General", what: "Who pai is and how it talks: short messages, results over narration, doing things itself before handing them over.", goesTo: "Every session", fallback: COMMON.trim() },
-  { id: "asking", title: "Asking the user", what: "When to stop and confirm with AskUserQuestion. Workers do not get this: they ask through ask_user.", goesTo: "General, threads, code sessions", fallback: ASKING },
-  { id: "memory", title: "Memory rules", what: "When to save something to memory and how. This is what makes a session call edit_memory.", goesTo: "General, threads, code sessions", fallback: MEMORY },
-  { id: "staff-memory", title: "Memory rules for workers", what: "Workers do not edit memory: they report lasting facts to General and keep notes on people and their own area in files.", goesTo: "Workers", fallback: STAFF_MEMORY.trim() },
-  { id: "changing-pai", title: "Changing pai itself", what: "A change to pai's code is coding work that ends in a release, and restarting cuts off running turns.", goesTo: "Every session", fallback: CHANGING_PAI },
-  { id: "orchestrator", title: "General (orchestrator)", what: "What makes General delegate: when to answer itself and when to start a worker with create_agent, what a worker's brief must hold, and what comes back to the user. General has no Agent tool of Claude Code's.", goesTo: "General", fallback: ORCHESTRATOR.trim() },
-  { id: "agent", title: "Agent", what: "How anything working for General behaves: its report, its tasks, how it reaches the user, the outbound check.", goesTo: "Workers", fallback: AGENT.trim() },
-  { id: "worker", title: "Worker", what: "One bounded job: do it, put the outcome on Keep pages, report once, close. General's brief for the job is added below this, as the worker's CLAUDE.md, and the job itself is its first message.", goesTo: "Workers", fallback: SUB.trim() },
-  { id: "conversation", title: "Thread", what: "A plain conversation: answer directly, and start_thread for work that takes longer.", goesTo: "Threads", fallback: CHAT.trim() },
-  { id: "coding", title: "Coding session", what: "Working in one of the repositories: commit when a piece is done, never push, report what changed.", goesTo: "Code sessions, and workers with a project", fallback: CODE.trim() },
-  { id: "files", title: "Attached files", what: "What an attachment line looks like in a turn and how to open it.", goesTo: "Every session", fallback: ATTACHMENTS },
-  { id: "money", title: "Writing money", what: "How to write amounts so every client can convert them.", goesTo: "Every session", fallback: MONEY_FORMAT },
-  { id: "keep", title: "Work in Keep", what: "How work is tracked on Keep pages.", goesTo: "Every session", fallback: KEEP_WORK.trim() },
-  { id: "browser", title: "Writes in the browser", what: "A page showing a write as done proves nothing: confirm it by reading it back.", goesTo: "Every session", fallback: BROWSER },
-  { id: "global", title: "Your own rules", what: "Anything you want every session to know. Empty unless you write something.", goesTo: "Every session", fallback: "" },
+  { id: "general", to: ALL, title: "General", what: "Who pai is and how it talks: short messages, results over narration, doing things itself before handing them over.", goesTo: "Every session", fallback: COMMON.trim() },
+  { id: "asking", to: NOT_WORKER, title: "Asking the user", what: "When to stop and confirm with AskUserQuestion. Workers do not get this: they ask through ask_user.", goesTo: "General, threads, code sessions", fallback: ASKING },
+  { id: "memory", to: NOT_WORKER, title: "Memory rules", what: "When to save something to memory and how. This is what makes a session call edit_memory.", goesTo: "General, threads, code sessions", fallback: MEMORY },
+  { id: "staff-memory", to: ["worker"], title: "Memory rules for workers", what: "Workers do not edit memory: they report lasting facts to General and keep notes on people and their own area in files.", goesTo: "Workers", fallback: STAFF_MEMORY.trim() },
+  { id: "changing-pai", to: ALL, title: "Changing pai itself", what: "A change to pai's code is coding work that ends in a release, and restarting cuts off running turns.", goesTo: "Every session", fallback: CHANGING_PAI },
+  { id: "orchestrator", to: ["general"], title: "General (orchestrator)", what: "What makes General delegate: when to answer itself and when to start a worker with create_agent, what a worker's brief must hold, and what comes back to the user. General has no Agent tool of Claude Code's.", goesTo: "General", fallback: ORCHESTRATOR.trim() },
+  { id: "agent", to: ["worker"], title: "Agent", what: "How anything working for General behaves: its report, its tasks, how it reaches the user, the outbound check.", goesTo: "Workers", fallback: AGENT.trim() },
+  { id: "worker", to: ["worker"], title: "Worker", what: "One bounded job: do it, put the outcome on Keep pages, report once, close. General's brief for the job is added below this, as the worker's CLAUDE.md, and the job itself is its first message.", goesTo: "Workers", fallback: SUB.trim() },
+  { id: "conversation", to: ["thread"], title: "Thread", what: "A plain conversation: answer directly, and start_thread for work that takes longer.", goesTo: "Threads", fallback: CHAT.trim() },
+  { id: "coding", to: ["code"], title: "Coding session", what: "Working in one of the repositories: commit when a piece is done, never push, report what changed.", goesTo: "Code sessions, and workers with a project", fallback: CODE.trim() },
+  { id: "files", to: ALL, title: "Attached files", what: "What an attachment line looks like in a turn and how to open it.", goesTo: "Every session", fallback: ATTACHMENTS },
+  { id: "money", to: ALL, title: "Writing money", what: "How to write amounts so every client can convert them.", goesTo: "Every session", fallback: MONEY_FORMAT },
+  { id: "keep", to: ALL, title: "Work in Keep", what: "How work is tracked on Keep pages.", goesTo: "Every session", fallback: KEEP_WORK.trim() },
+  { id: "browser", to: ALL, title: "Writes in the browser", what: "A page showing a write as done proves nothing: confirm it by reading it back.", goesTo: "Every session", fallback: BROWSER },
+  { id: "global", to: ALL, title: "Your own rules", what: "Anything you want every session to know. Empty unless you write something.", goesTo: "Every session", fallback: "" },
 ];
 
 const overrideFile = (id: string) => join(config.workspace, "instructions", `${id}.md`);
@@ -214,7 +220,7 @@ export function resetSection(id: string) {
 const WORKER_PREVIEW = { kind: "sub", name: "A worker", slug: "worker" } as const;
 
 /** The whole system prompt a kind of session gets, as it would be sent now. */
-export function preview(who: "general" | "thread" | "code" | "worker"): string {
+export function preview(who: Audience): string {
   if (who === "thread") return instructionsFor("chat");
   if (who === "code") return instructionsFor("code");
   if (who === "general") return instructionsFor("chat", undefined, { slug: "pai", instructions: agentInstructions({ kind: "orchestrator", name: "pai", slug: "pai" }, "") });

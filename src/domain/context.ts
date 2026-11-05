@@ -7,7 +7,8 @@ import type { SessionKind } from "./session.ts";
 import { unavailable, type Unavailable } from "./capabilities.ts";
 import { seen as seenInventories, type Inventory } from "./inventory.ts";
 import { kv } from "../core/db.ts";
-import { resetSection, saveSection, sections } from "./prompts.ts";
+import { serverAllowed } from "./capabilities.ts";
+import { type Audience, resetSection, saveSection, sections } from "./prompts.ts";
 import { claudeSync, directServers, isRequired, noteTools, seenTools, serverOn, skillOn, syncedConnectors, toolOn, toolPrefix } from "./tool-registry.ts";
 
 /**
@@ -236,6 +237,15 @@ export function moveUserContext() {
   const global = readIf(join(homedir(), ".claude", "CLAUDE.md"));
   if (global?.trim()) saveSection("global", global);
   kv.set(MOVED, "1");
+}
+
+/** What one chat has: the prompt sections it is sent and the tools it can call, after its agent's own limits. */
+export function chatConfig(who: Audience, allowed: readonly string[] | undefined) {
+  const told = sections().filter((s) => s.to.includes(who)).map((s) => ({ name: s.title, what: s.what, overridden: s.overridden }));
+  const own = who === "general" || who === "thread" ? [{ name: "Persona", what: "Your own description of pai, in workspace/CLAUDE.md.", overridden: false }, { name: "Memory", what: "What pai remembers about you, loaded at the start of the session.", overridden: false }] : [];
+  const connected = connectorPrompts().map((p) => ({ name: p.title, what: `Written by the ${p.title} connector.`, overridden: false }));
+  const tools = providers().providers.filter((p) => p.on && (p.source === "builtin" || p.name === "keep" || serverAllowed(p.name, allowed)));
+  return { who, instructions: [...own, ...told, ...connected], tools: tools.map((p) => ({ name: p.name, what: p.what, status: p.status, healthy: p.healthy, count: p.tools.filter((t) => t.on).length })) };
 }
 
 export type ProviderSource = "builtin" | "pai" | "connector" | "direct" | "claude.ai";

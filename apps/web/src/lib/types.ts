@@ -87,6 +87,15 @@ export interface ToolProvider {
   readonly direct?: { readonly url: string; readonly auth: string; readonly replaces?: string };
 }
 
+/** What one chat is given, and what can wake it. */
+export interface ChatConfig {
+  readonly who: "general" | "thread" | "code" | "worker";
+  readonly instructions: readonly { readonly name: string; readonly what: string; readonly overridden: boolean }[];
+  readonly tools: readonly { readonly name: string; readonly what: string; readonly status: string; readonly healthy: boolean; readonly count: number }[];
+  readonly routines: readonly Routine[];
+  readonly events: readonly RoutineEvent[];
+}
+
 export interface ToolProviders {
   readonly claudeSync: boolean;
   readonly providers: readonly ToolProvider[];

@@ -8,7 +8,7 @@ import * as keep from "../domain/keep.ts";
 import * as peopleNotify from "../domain/people-notify.ts";
 import * as projects from "../domain/projects.ts";
 import * as automations from "../domain/automations.ts";
-import { context, createSkill, deleteSkill, providers, reset as resetContext, save as saveContext } from "../domain/context.ts";
+import { chatConfig, context, createSkill, deleteSkill, providers, reset as resetContext, save as saveContext } from "../domain/context.ts";
 import { discover as discoverConnectors } from "../domain/claude-connectors.ts";
 import * as directMcp from "../domain/direct-mcp.ts";
 import { preview as previewPrompt } from "../domain/prompts.ts";
@@ -368,6 +368,17 @@ export async function handle(req: Request): Promise<Response> {
     }
 
     // What sessions may have: every server, switched off ones included (tool-registry.ts).
+    // What one chat is given, and what can wake it. No session means General.
+    if (path === "/chat-config") {
+      const id = url.searchParams.get("session");
+      const s = id ? sessions.find(id) : undefined;
+      if (id && !s) return json({ error: "no such session" }, 404);
+      const slug = s ? (s.agent ?? undefined) : "pai";
+      const agent = slug ? agents.get(slug) : undefined;
+      const who = slug === "pai" ? "general" : s?.kind === "code" ? "code" : slug ? "worker" : "thread";
+      const routines = automations.all().filter((r) => (r.agent ? r.agent === slug : who === "general"));
+      return json({ ...chatConfig(who, agent?.tools ?? undefined), routines, events: eventCatalog() });
+    }
     if (path === "/tools" && req.method === "PATCH") {
       const change = await body<{ claudeSync?: boolean; server?: string; tool?: string; skill?: string; on?: boolean }>(req);
       if (change.claudeSync !== undefined) {

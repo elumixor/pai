@@ -36,6 +36,7 @@ import * as projects from "./domain/projects.ts";
 import { startReleaseCheck } from "./domain/release-check.ts";
 import { startClaudeConnectors } from "./domain/claude-connectors.ts";
 import { moveUserContext } from "./domain/context.ts";
+import { forgetOldInventory } from "./domain/inventory.ts";
 
 const log = logger("daemon");
 
@@ -59,6 +60,7 @@ automations.link({ turn: main.system, triage: triage.add, fields: { brief: brief
 automations.seed();
 const stopMemoryWatch = watchMemory();
 moveUserContext();
+forgetOldInventory();
 const stopClaudeConnectors = startClaudeConnectors();
 const stopClaudeLoginCheck = startClaudeLoginCheck();
 const server = startServer();

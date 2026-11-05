@@ -1,6 +1,6 @@
 <script lang="ts">
   import { TrashBanner } from "@desk/core/trash";
-  import { PanelLeftOpen, Trash2 } from "lucide-svelte";
+  import { PanelLeftOpen, SlidersHorizontal, Trash2 } from "lucide-svelte";
   import { fly } from "svelte/transition";
   import { api } from "../api";
   import ChatView, { type ChatSpec } from "../chat/ChatView.svelte";
@@ -11,6 +11,7 @@
   import { openAgent } from "../shell/open.svelte";
   import { sidebar } from "../sidebar/state.svelte";
   import { ancestors, type TreeNode, threadTitle } from "../sidebar/tree";
+  import ChatConfig from "../context/ChatConfig.svelte";
   import GeneralActions from "./GeneralActions.svelte";
   import { newChat } from "./new-chat.svelte";
   import NewChatOptions from "./NewChatOptions.svelte";
@@ -61,6 +62,12 @@
 
   const openThread = $derived(route.name === "thread" ? (desk.threadOf(route.param ?? "")?.sessionId ?? route.param) : undefined);
   const trashedHere = $derived(openThread ? desk.trashedOf(openThread) : undefined);
+  /** A chat that is part of General's tree has a setup worth showing; a detached one or a coding one is just Claude Code. */
+  const configurable = $derived.by(() => {
+    const thread = openThread ? desk.threadOf(openThread) : undefined;
+    return Boolean(thread && !trashedHere && thread.kind !== "code" && thread.kind !== "claude" && (thread.parent || thread.agent));
+  });
+  let configOpen = $state(false);
   const trashThread = (id: string) => void desk.trash([`thread:${id}`]);
   function crumbMenu(event: MouseEvent, id: string) {
     if (!id.startsWith("thread:") || desk.trashedOf(id.slice(7))) return;
@@ -258,11 +265,15 @@
       {/each}
     </nav>
     <div class="crumb-under flex shrink-0 items-center"></div>
+    {#if route.name === "home" || configurable}
+      <button class="grid size-7 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink" aria-label="Chat config" title="Chat config" onclick={() => (configOpen = true)}><SlidersHorizontal size={16} /></button>
+    {/if}
     {#if route.name === "home"}<GeneralActions />{/if}
     {#if openThread && !trashedHere}
       <button class="grid size-7 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink" aria-label="Move to trash" title="Move to trash" onclick={() => trashThread(openThread)}><Trash2 size={16} /></button>
     {/if}
   </header>
+  {#if configOpen}<ChatConfig session={openThread} onclose={() => (configOpen = false)} />{/if}
   {#if trashedHere}
     <div class="shrink-0 py-2">
       <TrashBanner

@@ -1,6 +1,7 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { config } from "../core/config.ts";
+import { kv } from "../core/db.ts";
 import type { SessionKind } from "./session.ts";
 
 /**
@@ -42,6 +43,16 @@ export function noteInit(kind: SessionKind, inventory: Inventory) {
   } catch {
     // A read-only data directory only costs the memory across restarts.
   }
+}
+
+const INVENTORY_RESET = "inventory-registry-reset";
+
+/** Once: what sessions reported before tools came from the registry names servers they can no longer get. */
+export function forgetOldInventory() {
+  if (kv.get(INVENTORY_RESET)) return;
+  for (const kind of Object.keys(inventories) as SessionKind[]) delete inventories[kind];
+  rmSync(inventoryPath, { force: true });
+  kv.set(INVENTORY_RESET, "1");
 }
 
 /** Every kind that has reported, with what it reported. */
