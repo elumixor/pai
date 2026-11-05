@@ -7,7 +7,7 @@ import { killAll, noteInterrupted, purgeOld, reapIdle, relayToParent, resumeInte
 import { closeAll as closeTerminals } from "./domain/terminals.ts";
 import { startBrowser } from "./domain/browser.ts";
 import { bus } from "./core/bus.ts";
-import { startAutoUpdate } from "./domain/update.ts";
+import { startAutoUpdate, startProving } from "./domain/update.ts";
 import { startLinkedInCheck } from "./domain/linkedin-check.ts";
 import { startBrowserCheck } from "./domain/browser-check.ts";
 import { startAutomations } from "./domain/automations.ts";
@@ -41,6 +41,10 @@ import { forgetOldInventory } from "./domain/inventory.ts";
 
 const log = logger("daemon");
 
+// `pai dev release` runs this far in a scratch process: every import resolved is the boot a cycle would have killed.
+if (process.env.PAI_BOOT_CHECK) process.exit(0);
+
+const stopProving = startProving();
 mkdirSync(config.workspace, { recursive: true });
 // Before anything spawns a session: their tools and instructions come from the connectors too.
 await connectors.load();
@@ -109,6 +113,7 @@ bus.emitEvent("daemon.started", { pid: process.pid, port: config.port });
 
 function shutdown(signal: string) {
   log.info(`${signal} — shutting down`);
+  stopProving();
   clearInterval(reaper);
   clearInterval(trashTimer);
   clearInterval(noticeTimer);

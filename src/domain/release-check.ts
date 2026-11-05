@@ -6,6 +6,8 @@
  * A `v*` tag older than the time CI needs, with this checkout still behind it, is a release that did not arrive.
  */
 import { $ } from "bun";
+import { existsSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { config, setting } from "../core/config.ts";
 import { logger } from "../core/log.ts";
 import { status, type UpdateStatus } from "./update.ts";
@@ -60,10 +62,25 @@ async function check() {
   raise(reason);
 }
 
+/** What `scripts/rollback.sh` leaves behind, since it cannot raise a task itself. Read once: the task stays until he closes it. */
+function reportRescue() {
+  const rescues = [
+    { file: "rolled-back", title: "A release crashed and was rolled back", say: (tag: string) => `${tag} crash-looped, so the box went back to the last good version and will not install ${tag} again. A newer tag installs as usual.`, next: "Read data/daemon.log on the box for the crash, then release a fix" },
+    { file: "crash-loop", title: "The daemon is crash-looping with nothing to roll back to", say: (tag: string) => `${tag} kept crashing and had already run fine, or no version is known to work: the code did not change, so look at what around it did.`, next: "Read data/daemon.log on the box" },
+  ];
+  for (const { file, title, say, next } of rescues) {
+    const path = join(config.repo, "data", file);
+    if (!existsSync(path)) continue;
+    keep({ title, nextAction: next, by: "release-check" }, say(readFileSync(path, "utf8").trim()));
+    rmSync(path);
+  }
+}
+
 /** Looks now and then, even while sessions are busy: it only reads, so it can never interrupt a turn. */
 const log = logger("release-check");
 
 export function startReleaseCheck() {
+  reportRescue();
   const tick = () => check().catch((err: Error) => log.warn(`release check: ${err.message}`));
   const first = setTimeout(tick, FIRST_LOOK_MS);
   const timer = setInterval(tick, EVERY_MS);

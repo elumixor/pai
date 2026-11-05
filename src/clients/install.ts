@@ -5,7 +5,7 @@
  * and after a crash.
  */
 import { $ } from "bun";
-import { existsSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { config } from "../core/config.ts";
@@ -17,6 +17,9 @@ const BIN_DIR = join(homedir(), ".local", "bin");
 const BIN = join(BIN_DIR, "pai");
 const UNIT_DIR = join(homedir(), ".config", "systemd", "user");
 const UNIT = join(UNIT_DIR, `${SERVICE}.service`);
+const RESCUE = "pai-rollback";
+const RESCUE_BIN = join(BIN_DIR, RESCUE);
+const RESCUE_UNIT = join(UNIT_DIR, `${RESCUE}.service`);
 const OLD_PLIST = join(homedir(), "Library", "LaunchAgents", `${OLD_DAEMON}.plist`);
 const LOGS = join(config.repo, "data");
 const mac = process.platform === "darwin";
@@ -45,6 +48,9 @@ async function installService() {
 Description=pai daemon
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+OnFailure=${RESCUE}.service
 
 [Service]
 ExecStart=${process.execPath} run ${join(config.repo, "src", "daemon.ts")}
@@ -58,6 +64,24 @@ StandardError=append:${join(LOGS, "daemon.log")}
 
 [Install]
 WantedBy=default.target
+`,
+  );
+  // A release that keeps crashing goes back to the last good version: the rescue lives outside the checkout it repairs.
+  mkdirSync(BIN_DIR, { recursive: true });
+  copyFileSync(join(config.repo, "scripts", "rollback.sh"), RESCUE_BIN);
+  await $`chmod +x ${RESCUE_BIN}`;
+  await Bun.write(
+    RESCUE_UNIT,
+    `[Unit]
+Description=pai rollback
+
+[Service]
+Type=oneshot
+ExecStart=${RESCUE_BIN}
+Environment=PATH=${path}
+Environment=HOME=${homedir()}
+Environment=PAI_REPO=${config.repo}
+Environment=PAI_SERVICE=${SERVICE}
 `,
   );
   await $`systemctl --user daemon-reload`.quiet();
@@ -80,6 +104,8 @@ async function uninstall() {
   if (!mac) {
     await $`systemctl --user disable --now ${SERVICE}`.nothrow().quiet();
     rmSync(UNIT, { force: true });
+    rmSync(RESCUE_UNIT, { force: true });
+    rmSync(RESCUE_BIN, { force: true });
     await $`systemctl --user daemon-reload`.nothrow().quiet();
   }
   rmSync(BIN, { force: true });

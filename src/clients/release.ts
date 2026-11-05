@@ -6,7 +6,9 @@
  * It reports where the release landed, or it raises a task; it never ends quietly either way, because a release
  * that silently did not land looks exactly like one that did.
  */
-import { homedir } from "node:os";
+import { mkdtempSync, rmSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
 import { $ } from "bun";
 import { config } from "../core/config.ts";
 import { boxApi, isHere, remote } from "../host/remote.ts";
@@ -70,6 +72,18 @@ async function ciFailed(version: string): Promise<string | undefined> {
   return first && first.steps.length === 0 ? "CI could not start (billing or quota) — the box is updating from the tag on its own" : `CI ${latest.conclusion}`;
 }
 
+/** The daemon's whole import graph, in a real process and its real order: typecheck cannot see a cycle that kills it at start. */
+async function bootCheck() {
+  const scratch = mkdtempSync(join(tmpdir(), "pai-boot-"));
+  const boot = await $`${process.execPath} run src/daemon.ts`
+    .cwd(config.repo)
+    .env({ ...process.env, PAI_BOOT_CHECK: "1", PAI_DB: join(scratch, "pai.db"), PAI_WORKSPACE: join(scratch, "workspace"), PAI_CONFIG: join(scratch, "config.json"), PAI_NO_TELEGRAM: "1" })
+    .nothrow()
+    .quiet();
+  rmSync(scratch, { recursive: true, force: true });
+  if (boot.exitCode !== 0) throw new ReleaseError(`the daemon does not start:\n${boot.stderr.toString().trim().slice(-1200)}`);
+}
+
 async function cut(bump: string) {
   const dirty = (await git("status", "--porcelain")).stdout.toString().trim();
   if (dirty) throw new ReleaseError(`the tree is not clean — commit first:\n${dirty}`);
@@ -78,6 +92,7 @@ async function cut(bump: string) {
   console.log("checks…");
   await $`${process.execPath} run typecheck`.cwd(config.repo);
   await $`${process.execPath} run test`.cwd(config.repo).quiet();
+  await bootCheck();
   const version = (await $`npm version ${bump} -m ${"chore: v%s"}`.cwd(config.repo).quiet()).stdout.toString().trim();
   await git("push", "--follow-tags");
   console.log(`${version} pushed — CI builds and tells the box`);

@@ -5,6 +5,9 @@
  * by exiting: the service manager brings it back on the new code.
  */
 import { $ } from "bun";
+import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { config } from "../core/config.ts";
 import { bus } from "../core/bus.ts";
 import { logger } from "../core/log.ts";
@@ -54,10 +57,17 @@ async function run(step: string, cmd: ReturnType<typeof git>) {
 /** systemd sets INVOCATION_ID for any unit it started, launchd the job label: either restarts the daemon when it exits. */
 const managed = () => (process.env.XPC_SERVICE_NAME ?? "").startsWith("dev.elumixor.pai") || Boolean(process.env.INVOCATION_ID);
 
-/** The newest `v*` tag by version order, or undefined when the repo has none. */
+const dataFile = (name: string) => join(config.repo, "data", name);
+/** Tags `scripts/rollback.sh` came back from: never installed again, or the tick would undo the rollback. */
+const badVersions = () => (existsSync(dataFile("bad-versions")) ? readFileSync(dataFile("bad-versions"), "utf8").split("\n").filter(Boolean) : []);
+/** Set while an update is under way: a tree checked out but not built is behind nothing and still has to finish. */
+const UNFINISHED = "update-unfinished";
+
+/** The newest `v*` tag by version order that has not crash-looped, or undefined when there is none. */
 async function latestTag() {
   const out = (await git("tag", "--list", "v*", "--sort=-v:refname")).stdout.toString().trim();
-  return out.split("\n")[0]?.trim() || undefined;
+  const bad = badVersions();
+  return out.split("\n").map((tag) => tag.trim()).find((tag) => tag && !bad.includes(tag));
 }
 
 export async function status(): Promise<UpdateStatus> {
@@ -76,9 +86,11 @@ export async function status(): Promise<UpdateStatus> {
  */
 export async function update(force = false): Promise<UpdateResult> {
   const s = await status();
-  if (!force && s.behind === 0) return { ...s, updated: false, reason: "already up to date", restarting: false };
+  const unfinished = existsSync(dataFile(UNFINISHED));
+  if (!force && s.behind === 0 && !unfinished) return { ...s, updated: false, reason: "already up to date", restarting: false };
   if (s.dirty && s.behind > 0) return { ...s, updated: false, reason: "working tree is dirty", restarting: false };
 
+  writeFileSync(dataFile(UNFINISHED), s.head);
   if (s.behind > 0 && s.target) {
     await run("restore lockfiles", git("checkout", "--quiet", "--", ...LOCKFILES));
     // A tag is not a branch, so it is checked out by name rather than pulled.
@@ -90,6 +102,7 @@ export async function update(force = false): Promise<UpdateResult> {
   await run("build client", $`${process.execPath} run build:web`.cwd(config.repo).nothrow().quiet());
   // A connector broken upstream is healed by the same update that brings pai.
   const connectors = updateLine(await pullConnectors());
+  rmSync(dataFile(UNFINISHED), { force: true });
 
   const head = (await git("rev-parse", "--short", "HEAD")).stdout.toString().trim();
   const restarting = managed();
@@ -109,7 +122,7 @@ export function startAutoUpdate() {
     try {
       if (list().some((x) => x.state === "busy" || x.state === "starting")) return;
       const s = await status();
-      if (s.behind === 0 || s.dirty) return;
+      if ((s.behind === 0 && !existsSync(dataFile(UNFINISHED))) || s.dirty) return;
       await update();
     } catch (err) {
       log.warn(`auto-update: ${(err as Error).message}`);
@@ -122,4 +135,32 @@ export function startAutoUpdate() {
     clearTimeout(first);
     clearInterval(timer);
   };
+}
+
+/** Long enough that a crash after start counts against this version; the service's restart limit covers it. */
+const PROVEN_AFTER_MS = 60_000;
+const RESCUE = "pai-rollback";
+
+const revision = (dir: string) => {
+  const out = Bun.spawnSync(["git", "-C", dir, "rev-parse", "HEAD"]);
+  return out.exitCode === 0 ? out.stdout.toString().trim() : "";
+};
+
+/**
+ * What `scripts/rollback.sh` goes back to. The revisions are read at process start, because an update can move HEAD
+ * under a running daemon and that new tag has proved nothing yet. The rescue script is refreshed only from a version
+ * that stayed up.
+ */
+export function startProving() {
+  if (!managed()) return () => {};
+  const revisions = `${revision(config.repo)}\n${revision(join(config.repo, "modules"))}\n`;
+  const timer = setTimeout(() => {
+    try {
+      writeFileSync(dataFile("last-good"), revisions);
+      if (process.platform === "linux") copyFileSync(join(config.repo, "scripts", "rollback.sh"), join(homedir(), ".local", "bin", RESCUE));
+    } catch (err) {
+      log.warn(`could not record the last good version: ${(err as Error).message}`);
+    }
+  }, PROVEN_AFTER_MS);
+  return () => clearTimeout(timer);
 }
