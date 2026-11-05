@@ -4,6 +4,9 @@
 export { ago, day as dayLabel } from "@desk/core";
 
 /** "Today 14:13", "Yesterday 09:02", "Oct 7 10:40" — an instant as a person says it. */
+/** A project as people read it: `@desk/pai` is "pai". */
+export const projectName = (slug: string) => slug.split("/").pop() ?? slug;
+
 export function stamp(at: number | string) {
   const day = new Date(at);
   const today = new Date();

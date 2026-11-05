@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { capital } from "../format";
+  import { capital, projectName } from "../format";
   import { newChat } from "./new-chat.svelte";
 
   /** Above the box of a blank chat: what Jev picked and how sure it is; a pick the user made says so. */
@@ -7,7 +7,7 @@
   const picks = $derived(
     newChat.confidence
       ? [
-          ...(newChat.kind === "dev" && newChat.project ? [{ key: "project", label: newChat.project }] : []),
+          ...(newChat.kind === "dev" && newChat.project ? [{ key: "project", label: projectName(newChat.project) }] : []),
           { key: "model", label: capital(newChat.model) },
           { key: "effort", label: newChat.effort },
         ]

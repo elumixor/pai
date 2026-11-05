@@ -4,6 +4,7 @@
   import { ChevronRight, CircleCheck, FolderGit2, Hand, Plus } from "lucide-svelte";
   import { auth } from "../auth.svelte";
   import { desk } from "../desk.svelte";
+  import { projectName } from "../format";
   import { href } from "../router.svelte";
   import { menus } from "../ui/menu-state.svelte";
   import { mover } from "./move.svelte";
@@ -86,7 +87,7 @@
       { label: ids.length > 1 ? `Move ${ids.length} into…` : "Move into…", icon: "arrows", run: () => mover.start(ids) },
       ...(thread ? [{ label: "New thread under this one", icon: "plus" as const, run: () => onnew(thread) }] : []),
       ...(ids.some((id) => id.startsWith("thread:")) ? [{ label: ids.length > 1 ? `Move ${ids.length} to trash` : "Move to trash", icon: "trash" as const, run: () => void remove(ids) }] : []),
-      ...(devUrl ? [{ label: `Open ${node.project} in Dev`, icon: "code" as const, run: () => window.open(devUrl, "_blank", "noopener") }] : []),
+      ...(devUrl ? [{ label: `Open ${projectName(node.project!)} in Dev`, icon: "code" as const, run: () => window.open(devUrl, "_blank", "noopener") }] : []),
     ]);
   }
 
@@ -206,10 +207,10 @@
           role="link"
           tabindex="-1"
           class="-ml-0.5 inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full px-1.5 py-1 text-[12px] leading-4 text-ink-45 hover:bg-ink-10 hover:text-ink"
-          title="{node.project} in Dev"
+          title="{projectName(node.project ?? "")} in Dev"
           onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(devUrl, "_blank", "noopener"); }}
           onkeydown={() => {}}
-        ><FolderGit2 size={11} /><span class="whitespace-nowrap">{node.project?.slice(0, 10)}</span></span>
+        ><FolderGit2 size={11} /><span class="whitespace-nowrap">{projectName(node.project ?? "").slice(0, 10)}</span></span>
       {/if}
       {#each node.keep ?? [] as task (task.urn)}
         <span
