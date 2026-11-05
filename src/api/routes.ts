@@ -1,3 +1,4 @@
+import { config } from "../core/config.ts";
 import { contextTokens } from "../domain/transcript.ts";
 import type { ForgetTarget } from "../domain/transcript.ts";
 import { MAX_FILES, readable, serve as serveAttachment, type Upload } from "../domain/attachments.ts";
