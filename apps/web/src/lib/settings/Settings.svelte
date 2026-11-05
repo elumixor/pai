@@ -5,11 +5,12 @@
 </script>
 
 <script lang="ts">
-  import { PALETTES, PEOPLE_URL, type Palette, type ThemeKind, type ThemeMode } from "@desk/core";
+  import { PEOPLE_URL, type ThemeMode } from "@desk/core";
   import { SettingsDialog, type SettingsSection } from "@desk/core/settings";
-  import { BookOpen, Clock, Contact, LogOut, Monitor, Moon, Palette as PaletteIcon, Plug, Sun, SunMoon, User, Wallet } from "lucide-svelte";
+  import { BookOpen, ChevronRight, Clock, Contact, LogOut, Monitor, Moon, Palette as PaletteIcon, Plug, Sun, SunMoon, User, Wallet } from "lucide-svelte";
   import { auth } from "../auth.svelte";
   import { theme } from "../theme.svelte";
+  import ThemesSheet from "./themes/ThemesSheet.svelte";
   import Connectors from "./Connectors.svelte";
   import Context from "./Context.svelte";
   import Routines from "./Routines.svelte";
@@ -24,7 +25,7 @@
 
   const SECTIONS: SettingsSection<Section>[] = [
     { id: "account", label: "Account", icon: User, keywords: "sign out daemon host box clerk" },
-    { id: "appearance", label: "Appearance", icon: PaletteIcon, keywords: "theme dark light mode palette" },
+    { id: "appearance", label: "Appearance", icon: PaletteIcon, keywords: "theme themes dark light mode palette editor colors fonts" },
     { id: "connectors", label: "Connectors", icon: Plug, keywords: "modules capabilities telegram email gmail linkedin whatsapp browser signed in" },
     { id: "automations", label: "Routines", icon: Clock, keywords: "automations cron events triggers" },
     { id: "context", label: "Context", icon: BookOpen, keywords: "instructions memories skills tools prompt" },
@@ -35,34 +36,10 @@
     { value: "dark", label: "Dark", icon: Moon },
     { value: "system", label: "System", icon: Monitor },
   ];
-  const KINDS: { kind: ThemeKind; label: string }[] = [
-    { kind: "light", label: "Light theme" },
-    { kind: "dark", label: "Dark theme" },
-  ];
-  const LINES = [46, 70, 58, 80, 40];
+  let themesOpen = $state(false);
   const iconButton = "grid size-8 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink";
 
 </script>
-
-{#snippet swatch(p: Palette, kind: ThemeKind)}
-  {@const [bg, panel, line, ink, accent] = p.swatch}
-  {@const on = theme.choice[kind] === p.id}
-  <button
-    role="radio"
-    aria-checked={on}
-    title={p.name}
-    class="flex flex-col gap-1.5 rounded-md border-2 p-1 text-left text-[12px] transition-colors {on ? 'border-accent text-ink' : 'border-transparent text-ink-45 hover:border-line'}"
-    onclick={() => theme.choose({ [kind]: p.id, mode: kind })}
-  >
-    <span class="flex h-14 overflow-hidden rounded-sm border" style="background:{bg};border-color:{line}">
-      <span class="w-1/4" style="background:{panel}"></span>
-      <span class="flex flex-1 flex-col justify-center gap-1 px-2">
-        {#each LINES as width, i (i)}<span class="h-1 rounded-full" style="background:{i % 2 ? accent : ink};width:{width}%;opacity:{i % 2 ? 0.9 : 0.35}"></span>{/each}
-      </span>
-    </span>
-    <span class="truncate px-0.5">{p.name}</span>
-  </button>
-{/snippet}
 
 <SettingsDialog sections={SECTIONS} bind:open bind:active {onclose}>
   {#snippet section(entry)}
@@ -78,15 +55,14 @@
             {/each}
           </div>
         </div>
-        {#each KINDS as k (k.kind)}
-          <div class="space-y-2 pt-2">
-            <p class="m-0 text-[13px] font-medium">{k.label}</p>
-            <div class="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-2" role="radiogroup" aria-label={k.label}>
-              {#each PALETTES.filter((p) => p.kind === k.kind) as p (p.id)}{@render swatch(p, k.kind)}{/each}
-            </div>
-          </div>
-        {/each}
+        <button type="button" class="flex min-h-10 w-full items-center gap-3 rounded-sm text-left transition-colors hover:bg-ink-5" onclick={() => (themesOpen = true)}>
+          <PaletteIcon size={18} class="shrink-0 text-ink-45" />
+          <span class="text-[14px]">Themes</span>
+          <span class="min-w-0 flex-1 truncate text-right text-[13px] text-ink-45">{theme.nameOf(theme.choice.light)} · {theme.nameOf(theme.choice.dark)}</span>
+          <ChevronRight size={16} class="shrink-0 text-ink-30" />
+        </button>
       </div>
+      {#if themesOpen}<ThemesSheet onclose={() => (themesOpen = false)} />{/if}
     {:else if entry.id === "account"}
       <div class="flex items-center gap-4 pt-3 pr-8">
         {#if auth.user}

@@ -5,14 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <title>pai</title>
+    <!-- Declared before anything that names a layer: the boot style below comes ahead of the stylesheets. -->
+    <style>
+      @layer theme, base, pai, app, utilities;
+    </style>
     <script>
-      // The chosen palette before any stylesheet or module: no flash of the wrong mode.
+      // The chosen palette, and the changes of a theme of one's own, before any stylesheet or module: no flash of the wrong look.
       try {
         const choice = JSON.parse(localStorage.getItem("pai.theme") || "{}");
         const mode = choice.mode === "light" || choice.mode === "dark" ? choice.mode : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-        const palette = mode === "dark" ? choice.dark : choice.light;
+        const boot = JSON.parse(localStorage.getItem("pai.theme.boot") || "{}")[mode];
+        const palette = boot ? boot.palette : mode === "dark" ? choice.dark : choice.light;
         document.documentElement.dataset.theme = mode;
-        if (palette && palette !== "pai-dark" && palette !== "nord-light") document.documentElement.dataset.palette = palette;
+        if (palette && !palette.startsWith("custom-") && palette !== "pai-dark" && palette !== "nord-light") document.documentElement.dataset.palette = palette;
+        if (boot && boot.css) {
+          const style = document.createElement("style");
+          style.id = "pai-theme";
+          style.textContent = boot.css;
+          document.head.append(style);
+        }
       } catch {}
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />

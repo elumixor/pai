@@ -5,9 +5,10 @@
   /**
    * A modal sheet in the page's style, above everything including the settings dialog: a native modal sits in the top
    * layer. It and its backdrop fade in, and fade out before it is gone: on Escape, a click outside, its own close
-   * button, or the owner calling `close`. `beforeclose` answering false keeps it open.
+   * button, or the owner calling `close`. `beforeclose` answering false keeps it open. `wide` is for a sheet that lays
+   * out and scrolls its own panes.
    */
-  let { label, onclose, beforeclose, head, children }: { label: string; onclose: () => void; beforeclose?: () => Promise<boolean>; head: Snippet; children: Snippet } = $props();
+  let { label, onclose, beforeclose, wide = false, head, children }: { label: string; onclose: () => void; beforeclose?: () => Promise<boolean>; wide?: boolean; head: Snippet; children: Snippet } = $props();
   let box = $state<HTMLDialogElement>();
   let closing = $state(false);
   const motionMs = () => (matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 200);
@@ -54,6 +55,7 @@
   tabindex="-1"
   aria-label={label}
   class:closing
+  class:wide
   bind:this={box}
   onkeydown={keydown}
   oncancel={(event) => (event.preventDefault(), void close())}
@@ -64,5 +66,5 @@
     <div class="min-w-0 flex-1">{@render head()}</div>
     <button type="button" class="grid size-8 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink" aria-label="Close" onclick={() => void close()}><X size={16} /></button>
   </header>
-  <div class="min-h-0 overflow-y-auto px-5 py-4 max-sm:px-4">{@render children()}</div>
+  <div class={wide ? "flex min-h-0 flex-1 overflow-hidden max-md:flex-col" : "min-h-0 overflow-y-auto px-5 py-4 max-sm:px-4"}>{@render children()}</div>
 </dialog>

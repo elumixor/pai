@@ -25,6 +25,7 @@ import { events } from "./events.ts";
 import { messagePage } from "./message.ts";
 import { status } from "./status.ts";
 import * as settings from "../domain/settings.ts";
+import * as themes from "../domain/themes.ts";
 import { allThreads, ensureTranscriptAt, sessionsIn, toolCall, transcript } from "../domain/transcript.ts";
 import { cost as hostingCost } from "../domain/hetzner.ts";
 import * as models from "../domain/models.ts";
@@ -134,6 +135,22 @@ export async function handle(req: Request): Promise<Response> {
       return json({ marks: reads.mark(String(place ?? ""), Number(at ?? 0)) });
     }
     if (path === "/reads") return json({ marks: reads.marks() });
+
+    // The themes made in the web client's editor.
+    if (path === "/themes") return json({ themes: themes.list() });
+    const themePath = /^\/themes\/([^/]+)$/.exec(path);
+    if (themePath?.[1]) {
+      const id = decodeURIComponent(themePath[1]);
+      if (req.method === "DELETE") return json({ removed: themes.remove(id) });
+      if (req.method === "PUT") {
+        try {
+          return json(themes.put(id, await body<unknown>(req)));
+        } catch (error) {
+          if (error instanceof themes.InvalidTheme) return json({ error: error.message }, 400);
+          throw error;
+        }
+      }
+    }
 
     // What came in and what Pai did with it; "relevant" leaves out what it ignored or muted.
     if (path === "/inbox/read" && req.method === "POST") {

@@ -1,9 +1,9 @@
 /*
  * Tailwind without its preflight: the chat's look (`lib/pai.css`) was written over the browser's own defaults. It sits
  * in its own layer under the utilities, so a utility on an element wins, as it does in Keep; the frame around the
- * chat (the sidebar, the bar over it) is Keep's, in utilities on the suite's tokens.
+ * chat (the sidebar, the bar over it) is Keep's, in utilities on the suite's tokens. The layers' order is declared in
+ * `app.html`, ahead of a theme's boot style.
  */
-@layer theme, base, pai, app, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 @import "@desk/core/tokens.css";
@@ -14,6 +14,13 @@
 :root {
   --page: var(--surface);
   --sidebar: var(--surface-2);
+  /* What a theme can change on its own without touching the states drawn around it. */
+  --act-ink: #fff;
+  --compose-bg: var(--surface);
+  --tree-ink: var(--ink-70);
+  --tree-ink-on: var(--ink);
+  --tree-bg-on: var(--ink-10);
+  --tree-size: 14px;
   /* The shadow a sidebar casts over what it sits beside: black in every theme, deeper on a dark one to show at all. */
   --edge-shadow: rgb(0 0 0 / 0.05);
   --edge-shadow-strong: rgb(0 0 0 / 0.1);

@@ -110,7 +110,7 @@
 
 <aside
   style:--sidebar-width="{sidebar.width}px"
-  class="app-side relative flex w-(--sidebar-width) shrink-0 flex-col bg-sidebar text-[14px] md:z-10 md:shadow-[8px_0_12px_-6px_var(--edge-shadow-strong)] max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-30 max-md:w-72 max-md:shadow-float"
+  class="app-side relative flex w-(--sidebar-width) shrink-0 flex-col bg-sidebar text-(length:--tree-size) md:z-10 md:shadow-[8px_0_12px_-6px_var(--edge-shadow-strong)] max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-30 max-md:w-72 max-md:shadow-float"
 >
   <div
     class="min-h-0 flex-1 overflow-y-auto px-2 pt-2"
@@ -129,7 +129,7 @@
     }}
   >
     <div class="sticky top-0 z-10 -mx-2 -mt-2 bg-sidebar px-2 pt-2">
-      <div data-tree-id="pai" class="group mb-1 flex h-8 items-center gap-0.5 rounded-sm pr-1 transition-colors has-[a:focus-visible]:bg-ink-10 has-[a:focus-visible]:text-ink {home ? 'bg-ink-10 text-ink' : 'text-ink-70 hover:bg-ink-5 hover:text-ink'}">
+      <div data-tree-id="pai" class="group mb-1 flex h-8 items-center gap-0.5 rounded-sm pr-1 transition-colors has-[a:focus-visible]:bg-ink-10 has-[a:focus-visible]:text-ink {home ? 'bg-(--tree-bg-on) text-(--tree-ink-on)' : 'text-(--tree-ink) hover:bg-ink-5 hover:text-ink'}">
         <a href={href("home")} class="flex min-w-0 flex-1 items-center gap-2 self-stretch pl-1 outline-none" onclick={() => sidebar.settle()}>
           <span class="grid size-5 shrink-0 place-items-center text-ink-70"><House size={17} /></span>
           <span class="min-w-0 flex-1 truncate font-semibold">General</span>

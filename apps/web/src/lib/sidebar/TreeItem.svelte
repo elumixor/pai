@@ -169,7 +169,7 @@
   {oncontextmenu}
 >
   <div
-    class="relative flex h-7 items-center gap-0.5 rounded-sm pr-1 transition-colors has-[a:focus-visible]:text-ink {on ? 'font-medium text-ink' : 'text-ink-70 hover:text-ink'} {picked && selection.last === node.id ? 'bg-accent/25 hover:bg-accent/30 has-[a:focus-visible]:bg-accent/30' : dropHere || picked ? 'bg-accent-soft hover:bg-accent/20 has-[a:focus-visible]:bg-accent/20' : on ? 'bg-ink-10' : 'hover:bg-ink-5 has-[a:focus-visible]:bg-ink-10'}"
+    class="relative flex h-7 items-center gap-0.5 rounded-sm pr-1 transition-colors has-[a:focus-visible]:text-ink {on ? 'font-medium text-(--tree-ink-on)' : 'text-(--tree-ink) hover:text-ink'} {picked && selection.last === node.id ? 'bg-accent/25 hover:bg-accent/30 has-[a:focus-visible]:bg-accent/30' : dropHere || picked ? 'bg-accent-soft hover:bg-accent/20 has-[a:focus-visible]:bg-accent/20' : on ? 'bg-(--tree-bg-on)' : 'hover:bg-ink-5 has-[a:focus-visible]:bg-ink-10'}"
     style="padding-left: {depth * 12 + 6}px"
   >
     {#if openable}

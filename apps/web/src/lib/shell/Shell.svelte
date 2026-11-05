@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { PALETTES } from "@desk/core";
   import { CommandPalette, type PaletteItem } from "@desk/core/palette";
   import { ArrowUpRight, House, Keyboard, Monitor, Moon, PanelLeft, Plus, RefreshCw, Settings as SettingsIcon, Sun } from "lucide-svelte";
   import { fade } from "svelte/transition";
@@ -13,6 +12,7 @@
   import Sidebar from "../sidebar/Sidebar.svelte";
   import { sidebar } from "../sidebar/state.svelte";
   import { agentIcon, ancestors, buildTree, threadIcon, threadTitle } from "../sidebar/tree";
+  import { auth } from "../auth.svelte";
   import { theme } from "../theme.svelte";
   import type { LogMessage, TaskStatus } from "../types";
   import BodyPeek from "../ui/BodyPeek.svelte";
@@ -28,6 +28,10 @@
    * and ⌘K over everything (both the suite's, from `@desk/core`). Projects, tasks and code live in Keep and Dev.
    */
   const route = $derived(current());
+
+  $effect(() => {
+    if (auth.signedIn) void theme.load();
+  });
   /** What the settings dialog opens over: the place that was showing when it was asked for. */
   let behind = $state<Route>({ name: "home" });
   $effect(() => {
@@ -158,7 +162,7 @@
       { key: "settings", label: "Settings", group: "Commands", icon: SettingsIcon, hint: "⌘⇧,", run: () => openSettings() },
       { key: "keybindings", label: "Keyboard shortcuts", group: "Commands", icon: Keyboard, hint: "⌘?", keywords: "keys keybindings hotkeys", run: () => (keybindingsOpen = true) },
       ...(["system", "light", "dark"] as const).map<PaletteItem>((mode) => ({ key: `mode:${mode}`, label: `Mode: ${mode}`, group: "Commands", icon: mode === "dark" ? Moon : mode === "light" ? Sun : Monitor, run: () => theme.choose({ mode }) })),
-      ...PALETTES.map<PaletteItem>((p) => ({ key: `theme:${p.id}`, label: `Theme: ${p.name}`, group: "Commands", icon: p.kind === "dark" ? Moon : Sun, hint: p.kind, quiet: true, run: () => theme.choose(p.kind === "dark" ? { dark: p.id, mode: "dark" } : { light: p.id, mode: "light" }) })),
+      ...theme.palettes.map<PaletteItem>((p) => ({ key: `theme:${p.id}`, label: `Theme: ${p.name}`, group: "Commands", icon: p.kind === "dark" ? Moon : Sun, hint: p.kind, quiet: true, run: () => theme.pick(p) })),
     ];
     const agents = desk.agents.filter((a) => a.slug !== PAI && a.status !== "closed").map<PaletteItem>((a) => ({ key: `agent:${a.slug}`, label: a.name, group: "Agents", icon: agentIcon(a), hint: a.brief.split("\n")[0], run: () => openAgent(a.slug) }));
     const threads = [...desk.sessions]

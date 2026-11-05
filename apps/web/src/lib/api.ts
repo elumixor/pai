@@ -82,6 +82,11 @@ export const api = {
   readMarks: async () => (await get<{ marks: Record<string, number> }>("/reads", true)).marks ?? {},
   markRead: (place: string, at: number) => request("POST", "/reads", { place, at }),
 
+  // Quiet: the editor saves as he works, and that is no progress to show.
+  themes: async () => (await get<{ themes: readonly unknown[] }>("/themes", true)).themes,
+  saveTheme: (theme: { readonly id: string }) => request("PUT", `/themes/${q(theme.id)}`, theme),
+  dropTheme: (id: string) => request("DELETE", `/themes/${q(id)}`),
+
   // ---- the staff: pai, its agents, the log, tasks, asks -------------------------------------
   pai: () => get<{ session: SessionSummary; thread: number | null; lastRotation: unknown }>("/pai"),
   sendPai: (text: string, images: readonly Upload[] = []) => send<SessionSummary>("/pai", { text, images }),
