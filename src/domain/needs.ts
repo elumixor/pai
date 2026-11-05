@@ -128,5 +128,5 @@ export function needs() {
       priority: "normal",
       createdAt: a.pausedAt ?? a.lastActive,
     }));
-  return [...fromSessions, ...fromPaused, ...fromDrafts, ...fromAsks, ...fromTasks].sort((a, b) => b.createdAt - a.createdAt);
+  return [...fromSessions, ...fromTerminals, ...fromPaused, ...fromDrafts, ...fromAsks, ...fromTasks].sort((a, b) => b.createdAt - a.createdAt);
 }
