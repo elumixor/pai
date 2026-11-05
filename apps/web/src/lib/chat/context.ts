@@ -21,4 +21,6 @@ export interface RowContext {
   /** "Answer in words": the question pinned to the box, the next message its answer. */
   readonly pinAnswer: (question: string, reply: (text: string) => Promise<unknown>) => void;
   readonly draftsChanged: () => void;
+  /** His message back in the box; what he sends replaces it and what followed. */
+  readonly rewrite: (m: LogMessage) => void;
 }

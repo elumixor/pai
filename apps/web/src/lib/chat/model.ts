@@ -56,10 +56,39 @@ export function parseReply(body: string): (ReplyQuote & { text: string }) | unde
 }
 export const withReply = (quote: ReplyQuote | undefined, text: string) => (quote ? `↪ ${quote.from} @ ${quote.at}: "${quote.excerpt.replace(/"/g, "'")}"\n${text}` : text);
 export const excerptOf = (text: string) =>
-  firstLine(parseReply(text)?.text ?? text)
+  firstLine(splitPastes(parseReply(text)?.text ?? text).text || "Pasted text")
     .replace(/\*\*/g, "")
     .replace(/\s+/g, " ")
     .slice(0, 140);
+/** A message's own words and what was pasted into it, which is drawn as an attachment. Nested pastes flatten into the outer one. */
+export function splitPastes(body: string): { text: string; pastes: string[] } {
+  const pastes: string[] = [];
+  let text = "";
+  let depth = 0;
+  let at = 0;
+  let inner = "";
+  for (const tag of body.matchAll(/<(\/?)pasted_content\b[^>]*>/g)) {
+    const between = body.slice(at, tag.index);
+    at = tag.index + tag[0].length;
+    if (depth) inner += between;
+    else text += between;
+    if (tag[1]) {
+      if (depth && --depth === 0) {
+        pastes.push(inner.trim());
+        inner = "";
+      }
+    } else depth += 1;
+  }
+  const rest = body.slice(at);
+  if (depth) pastes.push((inner + rest).trim());
+  else text += rest;
+  return { text: pastes.length ? text.replace(/\n{3,}/g, "\n\n").trim() : text, pastes };
+}
+/** A message as text to copy: its words, then what was pasted, without the tags. */
+export const copyOf = (body: string) => {
+  const { text, pastes } = splitPastes(parseReply(body)?.text ?? body);
+  return [text, ...pastes].filter(Boolean).join("\n\n");
+};
 export const textOf = (m: LogMessage) => parseReply(m.body)?.text ?? m.body;
 
 /** "Created a file, ran 5 commands" — what a turn's tool calls amount to, by family. */

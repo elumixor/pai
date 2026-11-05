@@ -1,3 +1,4 @@
+import { bus } from "../core/bus.ts";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
@@ -106,6 +107,7 @@ export async function indexTranscripts(budget = BYTES_PER_PASS): Promise<number>
         continue;
       }
       const session = basename(name, ".jsonl");
+      if (bus.hidden.has(session)) continue;
       const insert = db.transaction((lines: string[]) => {
         for (const raw of lines) {
           if (!raw.trim()) continue;

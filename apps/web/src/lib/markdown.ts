@@ -2,9 +2,6 @@ import { el } from "./icons";
 import { fillKeepPills } from "./keep";
 import { fillMoney } from "./money";
 
-const PASTE_OPEN = /^\s*<pasted_content\b[^>]*>\s*$/;
-const PASTE_CLOSE = /^\s*<\/pasted_content\b[^>]*>\s*$/;
-
 /**
  * Enough markdown for a conversation: fenced code, inline code, bold, italic, links, lists
  * and headings. Everything else is a paragraph with its line breaks kept. No HTML passes
@@ -17,20 +14,6 @@ export function markdown(source: string): DocumentFragment {
   let index = 0;
   while (index < lines.length) {
     const line = lines[index]!;
-    // Pasted text is shown as it was pasted, nested pastes included: nothing in it is markdown.
-    if (PASTE_OPEN.test(line)) {
-      const code: string[] = [];
-      let depth = 1;
-      index += 1;
-      while (index < lines.length && depth) {
-        const current = lines[index++]!;
-        if (PASTE_OPEN.test(current)) depth += 1;
-        else if (PASTE_CLOSE.test(current)) depth -= 1;
-        else code.push(current);
-      }
-      out.append(el("pre.md-code", { "data-lang": "" }, el("code", {}, code.join("\n"))));
-      continue;
-    }
     const fence = /^```(\w+)?\s*$/.exec(line);
     if (fence) {
       const code: string[] = [];
@@ -69,7 +52,7 @@ export function markdown(source: string): DocumentFragment {
       continue;
     }
     const paragraph: string[] = [];
-    while (index < lines.length && lines[index]!.trim() && !/^```|^#{1,6}\s|^\s*([-*+]|\d+[.)])\s+/.test(lines[index]!) && !PASTE_OPEN.test(lines[index]!))
+    while (index < lines.length && lines[index]!.trim() && !/^```|^#{1,6}\s|^\s*([-*+]|\d+[.)])\s+/.test(lines[index]!))
       paragraph.push(lines[index++]!);
     const p = el("p.md-p");
     paragraph.forEach((text, i) => {

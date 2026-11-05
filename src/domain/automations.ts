@@ -311,7 +311,7 @@ export function tick(at = now()) {
 /** Watches the bus and the clock; each matching rule runs on its own, a failing one only logs. */
 export function startAutomations() {
   const handler = (event: PaiEvent) => {
-    if (event.kind.startsWith("automation.") || event.kind === "session.delta" || event.kind === "message.new") return;
+    if ((event.sessionId && bus.hidden.has(event.sessionId)) || event.kind.startsWith("automation.") || event.kind === "session.delta" || event.kind === "message.new") return;
     for (const rule of all()) {
       if (!rule.enabled || !rule.event || rule.event !== event.kind) continue;
       if (rule.filter && !JSON.stringify(event.payload).includes(rule.filter)) continue;

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Code, MessageSquare, Target } from "lucide-svelte";
+  import { Code, EyeOff, MessageSquare, Target } from "lucide-svelte";
   import { api } from "../api";
   import { newChat, type NewKind } from "./new-chat.svelte";
 
@@ -8,13 +8,14 @@
     { kind: "detached", label: "Detached chat", icon: MessageSquare },
     { kind: "dev", label: "Task in Dev", icon: Code },
     { kind: "goal", label: "Long-term goal", icon: Target },
+    { kind: "private", label: "Private chat", icon: EyeOff },
   ];
   let projects = $state<{ slug: string }[]>([]);
   $effect(() => void api.projects().then((list) => (projects = list), () => {}));
 </script>
 
 <div class="m-auto flex w-full max-w-[560px] flex-col gap-3 px-4">
-  <div class="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Kind of chat">
+  <div class="grid gap-2 sm:grid-cols-4" role="radiogroup" aria-label="Kind of chat">
     {#each OPTIONS as o (o.kind)}
       {@const on = newChat.kind === o.kind}
       {@const sure = newChat.confidence?.kind[o.kind]}

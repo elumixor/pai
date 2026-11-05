@@ -100,13 +100,26 @@
       return navigate({ name: "thread", param: result.data.sessionId }, true);
     }
     const prefs = { model: newChat.model, effort: newChat.effort };
-    const result = await api.startThread(text, images, newChat.kind === "goal" ? "general" : undefined, prefs);
+    const isPrivate = newChat.kind === "private";
+    const result = await api.startThread(text, images, newChat.kind === "goal" ? "general" : undefined, { ...prefs, ...(isPrivate ? { private: true } : {}) });
     const started = result.data as SessionSummary | undefined;
     if (result.error || !started?.sessionId) return void chat?.setNote(result.error ?? "no thread came back");
     seed = { id: started.sessionId, text: text || "(image)" };
+    if (isPrivate) openPrivate = started.sessionId;
     void desk.refreshSessions();
     navigate({ name: "thread", param: started.sessionId }, true);
   };
+
+  /** The private chat open now: leaving it erases it. */
+  let openPrivate: string | undefined;
+  $effect(() => {
+    const here = route.name === "thread" ? route.param : undefined;
+    if (openPrivate && here !== openPrivate) {
+      void api.closePrivate(openPrivate).then(() => desk.refreshSessions());
+      openPrivate = undefined;
+    }
+    if (here && desk.threadOf(here)?.private) openPrivate = desk.threadOf(here)!.sessionId;
+  });
 
   const spec = $derived.by((): ChatSpec | undefined => {
     if (route.name === "home" || route.name === "settings")
@@ -138,7 +151,7 @@
         },
         setPrefs: async (changes) => ({ error: (await api.reconfigure(id, changes)).error }),
         send: (text, images) => api.sendThread(id, text, images),
-        placeholder: "Message this thread…",
+        placeholder: desk.threadOf(id)?.private ? "Private: erased when you leave…" : "Message this thread…",
       };
     }
     if (route.name === "new") {

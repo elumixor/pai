@@ -1,3 +1,4 @@
+import { bus } from "../core/bus.ts";
 import { db, now } from "../core/db.ts";
 
 /**
@@ -65,6 +66,7 @@ export interface Entry {
 
 /** Notes a tool call when it is outward; anything else is ignored. */
 export function record(call: { toolUseId: string; sessionId: string; agent: string | null; tool: string; summary: string; input: unknown }) {
+  if (bus.hidden.has(call.sessionId)) return;
   if (!outward(call.tool)) return;
   const input = JSON.stringify(call.input ?? {});
   db.prepare("INSERT OR IGNORE INTO audit (tool_use_id, session_id, agent, tool, summary, input, ts) VALUES (?, ?, ?, ?, ?, ?, ?)").run(

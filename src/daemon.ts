@@ -1,3 +1,4 @@
+import { sweepPrivate } from "./domain/sessions.ts";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { config, setting } from "./core/config.ts";
@@ -77,6 +78,7 @@ const bot =
     ? telegram.startTelegram({ token: setting("TELEGRAM_BOT_TOKEN")!, chatId: Number(setting("TELEGRAM_CHAT_ID")), baseUrl: config.baseUrl, inbox: join(config.workspace, "inbox") })
     : undefined;
 // After the connectors and the bot: the chat is listening when terminal threads are announced.
+const stopPrivate = sweepPrivate();
 const stopMirror = mirror.start();
 const stopReleaseCheck = startReleaseCheck();
 const stopRecall = recall.start();
@@ -115,6 +117,7 @@ function shutdown(signal: string) {
   stopMemoryWatch();
   stopClaudeConnectors();
   stopClaudeLoginCheck();
+  stopPrivate();
   stopMirror();
   stopReleaseCheck();
   stopDev();

@@ -61,6 +61,16 @@ export async function start() {
   return () => clearInterval(timer);
 }
 
+/** Ends a turn dev itself runs; false for one a terminal holds, which only that terminal can stop. */
+export async function stop(sessionId: string): Promise<boolean> {
+  try {
+    return (await call<{ stopped: boolean }>(`/sessions/${sessionId}/stop`, { method: "POST", body: "{}" })).stopped;
+  } catch (err) {
+    log.warn(`stop ${sessionId.slice(0, 6)}: ${(err as Error).message}`);
+    return false;
+  }
+}
+
 /**
  * Into the terminal whose channel holds this conversation; false when none does (or dev cannot be reached), and
  * the caller continues the conversation itself.

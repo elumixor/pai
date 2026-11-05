@@ -1,5 +1,6 @@
 /** The daemon's shapes as the client reads them over HTTP. */
 export interface SessionSummary {
+  readonly private?: boolean;
   readonly sessionId: string;
   readonly shortId: string;
   /** `chat`, `code` — or `claude`, a conversation on disk the daemon has not run yet. */

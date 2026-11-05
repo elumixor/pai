@@ -12,6 +12,7 @@ db.exec("PRAGMA journal_mode = WAL;");
 db.exec("PRAGMA busy_timeout = 5000;");
 
 db.exec(`
+CREATE TABLE IF NOT EXISTS private_sessions (session_id TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS sessions (
   session_id    TEXT PRIMARY KEY,
   short_id      TEXT NOT NULL,

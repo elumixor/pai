@@ -281,10 +281,10 @@ export async function handle(req: Request): Promise<Response> {
       return json({ sessionId: started.id });
     }
     if (path === "/task" && req.method === "POST") {
-      const { title, text, project, model, effort, origin, images, parent } = await body<{ title: string; text: string; project?: string; model?: string | null; effort?: "low" | "medium" | "high" | "xhigh" | "max" | null; origin?: "general" | "cli"; images?: { media_type: string; data: string }[]; parent?: string }>(req);
+      const { title, text, project, model, effort, origin, images, parent, private: isPrivate } = await body<{ private?: boolean; title: string; text: string; project?: string; model?: string | null; effort?: "low" | "medium" | "high" | "xhigh" | "max" | null; origin?: "general" | "cli"; images?: { media_type: string; data: string }[]; parent?: string }>(req);
       // A thread started under another (the web client's tree) reports to it, as one an agent starts does.
       const parentId = parent === "general" ? main.session().id : parent ? (sessions.find(parent)?.id ?? sessions.resolveId(parent) ?? null) : null;
-      const s = sessions.spawnTask({ title: title ?? "", project, model, effort, parent: parentId, origin: origin === "general" ? "general" : project ? "builder" : "cli" });
+      const s = sessions.spawnTask({ title: title ?? "", project, model, effort, parent: parentId, origin: origin === "general" ? "general" : project ? "builder" : "cli", private: isPrivate });
       if (text || images?.length) s.send(text ?? "", { images });
       return json(s.summary());
     }
@@ -324,10 +324,19 @@ export async function handle(req: Request): Promise<Response> {
     if (path === "/stop" && req.method === "POST") {
       const { id, kill } = await body<{ id: string; kill?: boolean }>(req);
       const s = sessions.find(id);
-      if (!s) return json({ error: "no such session" }, 404);
+      if (!s) {
+        const elsewhere = held.find(id);
+        if (!elsewhere) return json({ error: "no such session" }, 404);
+        return json({ ok: true, stopped: await elsewhere.interrupt() });
+      }
       if (kill) s.kill();
       else await s.interrupt();
-      return json({ ok: true });
+      return json({ ok: true, stopped: true });
+    }
+
+    if (path === "/private/close" && req.method === "POST") {
+      const { id } = await body<{ id: string }>(req);
+      return json({ closed: sessions.closePrivate(id) });
     }
 
     // What each kind of session is given, for the dashboard.

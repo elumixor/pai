@@ -11,7 +11,7 @@
   import AnswerButtons from "./AnswerButtons.svelte";
   import type { RowContext } from "./context";
   import DraftCard from "./DraftCard.svelte";
-  import { eventIcon, excerptOf, lineOf, parseReply, type ReplyQuote } from "./model";
+  import { eventIcon, excerptOf, lineOf, parseReply, type ReplyQuote, copyOf, splitPastes } from "./model";
   import Pictures from "./Pictures.svelte";
   import QuoteRef from "./QuoteRef.svelte";
 
@@ -21,7 +21,14 @@
   /** A message of his longer than this folds to seven lines with "Show more". */
   const FOLD_CHARS = 560;
   const quoted = $derived(parseReply(m.body));
-  const bodyText = $derived(quoted?.text ?? m.body);
+  const split = $derived(splitPastes(quoted?.text ?? m.body));
+  const bodyText = $derived(split.text);
+  let copied = $state(false);
+  function copy() {
+    void navigator.clipboard.writeText(copyOf(m.body));
+    copied = true;
+    setTimeout(() => (copied = false), 1200);
+  }
   const shape = $derived.by(() => {
     if (m.meta.place) return "place";
     if (m.meta.draftId && m.meta.draft) return "draft";
@@ -92,6 +99,12 @@
   const time = $derived(new Date(m.createdAt).toLocaleString());
 </script>
 
+{#snippet actions(editable: boolean)}
+  <div class="row-actions">
+    <button title="Copy" aria-label="Copy" onclick={copy}><Icon name={copied ? "check" : "copy"} size={13} /></button>
+    {#if editable}<button title="Rewrite" aria-label="Rewrite" onclick={() => ctx.rewrite(m)}><Icon name="pencil" size={13} /></button>{/if}
+  </div>
+{/snippet}
 {#snippet chevron()}<Icon name="chevron" size={9} />{/snippet}
 {#snippet live(slug: string)}
   {#if status === "working"}<span class="live" data-agent={slug}><span class="spinner" title="working now"></span></span>{:else if status === "waiting"}<span class="live" data-agent={slug}><span class="attention" title="waiting on you"><Icon name="hand" size={11} /></span></span>{/if}
@@ -108,7 +121,7 @@
 {:else if shape === "mine" || shape === "answer-mine"}
   {@const quote = shape === "answer-mine" ? answerQuote : quoted}
   <div {@attach attach} class="row mine" class:folded={long && !unfolded} data-message={m.id} data-task={m.taskId ?? ""} data-at={m.createdAt} data-key={key} data-kind="user">
-    <Pictures images={m.meta.images} files={m.meta.files} />
+    <Pictures images={m.meta.images} files={m.meta.files} pastes={split.pastes} />
     {#if bodyText.trim()}
       <div class="mine-text">
         {#if from}<div class="row-from"><b>{from}</b>{#if m.taskId}<span class="tag">#{m.taskId}</span>{/if}</div>{/if}
@@ -123,11 +136,13 @@
     {:else}
       <div class="row-foot"><span class="grow"></span><time title={time}>{clock(m.createdAt)}</time></div>
     {/if}
+    {@render actions(shape === "mine" && m.from === "user")}
   </div>
 {:else if shape === "reply"}
   <div {@attach attach} class="row reply" data-message={m.id} data-at={m.createdAt} data-key={key} data-kind="reply">
     {#if quoted}<QuoteRef quote={quoted} onjump={ctx.jump} />{/if}
     <div class="bubble" {@attach mdTimed(bodyText, m.createdAt)}></div>
+    {@render actions(false)}
   </div>
 {:else if shape === "card"}
   <button

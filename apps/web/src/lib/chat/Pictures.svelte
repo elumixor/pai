@@ -8,7 +8,9 @@
    * draws (two side by side, three as a large one plus two, four as 2×2, more with "+N" on the last tile). A file
    * reads as the thing he attached, with its own name and size, opening the copy the box kept.
    */
-  let { images = [], files = [] }: { images?: readonly string[]; files?: readonly { file: string; name: string; size: number }[] } = $props();
+  let { images = [], files = [], pastes = [] }: { images?: readonly string[]; files?: readonly { file: string; name: string; size: number }[]; pastes?: readonly string[] } = $props();
+  let open = $state<number | undefined>();
+  const lineCount = (text: string) => text.split("\n").length;
   const TILES = 4;
   const LAYOUT = ["", "one", "two", "three", "four"] as const;
   const url = (src: string) => (KEPT.test(src) ? attachmentUrl(src) : src);
@@ -20,6 +22,16 @@
   <div class="row-images {LAYOUT[Math.min(shown.length, TILES)]}">
     {#each shown as src, i (i)}
       <a href={src} target="_blank" rel="noopener"><img {src} alt="attached" loading="lazy" />{#if hidden > 0 && i === shown.length - 1}<span class="more-count">+{hidden}</span>{/if}</a>
+    {/each}
+  </div>
+{/if}
+{#if pastes.length}
+  <div class="row-files">
+    {#each pastes as paste, i (i)}
+      <button type="button" class="row-file" aria-expanded={open === i} onclick={() => (open = open === i ? undefined : i)}>
+        <Icon name="file" size={13} /><span class="row-file-name ellipsis">Pasted text</span><span class="row-file-size">{lineCount(paste)} lines</span>
+      </button>
+      {#if open === i}<pre class="row-paste">{paste}</pre>{/if}
     {/each}
   </div>
 {/if}

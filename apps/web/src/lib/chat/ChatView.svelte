@@ -55,7 +55,7 @@
   import type { RowContext } from "./context";
   import FindBar, { type FindTarget } from "./FindBar.svelte";
   import MessageRow from "./MessageRow.svelte";
-  import { describeTools, eventIcon, eventType, excerptOf, type Item, type LiveQuestion, type ReplyQuote, type Row, textOf, type ToolGroup, typeLabel, withReply } from "./model";
+  import { splitPastes, describeTools, eventIcon, eventType, excerptOf, type Item, type LiveQuestion, type ReplyQuote, type Row, textOf, type ToolGroup, typeLabel, withReply } from "./model";
   import Pictures from "./Pictures.svelte";
   import QuestionRow from "./QuestionRow.svelte";
   import QuoteRef from "./QuoteRef.svelte";
@@ -94,6 +94,7 @@
   let pending = $state<{ id: number; text: string; body: string; quote?: ReplyQuote; images: string[]; state: "sending" | "sent" | "failed" }[]>([]);
   let openedAt = $state(0);
   let replyTarget: ReplyQuote | undefined;
+  let rewriting = false;
   let pinnedAnswer: ((text: string) => Promise<unknown>) | undefined;
   let log = $state<HTMLDivElement>();
   let box = $state<Compose>();
@@ -259,6 +260,14 @@
       box?.setPin({ icon: "help", text: question.split("\n").find((l) => l.trim()) ?? question, onDismiss: () => (pinnedAnswer = undefined) });
     },
     draftsChanged: () => void refreshDrafts(),
+    rewrite: (m) => {
+      const { text, pastes } = splitPastes(textOf(m));
+      box?.fill([{ kind: "text", text }, ...pastes.map((paste) => ({ kind: "paste" as const, text: paste }))]);
+      pinnedAnswer = undefined;
+      replyTarget = { from: nameOf(m.from), at: m.createdAt, excerpt: excerptOf(textOf(m)), messageId: m.id > 0 ? m.id : undefined };
+      rewriting = true;
+      box?.setPin({ icon: "pencil", from: "Rewriting", text: replyTarget.excerpt, onDismiss: dropReply });
+    },
   };
 
   function settleAsk(askId: number, answer?: string) {
@@ -280,6 +289,7 @@
     box?.setPin({ icon: "reply", from: quote.from, text: quote.excerpt, onDismiss: dropReply });
   }
   function dropReply() {
+    rewriting = false;
     replyTarget = undefined;
     forget(replyKey);
   }
@@ -309,9 +319,11 @@
     const diverted = spec.divert?.();
     if (diverted) return diverted(text, images);
     const quote = replyTarget;
+    const rewrote = rewriting;
     dropReply();
+    if (rewrote && working) await stopTurn();
     box?.setPin(null);
-    const body = withReply(quote, text);
+    const body = withReply(quote, rewrote ? `(This rewrites the quoted message: disregard it and anything that followed from it.)\n${text}` : text);
     const row = { id: ++pendingCount, text, body, quote, images: images.filter((i) => i.media_type.startsWith("image/")).map((i) => `data:${i.media_type};base64,${i.data}`), state: "sending" as const };
     pending = [...pending, row];
     void scrollSoon(true);
@@ -330,6 +342,13 @@
     pending = pending.map((p) => (p.id === row.id ? { ...p, state: "sent" } : p));
     const back = result.data as LogMessage | undefined;
     if (back && typeof back.id === "number" && back.kind) append(back);
+  }
+
+  async function stopTurn() {
+    if (!liveSession) return;
+    const result = await api.stop(liveSession);
+    if (result.error) box?.setNote(result.error);
+    else if (result.data?.stopped === false) box?.setNote("This turn runs in a terminal: press Esc there to stop it.");
   }
 
   // ---- placing rows --------------------------------------------------------------------------------------------
@@ -581,10 +600,24 @@
   }
 
   /** The live session's own stream: the reply as it is written, the tool calls as they run, its questions. */
-  function onLive(kind: string, ts: number, payload: { text?: string; summary?: string; name?: string; id?: string; result?: string; questions?: Question[]; answers?: Record<string, string> }) {
+  function onLive(kind: string, ts: number, payload: { text?: string; summary?: string; name?: string; id?: string; result?: string; questions?: Question[]; answers?: Record<string, string>; terminal?: boolean; echo?: boolean; said?: string; flush?: boolean }) {
     const stick = nearBottom();
     if (kind === "session.delta" || kind === "session.tool") working ??= { since: ts };
     switch (kind) {
+      // A terminal's turn: what was typed there or elsewhere joins the chat, unless this tab just placed it.
+      case "session.input": {
+        working ??= { since: ts };
+        const typed = payload.said ?? (payload.echo ? payload.text : undefined);
+        const placed = items.slice(-20).some((i) => i.kind === "message" && i.m.from === "user" && i.m.body.trim() === typed?.trim());
+        if (spec.session && payload.terminal && typed?.trim() && !placed) items.push(spoken("user", typed, ts));
+        break;
+      }
+      // A terminal's text before its last: thinking aloud, as with a stream's text before a call.
+      case "session.text":
+        if (!payload.terminal) return;
+        if (liveGroup) liveGroup.thinking = [liveGroup.thinking, payload.text].filter(Boolean).join("\n\n");
+        else liveText = payload.text ?? "";
+        break;
       case "session.delta":
         liveText = payload.text ?? "";
         break;
@@ -621,7 +654,7 @@
         if (liveGroup) liveGroup.live = false;
         liveGroup = undefined;
         // A plain thread has no log row to take the reply's place: the streamed text is the reply.
-        if (spec.session && liveText) items.push(spoken(spec.agent, liveText, ts));
+        if (spec.session && (payload.text || liveText)) items.push(spoken(spec.agent, payload.text || liveText!, ts));
         if (spec.session) liveText = null;
         working = null;
         break;
@@ -999,10 +1032,10 @@
       {/each}
       {#each pending as p (p.id)}
         <div class="row mine" class:pending={p.state === "sending"} class:failed={p.state === "failed"} data-kind="user">
-          <Pictures images={p.images} />
+          <Pictures images={p.images} pastes={splitPastes(p.text).pastes} />
           <div class="mine-text">
             {#if p.quote}<QuoteRef quote={p.quote} onjump={ctx.jump} />{/if}
-            {#if p.text}<div class="bubble" {@attach mdTimed(p.text, Date.now())}></div>{/if}
+            {#if splitPastes(p.text).text}<div class="bubble" {@attach mdTimed(splitPastes(p.text).text, Date.now())}></div>{/if}
             <div class="row-foot"><span class="grow"></span><span>{p.state === "failed" ? "not sent" : p.state}</span></div>
           </div>
         </div>
@@ -1011,7 +1044,7 @@
         <div class="row reply live" data-testid="live-turn"><div class="bubble" {@attach mdTimed(liveText, Date.now())}></div></div>
       {/if}
       {#if working}
-        <div class="row working"><span class="spinner"></span><b>Working on it…</b><span class="elapsed">{duration(now - working.since)}</span></div>
+        <div class="row working"><span class="spinner"></span><b>Working on it…</b><span class="elapsed">{duration(now - working.since)}</span>{#if liveSession}<button class="stop" onclick={stopTurn}>Stop</button>{/if}</div>
       {/if}
       {#if spec.blank}{@render spec.blank()}{:else if !loading && !items.length && !pending.length}<p class="hint">Nothing said here yet.</p>{/if}
     </div>

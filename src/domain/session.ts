@@ -1,3 +1,4 @@
+import { PASTE_TAG } from "./transcript.ts";
 import { randomUUID } from "node:crypto";
 import { query, startup, type Options, type Query, type SDKMessage, type SDKUserMessage, type SlashCommand, type WarmQuery } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "../core/config.ts";
@@ -59,7 +60,7 @@ function build(
   ref: SessionRef,
   sessionId: string,
   project?: string,
-  prefs?: { model?: string | null; effort?: Effort | null },
+  prefs?: { model?: string | null; effort?: Effort | null; private?: boolean },
   agent?: AgentSetup,
 ): Options {
   const servers: NonNullable<Options["mcpServers"]> = {
@@ -72,7 +73,7 @@ function build(
   };
   // The `keep` server pai injects (Pai's key, this thread's client tag) is every agent's: each tracks its work there.
   const mcpServers = Object.fromEntries(Object.entries(servers).filter(([name]) => serverOn(name) && (name === "keep" || serverAllowed(name, agent?.tools))));
-  const disallowedTools = [...offTools()];
+  const disallowedTools = [...offTools(), ...(prefs?.private ? ["mcp__pai__edit_memory"] : [])];
   // pai delegates through its own agents, which the user can watch and answer; Claude Code's Agent tool would hide the work.
   // Threads are the same kind of hidden work: whatever pai hands off is an agent, so it shows in the agent tree.
   if (agent?.slug === "pai") disallowedTools.push("Agent", "Task", ...PAI_THREAD_TOOLS);
@@ -92,7 +93,7 @@ function build(
     // Discovered from .claude/skills under the project (and, for code sessions, the repo).
     skills: "all",
     additionalDirectories: [...(kind === "code" ? [config.workspace] : []), ...(agent?.additionalDirectories ?? [])],
-    systemPrompt: { type: "preset", preset: "claude_code", append: instructionsFor(kind, project, agent) },
+    systemPrompt: { type: "preset", preset: "claude_code", append: instructionsFor(kind, project, agent) + (prefs?.private ? "\n\n# Private chat\nThis chat is one-time and is erased when closed. Do not write what is said here anywhere that lasts: no memory, no Keep, no files, no messages, unless the user asks for that one thing." : "") },
     mcpServers,
     ...(disallowedTools.length ? { disallowedTools } : {}),
     canUseTool: async (tool, input) => {
@@ -214,6 +215,8 @@ export interface SessionOptions {
   agent?: AgentSetup;
   /** Where it was started (see `ThreadOrigin`); kept from the first write on. */
   origin?: ThreadOrigin;
+  /** One-time: nothing kept, no memory, gone when closed (`sessions.closePrivate`). */
+  private?: boolean;
 }
 
 /** Where a thread was started: the client's detached box, the CLI, a terminal, the phone, the builder, a routine. */
@@ -284,13 +287,20 @@ export class Session {
     return this.activeTurn;
   }
 
+  readonly private: boolean;
+
   constructor(opts: SessionOptions) {
     // A fresh session of a warmable kind adopts the pre-spawned process and its id.
     this.modelPref = opts.model ?? null;
     this.effort = opts.effort ?? null;
     // A warm process was built with the defaults; a session that wants otherwise starts its own.
-    this.warm = !opts.resume && opts.cwd === config.workspace && !this.modelPref && !this.effort && !opts.agent ? takeWarm(opts.kind) : undefined;
+    this.warm = !opts.resume && opts.cwd === config.workspace && !this.modelPref && !this.effort && !opts.agent && !opts.private ? takeWarm(opts.kind) : undefined;
     this.id = opts.resume ?? this.warm?.id ?? randomUUID();
+    this.private = Boolean(opts.private) || bus.hidden.has(this.id);
+    if (this.private) {
+      bus.hidden.add(this.id);
+      db.prepare("INSERT OR IGNORE INTO private_sessions (session_id) VALUES (?)").run(this.id);
+    }
     this.shortId = this.id.slice(0, 6);
     this.kind = opts.kind;
     this.cwd = opts.cwd;
@@ -320,7 +330,7 @@ export class Session {
   private start(resume: boolean) {
     this.resuming = resume;
     const ref: SessionRef = { session: this };
-    const options = build(this.kind, this.cwd, ref, this.id, this.project, { model: this.modelPref, effort: this.effort }, this.agentSetup);
+    const options = build(this.kind, this.cwd, ref, this.id, this.project, { model: this.modelPref, effort: this.effort, private: this.private }, this.agentSetup);
     this.mcpConfig = options.mcpServers;
     options.title = this.title;
     if (resume) options.resume = this.id;
@@ -556,9 +566,9 @@ export class Session {
     this.inbox.push({ type: "user", message: { role: "user", content }, parent_tool_use_id: null });
     // A thread started without a title is named after what was first said in it.
     if (this.title === UNTITLED && text.trim()) {
-      this.title = text.replace(/\s+/g, " ").trim().slice(0, 60);
+      this.title = this.private ? "Private chat" : text.replace(PASTE_TAG, " ").replace(/\s+/g, " ").trim().slice(0, 60);
       // A better name than the first words is written by a small model when one is configured (summaries.ts).
-      bus.emitEvent("session.untitled", { text: text.slice(0, 4_000) }, this.id);
+      if (!this.private) bus.emitEvent("session.untitled", { text: text.slice(0, 4_000) }, this.id);
     }
     this.activeTurn = true;
     this.origins.push(opts.origin ?? "user");
@@ -726,6 +736,7 @@ export class Session {
     return {
       sessionId: this.id,
       shortId: this.shortId,
+      private: this.private,
       kind: this.kind,
       title: this.title,
       project: this.project,

@@ -1,7 +1,7 @@
 import { api, type ChatConfidence } from "../api";
 import type { Effort } from "../types";
 
-export type NewKind = "detached" | "dev" | "goal";
+export type NewKind = "detached" | "dev" | "goal" | "private";
 const WAIT_MS = 400;
 const MIN_CHARS = 8;
 

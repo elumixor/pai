@@ -12,9 +12,12 @@ export interface PaiEvent {
 const EPHEMERAL = new Set(["session.delta", "message.new", "inbox.changed"]);
 
 class Bus extends EventEmitter {
+  /** Private chats: told to the clients live, written nowhere, and of no concern to anything that keeps things. */
+  readonly hidden = new Set<string>();
+
   emitEvent(kind: string, payload: Record<string, unknown>, sessionId?: string) {
     const event: PaiEvent = { kind, sessionId, payload, ts: now() };
-    if (!EPHEMERAL.has(kind))
+    if (!EPHEMERAL.has(kind) && !(sessionId && this.hidden.has(sessionId)))
       db.prepare("INSERT INTO events (session_id, kind, payload, ts) VALUES (?, ?, ?, ?)").run(
         sessionId ?? null,
         kind,

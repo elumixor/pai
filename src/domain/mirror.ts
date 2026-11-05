@@ -11,7 +11,7 @@ import type { HeldThread, HeldThreads } from "./held.ts";
 import { all as allProjects } from "./projects.ts";
 import { summarizeTool, type SessionKind } from "./session.ts";
 import * as sessions from "./sessions.ts";
-import { isInjected, transcript, transcriptDirs } from "./transcript.ts";
+import { fromChannel, isInjected, PASTE_TAG, transcript, transcriptDirs } from "./transcript.ts";
 
 /**
  * Conversations a terminal holds — `claude` on the Mac (its transcripts arrive over sync) or
@@ -120,8 +120,11 @@ export class TerminalThread implements HeldThread {
     sessions.adopt(this.id, this.cwd, this.title).send(text, opts);
   }
 
+  /** A turn dev runs can be stopped; a terminal's cannot from outside (a signal would end the whole `claude`). */
   async interrupt() {
-    return false;
+    const stopped = await dev.stop(this.id);
+    if (stopped) this.endTurn((kind, payload) => bus.emitEvent(kind, { ...payload, terminal: true }, this.id));
+    return stopped;
   }
 
   replay(entries: Entry[]) {
@@ -140,9 +143,11 @@ export class TerminalThread implements HeldThread {
     if (e.type === "system" && e.subtype === "turn_duration") return this.endTurn(emit, e.durationMs);
     const content = e.message?.content;
     // A compaction's summary (idle compaction too) is written as a user entry, but no turn follows it.
-    if (e.type === "user" && !e.isMeta && !e.toolUseResult && !e.isCompactSummary && !e.isVisibleInTranscriptOnly) {
+    const viaChannel = e.origin?.kind === "channel";
+    if (e.type === "user" && (!e.isMeta || viaChannel) && !e.toolUseResult && !e.isCompactSummary && !e.isVisibleInTranscriptOnly) {
       const typed = typeof content === "string" ? content : (content ?? []).filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n");
-      if (!typed.trim() || isInterruption(typed) || (Array.isArray(content) && content.some((b) => b.type === "tool_result"))) return;
+      if (isInterruption(typed)) return this.endTurn(emit);
+      if (!typed.trim() || (Array.isArray(content) && content.some((b) => b.type === "tool_result"))) return;
       // A prompt arriving mid-turn means the last one was cut off (Esc) without a turn_duration.
       if (this.busy) this.endTurn(emit);
       const human = e.origin ? e.origin.kind === "human" : !isInjected(typed);
@@ -151,7 +156,7 @@ export class TerminalThread implements HeldThread {
       this.recentTools = [];
       this.persist();
       // What came in through the channel is already in the chat it was typed in; only the turn starts.
-      emit("session.input", human ? { text: typed, echo: true } : { text: "" });
+      emit("session.input", human ? { text: typed, echo: true } : { text: "", ...(viaChannel ? { said: fromChannel(typed) } : {}) });
       return;
     }
     if (e.type !== "assistant" || !Array.isArray(content)) return;
@@ -289,7 +294,7 @@ function topicOf(id: string): number | null {
 function open(id: string, place: Place, entries: Entry[], adopted = false) {
   const first = entries.find(isPrompt)?.message?.content;
   const prompt = typeof first === "string" ? first : (first ?? []).find((b) => b.type === "text")?.text ?? "";
-  const title = entries.findLast((e) => e.type === "ai-title")?.aiTitle ?? prompt.replace(/\s+/g, " ").trim().slice(0, 80);
+  const title = entries.findLast((e) => e.type === "ai-title")?.aiTitle ?? prompt.replace(PASTE_TAG, " ").replace(/\s+/g, " ").trim().slice(0, 80);
   const thread = new TerminalThread(id, place, title);
   const known = thread.threadId !== null;
   threads.set(id, thread);

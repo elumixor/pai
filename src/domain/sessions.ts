@@ -1,4 +1,5 @@
-import { ensureTranscriptAt } from "./transcript.ts";
+import { rmSync } from "node:fs";
+import { ensureTranscriptAt, transcriptPath } from "./transcript.ts";
 import { Session, UNTITLED, asKind, closeWarm, prewarm, rewarm, type AgentSetup, type Effort, type SessionKind, type ThreadOrigin } from "./session.ts";
 import { db, kv, now } from "../core/db.ts";
 import { existsSync, watch } from "node:fs";
@@ -19,6 +20,7 @@ export const terminalStates = new Map<string, "busy" | "idle">();
 export interface SpawnTask {
   title: string;
   project?: string;
+  private?: boolean;
   threadId?: number | null;
   /** The session that asked for it; the task's reports go there as well as to the main conversation. */
   parent?: string | null;
@@ -50,7 +52,7 @@ export function spawnTask(opts: SpawnTask): Session {
     project = proj.slug;
   }
   if (opts.cwd) cwd = opts.cwd;
-  const session = new Session({ kind, title: opts.title.trim() || UNTITLED, cwd, project, threadId: opts.threadId, parent: opts.parent, model: opts.model, effort: opts.effort, agent: opts.agent, origin: opts.origin ?? (opts.threadId != null ? "phone" : undefined) });
+  const session = new Session({ kind, title: opts.title.trim() || UNTITLED, cwd, project, threadId: opts.threadId, parent: opts.parent, model: opts.model, effort: opts.effort, agent: opts.agent, origin: opts.origin ?? (opts.threadId != null ? "phone" : undefined), private: opts.private });
   live.set(session.id, session);
   log.info(`spawned ${kind} ${session.shortId} "${opts.title}"`);
   prewarm("chat");
@@ -257,6 +259,39 @@ export function erase(ids: ReadonlySet<string>) {
   }
 }
 
+/** A private chat ends: its process, its transcript, every trace in the db; only a nameless tombstone stays. */
+export function closePrivate(id: string) {
+  if (!bus.hidden.has(id)) return false;
+  const path = transcriptPath(id);
+  erase(new Set([id]));
+  const wipe = () => {
+    if (path) rmSync(path, { force: true });
+    if (path) rmSync(path.replace(/\.jsonl$/, ""), { recursive: true, force: true });
+  };
+  wipe();
+  // A dying process can still write its last line.
+  setTimeout(wipe, 3000);
+  db.prepare("DELETE FROM events WHERE session_id = ?").run(id);
+  db.prepare("DELETE FROM archive WHERE ref = ?").run(id);
+  db.prepare("DELETE FROM private_sessions WHERE session_id = ?").run(id);
+  bus.hidden.delete(id);
+  return true;
+}
+
+const PRIVATE_IDLE_MS = 60 * 60 * 1000;
+
+/** Private chats do not outlive the daemon, and one whose tab was closed goes after an idle hour. */
+export function sweepPrivate() {
+  for (const { session_id } of db.query("SELECT session_id FROM private_sessions").all() as { session_id: string }[]) bus.hidden.add(session_id), closePrivate(session_id);
+  const timer = setInterval(() => {
+    for (const id of bus.hidden) {
+      const s = live.get(id);
+      if (!s || (s.state !== "busy" && Date.now() - s.lastActivity > PRIVATE_IDLE_MS)) closePrivate(id);
+    }
+  }, 5 * 60 * 1000);
+  return () => clearInterval(timer);
+}
+
 /** What is in the trash, newest first. */
 export function trashList(): { sessionId: string; shortId: string; title: string; kind: SessionKind; project: string | null; deletedAt: number }[] {
   const rows = db.query("SELECT session_id, short_id, title, kind, project, deleted_at FROM sessions WHERE deleted_at > 0 ORDER BY deleted_at DESC").all() as Record<string, any>[];
@@ -313,6 +348,7 @@ export function recent(limit = 20, kind?: SessionKind): SessionRow[] {
     kind: asKind(r.kind),
     title: r.title,
     project: r.project,
+    private: bus.hidden.has(r.session_id),
     cwd: r.cwd,
     threadId: r.thread_id,
     parent: r.parent_id ?? null,

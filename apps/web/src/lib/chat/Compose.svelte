@@ -9,7 +9,7 @@
 
   /** What sits pinned above the box until the next message is sent or it is dismissed: a reply's quote, a question. */
   export interface Pin {
-    readonly icon: "reply" | "help";
+    readonly icon: "reply" | "help" | "pencil";
     readonly from?: string;
     readonly text: string;
     readonly onDismiss?: () => void;
@@ -344,6 +344,13 @@
     if (!key || !box) return;
     void loadDraft(key).then((stored) => {
       if (!stored.length || box.textContent?.trim() || box.querySelector(".inline-chip")) return;
+      put(box, stored);
+      settle();
+      vimLayer?.load();
+    });
+  });
+
+  function put(box: HTMLElement, stored: readonly DraftPart[]) {
       for (const part of stored) {
         if (part.kind === "image") box.append(chipNode({ kind: part.preview ? "image" : "file", attachment: { media_type: part.media_type, data: part.data, preview: part.preview, name: part.name, size: part.size } }));
         else if (part.kind === "paste") box.append(chipNode({ kind: "text", text: part.text }));
@@ -353,10 +360,17 @@
             if (line) box.append(document.createTextNode(line));
           }
       }
-      settle();
-      vimLayer?.load();
-    });
-  });
+  }
+
+  /** Replaces what is in the box (a message taken back to rewrite). */
+  export function fill(next: readonly DraftPart[]) {
+    if (!input) return;
+    input.replaceChildren();
+    put(input, next);
+    settle();
+    vimLayer?.load();
+    input.focus();
+  }
 
   async function send() {
     if (disabled) return;

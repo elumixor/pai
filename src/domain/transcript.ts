@@ -86,6 +86,7 @@ interface Entry {
   isSidechain?: boolean;
   cwd?: string;
   sessionId?: string;
+  origin?: { kind?: string };
   message?: { role?: string; content?: string | Block[] };
 }
 
@@ -249,7 +250,7 @@ function titleIn(head: string, sessionId: string, cwd: string): DiskSession | un
     const content = entry.message?.content;
     const text = typeof content === "string" ? content : (content ?? []).find((block) => block.type === "text")?.text;
     if (!text || isInjected(text)) continue;
-    const title = text.replace(/\s+/g, " ").trim().slice(0, 80);
+    const title = text.replace(PASTE_TAG, " ").replace(/\s+/g, " ").trim().slice(0, 80);
     // The directory asked for, not the one in the entry: a transcript synced from another machine names that machine's path.
     return { sessionId, cwd, title, lastActivity: "" };
   }
@@ -290,9 +291,11 @@ function toMessage(entry: Entry): TranscriptMessage | undefined {
   const role = entry.type === "assistant" ? "assistant" : "user";
   const ts = entry.timestamp ?? new Date().toISOString();
   const content = entry.message?.content;
+  // What was typed elsewhere reached the terminal through its channel: Claude Code files it as meta, it is his message.
+  const channel = entry.origin?.kind === "channel";
   if (typeof content === "string") {
-    const { text, images } = imageRefs(content);
-    return { role, ts, text, images, meta: entry.isMeta || isInjected(content) };
+    const { text, images } = imageRefs(fromChannel(content));
+    return { role, ts, text, images, meta: !channel && (entry.isMeta || isInjected(content)) };
   }
 
   const text: string[] = [];
@@ -307,7 +310,7 @@ function toMessage(entry: Entry): TranscriptMessage | undefined {
   }
   // A user entry with no text is a tool result: the call it answers is already shown.
   if (!text.length && !tools.length && !thinking.length && !images.length) return undefined;
-  const typed = imageRefs(text.join("\n"));
+  const typed = imageRefs(fromChannel(text.join("\n")));
   images.push(...(typed.images ?? []));
   return {
     role,
@@ -316,7 +319,7 @@ function toMessage(entry: Entry): TranscriptMessage | undefined {
     images: images.length ? images : undefined,
     thinking: thinking.join("\n") || undefined,
     tools: tools.length ? tools : undefined,
-    meta: entry.isMeta || isInjected(text.join("\n")),
+    meta: !channel && (entry.isMeta || isInjected(text.join("\n"))),
   };
 }
 
@@ -326,9 +329,15 @@ function imageRefs(raw: string): { text: string; images?: string[] } {
   return images.length ? { text: raw.replace(IMAGE_REF, "").trim(), images } : { text: raw };
 }
 
+/** The tags around pasted text, which a title leaves out. */
+export const PASTE_TAG = /<\/?pasted_content\b[^>]*>/g;
+
+/** A message delivered through a terminal's channel, without its `<channel>` wrapper. */
+export const fromChannel = (text: string) => /^\s*<channel\b[^>]*>\n?([\s\S]*?)\n?<\/channel>\s*$/.exec(text)?.[1] ?? text;
+
 /** System reminders, hook output and task results arrive as user messages but were not typed. */
 export const isInjected = (text: string) =>
-  text.startsWith("<") || text.startsWith("Caveat:") || text.includes("<system-reminder>");
+  (text.startsWith("<") && !text.startsWith("<pasted_content")) || text.startsWith("Caveat:") || text.includes("<system-reminder>");
 
 function summarize(input: unknown) {
   if (input === undefined || input === null) return undefined;
