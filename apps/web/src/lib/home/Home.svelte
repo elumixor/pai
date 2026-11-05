@@ -11,6 +11,7 @@
   import { openAgent } from "../shell/open.svelte";
   import { sidebar } from "../sidebar/state.svelte";
   import { ancestors, type TreeNode, threadTitle } from "../sidebar/tree";
+  import GeneralActions from "./GeneralActions.svelte";
   import type { Effort, Need, SessionSummary, Upload } from "../types";
   import Icon from "../ui/Icon.svelte";
   import { menus } from "../ui/menu-state.svelte";
@@ -175,6 +176,7 @@
       {/each}
     </nav>
     <div class="crumb-under flex shrink-0 items-center"></div>
+    {#if route.name === "home"}<GeneralActions />{/if}
     {#if openThread && !trashedHere}
       <button class="grid size-7 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink" aria-label="Move to trash" title="Move to trash" onclick={() => trashThread(openThread)}><Trash2 size={16} /></button>
     {/if}

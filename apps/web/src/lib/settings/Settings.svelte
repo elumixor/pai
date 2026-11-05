@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  const SECTION_IDS = ["account", "appearance", "shortcuts", "snapshot", "general", "connectors", "automations", "context", "spend"] as const;
+  const SECTION_IDS = ["account", "appearance", "shortcuts", "connectors", "automations", "context", "spend"] as const;
   export type Section = (typeof SECTION_IDS)[number];
   export const isSection = (id: string): id is Section => (SECTION_IDS as readonly string[]).includes(id);
 
@@ -19,11 +19,9 @@
 <script lang="ts">
   import { PALETTES, PEOPLE_URL, type Palette, type ThemeKind, type ThemeMode } from "@desk/core";
   import { SettingsDialog, type SettingsSection } from "@desk/core/settings";
-  import { Archive, BookOpen, Clock, Eraser, Contact, Download, Keyboard, LogOut, Monitor, Moon, Palette as PaletteIcon, Plug, Sun, SunMoon, Upload, User, Wallet } from "lucide-svelte";
-  import { api } from "../api";
+  import { BookOpen, Clock, Contact, Keyboard, LogOut, Monitor, Moon, Palette as PaletteIcon, Plug, Sun, SunMoon, User, Wallet } from "lucide-svelte";
   import { auth } from "../auth.svelte";
   import { theme } from "../theme.svelte";
-  import ConfirmButton from "../ui/ConfirmButton.svelte";
   import Connectors from "./Connectors.svelte";
   import Context from "./Context.svelte";
   import Routines from "./Routines.svelte";
@@ -32,7 +30,7 @@
 
   /**
    * The suite's settings dialog (`@desk/core/settings`, Keep's too): the account, how this client looks, the
-   * keys, the snapshot, then the pages about the daemon itself: its connectors, routines, context and spend.
+   * keys, then the pages about the daemon itself: its connectors, routines, context and spend.
    */
   let { open = $bindable(false), active = $bindable<Section>("account"), onclose }: { open?: boolean; active?: Section; onclose?: () => void } = $props();
 
@@ -40,8 +38,6 @@
     { id: "account", label: "Account", icon: User, keywords: "sign out daemon host box clerk" },
     { id: "appearance", label: "Appearance", icon: PaletteIcon, keywords: "theme dark light mode palette" },
     { id: "shortcuts", label: "Keyboard", icon: Keyboard, keywords: "shortcuts keys keybinding" },
-    { id: "snapshot", label: "Snapshot", icon: Archive, keywords: "export import backup restore memory" },
-    { id: "general", label: "General", icon: Eraser, keywords: "reset clear conversation chat memory start over" },
     { id: "connectors", label: "Connectors", icon: Plug, keywords: "modules capabilities telegram email gmail linkedin whatsapp browser signed in" },
     { id: "automations", label: "Routines", icon: Clock, keywords: "automations cron events triggers" },
     { id: "context", label: "Context", icon: BookOpen, keywords: "instructions memories skills tools prompt" },
@@ -58,38 +54,7 @@
   ];
   const LINES = [46, 70, 58, 80, 40];
   const iconButton = "grid size-8 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink";
-  const button = "inline-flex h-8 items-center gap-2 rounded-sm bg-ink-5 px-3 transition-colors hover:bg-ink-10 [&>svg]:text-ink-45";
 
-  let resetNote = $state("");
-  async function resetGeneral() {
-    const result = await api.resetGeneral();
-    resetNote = result.error ?? "Done. pai is getting to know you.";
-  }
-  let exportNote = $state("");
-  let importNote = $state("");
-  let picker = $state<HTMLInputElement>();
-  async function exportSnapshot() {
-    try {
-      const { text } = await api.snapshot();
-      const url = URL.createObjectURL(new Blob([text], { type: "text/markdown" }));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `pai-snapshot-${new Date().toISOString().slice(0, 10)}.md`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
-      exportNote = `${Math.round(text.length / 1000)}k characters`;
-    } catch (error) {
-      exportNote = (error as Error).message;
-    }
-  }
-  async function importSnapshot() {
-    const file = picker?.files?.[0];
-    if (picker) picker.value = "";
-    if (!file) return;
-    importNote = "Handing it to pai";
-    const result = await api.importSnapshot(await file.text());
-    importNote = result.error ?? "Pai is rebuilding from it. Watch General.";
-  }
 </script>
 
 {#snippet swatch(p: Palette, kind: ThemeKind)}
@@ -164,22 +129,6 @@
           <button class={iconButton} aria-label="Sign out" title="Sign out" onclick={() => auth.signOut()}><LogOut size={18} /></button>
         </div>
       </div>
-    {:else if entry.id === "snapshot"}
-      <SettingsBlock title="Snapshot" about="Memory, tasks, decisions and routines as one markdown file. Importing hands it to pai to fact-check and file in Keep.">
-        <div class="flex flex-wrap items-center gap-2">
-          <button class={button} onclick={exportSnapshot}><Download size={16} /> Export</button>
-          <button class={button} onclick={() => picker?.click()}><Upload size={16} /> Import</button>
-          <input type="file" accept=".md,.txt,.json,text/*" hidden bind:this={picker} onchange={importSnapshot} />
-          <span class="text-[13px] text-ink-45">{exportNote || importNote}</span>
-        </div>
-      </SettingsBlock>
-    {:else if entry.id === "general"}
-      <SettingsBlock title="General" about="Erases this conversation and what pai remembers, then pai starts over by getting to know you.">
-        <div class="flex flex-wrap items-center gap-2">
-          <ConfirmButton class={button} confirm="Erase for good" onconfirm={resetGeneral}><Eraser size={16} /> Reset General</ConfirmButton>
-          {#if resetNote}<span class="text-[13px] text-ink-45" role="status">{resetNote}</span>{/if}
-        </div>
-      </SettingsBlock>
     {:else if entry.id === "connectors"}
       <SettingsBlock title="Connectors"><Connectors /></SettingsBlock>
     {:else if entry.id === "automations"}

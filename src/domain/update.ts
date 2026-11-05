@@ -40,49 +40,7 @@ export class UpdateError extends Error {
   }
 }
 
-const git = (...args: string[]) => /**
- * Self-update, kept in core on purpose: whatever else fails to load, a box can always be brought to a new
- * version — `POST /update` (what CI calls) and the auto-update tick both land here. Fetch, check out the tag (or
- * fast-forward the branch), install, build the web client, pull the connectors, restart. The daemon restarts
- * by exiting: the service manager brings it back on the new code.
- */
-import { $ } from "bun";
-import { config } from "../core/config.ts";
-import { bus } from "../core/bus.ts";
-import { logger } from "../core/log.ts";
-import { update as pullConnectors, updateLine } from "../connectors/source.ts";
-import { list } from "./sessions.ts";
-
-const log = logger("update");
-
-export interface UpdateStatus {
-  readonly branch: string;
-  readonly behind: number;
-  readonly dirty: boolean;
-  readonly head: string;
-  /** What the daemon is following: the newest `v*` tag, or the branch's upstream. */
-  readonly target?: string;
-}
-
-export interface UpdateResult extends UpdateStatus {
-  readonly updated: boolean;
-  readonly reason?: string;
-  readonly restarting: boolean;
-  /** What the connectors clone did: moved, or why not. */
-  readonly connectors?: string;
-}
-
-export class UpdateError extends Error {
-  constructor(
-    readonly step: string,
-    readonly output: string,
-  ) {
-    super(`update failed at ${step}: ${output.slice(0, 400)}`);
-    this.name = "UpdateError";
-  }
-}
-
-git ${args}`.cwd(config.repo).nothrow().quiet();
+const git = (...args: string[]) => $`git ${args}`.cwd(config.repo).nothrow().quiet();
 
 /** The box's own `bun install` rewrites these (another bun version words a git dependency differently), which is no local edit: left counting as one, it refuses every update after. */
 const LOCKFILES = ["bun.lock", "apps/web/bun.lock"];

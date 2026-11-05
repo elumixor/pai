@@ -139,7 +139,6 @@ export const api = {
   saveContext: (name: string, text: string) => send("/context", { name, text }, "PUT"),
   spend: (days: number) => get<SpendReport>(`/spend?days=${days}`),
   snapshot: () => get<{ text: string }>("/snapshot"),
-  importSnapshot: (text: string) => send("/snapshot", { text }),
 };
 
 export const attachmentUrl = (name: string) => (/^(https?:|data:|blob:)/.test(name) ? name : `/attachments/${q(name)}`);
