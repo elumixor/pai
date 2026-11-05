@@ -3,6 +3,8 @@
  * One that fails to install, load or start is reported, never fatal. pai turns their tools into one MCP server each,
  * their instructions into prompt paragraphs, serves their routes, and describes them for the clients (`GET /connectors`).
  */
+import { config } from "../core/config.ts";
+import { kv } from "../core/db.ts";
 import { createSdkMcpServer, tool as sdkTool } from "@anthropic-ai/claude-agent-sdk";
 import { broken, problemsOf, startOrder, type Cli, type Connector, type ConnectorAction, type Host, type Status, type SettingDef } from "@desk/connector";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
@@ -13,7 +15,7 @@ import * as tasks from "../domain/tasks.ts";
 import type { SessionRef } from "../domain/tools.ts";
 import { dataDirOf, hostFor } from "./host.ts";
 import { connectorLogs } from "./logs.ts";
-import { dirOf, ensureInstalled, isInstalled, readConfig } from "./source.ts";
+import { availableConnectors, dirOf, ensureInstalled, isInstalled, readConfig } from "./source.ts";
 
 const log = logger("connectors");
 
@@ -72,17 +74,25 @@ const fail = (name: string, error: string) => {
   loaded.set(name, { name, dir: dirOf(name), error });
 };
 
-/** Imports every configured connector, installing what is missing. Called once, by the daemon. */
+/** Which connectors the user has on: first the configured list, from then on what they switched. */
+const CONNECTED = "connectors-connected";
+const connectedNames = (): readonly string[] => JSON.parse(kv.get(CONNECTED) ?? "[]") as string[];
+const isConnected = (name: string) => connectedNames().includes(name);
+
+/** Imports every connector the repository has, installing what is missing, and starts only the connected. Called once, by the daemon. */
 export async function load() {
-  const { connectors: names } = await readConfig();
-  listing = names;
-  if (!names.length) return;
+  const { repo, connectors: first } = await readConfig();
+  if (!repo) return;
+  if (kv.get(CONNECTED) === undefined) kv.set(CONNECTED, JSON.stringify(first));
   try {
     await ensureInstalled();
   } catch (err) {
-    for (const name of names) fail(name, (err as Error).message);
+    for (const name of connectedNames()) fail(name, (err as Error).message);
     return;
   }
+  const available = availableConnectors();
+  const names = [...first.filter((name) => available.includes(name)), ...available.filter((name) => !first.includes(name))];
+  listing = names;
   const imported = new Map<string, Connector>();
   for (const name of names) {
     try {
@@ -113,10 +123,14 @@ export const all = () => [...loaded.values()];
 const listed = () => all().sort((a, b) => listing.indexOf(a.name) - listing.indexOf(b.name));
 export const get = (name: string) => loaded.get(name);
 /** What a loaded connector exports as its `api`, for pai's own code; undefined when it is not loaded. */
-export const api = <T>(name: string): T | undefined => loaded.get(name)?.connector?.api as T | undefined;
+export const api = <T>(name: string): T | undefined => (isConnected(name) ? (loaded.get(name)?.connector?.api as T | undefined) : undefined);
+/** Every connector that can be connected, on or off. */
+export const available = () => listing;
+export const connected = isConnected;
 const serverOf = (l: Loaded) => l.connector?.server ?? l.name;
 const isLive = (l: Loaded | undefined): l is Live => Boolean(l?.connector && l.host);
 const isEnabled = (l: Loaded) => {
+  if (!isConnected(l.name)) return false;
   try {
     return l.connector?.enabled() ?? false;
   } catch (err) {
@@ -177,6 +191,51 @@ export async function restart(name: string) {
   });
 }
 
+/** Turns one on, with what it builds on. Its signing in is then its own need. */
+export async function connect(name: string) {
+  const connector = loaded.get(name)?.connector;
+  if (!connector) throw new SettingError(`no connector ${name}`);
+  const wanted = [...(connector.requires ?? []), name];
+  kv.set(CONNECTED, JSON.stringify([...new Set([...connectedNames(), ...wanted])]));
+  for (const n of wanted) {
+    const l = loaded.get(n);
+    if (isLive(l) && isEnabled(l) && !l.started) await startOne(l);
+  }
+  await watchSignIn();
+}
+
+/** Turns one off, with what builds on it. Its data stays, so connecting it again picks up where it was. */
+export async function disconnect(name: string) {
+  const going = [name, ...all().filter((l) => l.connector?.requires?.includes(name)).map((l) => l.name)];
+  for (const n of going) {
+    const l = loaded.get(n);
+    if (isLive(l)) {
+      if (l.started) await stopOne(l);
+      l.host.problems.resolve(signInTitle(l));
+    }
+  }
+  kv.set(CONNECTED, JSON.stringify(connectedNames().filter((n) => !going.includes(n))));
+}
+
+const signInTitle = (l: Live) => `Connect ${l.connector.title}`;
+const SIGN_IN_EVERY_MS = 5 * 60_000;
+
+/** A connected connector that lost its sign-in waits on the user, with the link that fixes it. */
+async function watchSignIn() {
+  for (const l of active()) {
+    const status = await statusOf(l);
+    if (status.state === "signed_in" || !status.fix) l.host.problems.resolve(signInTitle(l));
+    else l.host.problems.raise({ title: signInTitle(l), detail: status.detail ?? "", action: `[${status.fix.label}](${new URL(status.fix.url, config.baseUrl).href})`, waitsOnUser: true });
+  }
+}
+
+export function startSignInWatch() {
+  const tick = () => void watchSignIn().catch((err: Error) => log.warn(`sign-in watch: ${err.message}`));
+  tick();
+  const timer = setInterval(tick, SIGN_IN_EVERY_MS);
+  return () => clearInterval(timer);
+}
+
 /** The status of one connector, whatever state it is in: one that failed to load or to answer is broken. */
 async function statusOf(l: Loaded): Promise<Status> {
   if (l.error) return broken(l.error);
@@ -199,6 +258,7 @@ async function summaryOf(l: Loaded) {
     icon: l.icon,
     server: l.connector?.tools?.length ? serverOf(l) : null,
     enabled,
+    connected: isConnected(l.name),
     needsAction: Boolean(l.error) || status.state === "broken" || (enabled && (status.state !== "signed_in" || problemsFor(l.name).length > 0)),
     status,
     commands: l.connector?.commands ?? [],
@@ -327,11 +387,10 @@ export async function mounted(req: Request, url: URL): Promise<Response | undefi
   return undefined;
 }
 
-/** A configured connector imported here, for the command line (installed first when missing); undefined when not configured. */
+/** A connector imported here, for the command line (the repository cloned first when missing); undefined when there is no such connector. */
 async function localConnector(name: string): Promise<Connector | undefined> {
-  if (!(await readConfig()).connectors.includes(name)) return undefined;
-  if (!isInstalled(name)) await ensureInstalled();
-  return importConnector(name);
+  if (!availableConnectors().length) await ensureInstalled();
+  return isInstalled(name) ? importConnector(name) : undefined;
 }
 
 /** Whether `pai <name> <sub>` is one the connector wants run on the laptop; `""` in `cliHere` is the bare `pai <name>`. */

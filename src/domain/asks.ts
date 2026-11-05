@@ -48,6 +48,22 @@ export function link(lookup: AgentLookup) {
 
 // ---- asks ------------------------------------------------------------------
 
+/** A button that opens a place. `verify` names what the daemon can check to close the card by itself (`ask-actions.ts`). */
+export interface AskAction {
+  readonly kind: "link";
+  readonly label: string;
+  readonly url: string;
+  readonly verify?: string;
+  readonly baseline?: readonly string[];
+}
+
+/** How a card ended, given to the agent as data: what the button led to, whether it was checked, what changed. */
+export interface AskResult {
+  readonly action: string;
+  readonly status: "verified" | "user_said";
+  readonly data?: Readonly<Record<string, unknown>>;
+}
+
 export interface Ask {
   readonly id: number;
   readonly agent: string;
@@ -69,6 +85,8 @@ export interface Ask {
   /** The supervisor it is with; null once it is the user's to answer. */
   readonly holder: string | null;
   readonly heldSince: number | null;
+  readonly actions: readonly AskAction[];
+  readonly result: AskResult | null;
 }
 
 const toAsk = (r: Record<string, any>): Ask => ({
@@ -76,6 +94,8 @@ const toAsk = (r: Record<string, any>): Ask => ({
   agent: r.agent,
   question: r.question,
   options: JSON.parse(r.options || "[]") as string[],
+  actions: JSON.parse(r.actions || "[]") as AskAction[],
+  result: r.result ? (JSON.parse(r.result) as AskResult) : null,
   freeText: Boolean(r.free_text),
   priority: r.priority,
   blocking: Boolean(r.blocking),
@@ -120,6 +140,17 @@ export interface AskInput {
   taskId?: number | null;
   /** The user's call and nobody else's, whoever is above the asker: an outbound approval, a task only they can do. */
   forUser?: boolean;
+  /** Buttons that do something. Without any, a markdown link in the question becomes one. */
+  actions?: readonly AskAction[];
+}
+
+/** The word that ends a card whose button took them elsewhere and nothing can check it. */
+export const ACTION_DONE = "Done";
+const MARKDOWN_LINK = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/;
+
+function actionsIn(question: string): readonly AskAction[] {
+  const link = MARKDOWN_LINK.exec(question);
+  return link ? [{ kind: "link", label: link[1]!, url: link[2]! }] : [];
 }
 
 export class AskError extends Error {}
@@ -149,10 +180,13 @@ export function ask(input: AskInput): Ask {
   const blocking = input.blocking ?? true;
   if (!blocking && !input.fallback?.trim()) throw new AskError("a non-blocking ask says what the agent does meanwhile (fallback)");
   const priority = shifted(input.priority ?? "normal", agents.priority(input.agent));
-  const holder = input.forUser || input.fallback === TASK_FALLBACK ? null : agents.supervisor(input.agent);
+  const actions = input.actions?.length ? input.actions : actionsIn(input.question);
+  // Only the user can go somewhere and do it: a supervisor holding this card could not.
+  const holder = input.forUser || input.actions?.length || input.fallback === TASK_FALLBACK ? null : agents.supervisor(input.agent);
+  const options = input.actions?.length && !input.options?.length ? [ACTION_DONE] : (input.options ?? []);
   const res = db
-    .prepare("INSERT INTO asks (agent, question, options, free_text, priority, blocking, fallback, context, task_id, created_at, holder, held_since) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .run(input.agent, input.question.trim(), JSON.stringify(input.options ?? []), input.freeText === false ? 0 : 1, priority, blocking ? 1 : 0, input.fallback ?? null, input.context ?? "", input.taskId ?? null, now(), holder, holder ? now() : null);
+    .prepare("INSERT INTO asks (agent, question, options, free_text, priority, blocking, fallback, context, task_id, created_at, holder, held_since, actions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(input.agent, input.question.trim(), JSON.stringify(options), input.freeText === false ? 0 : 1, priority, blocking ? 1 : 0, input.fallback ?? null, input.context ?? "", input.taskId ?? null, now(), holder, holder ? now() : null, JSON.stringify(actions));
   const a = getAsk(Number(res.lastInsertRowid))!;
   if (blocking) agents.park(input.agent);
   // In its own chat at once, whoever holds it. It reaches the user's when it is theirs: an ask is something they can act on, so even a "digest" one goes out now unless it is quiet.
@@ -209,7 +243,7 @@ function deliverAsk(a: Ask) {
     kind: "ask",
     body: a.question,
     taskId: a.taskId,
-    meta: { askId: a.id, options: a.options, breadcrumb, priority: a.priority, silent: a.priority !== "urgent", freeText: a.freeText, blocking: a.blocking, fallback: a.fallback ?? undefined, agent: a.agent, heldBy: a.holder ?? undefined },
+    meta: { askId: a.id, options: a.options, actions: a.actions.map(({ label, url }) => ({ label, url })), breadcrumb, priority: a.priority, silent: a.priority !== "urgent", freeText: a.freeText, blocking: a.blocking, fallback: a.fallback ?? undefined, agent: a.agent, heldBy: a.holder ?? undefined },
   });
   db.prepare("UPDATE asks SET message_id = ? WHERE id = ?").run(row.id, a.id);
 }
@@ -255,6 +289,30 @@ export function answer(id: number, text: string, via = "user", by = "user"): Ask
   const answered = getAsk(id)!;
   bus.emitEvent("ask.answered", answered as unknown as Record<string, unknown>);
   return answered;
+}
+
+/** A card that ended by what happened rather than by a word: closed, and the agent told as data. */
+export function finish(id: number, result: AskResult): Ask {
+  const a = getAsk(id);
+  if (!a) throw new AskError(`no ask #${id}`);
+  if (a.status !== "open") throw new AskError(`ask #${id} is already ${a.status}`);
+  db.prepare("UPDATE asks SET status = 'answered', answer = ?, answered_at = ?, result = ? WHERE id = ?").run(`${result.action}: done`, now(), JSON.stringify(result), id);
+  messages.log({ from: "user", to: a.agent, kind: "answer", body: `${result.action}: done`, taskId: a.taskId, meta: { askId: id, via: "user", event: "answered", agent: a.agent, quote: quoteOf(id) } });
+  if (a.taskId && tasks.get(a.taskId)?.status === "waiting_user") tasks.update(a.taskId, { status: "active" });
+  agents.deliver(a.agent, `[result of your question #${id}: "${a.question}"] ${JSON.stringify(result)}`, { askId: id, taskId: a.taskId, byUser: true });
+  const finished = getAsk(id)!;
+  bus.emitEvent("ask.answered", finished as unknown as Record<string, unknown>);
+  return finished;
+}
+
+/** A word on a waiting task, by the id `/needs` gave it: the same path as a tap on its card. */
+export function answerTask(taskId: number, text: string): Ask {
+  const t = tasks.get(taskId);
+  if (!t) throw new AskError(`no task #${taskId}`);
+  askForTask(t);
+  const card = open().find((a) => a.taskId === taskId);
+  if (!card) throw new AskError(`task #${taskId} waits on nobody`);
+  return answer(card.id, text);
 }
 
 /** What an answer quotes, as a reply quotes the message it answers: the ask's author, first line and row. */

@@ -4,7 +4,7 @@
  * name elsewhere (`data/modules/<name>`, kv `module:<name>:`), so nothing here ever touches it.
  */
 import { $ } from "bun";
-import { existsSync, lstatSync, mkdirSync, readlinkSync, renameSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readlinkSync, renameSync, rmSync, symlinkSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { config } from "../core/config.ts";
 import { logger } from "../core/log.ts";
@@ -14,7 +14,7 @@ const log = logger("connectors");
 export interface PaiConfig {
   /** The connectors repository: `github:owner/repo[#ref]`, a git url, or a path (absolute, `~/…`, or relative to this repo). */
   readonly repo: string;
-  /** Which of its connectors this pai runs, in the order the clients show them. */
+  /** Which of its connectors are on at the first start, and the order the clients show them. After that the user's choice (kv) decides. */
   readonly connectors: readonly string[];
 }
 
@@ -37,6 +37,8 @@ export async function readConfig(): Promise<PaiConfig> {
 }
 
 export const dirOf = (name: string) => join(modulesDir, "connectors", name);
+/** Every connector the repository has. */
+export const availableConnectors = () => (existsSync(join(modulesDir, "connectors")) ? readdirSync(join(modulesDir, "connectors")).filter((name) => existsSync(join(dirOf(name), "index.ts"))) : []);
 export const isInstalled = (name: string) => existsSync(join(dirOf(name), "index.ts"));
 
 /** `github:owner/repo#ref` as an ssh clone url and the ref; a path stays a path. */

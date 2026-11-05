@@ -297,6 +297,9 @@ for (const [column, type] of [["keep_page", "TEXT"], ["person_id", "TEXT"], ["pa
 const askColumns = (db.query("PRAGMA table_info(asks)").all() as { name: string }[]).map((c) => c.name);
 if (!askColumns.includes("holder")) db.exec("ALTER TABLE asks ADD COLUMN holder TEXT");
 if (!askColumns.includes("held_since")) db.exec("ALTER TABLE asks ADD COLUMN held_since INTEGER");
+// A card's buttons that do something, and what came of them, for the agent that asked.
+if (!askColumns.includes("actions")) db.exec("ALTER TABLE asks ADD COLUMN actions TEXT NOT NULL DEFAULT '[]'");
+if (!askColumns.includes("result")) db.exec("ALTER TABLE asks ADD COLUMN result TEXT");
 // Who let a draft go: the user's Send, or their standing pin for that channel.
 const draftColumns = (db.query("PRAGMA table_info(drafts)").all() as { name: string }[]).map((c) => c.name);
 if (!draftColumns.includes("approved_by")) db.exec("ALTER TABLE drafts ADD COLUMN approved_by TEXT");
@@ -304,6 +307,7 @@ if (!draftColumns.includes("approved_by")) db.exec("ALTER TABLE drafts ADD COLUM
 db.exec("CREATE TABLE IF NOT EXISTS reminders (need TEXT PRIMARY KEY, at INTEGER NOT NULL, times INTEGER NOT NULL)");
 // Routines: a schedule next to the event, an agent next to the action, a check in code before any model runs.
 const automationColumns = (db.query("PRAGMA table_info(automations)").all() as { name: string }[]).map((c) => c.name);
+if (!automationColumns.includes("last_error")) db.exec("ALTER TABLE automations ADD COLUMN last_error TEXT");
 if (!automationColumns.includes("schedule")) db.exec("ALTER TABLE automations ADD COLUMN schedule TEXT NOT NULL DEFAULT ''");
 if (!automationColumns.includes("agent")) db.exec("ALTER TABLE automations ADD COLUMN agent TEXT NOT NULL DEFAULT ''");
 if (!automationColumns.includes("check_rule")) db.exec("ALTER TABLE automations ADD COLUMN check_rule TEXT NOT NULL DEFAULT ''");

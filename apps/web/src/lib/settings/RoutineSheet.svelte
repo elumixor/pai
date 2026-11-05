@@ -164,6 +164,7 @@
         <button type="button" class={BUTTON} disabled={!valid || busy} onclick={() => void create()}>Create</button>
       {/if}
       {#if errors.form}<p class={ERROR} role="alert">{errors.form}</p>{/if}
+      {#if routine?.lastError}<p class={ERROR} role="alert">Last run failed: {routine.lastError}</p>{/if}
     </div>
   </div>
 </Sheet>

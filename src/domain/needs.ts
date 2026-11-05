@@ -32,8 +32,9 @@ export function needs() {
       options: a.options,
       freeText: a.freeText,
       priority: a.priority,
-      // A card with a link in its text gets a button that opens it, instead of asking the user to copy it out.
-      link: tasks.firstUrl(a.question, a.context),
+      // A card that sends them somewhere: `link` is what a client that only knows that one draws, `actions` all of them.
+      link: a.actions[0]?.url ?? tasks.firstUrl(a.question, a.context),
+      actions: a.actions.map(({ label, url }) => ({ label, url })),
       createdAt: a.createdAt,
     }));
   const fromSessions = sessions.list().flatMap((summary) => {

@@ -182,6 +182,15 @@ export async function handle(req: Request): Promise<Response> {
       const { ids } = await body<{ ids?: unknown }>(req);
       return json(inbox.read(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : undefined));
     }
+    if (path === "/sent") return json(audit.sent());
+    const inboxTell = /^\/inbox\/([^/]+)\/tell$/.exec(path);
+    if (inboxTell?.[1] && req.method === "POST") {
+      const item = inbox.get(inboxTell[1]);
+      if (!item) return json({ error: "no such item" }, 404);
+      main.system(`[The user asks you about something triage marked "${item.action}". Look at it and tell them what it is and whether it matters.]\n${item.title}\n${item.body}${item.link ? `\n${item.link}` : ""}`);
+      return json({ told: true });
+    }
+    if (path === "/inbox" && url.searchParams.get("view") === "triage") return json({ items: inbox.triaged(Number(url.searchParams.get("limit") ?? 100) || 100, Number(url.searchParams.get("before")) || undefined) });
     if (path === "/inbox") return json(inbox.list(Number(url.searchParams.get("limit") ?? 100) || 100));
 
     // What a currency is worth, for showing an amount in the ones he thinks in.
@@ -482,6 +491,15 @@ export async function handle(req: Request): Promise<Response> {
 
     if (path === "/connectors") return json(await external.connectors());
     if (path === "/connectors/update" && req.method === "POST") return json(await updateConnectors());
+    const connectorSwitch = /^\/connectors\/([a-z0-9-]+)\/(connect|disconnect)$/.exec(path);
+    if (connectorSwitch?.[1] && req.method === "POST") {
+      const name = connectorSwitch[1];
+      if (!external.get(name)) return json({ error: "no such connector" }, 404);
+      await (connectorSwitch[2] === "connect" ? external.connect(name) : external.disconnect(name));
+      automations.syncConnectorRoutines();
+      sessions.applyTools();
+      return json(await external.detail(name));
+    }
     const connectorSettings = /^\/connectors\/([a-z0-9-]+)\/settings$/.exec(path);
     if (connectorSettings?.[1] && req.method === "PATCH") {
       const name = connectorSettings[1];
@@ -761,30 +779,8 @@ export async function handle(req: Request): Promise<Response> {
           if (!s?.pending) return json({ answered: false, error: "no question pending" });
           return json({ answered: s.answer(text) });
         }
-        if (kind === "task") {
-          const t = tasks.get(Number(ref));
-          if (!t) return json({ error: "no such task" }, 404);
-          let choice = text.trim().toLowerCase();
-          if (choice === asks.TASK_DID.toLowerCase()) {
-            tasks.update(t.id, { status: "active" });
-            const said = `[the user says they did what task #${t.id} "${t.title}" waited on: check it and carry on]`;
-            if (t.owner === agents.PAI) main.send(said);
-            else agents.fromUser(t.owner, said);
-            return json({ answered: true });
-          }
-          if (choice === asks.TASK_SKIP.toLowerCase()) choice = "drop";
-          if (choice === "done" || choice === "drop") {
-            const updated = tasks.update(t.id, { status: choice === "done" ? "done" : "dropped" });
-            const note = `[the user marked task #${t.id} "${t.title}" ${choice === "done" ? "done" : "dropped"}]`;
-            if (t.owner === agents.PAI) main.note(note);
-            else agents.noteTo(t.owner, note);
-            return json({ answered: true, task: updated });
-          }
-          const said = `About task #${t.id} "${t.title}": ${text}`;
-          if (t.owner === agents.PAI) main.send(said);
-          else agents.fromUser(t.owner, said);
-          return json({ answered: true });
-        }
+        if (kind === "task") return json({ answered: true, ask: asks.answerTask(Number(ref), text) });
+        if (kind === "draft") return json(text.trim().toLowerCase() === "discard" ? drafts.discard(Number(ref), "") : drafts.send(Number(ref)));
         return json({ error: `unknown need ${id}` }, 400);
       } catch (err) {
         return json({ error: (err as Error).message }, 400);

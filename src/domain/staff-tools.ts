@@ -1,7 +1,9 @@
 import { tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { config } from "../core/config.ts";
+import * as connectors from "../connectors/loader.ts";
 import * as agents from "./agents.ts";
+import * as askActions from "./ask-actions.ts";
 import * as asks from "./asks.ts";
 import * as automations from "./automations.ts";
 import * as capabilities from "./capabilities.ts";
@@ -168,15 +170,20 @@ export function staffTools(me: string | undefined) {
         fallback: z.string().optional().describe("what you do meanwhile, for a non-blocking ask"),
         context: z.string().optional().describe("where it comes from, shown after your name: 'Candidate replies'"),
         task_id: z.number().optional(),
+        actions: z
+          .array(z.object({ kind: z.enum(["link", "connect_workspaces", "connect_connector"]), label: z.string().max(40).optional(), url: z.string().optional(), connector: z.string().optional() }))
+          .max(3)
+          .optional()
+          .describe("buttons that do something, for what only the user can do: link opens url; connect_workspaces lets them choose which Keep workspaces you can reach; connect_connector connects a connector by name. The card goes straight to them, closes itself when the daemon sees it happened, and you get the outcome as JSON ({action, status, data})."),
       },
-      guard(async (a: { question: string; options?: string[]; allow_free_text?: boolean; priority?: asks.Priority; blocking?: boolean; fallback?: string; context?: string; task_id?: number }) => {
+      guard(async (a: { question: string; options?: string[]; allow_free_text?: boolean; priority?: asks.Priority; blocking?: boolean; fallback?: string; context?: string; task_id?: number; actions?: askActions.ActionRequest[] }) => {
         const already = asks.pending({ agent: self, question: a.question, taskId: a.task_id });
         if (already) return { ask: already.id, duplicate: true, note: `Already waiting on the user as ask #${already.id} ("${already.question}"); not asked again.` };
         const repeat = await repeatOf(a.question, a.task_id);
         if (repeat?.kind === "ask") return { ask: repeat.ask.id, duplicate: true, note: `The same decision already waits on the user as ask #${repeat.ask.id} ("${repeat.ask.question}"); not asked again.` };
         if (repeat?.kind === "task") return { task: repeat.task.id, duplicate: true, note: `The same decision already waits on the user as task #${repeat.task.id} ("${repeat.task.title}"); not asked again. To put options on it, ask again with task_id ${repeat.task.id}.` };
         const forUser = outboundAsk.delete(self);
-        const asked = asks.ask({ agent: self, question: a.question, options: a.options, freeText: a.allow_free_text, priority: a.priority, blocking: a.blocking, fallback: a.fallback, context: a.context, taskId: a.task_id, forUser });
+        const asked = asks.ask({ agent: self, question: a.question, options: a.options, freeText: a.allow_free_text, priority: a.priority, blocking: a.blocking, fallback: a.fallback, context: a.context, taskId: a.task_id, forUser, actions: a.actions ? await askActions.resolve(a.actions) : undefined });
         if (a.task_id && (asked.blocking || isPai)) tasks.update(a.task_id, { status: "waiting_user" });
         return { ask: asked.id, delivered: asked.delivered, note: asked.blocking ? "End your turn now; the answer comes as a new message." : `Go on with: ${asked.fallback}` };
       }),
@@ -197,6 +204,7 @@ export function staffTools(me: string | undefined) {
         task_id: z.number().optional(),
       },
       guard(async (a: { channel: drafts.Channel; body: string; to?: string; cc?: string; subject?: string; account?: string; task_id?: number }) => {
+        if (!connectors.connected(drafts.connectorOf(a.channel))) throw new Error(`${drafts.labelFor(a.channel)} is not connected, so nothing can be sent there. Ask the user with ask_user and a connect_connector action if it is needed.`);
         const input = { agent: self, channel: a.channel, taskId: a.task_id, fields: { body: a.body, to: a.to, cc: a.cc, subject: a.subject, account: a.account } };
         /** What is already waiting on him for this channel and recipient: the answer always says. */
         const pending = drafts

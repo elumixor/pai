@@ -9,6 +9,7 @@
   import type { LogMessage } from "../types";
   import Icon from "../ui/Icon.svelte";
   import { bodyPeek } from "../ui/peek.svelte";
+  import ActionLinks from "./ActionLinks.svelte";
   import AnswerButtons from "./AnswerButtons.svelte";
   import type { RowContext } from "./context";
   import DraftCard from "./DraftCard.svelte";
@@ -90,8 +91,6 @@
   const askId = $derived(m.meta.askId);
   const askOpen = $derived(askId !== undefined && ctx.openAsks.has(askId));
   const answer = $derived(askId !== undefined ? ctx.answers.get(askId) : undefined);
-  /** A task done somewhere else (a reconnect page) leads with that place, as a button. */
-  const action = $derived(/\[([^\]]+)\]\(((?:https?:\/\/|\/)[^)\s]+)\)/.exec(m.body));
 
   // ---- an answer: his bubble, quoting the question it answers ----
   const answerQuote = $derived<ReplyQuote | undefined>(m.meta.quote ? { from: ctx.nameOf(m.meta.quote.from), at: m.meta.quote.at ?? 0, excerpt: m.meta.quote.excerpt, messageId: m.meta.quote.messageId } : undefined);
@@ -193,7 +192,7 @@
       {#if askOpen && askId !== undefined}
         {@const options = m.meta.options ?? []}
         <div class="q-options">
-          {#if action}<a class="opt" href={action[2]} target="_blank" rel="noopener">{action[1]}</a>{/if}
+          <ActionLinks actions={m.meta.actions ?? []} class="opt" />
           <AnswerButtons
             {options}
             freeText={m.meta.freeText !== false || !options.length}

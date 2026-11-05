@@ -160,6 +160,12 @@ export const api = {
 
   // ---- the pages about the daemon -------------------------------------------------------------
   connectors: () => get<ConnectorSummary[]>("/connectors"),
+  switchConnector: (name: string, on: boolean) => send<ConnectorDetail>(`/connectors/${q(name)}/${on ? "connect" : "disconnect"}`),
+  draftPolicies: () => get<Record<string, "ask" | "auto">>("/drafts/policy"),
+  setDraftPolicy: (channel: string, mode: "ask" | "auto") => send<Record<string, "ask" | "auto">>("/drafts/policy", { channel, mode }, "PATCH"),
+  triaged: (before?: number) => get<{ items: import("./stores/inbox.svelte").InboxEntry[] }>(`/inbox?view=triage${before ? `&before=${before}` : ""}`, true),
+  tellAboutItem: (id: string) => send(`/inbox/${q(id)}/tell`),
+  sent: () => get<{ id: string; agent: string | null; tool: string; summary: string; ts: number; outcome: "verified" | "unverified" | "not_sent" | "done" | "running" }[]>("/sent", true),
   connector: (name: string, quiet = false) => get<ConnectorDetail>(`/connectors/${q(name)}`, quiet),
   /** An empty value deletes. */
   patchConnectorSettings: (name: string, changes: Readonly<Record<string, string>>) => send<ConnectorDetail>(`/connectors/${q(name)}/settings`, changes, "PATCH"),

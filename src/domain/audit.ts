@@ -82,8 +82,18 @@ export function record(call: { toolUseId: string; sessionId: string; agent: stri
 
 /** What a recorded call returned; a call that was never recorded is left alone. */
 export function settle(toolUseId: string, result: string, isError: boolean) {
-  db.prepare("UPDATE audit SET result = ?, ok = ? WHERE tool_use_id = ?").run(result.slice(0, RESULT_MAX), isError ? 0 : 1, toolUseId);
+  db.prepare("UPDATE audit SET result = ?, ok = ? WHERE tool_use_id = ?").run(result.slice(0, RESULT_MAX), isError || outcomeOf(result) === "not_sent" ? 0 : 1, toolUseId);
 }
+
+/** What a tool said came of it: a send can fail and still return normally, so the flag alone is not "it went". */
+function outcomeOf(result: string | null) {
+  if (result === null) return "running";
+  const said = /"state"\s*:\s*"(verified|unverified|not_sent)"/.exec(result)?.[1];
+  return said ?? (/"error"\s*:/.test(result) ? "not_sent" : "done");
+}
+
+/** What went out, newest first, with what came of each. */
+export const sent = (limit = 100) => list({ limit }).map((e) => ({ id: e.toolUseId, agent: e.agent, tool: e.tool, summary: e.summary, ts: e.ts, outcome: e.ok === false ? "not_sent" : outcomeOf(e.result) }));
 
 export function list(opts: { agent?: string; since?: number; limit?: number; search?: string } = {}): Entry[] {
   const where: string[] = [];

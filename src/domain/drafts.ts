@@ -334,5 +334,8 @@ export function discard(id: number, why = ""): Draft {
   return dropped;
 }
 
+/** The connector a channel goes out through. */
+export const connectorOf = (channel: Channel) => ({ email: "email", telegram: "telegram", whatsapp: "whatsapp", linkedin: "linkedin", post: "linkedin" })[channel];
+
 export const toolFor = (channel: Channel) => TOOL[channel];
 export const labelFor = (channel: Channel) => LABEL[channel];

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Hand } from "lucide-svelte";
+  import ActionLinks from "../chat/ActionLinks.svelte";
   import { api } from "../api";
   import { desk, PAI } from "../desk.svelte";
   import { ago } from "../format";
@@ -35,8 +36,9 @@
             <span class="line-clamp-2 text-[13px]">{need.question}</span>
             <span class="block text-[12px] text-ink-45">{need.from} · {ago(need.createdAt)}</span>
           </button>
-          {#if answerable(need) && need.options.length}
+          {#if answerable(need) && (need.options.length || need.actions?.length)}
             <div class="mt-1 flex flex-wrap gap-1">
+              <ActionLinks actions={need.actions ?? []} class="inline-flex h-6 items-center rounded-sm bg-accent px-2 text-[12px] text-accent-ink no-underline" />
               {#each need.options as option (option)}
                 <button class="h-6 rounded-sm bg-ink-5 px-2 text-[12px] transition-colors hover:bg-ink-10" onclick={() => void answer(need, option)}>{option}</button>
               {/each}

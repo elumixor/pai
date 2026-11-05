@@ -2,6 +2,7 @@
   import { Check, Plug, TriangleAlert } from "lucide-svelte";
   import { api } from "../api";
   import type { ConnectorSummary } from "../types";
+  import AutoSend from "./AutoSend.svelte";
   import ConnectorSheet from "./ConnectorSheet.svelte";
   import { ERROR, SKELETON } from "./controls";
 
@@ -11,7 +12,7 @@
   let connectors = $state<ConnectorSummary[] | undefined>();
   let error = $state("");
   let open = $state<ConnectorSummary | undefined>();
-  const load = () => api.connectors().then((list) => (connectors = list), (e: Error) => (error = e.message));
+  const load = () => api.connectors().then((list) => (connectors = [...list].sort((a, b) => Number(b.connected) - Number(a.connected))), (e: Error) => (error = e.message));
   $effect(() => void load());
   function closed() {
     open = undefined;
@@ -51,6 +52,8 @@
     {/each}
   </div>
 {/if}
+
+<AutoSend {connectors} />
 
 {#if open}
   <ConnectorSheet summary={open} onclose={closed} />

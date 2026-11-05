@@ -14,7 +14,6 @@
 
   /** Everything about one connector; a block with nothing to show is not drawn. */
   const OFF_KEY = "off";
-  const OFF_VALUE = "1";
   const STATE: Record<ConnectorState, string> = { signed_in: "Connected", signed_out: "Not connected", broken: "Needs attention" };
   const LOG_TINT: Record<ConnectorLogLine["level"], string> = { info: "text-ink-45", warn: "text-warn", error: "text-hot" };
   const SKELETON_BLOCKS = ["h-10", "h-24", "h-16"];
@@ -30,14 +29,13 @@
   });
 
   const shown = $derived(detail ?? summary);
-  const off = $derived(detail?.settings.find((s) => s.key === OFF_KEY));
   const fix = $derived(shown.status.state === "signed_in" ? undefined : shown.status.fix);
   const fields = $derived(detail?.settings.filter((s) => s.key !== OFF_KEY) ?? []);
   const catalog = $derived<readonly RoutineEvent[]>(detail?.events.map((e) => ({ kind: e.kind, title: e.title, description: e.description, source: summary.name, sourceTitle: summary.title, icon: summary.icon })) ?? []);
 
   async function toggle(on: boolean) {
     switchTo = on;
-    const result = await api.patchConnectorSettings(summary.name, { [OFF_KEY]: on ? "" : OFF_VALUE });
+    const result = await api.switchConnector(summary.name, on);
     switchTo = undefined;
     error = result.error ?? "";
     if (result.data) detail = result.data;
@@ -54,9 +52,7 @@
         <h2 class="m-0 truncate text-[14px] font-medium">{summary.title}</h2>
         <p class="m-0 truncate text-[12px] text-ink-45">{shown.status.detail || STATE[shown.status.state]}</p>
       </div>
-      {#if !detail || off}
-        <Switch checked={switchTo ?? (off ? !off.value : summary.enabled)} label="{summary.title} on" disabled={!off || switchTo !== undefined} onchange={(next) => void toggle(next)} />
-      {/if}
+      <Switch checked={switchTo ?? shown.connected} label="{summary.title} connected" disabled={switchTo !== undefined} onchange={(next) => void toggle(next)} />
     </div>
   {/snippet}
 

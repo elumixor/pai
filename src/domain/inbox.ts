@@ -87,6 +87,17 @@ export function settle(id: string | undefined, outcome: { readonly action: Actio
   changed(id);
 }
 
+/** Everything that came in and what triage made of it, newest first, a page at a time. */
+export function triaged(limit = 100, before = now() + 1): readonly Entry[] {
+  const rows = db.query(`SELECT * FROM inbox WHERE NOT (${ADDRESSED}) AND at < ? ORDER BY at DESC LIMIT ?`).all(before, Math.max(1, Math.min(500, limit))) as Row[];
+  return rows.map(entryOf);
+}
+
+export const get = (id: string) => {
+  const row = db.query("SELECT * FROM inbox WHERE id = ?").get(id) as Row | null;
+  return row ? entryOf(row) : undefined;
+};
+
 /** What was addressed to Pai, newest first. */
 export function list(limit = 100): { readonly items: readonly Entry[]; readonly unread: number } {
   const rows = db.query(`SELECT * FROM inbox WHERE ${ADDRESSED} ORDER BY at DESC LIMIT ?`).all(Math.max(1, Math.min(500, limit))) as Row[];
@@ -101,7 +112,7 @@ export function read(ids?: readonly string[]) {
   if (ids?.length) {
     const update = db.prepare("UPDATE inbox SET read_at = ? WHERE id = ? AND read_at IS NULL");
     for (const id of ids) update.run(at, id);
-  } else db.prepare("UPDATE inbox SET read_at = ? WHERE read_at IS NULL").run(at);
+  } else db.prepare(`UPDATE inbox SET read_at = ? WHERE read_at IS NULL AND ${ADDRESSED}`).run(at);
   changed();
   return { unread: unread() };
 }

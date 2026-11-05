@@ -171,6 +171,7 @@ export interface AgentSheet {
   readonly page: { readonly urn: string; readonly title?: string; readonly path?: readonly string[]; readonly body?: string; readonly url?: string; readonly error?: string } | null;
   readonly keep: { readonly workspaces: readonly KeepWorkspace[]; readonly shared: readonly KeepWorkspace[]; readonly error?: string };
   /** General has no page: this is what is assigned to it and its group. */
+  readonly connectUrl?: string;
   readonly assigned: readonly { readonly urn: string; readonly title: string; readonly workspace: string; readonly url: string; readonly status?: string }[];
   readonly tools: ChatConfig["tools"];
   readonly routines: ChatConfig["routines"];
@@ -204,6 +205,7 @@ export interface LogMessage {
     readonly event?: string;
     readonly askId?: number;
     readonly options?: readonly string[];
+    readonly actions?: readonly { readonly label: string; readonly url: string }[];
     readonly breadcrumb?: string;
     readonly priority?: string;
     readonly agent?: string;
@@ -268,6 +270,7 @@ export interface Need {
   readonly freeText: boolean;
   readonly priority: string;
   readonly link?: string;
+  readonly actions?: readonly { readonly label: string; readonly url: string }[];
   readonly createdAt: number;
 }
 
@@ -289,6 +292,8 @@ export interface ConnectorSummary {
   readonly icon?: string;
   readonly server: string | null;
   readonly enabled: boolean;
+  /** The user's switch; `enabled` also takes what the connector itself says. */
+  readonly connected: boolean;
   readonly needsAction: boolean;
   readonly status: ConnectorStatus;
   readonly commands: readonly { readonly name: string; readonly description: string }[];
@@ -447,6 +452,7 @@ export interface Routine {
   readonly createdAt: number;
   readonly runs: number;
   readonly lastRun: number | null;
+  readonly lastError: string | null;
 }
 
 export type RoutineFields = Partial<Pick<Routine, "name" | "event" | "schedule" | "filter" | "action" | "agent" | "template" | "enabled">>;

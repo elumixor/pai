@@ -58,6 +58,8 @@ export function toItem(e: PaiEvent): Item {
       return { source: "telegram", kind: e.kind, title: p.out ? `you posted in ${p.chat ?? "?"}` : `${p.from ?? "?"} in ${p.chat ?? "?"}`, body: String(p.text ?? ""), link: p.link, payload: p, at: e.ts };
     case "linkedin.message":
       return { source: "linkedin", kind: e.kind, title: `${p.from ?? p.with ?? "?"} on LinkedIn`, body: String(p.text ?? ""), link: p.url, payload: p, at: e.ts };
+    case "whatsapp.message":
+      return { source: "whatsapp", kind: e.kind, title: p.fromMe ? `you wrote to ${p.chatName ?? "?"} on WhatsApp` : p.chatKind === "group" ? `${p.from ?? "?"} in ${p.chatName ?? "?"}` : `${p.from ?? "?"} on WhatsApp`, body: String(p.text ?? ""), payload: { ...p, out: p.fromMe, chat: p.chatName }, at: e.ts };
     case "calendar.upcoming":
       return { source: "calendar", kind: e.kind, title: `${p.summary ?? "a meeting"} at ${String(p.start ?? "").slice(11, 16)}`, body: `attendees: ${(p.attendees as string[] | undefined)?.join(", ") ?? "?"}\n${p.description ?? ""}`, link: p.link, payload: p, at: e.ts };
     default:
@@ -77,10 +79,10 @@ export function toItem(e: PaiEvent): Item {
  */
 export function delegatable(item: Item, brief: string): boolean {
   const p = item.payload as { out?: boolean; mentioned?: boolean; chat?: string };
-  if (item.kind === "telegram.chat") return p.out || p.mentioned ? true : named(brief, p.chat);
+  if (item.kind === "telegram.chat" || (item.kind === "whatsapp.message" && (item.payload as { chatKind?: string }).chatKind === "group")) return p.out || p.mentioned ? true : named(brief, p.chat);
   // A message he wrote is not a request to anyone: his own DM is an event in the log and nothing
   // more. Incoming DMs are a person writing to him, and those still route.
-  if (item.kind === "telegram.dm" && p.out) return named(brief, p.chat);
+  if ((item.kind === "telegram.dm" || item.kind === "whatsapp.message") && p.out) return named(brief, p.chat);
   return true;
 }
 
@@ -114,6 +116,10 @@ const arrived = (item: Item) => ({ source: item.source, kind: item.kind, title: 
 /** The routines' sink: the item waits for the rest of its burst. */
 export function add(e: PaiEvent, _rule?: Automation) {
   const item = toItem(e);
+  if ((item.payload as { muted?: boolean }).muted && item.source === "whatsapp") {
+    inbox.record({ ...arrived(item), action: "muted", note: "muted in WhatsApp" });
+    return;
+  }
   const muted = asks.mutedBy(`${item.title}\n${item.body}`, item.source);
   if (muted) {
     inbox.record({ ...arrived(item), action: "muted", note: `muted: ${muted.pattern}` });
@@ -180,7 +186,7 @@ export function apply(items: Item[], decisions: Decision[]) {
       } else if (d.action === "tell") {
         if (d.urgent) asks.notify(agents.PAI, `${d.note || item.title}${item.link ? `\n${item.link}` : ""}`, "urgent");
         else told.push(`${d.note || item.title}${item.link ? ` ${item.link}` : ""}`);
-        inbox.settle(item.id, { action: "told", note: d.note || d.reason });
+        inbox.settle(item.id, { action: "told", note: d.reason || d.note });
       }
     } catch (err) {
       log.warn(`item ${d.i}: ${(err as Error).message}`);

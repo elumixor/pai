@@ -3,6 +3,8 @@
   import { ExternalLink } from "lucide-svelte";
   import { desk } from "../desk.svelte";
   import KeepLogo from "../ui/KeepLogo.svelte";
+  import SentList from "./SentList.svelte";
+  import TriageList from "./TriageList.svelte";
   import Waiting from "./Waiting.svelte";
   import { ago, dayLabel, dayOf } from "../format";
   import { navigate } from "../router.svelte";
@@ -10,6 +12,13 @@
 
   /** Pai's inbox: what waits on the user on top, then what someone addressed to Pai; opening one goes where it was handled. */
   let { onclose }: { onclose: () => void } = $props();
+
+  const TABS = [
+    { id: "you", label: "For you" },
+    { id: "triage", label: "Triage" },
+    { id: "sent", label: "Sent" },
+  ] as const;
+  let tab = $state<(typeof TABS)[number]["id"]>("you");
 
 
   type Row = InboxItem & { readonly e: InboxEntry };
@@ -72,21 +81,32 @@
   }
 </script>
 
-<Waiting {onclose} />
-<InboxList
-  {groups}
-  title="Assigned to Pai"
-  unread={inbox.unread}
-  onopen={open}
-  onreadall={() => void inbox.read()}
-  empty="Pages assigned to Pai and mentions of it land here."
->
-  {#snippet lead(row)}
-    <KeepLogo size={16} />
-  {/snippet}
-  {#snippet aside(row)}
-    {#if row.e.link}
-      <a class="grid size-6 place-items-center rounded-xs text-ink-30 hover:bg-ink-10 hover:text-ink" href={row.e.link} target="_blank" rel="noopener" aria-label="Open the original" title="Open the original"><ExternalLink size={14} /></a>
-    {/if}
-  {/snippet}
-</InboxList>
+<div class="mb-2 flex gap-1 border-b border-line pb-1.5" role="tablist" aria-label="Inbox">
+  {#each TABS as t (t.id)}
+    <button class="h-7 rounded-sm px-2 text-[13px] transition-colors {tab === t.id ? 'bg-ink-10 text-ink' : 'text-ink-45 hover:bg-ink-5 hover:text-ink'}" role="tab" aria-selected={tab === t.id} onclick={() => (tab = t.id)}>{t.label}</button>
+  {/each}
+</div>
+{#if tab === "triage"}
+  <TriageList {onclose} />
+{:else if tab === "sent"}
+  <SentList />
+{:else}
+  <Waiting {onclose} />
+  <InboxList
+    {groups}
+    title="Assigned to Pai"
+    unread={inbox.unread}
+    onopen={open}
+    onreadall={() => void inbox.read()}
+    empty="Pages assigned to Pai and mentions of it land here."
+  >
+    {#snippet lead(row)}
+      <KeepLogo size={16} />
+    {/snippet}
+    {#snippet aside(row)}
+      {#if row.e.link}
+        <a class="grid size-6 place-items-center rounded-xs text-ink-30 hover:bg-ink-10 hover:text-ink" href={row.e.link} target="_blank" rel="noopener" aria-label="Open the original" title="Open the original"><ExternalLink size={14} /></a>
+      {/if}
+    {/snippet}
+  </InboxList>
+{/if}

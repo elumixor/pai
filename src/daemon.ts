@@ -26,6 +26,7 @@ import * as push from "./domain/push.ts";
 import * as spend from "./domain/spend.ts";
 import * as models from "./domain/models.ts";
 import { elevateOverdue, flush as flushNotices } from "./domain/asks.ts";
+import { verifyOpen } from "./domain/ask-actions.ts";
 import { remindDue } from "./domain/reminders.ts";
 import { startClaudeLoginCheck } from "./domain/claude-login.ts";
 import * as dev from "./domain/dev.ts";
@@ -79,6 +80,7 @@ const stopLinkedInCheck = startLinkedInCheck();
 const stopBrowserCheck = startBrowserCheck();
 const stopAutomations = startAutomations();
 await connectors.startAll();
+const stopSignInWatch = connectors.startSignInWatch();
 // pai's own Telegram client, the bot he talks to pai through; after the connectors, since his account transcribes its voice.
 const bot =
   setting("TELEGRAM_BOT_TOKEN") && setting("TELEGRAM_CHAT_ID") && setting("PAI_NO_TELEGRAM") !== "1"
@@ -98,6 +100,7 @@ const noticeTimer = setInterval(() => {
   flushNotices();
   elevateOverdue();
   remindDue();
+  void verifyOpen();
 }, 60 * 1000);
 
 const reaper = setInterval(reapIdle, 60 * 1000);
@@ -138,6 +141,7 @@ function shutdown(signal: string) {
   stopReleaseCheck();
   stopDev();
   stopDevTasks();
+  stopSignInWatch();
   void connectors.stopAll();
   void bot?.stop();
   noteInterrupted();

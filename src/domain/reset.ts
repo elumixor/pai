@@ -12,7 +12,7 @@ import { projectsDir } from "./transcript.ts";
 
 const log = logger("reset");
 
-const WIPED_TABLES = ["tasks", "messages", "asks", "notices", "requests", "routes", "drafts", "inbox", "reminders"] as const;
+const WIPED_TABLES = ["tasks", "messages", "asks", "notices", "requests", "routes", "drafts", "inbox", "reminders", "audit", "events"] as const;
 const WIPED_KEYS = ["agent_queue", "agent_held", "main_limit_held", "main_last_user", "main_thread_id", "read_marks"] as const;
 const WIPED_FOLDERS = ["agents", "journal", "drafts"] as const;
 

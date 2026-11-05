@@ -581,10 +581,13 @@ class Frontend {
         if (m.to !== "user") return;
         const askId = Number(m.meta.askId);
         const options = (m.meta.options as string[] | undefined) ?? [];
-        const kb = options.reduce((kb, o, i) => kb.text(o.slice(0, 60), `k:${askId}:${i}`).row(), new InlineKeyboard());
+        // A place to go is a url button; the index in `k:` stays within Telegram's 64-byte callback data.
+        const actions = (m.meta.actions as { label: string; url: string }[] | undefined) ?? [];
+        const linked = actions.filter((x) => x.url.startsWith("https://")).reduce((kb, x) => kb.url(x.label.slice(0, 60), x.url).row(), new InlineKeyboard());
+        const kb = options.reduce((kb, o, i) => kb.text(o.slice(0, 60), `k:${askId}:${i}`).row(), linked);
         const crumb = String(m.meta.breadcrumb ?? "");
         const text = `${m.meta.priority === "urgent" ? "❗" : "❓"} <i>${esc(crumb)}</i>\n${html(m.body)}${m.meta.freeText === false ? "" : options.length ? "\n\n<i>tap an option or reply with text</i>" : "\n\n<i>reply to this message to answer</i>"}`;
-        const sent = await this.post(this.mainThread(), text, this.meta(about, { kind: "ask", askId, options, breadcrumb: crumb, priority: String(m.meta.priority ?? "normal") }), { silent: Boolean(m.meta.silent), keyboard: options.length ? kb : undefined });
+        const sent = await this.post(this.mainThread(), text, this.meta(about, { kind: "ask", askId, options, breadcrumb: crumb, priority: String(m.meta.priority ?? "normal") }), { silent: Boolean(m.meta.silent), keyboard: options.length || actions.length ? kb : undefined });
         if (sent) kv.set(`ask:${sent}`, String(askId));
         if (sent) kv.set(`askmsg:${askId}`, String(sent));
         return;

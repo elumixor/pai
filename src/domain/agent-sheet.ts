@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { config } from "../core/config.ts";
 import { logger } from "../core/log.ts";
 import * as agentPage from "./agent-page.ts";
+import { connectUrl } from "./ask-actions.ts";
 import * as agents from "./agents.ts";
 import * as automations from "./automations.ts";
 import { chatConfig } from "./context.ts";
@@ -54,6 +55,7 @@ export async function agentSheet(a: agents.Agent) {
     page,
     keep,
     assigned,
+    connectUrl: general ? connectUrl() : undefined,
     tools,
     routines: automations.all().filter((r) => (r.agent ? r.agent === a.slug : general)),
     events: eventCatalog(),

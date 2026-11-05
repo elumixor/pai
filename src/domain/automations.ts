@@ -1,5 +1,5 @@
 import { bus, type PaiEvent } from "../core/bus.ts";
-import { db, now } from "../core/db.ts";
+import { db, kv, now } from "../core/db.ts";
 import { logger } from "../core/log.ts";
 import { cronMatches, minuteKey, parseCron } from "../core/time.ts";
 import * as external from "../connectors/loader.ts";
@@ -62,6 +62,7 @@ export interface Automation {
   readonly createdAt: number;
   readonly runs: number;
   readonly lastRun: number | null;
+  readonly lastError: string | null;
 }
 
 const MAX_TASKS_PER_HOUR = 6;
@@ -97,6 +98,7 @@ const rowToAutomation = (r: Record<string, any>): Automation => ({
   createdAt: r.created_at,
   runs: r.runs,
   lastRun: r.last_run,
+  lastError: r.last_error ?? null,
 });
 
 export const all = (): Automation[] => (db.query("SELECT * FROM automations ORDER BY id").all() as Record<string, any>[]).map(rowToAutomation);
@@ -238,7 +240,10 @@ async function run(rule: Automation, event: PaiEvent, opts: { scheduled?: boolea
   if (spends && opts.scheduled) {
     const load = await weeklyLoad();
     const brief = rule.owner === "system";
-    if (load >= STOP_AT && !brief) return log.info(`${rule.name}: skipped, weekly limit at ${load}%`);
+    if (load >= STOP_AT && !brief) {
+      bus.emitEvent("automation.skipped", { id: rule.id, name: rule.name, why: `weekly limit at ${load}%` });
+      return log.info(`${rule.name}: skipped, weekly limit at ${load}%`);
+    }
     if (load >= SLOW_AT && !brief && rule.lastRun && now() - rule.lastRun < 60 * 60_000) return log.info(`${rule.name}: slowed, weekly limit at ${load}%`);
   }
   if ((rule.action === "turn" || rule.action === "wake") && !opts.scheduled && overEventFuse(rule.id)) return log.warn(`${rule.name}: skipped, ${MAX_EVENT_TURNS_PER_HOUR} event turns this hour`);
@@ -272,8 +277,15 @@ async function run(rule: Automation, event: PaiEvent, opts: { scheduled?: boolea
       break;
     }
   }
-  db.prepare("UPDATE automations SET runs = runs + 1, last_run = ? WHERE id = ?").run(now(), rule.id);
+  db.prepare("UPDATE automations SET runs = runs + 1, last_run = ?, last_error = NULL WHERE id = ?").run(now(), rule.id);
   bus.emitEvent("automation.ran", { id: rule.id, name: rule.name, event: event.kind, action: rule.action });
+}
+
+/** A routine that threw says so on its sheet, until a run goes through. */
+function failed(rule: Automation, err: Error) {
+  log.warn(`${rule.name}: ${err.message}`);
+  db.prepare("UPDATE automations SET last_error = ? WHERE id = ?").run(err.message.slice(0, 300), rule.id);
+  bus.emitEvent("automation.failed", { id: rule.id, name: rule.name, error: err.message });
 }
 
 /** Where pai's routine turns and triage items go; main.ts and triage.ts register them. */
@@ -304,7 +316,7 @@ export function tick(at = now()) {
     if (!claimed) continue;
     const named = Object.fromEntries(Object.entries(fields).filter(([k]) => rule.template.includes(`{${k}}`)).map(([k, fn]) => [k, fn()]));
     const event: PaiEvent = { kind: "schedule", payload: { routine: rule.name, at: new Date(at).toISOString(), ...named }, ts: at };
-    run(rule, event, { scheduled: true }).catch((err: Error) => log.warn(`${rule.name}: ${err.message}`));
+    run(rule, event, { scheduled: true }).catch((err: Error) => failed(rule, err));
   }
 }
 
@@ -315,8 +327,9 @@ export function startAutomations() {
     for (const rule of all()) {
       if (!rule.enabled || !rule.event || rule.event !== event.kind) continue;
       if (rule.filter && !JSON.stringify(event.payload).includes(rule.filter)) continue;
-      if (!passes(rule.check, event, rule.agent)) continue;
-      run(rule, event).catch((err: Error) => log.warn(`${rule.name}: ${err.message}`));
+      // Triage records what is muted, so the Triage tab shows it; only routines that spend a turn are stopped here.
+      if (!passes(rule.action === "triage" ? { ...rule.check, not_muted: false } : rule.check, event, rule.agent)) continue;
+      run(rule, event).catch((err: Error) => failed(rule, err));
     }
   };
   bus.on("event", handler);
@@ -336,16 +349,45 @@ export function startAutomations() {
   };
 }
 
-/** The routines pai starts with, made once: the briefs, and triage for the inbox and messages. */
+const SEEDED = "routines-seeded";
+const seeded = () => new Set(JSON.parse(kv.get(SEEDED) ?? "[]") as string[]);
+const triaged = (name: string, event: string): AutomationInput => ({ name, event, action: "triage", owner: "system" });
+
+/** What feeds triage from each connector: there while it is connected, gone with it. */
+const OF_CONNECTORS: readonly { readonly connector: string; readonly routine: AutomationInput }[] = [
+  { connector: "email", routine: triaged("Inbox", "gmail.new") },
+  { connector: "telegram", routine: triaged("Telegram messages", "telegram.dm") },
+  { connector: "telegram", routine: triaged("Telegram groups", "telegram.chat") },
+  { connector: "linkedin", routine: triaged("LinkedIn messages", "linkedin.message") },
+  { connector: "whatsapp", routine: triaged("WhatsApp messages", "whatsapp.message") },
+];
+
+/** Made once each, so one the user deleted stays deleted; a name already there counts as made. */
+function makeOnce(input: AutomationInput) {
+  const made = seeded();
+  if (made.has(input.name)) return;
+  if (!all().some((r) => r.name === input.name)) create(input);
+  kv.set(SEEDED, JSON.stringify([...made, input.name]));
+}
+
+/** Follows which connectors are on. A routine that went with its connector comes back with it. */
+export function syncConnectorRoutines() {
+  for (const { connector, routine } of OF_CONNECTORS) {
+    if (external.connected(connector)) {
+      makeOnce(routine);
+      continue;
+    }
+    const row = all().find((r) => r.name === routine.name && r.owner === "system");
+    if (row) remove(row.id);
+    const made = seeded();
+    if (made.delete(routine.name)) kv.set(SEEDED, JSON.stringify([...made]));
+  }
+}
+
+/** The routines pai starts with: the briefs, meeting prep, and triage for each connector that is on. */
 export function seed() {
-  const existing = all();
-  const has = (name: string) => existing.some((r) => r.name === name);
-  const add = (input: AutomationInput) => !has(input.name) && create(input);
-  add({ name: "Morning brief", schedule: "30 8 * * *", action: "turn", agent: agents.PAI, owner: "system", template: "{brief}" });
-  add({ name: "Evening digest", schedule: "30 20 * * *", action: "notify", agent: agents.PAI, owner: "system", template: "{digest}" });
-  add({ name: "Inbox", event: "gmail.new", action: "triage", owner: "system", check: { not_muted: true } });
-  add({ name: "Telegram messages", event: "telegram.dm", action: "triage", owner: "system", check: { not_muted: true } });
-  add({ name: "Telegram groups", event: "telegram.chat", action: "triage", owner: "system", check: { not_muted: true } });
-  add({ name: "LinkedIn messages", event: "linkedin.message", action: "triage", owner: "system", check: { not_muted: true } });
-  add({ name: "Meeting prep", event: "calendar.upcoming", action: "triage", owner: "system", check: { outside_attendee: true } });
+  makeOnce({ name: "Morning brief", schedule: "30 8 * * *", action: "turn", agent: agents.PAI, owner: "system", template: "{brief}" });
+  makeOnce({ name: "Evening digest", schedule: "30 20 * * *", action: "notify", agent: agents.PAI, owner: "system", template: "{digest}" });
+  makeOnce({ name: "Meeting prep", event: "calendar.upcoming", action: "triage", owner: "system", check: { outside_attendee: true } });
+  syncConnectorRoutines();
 }

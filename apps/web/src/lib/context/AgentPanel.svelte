@@ -143,6 +143,7 @@
           {/if}
           <section>
             <h3 class="{BLOCK_TITLE} m-0 mb-1.5">Connected workspaces · {sheet.keep.workspaces.length + sheet.keep.shared.length}</h3>
+            {#if sheet.connectUrl}<p class="m-0 mb-2 text-[12px] text-ink-45"><a class="text-ink hover:underline" href={sheet.connectUrl} target="_blank" rel="noopener">Change which workspaces Pai reaches</a>. Every agent shares this access.</p>{/if}
             {#if sheet.keep.error}<p class={ERROR} role="alert">{sheet.keep.error}</p>{/if}
             <ul class="m-0 list-none p-0">
               {#each [...sheet.keep.workspaces, ...sheet.keep.shared] as workspace (workspace.id)}
