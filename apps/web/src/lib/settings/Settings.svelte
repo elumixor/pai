@@ -148,24 +148,22 @@
         </dl>
       </SettingsBlock>
     {:else if entry.id === "account"}
-      <SettingsBlock title="Account">
+      <div class="flex items-center gap-4">
         {#if auth.user}
-          <div class="flex items-center gap-3">
-            {#if auth.user.avatar}
-              <img src={auth.user.avatar} alt="" class="size-9 shrink-0 rounded-full" />
-            {:else}
-              <span class="grid size-9 shrink-0 place-items-center rounded-full bg-ink-10 text-[14px] font-semibold text-ink-70">{auth.user.fullName.slice(0, 1).toUpperCase()}</span>
-            {/if}
-            <div class="min-w-0">
-              <p class="m-0 truncate text-[13px] font-medium">{auth.user.fullName}</p>
-              {#if auth.user.email}<p class="m-0 truncate text-[12px] text-ink-45">{auth.user.email}</p>{/if}
-            </div>
+          {#if auth.user.avatar}
+            <img src={auth.user.avatar} alt="" class="size-14 shrink-0 rounded-full" />
+          {:else}
+            <span class="grid size-14 shrink-0 place-items-center rounded-full bg-ink-10 text-[20px] font-semibold text-ink-70">{auth.user.fullName.slice(0, 1).toUpperCase()}</span>
+          {/if}
+          <div class="min-w-0 flex-1">
+            <p class="m-0 truncate text-[16px] font-medium">{auth.user.fullName}</p>
+            {#if auth.user.email}<p class="m-0 truncate text-[13px] text-ink-45">{auth.user.email}</p>{/if}
           </div>
         {:else}
-          <p class="m-0 text-[13px] text-ink-45">Opened with a token link, so no person is signed in.</p>
+          <p class="m-0 min-w-0 flex-1 text-[13px] text-ink-45">Opened with a token link, so no person is signed in.</p>
         {/if}
-        <button class={button} onclick={() => auth.signOut()}><LogOut size={16} /> Sign out</button>
-      </SettingsBlock>
+        <button class="grid size-8 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink" aria-label="Sign out" title="Sign out" onclick={() => auth.signOut()}><LogOut size={18} /></button>
+      </div>
     {:else if entry.id === "snapshot"}
       <SettingsBlock title="Snapshot" about="Memory, tasks, decisions and routines as one markdown file. Importing hands it to pai to fact-check and file in Keep.">
         <div class="flex flex-wrap items-center gap-2">
