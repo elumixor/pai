@@ -40,6 +40,7 @@ import * as summaries from "../domain/summaries.ts";
 import * as recall from "../domain/recall.ts";
 import * as audit from "../domain/audit.ts";
 import * as tasks from "../domain/tasks.ts";
+import { resetGeneral, ResetError } from "../domain/reset.ts";
 import { importPrompt, snapshot } from "../domain/snapshot.ts";
 
 const log = logger("api");
@@ -522,6 +523,15 @@ export async function handle(req: Request): Promise<Response> {
       const done = wait ? waitFor("session.turn_end", s.id, TURN_TIMEOUT) : undefined;
       main.send(text ?? "", { images: attached });
       return json(done ? { session: s.shortId, ...(await done).payload } : s.summary());
+    }
+    if (path === "/pai/reset" && req.method === "POST") {
+      try {
+        resetGeneral();
+        return json({ reset: true });
+      } catch (err) {
+        if (err instanceof ResetError) return json({ error: err.message }, 409);
+        throw err;
+      }
     }
     if (path === "/pai/rotate" && req.method === "POST") {
       void main.rotate("asked");

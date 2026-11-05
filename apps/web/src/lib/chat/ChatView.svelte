@@ -561,6 +561,12 @@
           if (q) q.answers = q.questions.map((_, i) => q.answers[i] ?? "answered");
         }
         break;
+      case "main.reset":
+        if (spec.live) {
+          items = [];
+          void load();
+        }
+        break;
       case "main.rotated":
         if (spec.live) void spec.live().then((session) => session && (liveSession = session));
         break;

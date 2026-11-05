@@ -526,6 +526,9 @@ async function devCommand() {
       out(data, () => data.text || (data.error ?? "(no reply)"));
       break;
     }
+    case "reset":
+      out(await post("/pai/reset", {}));
+      break;
     case "rotate":
       out(await post("/pai/rotate", {}));
       break;

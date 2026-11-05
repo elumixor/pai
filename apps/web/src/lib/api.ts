@@ -128,6 +128,7 @@ export const api = {
   connector: (name: string, quiet = false) => get<ConnectorDetail>(`/connectors/${q(name)}`, quiet),
   /** An empty value deletes. */
   patchConnectorSettings: (name: string, changes: Readonly<Record<string, string>>) => send<ConnectorDetail>(`/connectors/${q(name)}/settings`, changes, "PATCH"),
+  resetGeneral: () => send<{ reset: boolean }>("/pai/reset", {}),
   runConnectorAction: (name: string, id: string) => send<{ message: string; thread?: string }>(`/connectors/${q(name)}/actions/${q(id)}`),
   routines: () => get<Routine[]>("/routines"),
   routineEvents: () => get<RoutineEvent[]>("/routines/events"),

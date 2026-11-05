@@ -44,6 +44,7 @@ export const CORE: readonly Command[] = [
 export const DEV: readonly Command[] = [
   { name: "say", args: "<text>", description: "a turn in pai's one chat; waits for the reply" },
   { name: "rotate", description: "rebuild pai's session now (journal, briefing)" },
+  { name: "reset", description: "clear General for good: conversation, memory, tasks, workers; pai starts over" },
   { name: "chat", args: "<text> [--id <thread>]", description: "a turn in a new conversation, or in one" },
   { name: "task", args: "<title> <text> [--project <slug>]", description: "start a task" },
   { name: "send", args: "<id> <text> [--wait]", description: "a turn in a task" },

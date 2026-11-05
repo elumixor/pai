@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  const SECTION_IDS = ["account", "usage", "appearance", "shortcuts", "snapshot", "connectors", "automations", "context", "spend"] as const;
+  const SECTION_IDS = ["account", "usage", "appearance", "shortcuts", "snapshot", "general", "connectors", "automations", "context", "spend"] as const;
   export type Section = (typeof SECTION_IDS)[number];
   export const isSection = (id: string): id is Section => (SECTION_IDS as readonly string[]).includes(id);
 
@@ -19,12 +19,13 @@
 <script lang="ts">
   import { PALETTES, PEOPLE_URL, type Palette, type ThemeKind, type ThemeMode } from "@desk/core";
   import { SettingsDialog, type SettingsSection } from "@desk/core/settings";
-  import { Archive, BookOpen, Clock, Contact, Download, Gauge, Keyboard, LogOut, Monitor, Moon, Palette as PaletteIcon, Plug, Sun, SunMoon, Upload, User, Wallet } from "lucide-svelte";
+  import { Archive, BookOpen, Clock, Eraser, Contact, Download, Gauge, Keyboard, LogOut, Monitor, Moon, Palette as PaletteIcon, Plug, Sun, SunMoon, Upload, User, Wallet } from "lucide-svelte";
   import { api } from "../api";
   import { auth } from "../auth.svelte";
   import { desk } from "../desk.svelte";
   import { prefs } from "../prefs.svelte";
   import { theme } from "../theme.svelte";
+  import ConfirmButton from "../ui/ConfirmButton.svelte";
   import Connectors from "./Connectors.svelte";
   import Context from "./Context.svelte";
   import Routines from "./Routines.svelte";
@@ -43,6 +44,7 @@
     { id: "appearance", label: "Appearance", icon: PaletteIcon, keywords: "theme dark light mode palette" },
     { id: "shortcuts", label: "Keyboard", icon: Keyboard, keywords: "shortcuts keys keybinding" },
     { id: "snapshot", label: "Snapshot", icon: Archive, keywords: "export import backup restore memory" },
+    { id: "general", label: "General", icon: Eraser, keywords: "reset clear conversation chat memory start over" },
     { id: "connectors", label: "Connectors", icon: Plug, keywords: "modules capabilities telegram email gmail linkedin whatsapp browser signed in" },
     { id: "automations", label: "Routines", icon: Clock, keywords: "automations cron events triggers" },
     { id: "context", label: "Context", icon: BookOpen, keywords: "instructions memories skills tools prompt" },
@@ -61,6 +63,11 @@
   const iconButton = "grid size-8 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink";
   const button = "inline-flex h-8 items-center gap-2 rounded-sm bg-ink-5 px-3 transition-colors hover:bg-ink-10 [&>svg]:text-ink-45";
 
+  let resetNote = $state("");
+  async function resetGeneral() {
+    const result = await api.resetGeneral();
+    resetNote = result.error ?? "Done. pai is getting to know you.";
+  }
   let exportNote = $state("");
   let importNote = $state("");
   let picker = $state<HTMLInputElement>();
@@ -178,6 +185,13 @@
           <button class={button} onclick={() => picker?.click()}><Upload size={16} /> Import</button>
           <input type="file" accept=".md,.txt,.json,text/*" hidden bind:this={picker} onchange={importSnapshot} />
           <span class="text-[13px] text-ink-45">{exportNote || importNote}</span>
+        </div>
+      </SettingsBlock>
+    {:else if entry.id === "general"}
+      <SettingsBlock title="General" about="Erases this conversation and what pai remembers, then pai starts over by getting to know you.">
+        <div class="flex flex-wrap items-center gap-2">
+          <ConfirmButton class={button} confirm="Erase for good" onconfirm={resetGeneral}><Eraser size={16} /> Reset General</ConfirmButton>
+          {#if resetNote}<span class="text-[13px] text-ink-45" role="status">{resetNote}</span>{/if}
         </div>
       </SettingsBlock>
     {:else if entry.id === "connectors"}

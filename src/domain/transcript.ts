@@ -12,7 +12,7 @@ import { all as allProjects } from "./projects.ts";
  */
 
 // Where Claude Code keeps transcripts; overridable so the tests do not write into the real one.
-const projectsDir = process.env.PAI_CLAUDE_PROJECTS ?? join(homedir(), ".claude", "projects");
+export const projectsDir = process.env.PAI_CLAUDE_PROJECTS ?? join(homedir(), ".claude", "projects");
 
 export interface TranscriptTool {
   readonly id?: string;

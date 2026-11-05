@@ -393,6 +393,17 @@ const held: Held[] = (() => {
 })();
 const saveHeld = () => kv.set(HELD_KEY, JSON.stringify(held));
 
+/** Drops every turn waiting to run, in memory and on disk, for when the agents themselves are going. */
+export function forgetAll() {
+  for (const timer of turnTimers.values()) clearTimeout(timer);
+  turnTimers.clear();
+  queue.length = 0;
+  held.length = 0;
+  lastWake.clear();
+  saveQueue();
+  saveHeld();
+}
+
 /** What each agent was last woken with, so a turn the limit killed can be sent again verbatim. */
 const lastWake = new Map<string, Pending>();
 

@@ -247,6 +247,16 @@ export function purge(ids: readonly string[]): string[] {
   return gone;
 }
 
+/** Ends these sessions and leaves only tombstones, whatever state they were in, so the mirror never brings one back. */
+export function erase(ids: ReadonlySet<string>) {
+  for (const id of ids) {
+    live.get(id)?.kill();
+    live.delete(id);
+    db.prepare("UPDATE sessions SET deleted_at = -1, title = '', parent_id = NULL, thread_id = NULL WHERE session_id = ?").run(id);
+    db.prepare("DELETE FROM keep_threads WHERE session_id = ?").run(id);
+  }
+}
+
 /** What is in the trash, newest first. */
 export function trashList(): { sessionId: string; shortId: string; title: string; kind: SessionKind; project: string | null; deletedAt: number }[] {
   const rows = db.query("SELECT session_id, short_id, title, kind, project, deleted_at FROM sessions WHERE deleted_at > 0 ORDER BY deleted_at DESC").all() as Record<string, any>[];

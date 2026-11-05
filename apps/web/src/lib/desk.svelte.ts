@@ -223,6 +223,7 @@ class Desk {
         void this.refreshNeeds();
         break;
       case "main.rotated":
+      case "main.reset":
         void this.refreshPai();
         break;
     }

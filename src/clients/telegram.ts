@@ -87,6 +87,14 @@ export function startTelegram(cfg: BotConfig) {
   });
 
   bus.on("event", (e: PaiEvent) => tg.take(e));
+  // Deleting a topic is the only way to clear its history; pai's gets a new one.
+  bus.on("event", (e: PaiEvent) => {
+    if (e.kind !== "main.reset") return;
+    void (async () => {
+      for (const topic of e.payload.topics as number[]) await bot.api.deleteForumTopic(chatId, topic).catch((err: Error) => log.warn(`topic ${topic}: ${err.message}`));
+      if (tg.topics) main.setThread((await tg.ensureMainTopic()) ?? null);
+    })();
+  });
   // The daemon's own notices to the user (automations, updates) come as events.
   bus.on("event", (e: PaiEvent) => {
     if (e.kind === "user.notify" && typeof e.payload.text === "string") void notify(e.payload.text).catch((err) => log.warn("notify failed", (err as Error).message));
