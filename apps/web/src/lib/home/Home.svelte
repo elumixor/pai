@@ -189,7 +189,13 @@
 
   // ---- the hand: what waits on him; a press goes to the next one, oldest first --------------------------------
 
-  const needs = $derived([...desk.needs].sort((a, b) => a.createdAt - b.createdAt));
+  /** Where a need is answered: a plain thread, else its agent's chat, else General. */
+  const homeOf = (n: Need) => {
+    if (n.session && desk.threadOf(n.session) && !desk.threadOf(n.session)?.agent) return `thread:${n.session}`;
+    return n.agent && n.agent !== PAI && desk.bySlug(n.agent) ? `chat:${n.agent}` : "home";
+  };
+  const here = $derived(route.name === "thread" ? `thread:${openThread}` : route.name === "chat" ? `chat:${route.param}` : route.name === "new" ? "" : "home");
+  const needs = $derived(desk.needs.filter((n) => homeOf(n) === here).sort((a, b) => a.createdAt - b.createdAt));
   let cursor = 0;
   function nextNeed() {
     if (!needs.length) return;
