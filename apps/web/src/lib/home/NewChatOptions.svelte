@@ -4,10 +4,10 @@
   import { newChat, type NewKind } from "./new-chat.svelte";
 
   /** What a blank chat can become: nothing chosen until Jev or the user picks. */
-  const OPTIONS: { kind: NewKind; label: string; about: string; icon: typeof Code }[] = [
-    { kind: "detached", label: "Detached chat", about: "Stands on its own", icon: MessageSquare },
-    { kind: "dev", label: "Task in Dev", about: "A session in a repository", icon: Code },
-    { kind: "goal", label: "Long-term goal", about: "Under General, reports to it", icon: Target },
+  const OPTIONS: { kind: NewKind; label: string; icon: typeof Code }[] = [
+    { kind: "detached", label: "Detached chat", icon: MessageSquare },
+    { kind: "dev", label: "Task in Dev", icon: Code },
+    { kind: "goal", label: "Long-term goal", icon: Target },
   ];
   let projects = $state<{ slug: string }[]>([]);
   $effect(() => void api.projects().then((list) => (projects = list), () => {}));
@@ -21,7 +21,6 @@
       <button type="button" role="radio" aria-checked={on} class="flex flex-col gap-1 rounded-md border p-3 text-left transition-colors {on ? 'border-accent bg-ink-5 shadow-sm' : 'border-line hover:bg-ink-5'}" onclick={() => newChat.choose({ kind: o.kind })}>
         <o.icon size={16} class={on ? "text-accent" : "text-ink-45"} />
         <span class="flex items-baseline justify-between gap-2 text-[13px] font-medium">{o.label}{#if sure !== undefined}<span class="text-[12px] font-normal {on ? 'text-accent' : 'text-ink-30'}">{Math.round(sure * 100)}%</span>{/if}</span>
-        <span class="text-[12px] text-ink-45">{o.about}</span>
       </button>
     {/each}
   </div>
