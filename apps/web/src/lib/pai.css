@@ -697,5 +697,7 @@ body.in-home .tooltip .dim { color: color-mix(in srgb, var(--canvas) 65%, transp
 .spend-legend .key { width: 10px; height: 10px; border-radius: 2px; margin-left: 6px; }
 
 
-/* Settings dialog (shared from @desk/core): no visible title; the close button keeps its place. */
-.desk-settings-backdrop header h2 { visibility: hidden; }
+/* Settings dialog (shared from @desk/core): no title; the close button floats over the content instead of taking a row. */
+.desk-settings-backdrop .body { position: relative; }
+.desk-settings-backdrop header { position: absolute; top: 0; right: 0; z-index: 1; }
+.desk-settings-backdrop header h2 { display: none; }

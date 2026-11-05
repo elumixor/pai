@@ -151,7 +151,7 @@
         </dl>
       </SettingsBlock>
     {:else if entry.id === "account"}
-      <div class="flex items-center gap-4">
+      <div class="flex items-center gap-4 pr-8">
         {#if auth.user}
           {#if auth.user.avatar}
             <img src={auth.user.avatar} alt="" class="size-14 shrink-0 rounded-full" />
