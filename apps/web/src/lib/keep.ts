@@ -37,7 +37,6 @@ export function fillKeepPills(root: ParentNode) {
 function loadElements(keepUrl: string) {
   loading ??= new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    script.type = "module";
     script.src = `${keepUrl.replace(/\/$/, "")}/elements.js`;
     script.onload = () => resolve();
     script.onerror = () => reject(new Error(`Keep's elements did not load from ${script.src}`));
