@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  const SECTION_IDS = ["account", "usage", "appearance", "shortcuts", "snapshot", "general", "connectors", "automations", "context", "spend"] as const;
+  const SECTION_IDS = ["account", "appearance", "shortcuts", "snapshot", "general", "connectors", "automations", "context", "spend"] as const;
   export type Section = (typeof SECTION_IDS)[number];
   export const isSection = (id: string): id is Section => (SECTION_IDS as readonly string[]).includes(id);
 
@@ -19,11 +19,9 @@
 <script lang="ts">
   import { PALETTES, PEOPLE_URL, type Palette, type ThemeKind, type ThemeMode } from "@desk/core";
   import { SettingsDialog, type SettingsSection } from "@desk/core/settings";
-  import { Archive, BookOpen, Clock, Eraser, Contact, Download, Gauge, Keyboard, LogOut, Monitor, Moon, Palette as PaletteIcon, Plug, Sun, SunMoon, Upload, User, Wallet } from "lucide-svelte";
+  import { Archive, BookOpen, Clock, Eraser, Contact, Download, Keyboard, LogOut, Monitor, Moon, Palette as PaletteIcon, Plug, Sun, SunMoon, Upload, User, Wallet } from "lucide-svelte";
   import { api } from "../api";
   import { auth } from "../auth.svelte";
-  import { desk } from "../desk.svelte";
-  import { prefs } from "../prefs.svelte";
   import { theme } from "../theme.svelte";
   import ConfirmButton from "../ui/ConfirmButton.svelte";
   import Connectors from "./Connectors.svelte";
@@ -33,14 +31,13 @@
   import Spend from "./Spend.svelte";
 
   /**
-   * The suite's settings dialog (`@desk/core/settings`, Keep's too): the account, which rings it shows, how this client looks, the
+   * The suite's settings dialog (`@desk/core/settings`, Keep's too): the account, how this client looks, the
    * keys, the snapshot, then the pages about the daemon itself: its connectors, routines, context and spend.
    */
   let { open = $bindable(false), active = $bindable<Section>("account"), onclose }: { open?: boolean; active?: Section; onclose?: () => void } = $props();
 
   const SECTIONS: SettingsSection<Section>[] = [
     { id: "account", label: "Account", icon: User, keywords: "sign out daemon host box clerk" },
-    { id: "usage", label: "Usage rings", icon: Gauge, keywords: "limits windows session weekly rings" },
     { id: "appearance", label: "Appearance", icon: PaletteIcon, keywords: "theme dark light mode palette" },
     { id: "shortcuts", label: "Keyboard", icon: Keyboard, keywords: "shortcuts keys keybinding" },
     { id: "snapshot", label: "Snapshot", icon: Archive, keywords: "export import backup restore memory" },
@@ -138,17 +135,6 @@
           </div>
         {/each}
       </div>
-    {:else if entry.id === "usage"}
-      <SettingsBlock title="Usage rings" about="Shown by the message box.">
-        {#each desk.usage?.windows ?? [] as w (w.name)}
-          <label class="flex h-8 items-center gap-2.5">
-            <input type="checkbox" class="size-4 accent-[var(--accent)]" checked={!prefs.hiddenRings.includes(w.name)} onchange={(e) => prefs.toggleRing(w.name, e.currentTarget.checked)} />
-            {w.name} <span class="text-ink-45">· {w.percent}%</span>
-          </label>
-        {:else}
-          <p class="m-0 text-[13px] text-ink-45">{desk.usage?.error ?? "No windows reported yet."}</p>
-        {/each}
-      </SettingsBlock>
     {:else if entry.id === "shortcuts"}
       <SettingsBlock title="Keyboard">
         <dl class="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[13px]">
