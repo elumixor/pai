@@ -95,9 +95,10 @@
   };
   const stopOpen = () => void (openAgentRow && stopAgent(openAgentRow.slug));
   const resumeOpen = () => void (openAgentRow && api.resumeAgent(openAgentRow.slug));
+  /** A closed agent is off the tree but can still be opened, and deleted. */
   const trashOpen = () => {
-    if (!openAgentRow) return;
-    void desk.trash([`agent:${openAgentRow.slug}`]);
+    if (route.name !== "chat" || !route.param) return;
+    void desk.trash([`agent:${route.param}`]);
     navigate("home");
   };
   async function kill() {
@@ -330,7 +331,7 @@
       {/if}
       <button class={BAR_BUTTON} aria-label="Kill" title="Kill: close it for good" onclick={() => (killing = true)}><OctagonX size={16} /></button>
     {/if}
-    {#if openAgentRow}
+    {#if route.name === "chat" && !trashedAgent}
       <button class={BAR_BUTTON} aria-label="Move to trash" title="Move to trash" onclick={trashOpen}><Trash2 size={16} /></button>
     {/if}
     {#if route.name === "home"}<GeneralActions />{/if}
