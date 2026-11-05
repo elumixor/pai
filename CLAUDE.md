@@ -28,8 +28,7 @@ tasks and docs live in Keep (`elumixor/keep`, `keep:page/<id>` URNs, an MCP); pa
 
 pai is the AI part of the desk suite: every repo under `~/dev/@desk/` (package `@desk/<name>`, never published — the npm
 scope is not ours), every app under `*.desk.atmagaming.com` — hub `desk.` (`@desk/desk`), keep `keep.`, people `people.` (people,
-and the one sign-in: `/sign-in?next=`), pai `pai.` (the old `pai.atmagaming.com` still served as `PAI_DOMAIN_ALIASES`
-for Paigram builds), dev `dev.`. Clerk's production app "Desk" sits on desk.atmagaming.com, so one session covers them
+and the one sign-in: `/sign-in?next=`), pai `pai.`, dev `dev.`. Clerk's production app "Desk" sits on desk.atmagaming.com, so one session covers them
 all; `@desk/core` (`github:elumixor/desk-core`) holds the browser side every app shares (Clerk with its components,
 the central sign-in, URNs).
 
