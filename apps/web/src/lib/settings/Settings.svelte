@@ -29,7 +29,7 @@
     { id: "appearance", label: "Appearance", icon: PaletteIcon, keywords: "theme themes dark light mode palette editor colors fonts" },
     { id: "connectors", label: "Connectors", icon: Plug, keywords: "modules capabilities telegram email gmail linkedin whatsapp browser signed in" },
     { id: "automations", label: "Routines", icon: Clock, keywords: "automations cron events triggers" },
-    { id: "context", label: "Context", icon: BookOpen, keywords: "instructions memories skills tools prompt" },
+    { id: "context", label: "Context", icon: BookOpen, keywords: "instructions memories skills tools prompt vim" },
     { id: "spend", label: "Spend", icon: Wallet, keywords: "cost money tokens usage price" },
   ];
   const MODES: { value: ThemeMode; label: string; icon: typeof Sun }[] = [

@@ -61,6 +61,34 @@ export interface ContextItem {
   readonly body?: string;
   /** For a tool server: each tool with what it does. */
   readonly tools?: readonly { readonly name: string; readonly description?: string }[];
+  /** What it is for and who gets it. */
+  readonly what?: string;
+  readonly goesTo?: string;
+  /** A built-in section, and whether the user has rewritten it. */
+  readonly id?: string;
+  readonly overridden?: boolean;
+  /** A skill: whether sessions get it. */
+  readonly on?: boolean;
+}
+
+export interface ToolProvider {
+  readonly name: string;
+  readonly source: "builtin" | "pai" | "connector" | "direct" | "claude.ai";
+  readonly what: string;
+  readonly origin: string;
+  readonly on: boolean;
+  readonly required: boolean;
+  readonly status: string;
+  readonly healthy: boolean;
+  readonly connector?: string;
+  readonly tools: readonly { readonly name: string; readonly full: string; readonly description?: string; readonly on: boolean }[];
+  readonly move?: { readonly url: string; readonly name: string; readonly auth: "bearer" | "oauth" };
+  readonly direct?: { readonly url: string; readonly auth: string; readonly replaces?: string };
+}
+
+export interface ToolProviders {
+  readonly claudeSync: boolean;
+  readonly providers: readonly ToolProvider[];
 }
 
 export interface Question {

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { CommandPalette, type PaletteItem } from "@desk/core/palette";
-  import { ArrowUpRight, House, Keyboard, Monitor, Moon, PanelLeft, Plus, RefreshCw, Settings as SettingsIcon, Sun } from "lucide-svelte";
+  import { ArrowUpRight, BookOpen, House, Keyboard, Monitor, Moon, PanelLeft, Plus, RefreshCw, Settings as SettingsIcon, Sparkles, Sun, Wrench } from "lucide-svelte";
   import { fade } from "svelte/transition";
   import { api } from "../api";
   import { desk, PAI } from "../desk.svelte";
@@ -21,6 +21,10 @@
   import Progress from "../ui/Progress.svelte";
   import { installTooltips } from "../ui/tooltip";
   import Keybindings from "./Keybindings.svelte";
+  import { contextPopup } from "../context/popups.svelte";
+  import InstructionsSheet from "../context/InstructionsSheet.svelte";
+  import SkillsSheet from "../context/SkillsSheet.svelte";
+  import ToolsSheet from "../context/ToolsSheet.svelte";
   import { openAgent } from "./open.svelte";
 
   /**
@@ -160,6 +164,9 @@
       { key: "sidebar", label: sidebar.open ? "Hide the sidebar" : "Show the sidebar", group: "Commands", icon: PanelLeft, hint: "⌘\\", run: () => sidebar.toggle() },
       { key: "refresh", label: "Refresh", group: "Commands", icon: RefreshCw, run: () => void desk.load() },
       { key: "settings", label: "Settings", group: "Commands", icon: SettingsIcon, hint: "⌘⇧,", run: () => openSettings() },
+      { key: "tools", label: "Tools", group: "Commands", icon: Wrench, keywords: "mcp servers connectors plugins claude.ai sync", run: () => (contextPopup.open = "tools") },
+      { key: "skills", label: "Skills", group: "Commands", icon: Sparkles, run: () => (contextPopup.open = "skills") },
+      { key: "instructions", label: "Instructions", group: "Commands", icon: BookOpen, keywords: "prompt memory persona system", run: () => (contextPopup.open = "instructions") },
       { key: "keybindings", label: "Keyboard shortcuts", group: "Commands", icon: Keyboard, hint: "⌘?", keywords: "keys keybindings hotkeys", run: () => (keybindingsOpen = true) },
       ...(["system", "light", "dark"] as const).map<PaletteItem>((mode) => ({ key: `mode:${mode}`, label: `Mode: ${mode}`, group: "Commands", icon: mode === "dark" ? Moon : mode === "light" ? Sun : Monitor, run: () => theme.choose({ mode }) })),
       ...theme.palettes.map<PaletteItem>((p) => ({ key: `theme:${p.id}`, label: `Theme: ${p.name}`, group: "Commands", icon: p.kind === "dark" ? Moon : Sun, hint: p.kind, quiet: true, run: () => theme.pick(p) })),
@@ -205,6 +212,9 @@
 
 <Settings bind:open={settingsOpen} bind:active={settingsSection} onclose={() => route.name === "settings" && navigate(behind)} />
 <Keybindings bind:open={keybindingsOpen} />
+{#if contextPopup.open === "tools"}<ToolsSheet onclose={() => (contextPopup.open = undefined)} />
+{:else if contextPopup.open === "skills"}<SkillsSheet onclose={() => (contextPopup.open = undefined)} />
+{:else if contextPopup.open === "instructions"}<InstructionsSheet onclose={() => (contextPopup.open = undefined)} />{/if}
 <CommandPalette {items} bind:open={paletteOpen} placeholder="Find a thread, an agent, or run a command…" />
 <Menus />
 <BodyPeek />
