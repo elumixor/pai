@@ -12,12 +12,13 @@
   import { openAgent } from "../shell/open.svelte";
   import { sidebar } from "../sidebar/state.svelte";
   import { ancestors, type TreeNode, threadTitle } from "../sidebar/tree";
-  import AgentSheet, { AGENT_TABS, type AgentTab } from "../context/AgentSheet.svelte";
+  import AgentPanel, { AGENT_TABS, type AgentTab } from "../context/AgentPanel.svelte";
   import ChatConfig from "../context/ChatConfig.svelte";
   import GeneralActions from "./GeneralActions.svelte";
   import { newChat } from "./new-chat.svelte";
   import NewChatOptions from "./NewChatOptions.svelte";
   import NewChatStatus from "./NewChatStatus.svelte";
+  import Drawer from "../ui/Drawer.svelte";
   import Sheet from "../ui/Sheet.svelte";
   import type { Effort, Need, SessionSummary, Upload } from "../types";
   import Icon from "../ui/Icon.svelte";
@@ -31,7 +32,7 @@
 
   /** What a session thinks at when nothing was asked for: Claude Code's own default. */
   const DEFAULT_EFFORT: Effort = "high";
-  const BAR_BUTTON = "grid size-7 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink";
+  const BAR_BUTTON = "grid size-7 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink aria-pressed:bg-ink-10 aria-pressed:text-ink";
   let chat = $state<ChatView>();
   /** The first message of a thread just started, shown in it until its transcript has it. */
   let seed = $state<{ id: string; text: string } | undefined>();
@@ -84,7 +85,18 @@
   const agentHere = $derived(route.name === "home" ? PAI : route.name === "chat" ? route.param : undefined);
   const trashedAgent = $derived(route.name === "chat" ? desk.trashedAgentOf(route.param ?? "") : undefined);
   const openAgentRow = $derived(route.name === "chat" && !trashedAgent ? desk.bySlug(route.param ?? "") : undefined);
-  let sheetTab = $state<AgentTab | undefined>();
+  const panelAgent = $derived(agentHere && !trashedAgent ? agentHere : undefined);
+  let panelOpen = $state(false);
+  let panelTab = $state<AgentTab>("instructions");
+  /** Who the panel shows: still the last agent while it slides out on the way to a place that has none. */
+  let panelSlug = $state<string>(PAI);
+  $effect(() => {
+    if (panelAgent) panelSlug = panelAgent;
+  });
+  function pressTab(tab: AgentTab) {
+    panelOpen = !panelOpen || panelTab !== tab;
+    panelTab = tab;
+  }
   let killing = $state(false);
   let killReason = $state("");
   let killSheet = $state<Sheet>();
@@ -316,12 +328,12 @@
     {#if configurable}
       <button class={BAR_BUTTON} aria-label="Chat config" title="Chat config" onclick={() => (configOpen = true)}><SlidersHorizontal size={16} /></button>
     {/if}
-    {#if agentHere && !trashedAgent}
-      <!-- On a phone one button opens the sheet, whose tabs are the rest. -->
+    {#if panelAgent}
+      <!-- On a phone one button opens the panel, whose tabs are the rest. -->
       {#each AGENT_TABS as item (item.id)}
-        <button class="{BAR_BUTTON} max-md:hidden" aria-label={item.label} title={item.label} onclick={() => (sheetTab = item.id)}><item.icon size={16} /></button>
+        <button class="{BAR_BUTTON} max-md:hidden" aria-label={item.label} aria-pressed={panelOpen && panelTab === item.id} title={item.label} onclick={() => pressTab(item.id)}><item.icon size={16} /></button>
       {/each}
-      <button class="{BAR_BUTTON} md:hidden" aria-label="What this agent runs on" title="What this agent runs on" onclick={() => (sheetTab = "instructions")}><SlidersHorizontal size={16} /></button>
+      <button class="{BAR_BUTTON} md:hidden" aria-label="What this agent runs on" aria-pressed={panelOpen} title="What this agent runs on" onclick={() => (panelOpen = !panelOpen)}><SlidersHorizontal size={16} /></button>
     {/if}
     {#if openAgentRow && openAgentRow.status !== "closed"}
       {#if openAgentRow.status === "paused"}
@@ -340,29 +352,31 @@
     {/if}
   </header>
   {#if configOpen}<ChatConfig session={openThread} onclose={() => (configOpen = false)} />{/if}
-  {#if sheetTab && agentHere}<AgentSheet slug={agentHere} name={agentHere === PAI ? "General" : (openAgentRow?.name ?? agentHere)} tab={sheetTab} onclose={() => (sheetTab = undefined)} />{/if}
-  {#if trashedAgent?.trashedAt}
-    <div class="shrink-0 py-2">
-      <TrashBanner since={trashedAgent.trashedAt} days={desk.trashDays} onrestore={() => void desk.restoreAgent(trashedAgent.slug)} onpurge={() => void desk.purgeAgent(trashedAgent.slug).then(() => navigate("home"))} />
-    </div>
-  {/if}
-  {#if trashedHere}
-    <div class="shrink-0 py-2">
-      <TrashBanner
-        since={trashedHere.deletedAt}
-        days={desk.trashDays}
-        onrestore={() => void desk.restore([trashedHere.sessionId])}
-        onpurge={() => void desk.purge([trashedHere.sessionId]).then(() => navigate("home"))}
-      />
-    </div>
-  {/if}
-  <section class="home-centre">
-    {#key chatKey}
-      <div class="centre-page" in:fly={{ y: 8, duration: 260 }}>
-        {#if spec}<ChatView bind:this={chat} {spec} slot={hand} {openAgent} />{/if}
+  <Drawer open={panelOpen && Boolean(panelAgent)} onclose={() => (panelOpen = false)}>
+    {#snippet panel()}<AgentPanel slug={panelSlug} bind:tab={panelTab} onclose={() => (panelOpen = false)} />{/snippet}
+    {#if trashedAgent?.trashedAt}
+      <div class="shrink-0 py-2">
+        <TrashBanner since={trashedAgent.trashedAt} days={desk.trashDays} onrestore={() => void desk.restoreAgent(trashedAgent.slug)} onpurge={() => void desk.purgeAgent(trashedAgent.slug).then(() => navigate("home"))} />
       </div>
-    {/key}
-  </section>
+    {/if}
+    {#if trashedHere}
+      <div class="shrink-0 py-2">
+        <TrashBanner
+          since={trashedHere.deletedAt}
+          days={desk.trashDays}
+          onrestore={() => void desk.restore([trashedHere.sessionId])}
+          onpurge={() => void desk.purge([trashedHere.sessionId]).then(() => navigate("home"))}
+        />
+      </div>
+    {/if}
+    <section class="home-centre">
+      {#key chatKey}
+        <div class="centre-page" in:fly={{ y: 8, duration: 260 }}>
+          {#if spec}<ChatView bind:this={chat} {spec} slot={hand} {openAgent} />{/if}
+        </div>
+      {/key}
+    </section>
+  </Drawer>
   {#if killing}
     <Sheet bind:this={killSheet} label="Kill {openAgentRow?.name}?" onclose={() => (killing = false)}>
       {#snippet head()}<h2 class="m-0 text-[15px] font-medium">Kill {openAgentRow?.name}?</h2>{/snippet}

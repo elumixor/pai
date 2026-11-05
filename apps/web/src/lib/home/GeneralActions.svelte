@@ -1,9 +1,10 @@
 <script lang="ts">
   import { Download, Trash2 } from "lucide-svelte";
   import { api } from "../api";
-  import AgentSheet from "../context/AgentSheet.svelte";
   import ConfirmButton from "../ui/ConfirmButton.svelte";
   import { PAI } from "../desk.svelte";
+  import { md } from "../markdown";
+  import type { AgentSheet } from "../types";
   import Sheet from "../ui/Sheet.svelte";
 
   /** General's own bar buttons: download all of it as one markdown file, and clear it for good behind a confirmation. */
@@ -18,7 +19,8 @@
   let resetError = $state("");
   let erasing = $state(false);
   /** What pai remembers, to choose over: empty, there is nothing to choose. */
-  let remembered = $state<string | undefined>();
+  let memory = $state<AgentSheet["memory"] | undefined>();
+  const remembered = $derived(memory && (memory[0]?.text ?? ""));
   let clearMemory = $state(false);
   let reviewing = $state(false);
 
@@ -51,9 +53,9 @@
     resetError = "";
     downloadError = "";
     clearMemory = false;
-    remembered = undefined;
+    memory = undefined;
     confirming = true;
-    void api.agentSheet(PAI).then((found) => (remembered = found.memory[0]?.text ?? ""));
+    void api.agentSheet(PAI).then((found) => (memory = found.memory));
   }
 
   /** Only the note a blank memory starts with: nothing worth asking about. */
@@ -84,4 +86,11 @@
     </div>
   </Sheet>
 {/if}
-{#if reviewing}<AgentSheet slug={PAI} name="General" tab="memory" onclose={() => (reviewing = false)} />{/if}
+{#if reviewing}
+  <Sheet label="What General remembers" onclose={() => (reviewing = false)}>
+    {#snippet head()}<h2 class="m-0 text-[14px] font-medium">What General remembers</h2>{/snippet}
+    <div class="space-y-6">
+      {#each memory ?? [] as item (item.name)}<div class="text-[13px]" {@attach md(item.text)}></div>{/each}
+    </div>
+  </Sheet>
+{/if}
