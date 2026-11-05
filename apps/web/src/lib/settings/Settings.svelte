@@ -11,7 +11,6 @@
   import { auth } from "../auth.svelte";
   import { theme } from "../theme.svelte";
   import ThemesSheet from "./themes/ThemesSheet.svelte";
-  import { BUTTON } from "./controls";
   import Connectors from "./Connectors.svelte";
   import Context from "./Context.svelte";
   import Routines from "./Routines.svelte";
@@ -48,7 +47,7 @@
       <div class="flex items-center gap-3 pr-8 max-md:pr-0">
         <SunMoon size={18} class="shrink-0 text-ink-45" />
         <span class="min-w-0 flex-1 truncate text-[14px]">Appearance</span>
-        <button type="button" class={BUTTON} aria-label="Themes" onclick={() => (themesOpen = true)}><PaletteIcon size={16} /><span class="max-sm:hidden">Themes</span></button>
+        <button type="button" class="inline-flex h-8 items-center gap-2 rounded-sm px-3 text-[13px] transition-colors hover:bg-ink-5 [&>svg]:text-ink-45" aria-label="Themes" onclick={() => (themesOpen = true)}><PaletteIcon size={16} /><span class="max-sm:hidden">Themes</span></button>
         <div class="flex gap-1" role="radiogroup" aria-label="Mode">
           {#each MODES as m (m.value)}
             {@const on = theme.choice.mode === m.value}
