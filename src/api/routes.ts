@@ -1,3 +1,4 @@
+import { contextTokens } from "../domain/transcript.ts";
 import type { ForgetTarget } from "../domain/transcript.ts";
 import { MAX_FILES, readable, serve as serveAttachment, type Upload } from "../domain/attachments.ts";
 import * as drafts from "../domain/drafts.ts";
@@ -273,8 +274,16 @@ export async function handle(req: Request): Promise<Response> {
       return json(await suggestChat(text));
     }
     if (path === "/context-usage") {
-      const usage = await sessions.find(url.searchParams.get("session") ?? "")?.contextUsage();
-      return json(usage ?? {});
+      const raw = url.searchParams.get("session") ?? "";
+      const usage = await sessions.find(raw)?.contextUsage();
+      if (usage) return json(usage);
+      // No process answers (idle, or a terminal holds it): the transcript says what its last response carried.
+      const id = sessions.resolveId(raw) ?? raw;
+      const totalTokens = await contextTokens(id);
+      if (totalTokens === undefined) return json({});
+      const row = db.query("SELECT origin FROM sessions WHERE session_id = ?").get(id) as { origin: string | null } | undefined;
+      const maxTokens = row?.origin === "terminal" ? 1_000_000 : config.compactWindow;
+      return json({ totalTokens, maxTokens, percentage: (totalTokens / maxTokens) * 100 });
     }
     if (path === "/dev-task" && req.method === "POST") {
       const { text, project, model } = await body<{ text: string; project: string; model?: string }>(req);

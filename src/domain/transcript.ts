@@ -34,6 +34,8 @@ export interface TranscriptMessage {
   readonly meta?: boolean;
   /** Which of the things he said this is, from 0: where a rewrite branches. */
   readonly turn?: number;
+  /** A compaction's summary: an event of the conversation, never something said. */
+  readonly compacted?: string;
 }
 
 /** Claude Code names a project directory after its cwd, every character but letters and digits flattened. */
@@ -239,6 +241,25 @@ export async function pruneTranscript(sessionId: string, targets: readonly Forge
   return [...chosen].map((e) => e.text);
 }
 
+const TAIL_BYTES = 512 * 1024;
+
+/** How much context a conversation with no process holds: what its last response was sent with. */
+export async function contextTokens(sessionId: string, cwd?: string): Promise<number | undefined> {
+  const path = transcriptPath(sessionId, cwd);
+  if (!path) return undefined;
+  const file = Bun.file(path);
+  const lines = (await file.slice(Math.max(0, file.size - TAIL_BYTES)).text()).split("\n");
+  for (const line of lines.reverse()) {
+    if (!line.includes('"usage"')) continue;
+    try {
+      const entry = JSON.parse(line) as { type?: string; isSidechain?: boolean; message?: { usage?: { input_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } } };
+      const u = entry.message?.usage;
+      if (entry.type === "assistant" && !entry.isSidechain && u) return (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
+    } catch {}
+  }
+  return undefined;
+}
+
 const FULL_CHARS = 200_000;
 
 /** One call in full, as the transcript holds it: its input and everything it returned (capped at 200k characters). */
@@ -389,7 +410,11 @@ const isSynthetic = (entry: Entry) => {
 
 function toMessage(entry: Entry): TranscriptMessage | undefined {
   // A compaction's summary is written as a user entry; nobody said it.
-  if (entry.isCompactSummary || entry.isVisibleInTranscriptOnly) return { role: "user", ts: entry.timestamp ?? "", text: "", meta: true };
+  if (entry.isCompactSummary || entry.isVisibleInTranscriptOnly) {
+    const content = entry.message?.content;
+    const summary = typeof content === "string" ? content : (content ?? []).map((b) => b.text ?? "").join("\n");
+    return { role: "user", ts: entry.timestamp ?? "", text: "", meta: true, ...(entry.isCompactSummary ? { compacted: summary } : {}) };
+  }
   const role = entry.type === "assistant" ? "assistant" : "user";
   const ts = entry.timestamp ?? new Date().toISOString();
   const content = entry.message?.content;

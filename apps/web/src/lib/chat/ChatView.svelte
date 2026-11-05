@@ -454,6 +454,13 @@
     return { kind: "message", key: key ?? `s${spokenCount}`, at, m };
   }
 
+  /** A compaction reads as something that happened; opening it shows the summary. */
+  function compactionRow(at: number, summary: string, key?: string): Row {
+    const row = spoken(spec.agent, summary, at, undefined, undefined, key);
+    row.m = { ...row.m, kind: "event", meta: { ...row.m.meta, event: "compacted", headline: "Context compacted" } } as LogMessage;
+    return row;
+  }
+
   /** A plain thread's transcript as rows: what he said, each turn's tool calls folded, the turn's last text as its reply. */
   function turnsOf(history: Transcript[]): Item[] {
     const out: Item[] = [];
@@ -481,6 +488,11 @@
     };
     for (const entry of history) {
       const at = new Date(entry.ts).getTime();
+      if (entry.compacted !== undefined) {
+        close();
+        out.push(compactionRow(at, entry.compacted, keyOf("c", at)));
+        continue;
+      }
       if (entry.role === "user") {
         if (entry.meta || (!entry.text.trim() && !entry.images?.length) || entry.text.startsWith("[Request interrupted")) continue;
         close();
@@ -689,7 +701,7 @@
   }
 
   /** The live session's own stream: the reply as it is written, the tool calls as they run, its questions. */
-  function onLive(kind: string, ts: number, payload: { text?: string; summary?: string; name?: string; id?: string; result?: string; questions?: Question[]; answers?: Record<string, string>; terminal?: boolean; echo?: boolean; said?: string; flush?: boolean }) {
+  function onLive(kind: string, ts: number, payload: { text?: string; summary?: string; name?: string; id?: string; result?: string; questions?: Question[]; answers?: Record<string, string>; terminal?: boolean; echo?: boolean; said?: string; flush?: boolean; status?: string }) {
     const stick = nearBottom();
     if (kind === "session.delta" || kind === "session.tool") working ??= { since: ts };
     switch (kind) {
@@ -706,6 +718,10 @@
         if (!payload.terminal) return;
         if (liveGroup) liveGroup.thinking = [liveGroup.thinking, payload.text].filter(Boolean).join("\n\n");
         else liveText = payload.text ?? "";
+        break;
+      case "session.status":
+        if (payload.status !== "compacting" || !spec.session) return;
+        items.push(compactionRow(ts, "Compacted to fit the context window."));
         break;
       case "session.delta":
         liveText = payload.text ?? "";

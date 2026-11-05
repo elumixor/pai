@@ -476,6 +476,7 @@ export interface TranscriptTool {
 
 /** One message of a thread as it is on disk. */
 export interface Transcript {
+  readonly compacted?: string;
   readonly turn?: number;
   readonly role: "user" | "assistant";
   readonly ts: string;

@@ -144,6 +144,7 @@ export class TerminalThread implements HeldThread {
     }
     if (e.type === "system" && e.subtype === "turn_duration") return this.endTurn(emit, e.durationMs);
     const content = e.message?.content;
+    if (e.isCompactSummary) emit("session.status", { status: "compacting" });
     // A compaction's summary (idle compaction too) is written as a user entry, but no turn follows it.
     const viaChannel = e.origin?.kind === "channel";
     if (e.type === "user" && (!e.isMeta || viaChannel) && !e.toolUseResult && !e.isCompactSummary && !e.isVisibleInTranscriptOnly) {

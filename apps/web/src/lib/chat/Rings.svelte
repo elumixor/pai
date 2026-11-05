@@ -50,7 +50,7 @@
     const why = `${data.error ?? "no usage reported yet"}${data.needsLogin ? " — reconnect Claude at /claude/login" : ""}`;
     const ahead = week ? aheadOfPace(week) : false;
     return [
-      ...(context === undefined ? [] : [{ key: "context", percent: context, level: level(context), time: "", title: `Context: ${context}% full` }]),
+      ...(session ? [{ key: "context", percent: context, level: "context", time: "", title: context === undefined ? "Context: not known yet" : `Context: ${context}% full` }] : []),
       { key: "session", percent: s?.percent, level: s ? level(s.percent) : "none", time: s && s.percent > SESSION_TIME_AT ? left(s.resetsAt) : "", title: s ? `${s.name}: ${s.percent}% used · resets in ${left(s.resetsAt)}` : `Session: unavailable — ${why}` },
       { key: "week", percent: week?.percent, level: week ? (ahead && week.percent < 90 ? "warm" : level(week.percent, 101)) : "none", time: ahead ? left(week?.resetsAt) : "", title: week ? `${week.name}: ${week.percent}% used · resets in ${left(week.resetsAt)}` : `Weekly: unavailable — ${why}` },
     ];
