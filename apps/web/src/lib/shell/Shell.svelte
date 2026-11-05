@@ -34,10 +34,10 @@
   });
   const view = $derived(route.name === "settings" ? behind : route);
   let settingsOpen = $state(false);
-  let settingsSection = $state<Section>("appearance");
+  let settingsSection = $state<Section>("account");
   $effect(() => {
     if (route.name !== "settings") return;
-    settingsSection = route.param && isSection(route.param) ? route.param : "appearance";
+    settingsSection = route.param && isSection(route.param) ? route.param : "account";
     settingsOpen = true;
   });
   let paletteOpen = $state(false);
