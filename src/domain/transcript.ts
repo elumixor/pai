@@ -180,6 +180,58 @@ export async function forkTranscript(sessionId: string, turn: number, newId: str
   return true;
 }
 
+export type ForgetTarget = { readonly at: number; readonly text?: undefined } | { readonly text: string; readonly near: number; readonly at?: undefined };
+
+interface LinkedEntry extends Entry {
+  uuid?: string;
+  parentUuid?: string | null;
+}
+
+/**
+ * Takes messages out of a conversation, so a resume no longer has them: an entry goes and what hung off it is linked
+ * to its parent, which is the chain Claude Code follows. Of an assistant entry only the text goes; a tool call stays
+ * with its result. Answers the texts removed.
+ */
+export async function pruneTranscript(sessionId: string, targets: readonly ForgetTarget[], cwd?: string): Promise<string[]> {
+  const path = transcriptPath(sessionId, cwd);
+  if (!path) return [];
+  const lines = (await Bun.file(path).text()).split("\n").filter((l) => l.trim());
+  const entries = lines.map((line): { line: string; entry?: LinkedEntry; text: string; at: number } => {
+    try {
+      const entry = JSON.parse(line) as LinkedEntry;
+      const said = (entry.type === "user" || entry.type === "assistant") && !entry.isSidechain ? toMessage(entry) : undefined;
+      return { line, entry, text: said?.meta ? "" : (said?.text ?? ""), at: entry.timestamp ? Date.parse(entry.timestamp) : 0 };
+    } catch {
+      return { line, text: "", at: 0 };
+    }
+  });
+  const chosen = new Set<(typeof entries)[number]>();
+  for (const target of targets) {
+    const found = entries.filter((e) => e.text.trim() && !chosen.has(e) && (target.text === undefined ? e.at === target.at : e.text === target.text || (e.entry?.type === "user" && e.text.includes(target.text))));
+    const near = target.text === undefined ? target.at : target.near;
+    const best = found.sort((a, b) => Math.abs(a.at - near) - Math.abs(b.at - near))[0];
+    if (best) chosen.add(best);
+  }
+  if (!chosen.size) return [];
+  const parents = new Map<string, string | null | undefined>();
+  const kept: typeof entries = [];
+  for (const e of entries) {
+    const blocks = e.entry?.message?.content;
+    const rest = chosen.has(e) && e.entry?.type === "assistant" && Array.isArray(blocks) ? blocks.filter((b) => b.type !== "text" && b.type !== "thinking") : [];
+    if (!chosen.has(e)) kept.push(e);
+    else if (rest.length) kept.push({ ...e, entry: { ...e.entry, message: { ...e.entry!.message, content: rest } }, line: "" });
+    else if (e.entry?.uuid) parents.set(e.entry.uuid, e.entry.parentUuid);
+  }
+  const rootOf = (id: string | null | undefined) => {
+    let up = id;
+    while (up && parents.has(up)) up = parents.get(up);
+    return up ?? null;
+  };
+  const out = kept.map((e) => (e.entry?.parentUuid && parents.has(e.entry.parentUuid) ? JSON.stringify({ ...e.entry, parentUuid: rootOf(e.entry.parentUuid) }) : e.line || JSON.stringify(e.entry)));
+  await Bun.write(path, `${out.join("\n")}\n`);
+  return [...chosen].map((e) => e.text);
+}
+
 const FULL_CHARS = 200_000;
 
 /** One call in full, as the transcript holds it: its input and everything it returned (capped at 200k characters). */

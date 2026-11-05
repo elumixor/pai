@@ -1,3 +1,4 @@
+import type { ForgetTarget } from "../domain/transcript.ts";
 import { MAX_FILES, readable, serve as serveAttachment, type Upload } from "../domain/attachments.ts";
 import * as drafts from "../domain/drafts.ts";
 import { mapResponse } from "../domain/maps.ts";
@@ -335,12 +336,25 @@ export async function handle(req: Request): Promise<Response> {
       return json({ ok: true, stopped: true });
     }
 
-    // A thread's words live in Claude Code's transcript, which a running process and a resume depend on: they are hidden, not cut out.
+    // A thread's row is drawn from the transcript: what was deleted is cut from it and stays listed, so a copy synced back cannot show it again.
     if (path === "/hidden") return json((db.query("SELECT at FROM hidden_turns WHERE session_id = ?").all(url.searchParams.get("session") ?? "") as { at: number }[]).map((r) => r.at));
     if (path === "/messages/delete" && req.method === "POST") {
       const { ids = [], session, ats = [] } = await body<{ ids?: number[]; session?: string; ats?: number[] }>(req);
+      const blocked = session && sessions.cannotForget(session);
+      if (blocked) return json({ error: blocked }, 409);
+      // A log row was also said in its agent's session; that session has to lose it too.
+      const bySession = new Map<string, ForgetTarget[]>();
+      for (const id of ids) {
+        const m = messages.get(id);
+        const owner = m && agents.get(m.from === "user" ? m.to : m.from)?.sessionId;
+        if (m && owner) bySession.set(owner, [...(bySession.get(owner) ?? []), { text: m.body, near: m.createdAt }]);
+      }
       messages.remove(ids);
-      if (session) for (const at of ats) db.prepare("INSERT OR IGNORE INTO hidden_turns (session_id, at) VALUES (?, ?)").run(session, at);
+      for (const [owner, targets] of bySession) await sessions.forget(owner, targets);
+      if (session) {
+        for (const at of ats) db.prepare("INSERT OR IGNORE INTO hidden_turns (session_id, at) VALUES (?, ?)").run(session, at);
+        await sessions.forget(session, ats.map((at) => ({ at })));
+      }
       return json({ ok: true });
     }
     if (path === "/forks") return json(sessions.forksOf(url.searchParams.get("id") ?? ""));

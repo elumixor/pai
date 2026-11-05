@@ -108,6 +108,8 @@ export class TerminalThread implements HeldThread {
    * resumed here and answers itself.
    */
   send(text: string, opts: { images?: Image[] } = {}) {
+    // Messages were deleted from it: the terminal's process still remembers them, so the conversation goes on here.
+    if (db.query("SELECT 1 FROM hidden_turns WHERE session_id = ? LIMIT 1").get(this.id)) return this.#continue(text, opts);
     void dev.deliver(this.id, text, opts.images).then((delivered) => delivered || this.#continue(text, opts));
   }
 

@@ -1,5 +1,5 @@
 import { rmSync } from "node:fs";
-import { ensureTranscriptAt, forkTranscript, transcriptPath } from "./transcript.ts";
+import { ensureTranscriptAt, forkTranscript, type ForgetTarget, pruneTranscript, transcriptPath } from "./transcript.ts";
 import { Session, UNTITLED, asKind, closeWarm, prewarm, rewarm, type AgentSetup, type Effort, type SessionKind, type ThreadOrigin } from "./session.ts";
 import { db, kv, now } from "../core/db.ts";
 import { existsSync, watch } from "node:fs";
@@ -322,6 +322,24 @@ export function forksOf(id: string): { turn: number; ids: string[] }[] {
   for (const c of children) own.set(c.turn, [...(own.get(c.turn) ?? [full]), c.session_id]);
   const up = forkRow(full);
   return [...(up ? forksOf(up.parent_id).filter((f) => f.turn <= up.turn) : []), ...[...own].map(([turn, ids]) => ({ turn, ids }))];
+}
+
+/** Why these messages cannot be taken out of a conversation now; a terminal mid-turn is writing to the same file. */
+export const cannotForget = (id: string) => (terminalStates.get(resolveId(id) ?? id) === "busy" && !find(id) ? "This conversation is mid-turn in a terminal: delete once it is done." : undefined);
+
+/**
+ * The model no longer has these messages: the turn is stopped, the process ended so its memory of them goes, they
+ * leave the transcript and recall. The next message resumes from what remains.
+ */
+export async function forget(id: string, targets: readonly ForgetTarget[]) {
+  const full = resolveId(id) ?? id;
+  const s = find(full);
+  if (s?.state === "busy") await s.interrupt().catch(() => false);
+  if (s && s.state !== "dead") s.kill();
+  await Bun.sleep(s ? 500 : 0);
+  const row = db.query("SELECT cwd, project FROM sessions WHERE session_id = ?").get(full) as { cwd: string; project: string | null } | undefined;
+  const gone = await pruneTranscript(full, targets, row ? workingDirectory(row.cwd, row.project) : undefined);
+  for (const text of gone) db.prepare("DELETE FROM archive WHERE source = 'transcript' AND ref = ? AND body = ?").run(full, text);
 }
 
 /** What is in the trash, newest first. */
