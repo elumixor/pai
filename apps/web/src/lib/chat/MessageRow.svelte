@@ -18,8 +18,8 @@
   /** One row of the log, drawn by its kind: his bubble, a reply, a card for work handed down or up, an ask, an event. */
   let { m, ctx, key, attach = () => undefined }: { m: LogMessage; ctx: RowContext; key: string; attach?: (node: HTMLElement) => (() => void) | undefined } = $props();
 
-  /** A message of his longer than this folds to three lines with "Show more". */
-  const FOLD_CHARS = 240;
+  /** A message of his longer than this folds to seven lines with "Show more". */
+  const FOLD_CHARS = 560;
   const quoted = $derived(parseReply(m.body));
   const bodyText = $derived(quoted?.text ?? m.body);
   const shape = $derived.by(() => {
@@ -50,7 +50,7 @@
   const open = $derived(ctx.isOpen(key));
 
   // ---- his bubble ----
-  const long = $derived(bodyText.length > FOLD_CHARS || bodyText.split("\n").length > 3);
+  const long = $derived(bodyText.length > FOLD_CHARS || bodyText.split("\n").length > 7);
   let unfolded = $state(false);
   let bubble = $state<HTMLDivElement>();
   const from = $derived(m.from === "user" ? undefined : ctx.nameOf(m.from));
@@ -61,7 +61,7 @@
     node.style.maxHeight = `${node.scrollHeight}px`;
     void node.offsetHeight;
     unfolded = !unfolded;
-    node.style.maxHeight = unfolded ? `${node.scrollHeight}px` : "calc(var(--body-lh) * 3)";
+    node.style.maxHeight = unfolded ? `${node.scrollHeight}px` : "calc(var(--body-lh) * 7)";
     const settle = (event: TransitionEvent) => {
       if (event.propertyName !== "max-height") return;
       node.style.maxHeight = "";

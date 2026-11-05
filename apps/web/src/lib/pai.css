@@ -438,7 +438,7 @@ time, .pill-line .when { color: inherit; font: 400 var(--meta)/var(--meta-lh) va
 .row.reply .row-foot { width: 100%; justify-content: flex-end; }
 .row.reply.live .bubble::after { content: "▍"; color: var(--act); animation: pulse 1s ease-in-out infinite; }
 
-/* mine: the tinted bubble on the right, folded past three lines */
+/* mine: the tinted bubble on the right, folded past seven lines */
 /* his message: the text in the tinted bubble, a picture in one of its own above it — the tint
    frames words, never a picture, so the image block has no fill, no border and no padding. */
 .row.mine { align-self: flex-end; width: auto; max-width: 500px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; color: var(--ink-70); }
@@ -493,7 +493,7 @@ time, .pill-line .when { color: inherit; font: 400 var(--meta)/var(--meta-lh) va
 .row.mine .row-from { display: flex; align-items: center; gap: 6px; margin-bottom: -4px; font: 700 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-45); }
 @property --fold-fade { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
 .row.mine .bubble { --fold-fade: 0%; overflow: hidden; -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - var(--fold-fade)), transparent 100%); mask-image: linear-gradient(180deg, #000 calc(100% - var(--fold-fade)), transparent 100%); transition: max-height var(--dur-slow) var(--ease), --fold-fade var(--dur-slow) var(--ease); }
-.row.mine.folded .bubble { max-height: calc(var(--body-lh) * 3); --fold-fade: 50%; }
+.row.mine.folded .bubble { max-height: calc(var(--body-lh) * 7); --fold-fade: 25%; }
 .row.mine .row-foot { justify-content: space-between; }
 .row.mine .more { padding: 0; border: 0; background: none; color: var(--ink-20); font: 700 var(--meta)/var(--meta-lh) var(--font-ui); cursor: pointer; }
 .row.mine .more:hover { color: var(--ink-45); }
