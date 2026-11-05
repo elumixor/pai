@@ -92,6 +92,8 @@ export function startTelegram(cfg: BotConfig) {
     if (e.kind !== "main.reset") return;
     void (async () => {
       for (const topic of e.payload.topics as number[]) await bot.api.deleteForumTopic(chatId, topic).catch((err: Error) => log.warn(`topic ${topic}: ${err.message}`));
+      // The bot remembers the topic apart from pai: left, it would adopt the one just deleted.
+      kv.set(MAIN_THREAD, "");
       if (tg.topics) main.setThread((await tg.ensureMainTopic()) ?? null);
     })();
   });
