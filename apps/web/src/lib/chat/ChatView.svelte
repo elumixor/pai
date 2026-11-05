@@ -29,6 +29,8 @@
     readonly disabled?: string;
     /** Shown where the conversation will be while it is empty. */
     readonly blank?: Snippet;
+    /** Shown right above the message box. */
+    readonly above?: Snippet;
     readonly ontext?: (text: string, attached: boolean) => void;
     /** Nothing typed here is kept as a draft. */
     readonly ephemeral?: boolean;
@@ -1022,6 +1024,7 @@
         {#if !atBottom}<button class="to-bottom" title="to the latest" aria-label="To the latest" onclick={() => log?.scrollTo({ top: log.scrollHeight, behavior: "smooth" })}><Icon name="chevron" size={13} /></button>{/if}
         <div class="chat-slot">{@render slot?.()}</div>
       </div>
+      {@render spec.above?.()}
       <Compose bind:this={box} placeholder={spec.placeholder} draftKey={spec.ephemeral ? undefined : spec.key} ontext={spec.ontext} session={() => liveSession} prefs={spec.prefs} setPrefs={spec.setPrefs} {extra} disabled={spec.disabled} {submit} />
     </div>
   </div>

@@ -47,6 +47,14 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 /** A read; `quiet` keeps a poll made on a timer off the progress bar. */
+/** How sure Jev is of a blank chat's picks, 0 to 1. */
+export interface ChatConfidence {
+  readonly kind: Record<string, number>;
+  readonly project?: number;
+  readonly model: number;
+  readonly effort: number;
+}
+
 export const get = <T>(path: string, quiet = false) => (quiet ? request<T>("GET", path) : track(request<T>("GET", path)));
 
 /** The answer to a write: what came back, or the daemon's reason for refusing it. A write never throws at the caller. */
@@ -120,7 +128,7 @@ export const api = {
   /** A new plain thread, on its own or under the thread it is started from; its first message goes with it. */
   startThread: (text: string, images: readonly Upload[] = [], parent?: string, prefs: { model?: string; effort?: Effort } = {}) => send<SessionSummary>("/task", { title: "", text, images, parent, origin: "general", ...prefs }),
   startDevTask: (text: string, project: string, model?: string) => send<{ sessionId: string }>("/dev-task", { text, project, model }),
-  suggestChat: (text: string) => send<{ kind: "detached" | "dev" | "goal"; project?: string; model: string; effort: Effort }>("/new/suggest", { text }),
+  suggestChat: (text: string) => send<{ kind: "detached" | "dev" | "goal"; project?: string; model: string; effort: Effort; confidence: ChatConfidence }>("/new/suggest", { text }),
   projects: () => get<{ slug: string }[]>("/projects", true),
   contextUsage: (session: string) => get<{ percentage?: number; totalTokens?: number; maxTokens?: number }>(`/context-usage?session=${q(session)}`, true),
   sendThread: (id: string, text: string, images: readonly Upload[] = [], adopt?: { cwd?: string; title?: string }) => send("/send", { id, text, images, ...adopt }),

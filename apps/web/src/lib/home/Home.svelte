@@ -14,6 +14,7 @@
   import GeneralActions from "./GeneralActions.svelte";
   import { newChat } from "./new-chat.svelte";
   import NewChatOptions from "./NewChatOptions.svelte";
+  import NewChatStatus from "./NewChatStatus.svelte";
   import Sheet from "../ui/Sheet.svelte";
   import type { Effort, Need, SessionSummary, Upload } from "../types";
   import Icon from "../ui/Icon.svelte";
@@ -151,6 +152,7 @@
           placeholder: "Start a new thread…",
           divert: () => startNew,
           blank: options,
+          above: status,
           ephemeral: true,
           ontext: (text, attached) => newChat.typed(text, attached),
           prefs: () => ({ model: newChat.model, effort: newChat.effort }),
@@ -211,6 +213,7 @@
 </script>
 
 {#snippet options()}<NewChatOptions />{/snippet}
+{#snippet status()}<NewChatStatus />{/snippet}
 
 <svelte:window onkeydown={closeKey} />
 

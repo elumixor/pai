@@ -32,6 +32,8 @@ export interface Suggestion {
   readonly project?: string;
   readonly model: string;
   readonly effort: string;
+  /** How sure Jev is, 0 to 1: of every kind, and of each other pick. */
+  readonly confidence: { readonly kind: Record<string, number>; readonly project?: number; readonly model: number; readonly effort: number };
 }
 
 export async function suggest(text: string): Promise<Suggestion> {
@@ -42,5 +44,16 @@ export async function suggest(text: string): Promise<Suggestion> {
     : undefined;
   const a = await decide.ask({ message: text.replace(/\s+/g, " ").slice(0, 2000) }, { kind: KIND, model: MODEL, effort: EFFORT, ...(project ? { project } : {}) });
   const chosen = a.project && a.project.choice !== "none" && decide.probability(a.project, a.project.choice) >= PROJECT_AT ? keys.get(a.project.choice) : undefined;
-  return { kind: a.kind.choice, project: chosen, model: a.model.choice, effort: a.effort.choice };
+  return {
+    kind: a.kind.choice,
+    project: chosen,
+    model: a.model.choice,
+    effort: a.effort.choice,
+    confidence: {
+      kind: a.kind.probabilities,
+      project: chosen ? decide.probability(a.project!, a.project!.choice) : undefined,
+      model: decide.probability(a.model, a.model.choice),
+      effort: decide.probability(a.effort, a.effort.choice),
+    },
+  };
 }

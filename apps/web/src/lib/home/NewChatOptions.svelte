@@ -17,9 +17,10 @@
   <div class="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Kind of chat">
     {#each OPTIONS as o (o.kind)}
       {@const on = newChat.kind === o.kind}
-      <button type="button" role="radio" aria-checked={on} class="flex flex-col gap-1 rounded-md border p-3 text-left transition-colors {on ? 'border-accent bg-ink-5' : 'border-line hover:bg-ink-5'}" onclick={() => newChat.choose({ kind: o.kind })}>
+      {@const sure = newChat.confidence?.kind[o.kind]}
+      <button type="button" role="radio" aria-checked={on} class="flex flex-col gap-1 rounded-md border p-3 text-left transition-colors {on ? 'border-accent bg-ink-5 shadow-sm' : 'border-line hover:bg-ink-5'}" onclick={() => newChat.choose({ kind: o.kind })}>
         <o.icon size={16} class={on ? "text-accent" : "text-ink-45"} />
-        <span class="text-[13px] font-medium">{o.label}</span>
+        <span class="flex items-baseline justify-between gap-2 text-[13px] font-medium">{o.label}{#if sure !== undefined}<span class="text-[12px] font-normal {on ? 'text-accent' : 'text-ink-30'}">{Math.round(sure * 100)}%</span>{/if}</span>
         <span class="text-[12px] text-ink-45">{o.about}</span>
       </button>
     {/each}
