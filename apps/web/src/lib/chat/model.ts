@@ -89,6 +89,8 @@ export const copyOf = (body: string) => {
   const { text, pastes } = splitPastes(parseReply(body)?.text ?? body);
   return [text, ...pastes].filter(Boolean).join("\n\n");
 };
+/** Rewrites once carried a note and a quote in their text; a message reads as what he wrote. */
+export const withoutRewriteNote = (body: string) => body.replace(/^(?:↪ .+\n)?\(This rewrites the quoted message: disregard it and anything that followed from it\.\)\n/, "");
 /** What a rewrite said, shown in its new thread until the transcript has it. */
 export const forkSeeds = new Map<string, string>();
 /** Versions of a thread share one mounted chat: which thread each was first opened from. */

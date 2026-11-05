@@ -56,7 +56,7 @@
   import FindBar, { type FindTarget } from "./FindBar.svelte";
   import MessageRow from "./MessageRow.svelte";
   import { navigate } from "../router.svelte";
-  import { copyOf, forkMounts, forkSeeds, splitPastes, describeTools, eventIcon, eventType, excerptOf, type Item, type LiveQuestion, type ReplyQuote, type Row, textOf, type ToolGroup, typeLabel, withReply } from "./model";
+  import { withoutRewriteNote, copyOf, forkMounts, forkSeeds, splitPastes, describeTools, eventIcon, eventType, excerptOf, type Item, type LiveQuestion, type ReplyQuote, type Row, textOf, type ToolGroup, typeLabel, withReply } from "./model";
   import Pictures from "./Pictures.svelte";
   import QuestionRow from "./QuestionRow.svelte";
   import QuoteRef from "./QuoteRef.svelte";
@@ -134,7 +134,7 @@
   const nameOf = (party: string) => (party === "user" ? "you" : party === PAI ? "Orchestrator" : (desk.bySlug(party)?.name ?? party.replace(/^(watcher|routine):/, "")));
   const said = (item: Item): item is Row => item.kind === "message" && SAID.includes(item.m.kind) && !isMine(item.m) && item.m.from !== "user" && !item.m.meta.place && Boolean(item.m.body.trim());
   const isEvent = (item: Item): item is Row => item.kind === "message" && item.m.kind === "event" && !item.m.meta.draft;
-  const messageItem = (m: LogMessage): Row => ({ kind: "message", key: `m${m.id}`, at: m.createdAt, m });
+  const messageItem = (m: LogMessage): Row => ({ kind: "message", key: `m${m.id}`, at: m.createdAt, m: { ...m, body: withoutRewriteNote(m.body) } });
 
   // ---- what is drawn: days, the "new" line, runs of events folded by type ------------------------------------
 
@@ -369,7 +369,14 @@
       return openVersion(result.data.sessionId);
     }
     box?.setPin(null);
-    const body = withReply(quote, rewrote ? `(This rewrites the quoted message: disregard it and anything that followed from it.)\n${text}` : text);
+    // A log has no versions: the old message and what followed go, from the chat and from the model's context.
+    if (rewrote) {
+      const gone = items.filter((i): i is Row => i.kind === "message" && i.at >= rewriteAt && i.m.id > 0).map((i) => i.m.id);
+      const result = await api.deleteMessages({ ids: gone });
+      if (result.error) return void box?.setNote(result.error);
+      items = items.filter((i) => i.at < rewriteAt);
+    }
+    const body = withReply(rewrote ? undefined : quote, text);
     const row = { id: ++pendingCount, text, body, quote, images: images.filter((i) => i.media_type.startsWith("image/")).map((i) => `data:${i.media_type};base64,${i.data}`), state: "sending" as const };
     pending = [...pending, row];
     void scrollSoon(true);
@@ -443,7 +450,7 @@
   /** A line of a plain thread as a row of the log, so it is drawn as the log's are. */
   function spoken(from: string, body: string, at: number, images?: readonly string[], turn?: number, key?: string): Row {
     spokenCount += 1;
-    const m = { id: -spokenCount, from, to: from === "user" ? spec.agent : "user", kind: "chat", body, taskId: null, meta: { ...(images?.length ? { images } : {}), ...(turn !== undefined ? { turn } : {}) }, createdAt: at } as unknown as LogMessage;
+    const m = { id: -spokenCount, from, to: from === "user" ? spec.agent : "user", kind: "chat", body: withoutRewriteNote(body), taskId: null, meta: { ...(images?.length ? { images } : {}), ...(turn !== undefined ? { turn } : {}) }, createdAt: at } as unknown as LogMessage;
     return { kind: "message", key: key ?? `s${spokenCount}`, at, m };
   }
 
