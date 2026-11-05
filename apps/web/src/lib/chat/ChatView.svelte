@@ -604,6 +604,7 @@
     const rows: Item[] = [];
     for (const m of page) {
       seen.add(m.id);
+      if (m.kind === "request" && m.meta.askId !== undefined && m.from === spec.agent) continue;
       if (m.kind === "answer" && m.meta.askId !== undefined) answers.set(m.meta.askId, m.body);
       rows.push(messageItem(m));
       wantHeadline(m);

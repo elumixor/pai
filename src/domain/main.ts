@@ -3,8 +3,6 @@ import { kv } from "../core/db.ts";
 import { logger } from "../core/log.ts";
 import { stamp, zoned } from "../core/time.ts";
 import { config } from "../core/config.ts";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import * as agents from "./agents.ts";
 import { attach, type Upload } from "./attachments.ts";
 import type { RichPlace } from "../protocol/rich.ts";

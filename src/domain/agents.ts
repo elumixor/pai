@@ -763,6 +763,13 @@ function tellOwner(a: Agent, text: string) {
   reportUp(reportChain(a), `[${a.name}] ${text}`, (p) => sessionOf(p)?.inject(`[${a.name}] ${text}`));
 }
 
+/** Something its supervisor should know and need not act on: no turn is spent on it. */
+function noteOwner(a: Agent, text: string) {
+  const parent = a.parent ?? PAI;
+  if (parent === PAI) notePai(`[${a.name}] ${text}`);
+  else noteTo(parent, `[${a.name}] ${text}`);
+}
+
 /** An agent marks itself waiting on the user (a blocking ask); its next turn end is not a report. */
 export function park(slug: string) {
   setStatus(slug, "waiting");
@@ -965,7 +972,7 @@ export async function stop(slug: string, reason = ""): Promise<string[]> {
   if (active) {
     void (a.keepPage && agentPage.followStatus(a.keepPage, "waiting", a.sessionId));
     messages.event(slug, "stopped", `${a.name} stopped by the user${reason ? `: ${reason}` : ""}`, { to: a.parent ?? PAI });
-    tellOwner(a, `The user stopped ${a.name}${reason ? `: ${reason}` : ""}. It waits on them; do not restart it.`);
+    noteOwner(a, `The user stopped ${a.name}${reason ? `: ${reason}` : ""}. It waits on them; do not restart it.`);
   }
   drain();
   return stopped;
@@ -993,10 +1000,13 @@ export function resume(slug: string, opts: { saying?: boolean } = {}) {
   const note = `[the user stopped you earlier${a.pauseReason ? `: ${a.pauseReason}` : ""}, and your turn was cut off there.`;
   if (opts.saying) noteTo(slug, `${note} They are writing to you now.]`);
   else wake(slug, `${note} They resumed you without further instructions: carry on from where you were.]`);
-  for (const h of held) if (h.slug === slug && h.at === UNTIL_RESUMED) h.at = 0;
+  const waited = held.filter((h) => h.slug === slug && h.at === UNTIL_RESUMED);
+  const rest = held.filter((h) => !waited.includes(h));
+  held.length = 0;
+  held.push(...rest);
   saveHeld();
-  drainHeld();
-  tellOwner(a, `The user resumed ${a.name}.`);
+  for (const h of waited) wake(h.slug, h.text, h.requestId, h.taskId);
+  noteOwner(a, `The user resumed ${a.name}.`);
   return get(slug)!;
 }
 
@@ -1052,7 +1062,7 @@ export function kill(slug: string, reason = ""): Agent {
   const a = get(slug);
   if (!a) throw new AgentError(`no agent ${slug}`);
   const closed = close(slug, reason, { by: "the user", killBusy: true });
-  tellOwner(a, `The user killed ${a.name}${reason ? `: ${reason}` : ""}. Do not restart it unless they ask.`);
+  noteOwner(a, `The user killed ${a.name}${reason ? `: ${reason}` : ""}. Do not restart it unless they ask.`);
   return closed;
 }
 
