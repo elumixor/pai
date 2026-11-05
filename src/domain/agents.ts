@@ -84,6 +84,7 @@ export interface Agent {
 }
 
 export const PAI = "pai";
+const GENERAL = "General";
 /** pai, a standing agent, a sub-agent: deeper work is a to-do inside a sub-agent, not another layer. */
 export const MAX_DEPTH = 3;
 /** An agent idle this long starts fresh from its folder instead of resuming a long transcript. */
@@ -230,10 +231,12 @@ export interface CreateInput {
 /** The orchestrator's row, made on first start. Its session lives in main.ts. */
 export function ensurePai(): Agent {
   const existing = get(PAI);
-  if (existing) return existing;
+  if (existing?.name === GENERAL) return existing;
+  // What it is called in every crumb and row is General, whoever made the row.
+  if (existing) return set(PAI, { name: GENERAL })!;
   db.prepare(
-    "INSERT INTO agents (slug, name, kind, parent, brief, folder, status, created_at, last_active, budget) VALUES (?, 'pai', 'orchestrator', NULL, ?, ?, 'idle', ?, ?, '{}')",
-  ).run(PAI, "The orchestrator: the one voice the user hears.", config.workspace, now(), now());
+    "INSERT INTO agents (slug, name, kind, parent, brief, folder, status, created_at, last_active, budget) VALUES (?, ?, 'orchestrator', NULL, ?, ?, 'idle', ?, ?, '{}')",
+  ).run(PAI, GENERAL, "The orchestrator: the one voice the user hears.", config.workspace, now(), now());
   return get(PAI)!;
 }
 

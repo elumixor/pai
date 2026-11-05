@@ -1,20 +1,16 @@
 <script lang="ts">
   import { type InboxGroup, type InboxItem, InboxList } from "@desk/core/inbox";
-  import { Briefcase, Calendar, ExternalLink, FileText, Inbox as InboxIcon, Mail, MessageCircle, Send } from "lucide-svelte";
+  import { ExternalLink } from "lucide-svelte";
   import { desk } from "../desk.svelte";
+  import KeepLogo from "../ui/KeepLogo.svelte";
   import Waiting from "./Waiting.svelte";
   import { ago, dayLabel, dayOf } from "../format";
   import { navigate } from "../router.svelte";
   import { type InboxEntry, inbox } from "../stores/inbox.svelte";
 
-  /** Pai's inbox: what came in (mail, chats, Keep) and what Pai did with it; opening one goes where it was handled. */
+  /** Pai's inbox: what waits on the user on top, then what someone addressed to Pai; opening one goes where it was handled. */
   let { onclose }: { onclose: () => void } = $props();
 
-  const FILTERS = [
-    { value: "relevant", label: "Relevant" },
-    { value: "all", label: "All" },
-  ];
-  const ICONS: Record<string, typeof Mail> = { mail: Mail, telegram: Send, whatsapp: MessageCircle, linkedin: Briefcase, calendar: Calendar, keep: FileText };
 
   type Row = InboxItem & { readonly e: InboxEntry };
 
@@ -41,11 +37,6 @@
         return "Failed";
     }
   }
-
-  let filter = $state(inbox.filter);
-  $effect(() => {
-    if (filter !== inbox.filter) inbox.show(filter as "relevant" | "all");
-  });
 
   const groups = $derived.by(() => {
     const out: (InboxGroup<Row> & { items: Row[] })[] = [];
@@ -84,16 +75,14 @@
 <Waiting {onclose} />
 <InboxList
   {groups}
+  title="Assigned to Pai"
   unread={inbox.unread}
-  filters={FILTERS}
-  bind:filter
   onopen={open}
   onreadall={() => void inbox.read()}
-  empty={filter === "relevant" ? "Nothing that needed Pai. All shows what it ignored too." : "Nothing came in yet."}
+  empty="Pages assigned to Pai and mentions of it land here."
 >
   {#snippet lead(row)}
-    {@const Icon = ICONS[row.e.source] ?? InboxIcon}
-    <Icon size={16} />
+    <KeepLogo size={16} />
   {/snippet}
   {#snippet aside(row)}
     {#if row.e.link}

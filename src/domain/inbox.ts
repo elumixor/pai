@@ -3,16 +3,16 @@ import { bus } from "../core/bus.ts";
 import { db, now } from "../core/db.ts";
 
 /**
- * Pai's inbox: what came in (mail, chats, meetings, Keep's notifications through People) and what Pai did with it,
- * one row each, so he can see what it reacted to and how. Triage records an item when it arrives and settles it with
- * its decision; People's notifications are settled with where they were routed. "Relevant" leaves out what Pai
- * ignored or muted; the unread count is of the relevant ones.
+ * What came in (mail, chats, meetings, Keep's notifications through People) and what Pai did with it, one row each.
+ * Triage records an item when it arrives and settles it with its decision; People's notifications are settled with
+ * where they were routed. All of it is kept for the record, but the user's inbox shows only what was addressed to
+ * Pai: pages assigned or shared to it and mentions of it. The mail and chats Pai merely saw go by are not theirs to read.
  */
 
 export type Action = "pending" | "ignored" | "muted" | "filed" | "woke" | "told" | "routed" | "failed";
 
-/** What is kept for the record but needs nothing: left out of "Relevant" and of the unread count. */
-const QUIET: readonly Action[] = ["ignored", "muted"];
+/** What the inbox shows: what someone addressed to Pai. */
+const ADDRESSED = `kind IN ('keep.mention', 'keep.share', 'keep.invite')`;
 /** Rows older than this are dropped as new ones come in. */
 const KEEP_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_BODY = 2000;
@@ -32,8 +32,6 @@ export interface Entry {
   readonly readAt: number | null;
 }
 
-export type Filter = "relevant" | "all";
-
 interface Row {
   id: string;
   source: string;
@@ -49,7 +47,6 @@ interface Row {
 }
 
 const entryOf = (r: Row): Entry => ({ ...r, readAt: r.read_at });
-const quietList = QUIET.map((a) => `'${a}'`).join(", ");
 const changed = (id?: string) => bus.emitEvent("inbox.changed", id ? { id } : {});
 
 /** Something that came in; its id (a given one is kept, so a retry of the same notification stays one row). */
@@ -90,15 +87,13 @@ export function settle(id: string | undefined, outcome: { readonly action: Actio
   changed(id);
 }
 
-/** The newest first; `relevant` leaves out what needed nothing. */
-export function list(filter: Filter = "relevant", limit = 100): { readonly items: readonly Entry[]; readonly unread: number } {
-  const where = filter === "relevant" ? `WHERE action NOT IN (${quietList})` : "";
-  const rows = db.query(`SELECT * FROM inbox ${where} ORDER BY at DESC LIMIT ?`).all(Math.max(1, Math.min(500, limit))) as Row[];
+/** What was addressed to Pai, newest first. */
+export function list(limit = 100): { readonly items: readonly Entry[]; readonly unread: number } {
+  const rows = db.query(`SELECT * FROM inbox WHERE ${ADDRESSED} ORDER BY at DESC LIMIT ?`).all(Math.max(1, Math.min(500, limit))) as Row[];
   return { items: rows.map(entryOf), unread: unread() };
 }
 
-export const unread = () =>
-  (db.query(`SELECT count(*) AS n FROM inbox WHERE read_at IS NULL AND action NOT IN (${quietList})`).get() as { n: number }).n;
+export const unread = () => (db.query(`SELECT count(*) AS n FROM inbox WHERE read_at IS NULL AND ${ADDRESSED}`).get() as { n: number }).n;
 
 /** Marks these read, or every one when none are named. */
 export function read(ids?: readonly string[]) {

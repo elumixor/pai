@@ -1,7 +1,7 @@
 import { get, send } from "../api";
 import { live } from "./live.svelte";
 
-/** A row of Pai's inbox (`GET /inbox`): what came in, and what Pai did with it. */
+/** A row of Pai's inbox (`GET /inbox`): what someone addressed to Pai, and what it did with it. */
 export interface InboxEntry {
   readonly id: string;
   readonly source: string;
@@ -17,13 +17,10 @@ export interface InboxEntry {
   readonly readAt: number | null;
 }
 
-export type InboxFilter = "relevant" | "all";
-
 /** Pai's inbox, read from the box and re-read when it says a row changed. */
 class Inbox {
   items = $state.raw<readonly InboxEntry[]>([]);
   unread = $state(0);
-  filter = $state<InboxFilter>("relevant");
   #started = false;
   #timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -41,16 +38,10 @@ class Inbox {
   }
 
   async load() {
-    const filter = this.filter;
-    const found = await get<{ items: InboxEntry[]; unread: number }>(`/inbox?filter=${filter}`, true).catch(() => null);
-    if (!found || filter !== this.filter) return;
+    const found = await get<{ items: InboxEntry[]; unread: number }>("/inbox", true).catch(() => null);
+    if (!found) return;
     this.items = found.items;
     this.unread = found.unread;
-  }
-
-  show(filter: InboxFilter) {
-    this.filter = filter;
-    void this.load();
   }
 
   async read(ids?: readonly string[]) {

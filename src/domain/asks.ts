@@ -180,7 +180,7 @@ export function elevate(id: number, by: string | null, note = "", opts: { direct
   messages.event(a.agent, "elevated", `Question #${id} passed on to ${next ? agents.breadcrumb(next) : "the user"}${by ? ` by ${agents.breadcrumb(by)}` : " after no answer"}${words ? `: ${words}` : ""}`, { to: a.agent });
   const row = db.query("SELECT message_id FROM asks WHERE id = ?").get(id) as { message_id: number | null } | undefined;
   if (next) {
-    if (row?.message_id) messages.patchMeta(row.message_id, { heldBy: agents.breadcrumb(next).split(" › ").at(-1) });
+    if (row?.message_id) messages.patchMeta(row.message_id, { heldBy: next });
     agents.hold(next, moved);
   } else if (a.priority === "urgent" || !quiet()) toUser(moved, words);
   bus.emitEvent("ask.created", moved as unknown as Record<string, unknown>);
@@ -209,7 +209,7 @@ function deliverAsk(a: Ask) {
     kind: "ask",
     body: a.question,
     taskId: a.taskId,
-    meta: { askId: a.id, options: a.options, breadcrumb, priority: a.priority, silent: a.priority !== "urgent", freeText: a.freeText, blocking: a.blocking, fallback: a.fallback ?? undefined, agent: a.agent, heldBy: a.holder ? agents.breadcrumb(a.holder).split(" › ").at(-1) : undefined },
+    meta: { askId: a.id, options: a.options, breadcrumb, priority: a.priority, silent: a.priority !== "urgent", freeText: a.freeText, blocking: a.blocking, fallback: a.fallback ?? undefined, agent: a.agent, heldBy: a.holder ?? undefined },
   });
   db.prepare("UPDATE asks SET message_id = ? WHERE id = ?").run(row.id, a.id);
 }

@@ -13,6 +13,7 @@ import * as gate from "./gate.ts";
 import * as journal from "./journal.ts";
 import * as limits from "./limits.ts";
 import { isLimit } from "./limits.ts";
+import * as memory from "./memory.ts";
 import * as messages from "./messages.ts";
 import * as requests from "./requests.ts";
 import type { Session } from "./session.ts";
@@ -236,7 +237,8 @@ export function start() {
       });
   };
   bus.on("event", handler);
-  const profile = setTimeout(fillProfile, 10 * 60_000);
+  const firstTalk = setInterval(startFirstTalk, 60_000);
+  setTimeout(startFirstTalk, FIRST_TALK_DELAY_MS);
   const clock = setInterval(() => {
     drainLimitHeld();
     const z = zoned();
@@ -246,25 +248,27 @@ export function start() {
     bus.off("event", handler);
     unwireTasks();
     clearInterval(clock);
-    clearTimeout(profile);
+    clearInterval(firstTalk);
   };
 }
 
-const PROFILE_FILLED = "profile_filled";
+const FIRST_TALK_RETRY_MS = 5 * 60_000;
+/** Long enough for the session to warm up on a daemon start. */
+const FIRST_TALK_DELAY_MS = 10_000;
+let firstTalkAt = 0;
 
 /**
- * The profile starts from what pai already knows: once, when MEMORY.md is thin, pai goes through
- * its past conversations (recall, after the archive has had a few minutes to fill) and writes it.
+ * A pai with no memory and a clear chat opens the conversation itself: on the first start, after a reset that cleared
+ * memory, or if the two ever end up that way. Memory that was emptied gets its note back whatever the chat holds. Retried
+ * while a turn that started it left no row, so it can neither repeat nor be lost.
  */
-function fillProfile() {
-  if (kv.get(PROFILE_FILLED)) return;
-  const file = join(config.workspace, "MEMORY.md");
-  const lines = existsSync(file) ? readFileSync(file, "utf8").split("\n").filter((l) => l.trim().startsWith("-")).length : 0;
-  kv.set(PROFILE_FILLED, new Date().toISOString());
-  if (lines >= 15) return;
-  silent(
-    "[profile] MEMORY.md is the user's profile and it is nearly empty. Fill it with edit_memory from what you already know: use recall over past conversations (search the user's name, their companies and projects, family, places, tools, preferences, recurring people) and the workspace. Lasting facts only, one per line, grouped under short headings, under about 150 lines, absolute dates. Facts about other people go into people/<name>.md. End with no text.",
-  );
+export function startFirstTalk() {
+  memory.ensureMemory();
+  if (!memory.isBlank() || Date.now() - firstTalkAt < FIRST_TALK_RETRY_MS) return;
+  if (messages.list({ agent: agents.PAI, limit: 1, kinds: ["chat"] }).length) return;
+  firstTalkAt = Date.now();
+  log.info("no memory and a clear chat: starting the first talk");
+  system("[first talk] You know nothing about the user and this chat is clear. Follow the note in your memory: say who you are in a line, then ask your first question.");
 }
 
 /** The logical day pai's session last started over. */

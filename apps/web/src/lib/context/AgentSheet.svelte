@@ -1,14 +1,15 @@
 <script lang="ts" module>
-  import { Brain, CircleCheck, type Icon as LucideIcon, ScrollText, Wrench, Zap } from "lucide-svelte";
+  import { Brain, ScrollText, Wrench, Zap } from "lucide-svelte";
+  import KeepLogo from "../ui/KeepLogo.svelte";
 
   /** The sheet's tabs: what the agent is told, remembers, is tracked on, can do, and what wakes it. */
   export const AGENT_TABS = [
     { id: "instructions", label: "Instructions", icon: ScrollText },
     { id: "memory", label: "Memory", icon: Brain },
-    { id: "keep", label: "Keep page", icon: CircleCheck },
+    { id: "keep", label: "Keep page", icon: KeepLogo },
     { id: "tools", label: "Tools", icon: Wrench },
     { id: "wakes", label: "Routines & events", icon: Zap },
-  ] as const satisfies readonly { id: string; label: string; icon: typeof LucideIcon }[];
+  ] as const;
   export type AgentTab = (typeof AGENT_TABS)[number]["id"];
 </script>
 

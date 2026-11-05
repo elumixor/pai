@@ -173,7 +173,7 @@ export async function handle(req: Request): Promise<Response> {
       const { ids } = await body<{ ids?: unknown }>(req);
       return json(inbox.read(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : undefined));
     }
-    if (path === "/inbox") return json(inbox.list(url.searchParams.get("filter") === "all" ? "all" : "relevant", Number(url.searchParams.get("limit") ?? 100) || 100));
+    if (path === "/inbox") return json(inbox.list(Number(url.searchParams.get("limit") ?? 100) || 100));
 
     // What a currency is worth, for showing an amount in the ones he thinks in.
     if (path === "/rates") return await ratesResponse();
@@ -693,7 +693,7 @@ export async function handle(req: Request): Promise<Response> {
     }
     if (path === "/pai/reset" && req.method === "POST") {
       try {
-        resetGeneral();
+        resetGeneral({ memory: (await body<{ memory?: boolean }>(req).catch(() => ({}) as { memory?: boolean })).memory });
         return json({ reset: true });
       } catch (err) {
         if (err instanceof ResetError) return json({ error: err.message }, 409);

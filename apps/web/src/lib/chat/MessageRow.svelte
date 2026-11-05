@@ -184,7 +184,7 @@
 {:else if shape === "ask"}
   <div {@attach attach} class="row question tint-warn" class:open={askOpen} class:answered={!askOpen} data-message={m.id} data-ask={askId ?? ""} data-task={m.taskId ?? ""} data-at={m.createdAt} data-key={key} data-testid="ask">
     <div class="q-meta">
-      <Icon name={kindIcon("approval")} size={10} /><b>{!askOpen ? "Decision made" : m.meta.heldBy ? `Asked ${m.meta.heldBy}` : "Action needed"}</b><span>{ctx.agent === m.from ? "" : ` · ${ctx.nameOf(m.from)}`}</span>
+      <Icon name={kindIcon("approval")} size={10} /><b>{!askOpen ? "Decision made" : m.meta.heldBy ? `Asked ${ctx.nameOf(m.meta.heldBy)}` : "Action needed"}</b><span>{ctx.agent === m.from ? "" : ` · ${ctx.nameOf(m.from)}`}</span>
       {#if m.meta.priority && m.meta.priority !== "normal"}<span class="tag prio-{m.meta.priority}">{m.meta.priority}</span>{/if}
     </div>
     {#if m.meta.breadcrumb}<div class="q-crumb">{m.meta.breadcrumb}</div>{/if}

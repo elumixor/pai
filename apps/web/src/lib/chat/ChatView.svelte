@@ -431,6 +431,8 @@
   function append(m: LogMessage) {
     if (seen.has(m.id)) return;
     seen.add(m.id);
+    // Its asker's chat has the question's own card already; this row is for the supervisor's.
+    if (m.kind === "request" && m.meta.askId !== undefined && m.from === spec.agent) return;
     if (m.kind === "answer" && m.meta.askId !== undefined) settleAsk(m.meta.askId, m.body);
     if (m.kind === "ask" && m.meta.askId !== undefined) openAsks.add(m.meta.askId);
     if (isMine(m) && m.kind === "chat") pending = pending.filter((p) => p.body.trim() !== m.body.trim());

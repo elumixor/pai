@@ -1,8 +1,9 @@
 <script lang="ts">
   import { keepPage } from "../keep";
+  import KeepLogo from "../ui/KeepLogo.svelte";
   import { DESK_DOMAIN } from "@desk/core";
   import { flip } from "svelte/animate";
-  import { ChevronRight, CircleCheck, FolderGit2, Hand, Plus, Pause } from "lucide-svelte";
+  import { ChevronRight, FolderGit2, Hand, Plus, Pause } from "lucide-svelte";
   import { auth } from "../auth.svelte";
   import { desk } from "../desk.svelte";
   import { projectName } from "../format";
@@ -220,7 +221,7 @@
           title={task.title ? `${task.title} in Keep` : "Keep task"}
           onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(keepPage(task.urn), "_blank", "noopener"); }}
           onkeydown={() => {}}
-        ><CircleCheck size={11} /></span>
+        ><KeepLogo size={12} /></span>
       {/each}
       <span class="min-w-0 flex-1"></span>
       {#if waiting}<span class="inline-flex shrink-0 items-center gap-0.5 text-[12px] font-medium text-hand tabular-nums"><Hand size={12} />{waiting}</span>{/if}

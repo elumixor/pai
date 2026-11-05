@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { bus } from "../core/bus.ts";
 import { config } from "../core/config.ts";
@@ -6,6 +6,7 @@ import { db, kv } from "../core/db.ts";
 import { logger } from "../core/log.ts";
 import * as agents from "./agents.ts";
 import * as main from "./main.ts";
+import { clearMemory } from "./memory.ts";
 import * as sessions from "./sessions.ts";
 import { projectsDir } from "./transcript.ts";
 
@@ -14,22 +15,6 @@ const log = logger("reset");
 const WIPED_TABLES = ["tasks", "messages", "asks", "notices", "requests", "routes", "drafts", "inbox", "reminders"] as const;
 const WIPED_KEYS = ["agent_queue", "agent_held", "main_limit_held", "main_last_user", "main_thread_id", "read_marks"] as const;
 const WIPED_FOLDERS = ["agents", "journal", "drafts"] as const;
-const BLANK_MEMORY = "# Profile\n";
-
-/** What a blank pai is told first. Hidden from the chat, which opens on whatever pai asks. */
-const EXPLORE = `[fresh start] You know nothing about the user yet: this chat, your memory and your journal were cleared on their request. Build the picture of who they are, what they are working on and what they want, starting now. Hand anything big to workers.
-
-Look through:
-- Keep, every workspace you can reach: projects, docs and tasks.
-- dev's repositories, mail, calendar, Balance, Telegram, WhatsApp, Drive, Notion, their Claude Code conversations, their claude.ai chats (claude.ai refuses the box, so workspace/inbox/claude-chats holds a copy, one JSON file per chat: grep it), and workspace/people.
-
-While you do:
-- Write durable facts to memory with edit_memory once confirmed. A guess is not a fact: mark it as a guess or ask.
-- When you are not sure, ask, one question at a time with one-tap options, the most useful first. Ask from what you found, never what you could look up.
-- For the tasks in Keep, ask which are still relevant, grouped so it is not one question per task.
-- Send nothing as the user, and change nothing in Keep until they have answered.
-
-Finish with a short summary: who they are, what is active, what is still unknown.`;
 
 export class ResetError extends Error {}
 
@@ -67,10 +52,10 @@ function deleteTranscripts(ids: ReadonlySet<string>) {
 }
 
 /**
- * Clears General for good: its conversation, memory, journal, tasks and workers, in the database and on disk. Plain
+ * Clears General for good: its conversation, journal, tasks and workers and, unless asked not to, memory, in the database and on disk. Plain
  * threads, Keep, people's notes, routines and connectors stay. There is no undo: export a snapshot first if it matters.
  */
-export function clearGeneral() {
+export function clearGeneral(opts: { memory?: boolean } = {}) {
   if (resetting) throw new ResetError("a reset is already running");
   resetting = true;
   try {
@@ -93,7 +78,7 @@ export function clearGeneral() {
     for (const key of WIPED_KEYS) kv.del(key);
     deleteTranscripts(gone);
     for (const folder of WIPED_FOLDERS) for (const name of existsSync(join(config.workspace, folder)) ? readdirSync(join(config.workspace, folder)) : []) rmSync(join(config.workspace, folder, name), { recursive: true, force: true });
-    writeFileSync(join(config.workspace, "MEMORY.md"), BLANK_MEMORY);
+    if (opts.memory !== false) clearMemory();
     log.info(`General reset: ${gone.size} sessions, ${topics.length} topics`);
     bus.emitEvent("main.reset", { topics });
   } finally {
@@ -101,8 +86,8 @@ export function clearGeneral() {
   }
 }
 
-/** Clears General, then pai starts over on a hidden turn, so the chat opens empty. */
-export function resetGeneral() {
-  clearGeneral();
-  main.silent(EXPLORE);
+/** Clears General. With no memory left, pai opens the chat by getting to know the user. */
+export function resetGeneral(opts: { memory?: boolean } = {}) {
+  clearGeneral(opts);
+  main.startFirstTalk();
 }
