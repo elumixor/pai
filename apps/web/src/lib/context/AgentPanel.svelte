@@ -6,7 +6,7 @@
   export const AGENT_TABS = [
     { id: "instructions", label: "Instructions", icon: ScrollText },
     { id: "memory", label: "Memory", icon: Brain },
-    { id: "keep", label: "Keep page", icon: KeepLogo },
+    { id: "keep", label: "Keep", icon: KeepLogo },
     { id: "tools", label: "Tools", icon: Wrench },
     { id: "wakes", label: "Events", icon: Zap },
   ] as const;
@@ -111,7 +111,23 @@
         </div>
       {:else if tab === "keep"}
         <div class="space-y-6">
-          {#if !sheet.page}
+          {#if sheet.agent.kind === "orchestrator"}
+            <section>
+              <h3 class="{BLOCK_TITLE} m-0 mb-1.5">Assigned · {sheet.assigned.length}</h3>
+              {#if sheet.assigned.length}
+                <ul class="m-0 list-none space-y-1 p-0 text-[13px]">
+                  {#each sheet.assigned as page (page.urn)}
+                    <li class="flex items-baseline gap-2">
+                      <a class="min-w-0 flex-1 truncate hover:underline" href={page.url} target="_blank" rel="noreferrer">{page.title}</a>
+                      <span class="shrink-0 text-[12px] text-ink-45">{page.workspace}</span>
+                    </li>
+                  {/each}
+                </ul>
+              {:else}
+                <p class="m-0 text-[13px] text-ink-45">Assign a Keep page to Pai and it shows here.</p>
+              {/if}
+            </section>
+          {:else if !sheet.page}
             <p class="m-0 text-[13px] text-ink-45">No Keep page yet: it is being set up.</p>
           {:else if sheet.page.error}
             <p class={ERROR} role="alert">{sheet.page.urn}: {sheet.page.error}</p>

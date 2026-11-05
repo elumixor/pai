@@ -233,7 +233,7 @@ export function ensurePai(): Agent {
   const existing = get(PAI);
   if (existing?.name === GENERAL) return existing;
   // What it is called in every crumb and row is General, whoever made the row.
-  if (existing) return set(PAI, { name: GENERAL })!;
+  if (existing) return set(PAI, { name: GENERAL, keep_page: null, page_session: null })!;
   db.prepare(
     "INSERT INTO agents (slug, name, kind, parent, brief, folder, status, created_at, last_active, budget) VALUES (?, ?, 'orchestrator', NULL, ?, ?, 'idle', ?, ?, '{}')",
   ).run(PAI, GENERAL, "The orchestrator: the one voice the user hears.", config.workspace, now(), now());
@@ -311,22 +311,6 @@ async function syncPage(a: Agent) {
     log.warn(`${a.slug}: page not set up yet: ${(err as Error).message}`);
   } finally {
     syncing.delete(a.slug);
-  }
-}
-
-/** General's page, found or made. Retried by the tick until it works. */
-async function syncGeneralPage() {
-  const pai = get(PAI);
-  if (!pai) return;
-  try {
-    const page = pai.keepPage ?? (await agentPage.ensureGeneral());
-    if (!pai.keepPage) set(PAI, { keep_page: page });
-    if (pai.sessionId && pai.pageSession !== pai.sessionId) {
-      keepLinks.link(page, pai.sessionId, { replace: true });
-      set(PAI, { page_session: pai.sessionId });
-    }
-  } catch (err) {
-    log.warn(`General's page not set up yet: ${(err as Error).message}`);
   }
 }
 
@@ -838,7 +822,6 @@ function checkState(a: Agent) {
 /** Follows agent sessions' turns on the bus. */
 export function start() {
   ensurePai();
-  void syncGeneralPage();
   // Revived sessions find their agent's role and tools through this; registered here, not at import, because these files import each other.
   sessions.resolveAgentsWith((slug) => {
     const a = get(slug);
@@ -925,7 +908,6 @@ function closeFinished() {
 
 /** What an earlier People or Keep outage left undone. */
 function catchUpPages() {
-  void syncGeneralPage();
   for (const a of list()) void syncPage(a);
 }
 

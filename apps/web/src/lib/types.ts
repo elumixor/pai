@@ -170,6 +170,8 @@ export interface AgentSheet {
   readonly memory: readonly { readonly name: string; readonly text: string }[];
   readonly page: { readonly urn: string; readonly title?: string; readonly path?: readonly string[]; readonly body?: string; readonly url?: string; readonly error?: string } | null;
   readonly keep: { readonly workspaces: readonly KeepWorkspace[]; readonly shared: readonly KeepWorkspace[]; readonly error?: string };
+  /** General has no page: this is what is assigned to it and its group. */
+  readonly assigned: readonly { readonly urn: string; readonly title: string; readonly workspace: string; readonly url: string; readonly status?: string }[];
   readonly tools: ChatConfig["tools"];
   readonly routines: ChatConfig["routines"];
   readonly events: ChatConfig["events"];

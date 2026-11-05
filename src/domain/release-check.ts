@@ -10,6 +10,7 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { config, setting } from "../core/config.ts";
 import { logger } from "../core/log.ts";
+import * as tasks from "./tasks.ts";
 import { status, type UpdateStatus } from "./update.ts";
 import { keep } from "./watch.ts";
 
@@ -72,6 +73,8 @@ function reportRescue() {
     const path = join(config.repo, "data", file);
     if (!existsSync(path)) continue;
     keep({ title, nextAction: next, by: "release-check" }, say(readFileSync(path, "utf8").trim()));
+    const raised = tasks.list({ open: true }).find((t) => t.title === title);
+    if (raised) tasks.update(raised.id, { status: "waiting_user" });
     rmSync(path);
   }
 }

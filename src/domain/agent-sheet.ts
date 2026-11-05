@@ -27,7 +27,7 @@ function memoryOf(a: agents.Agent) {
 export async function agentSheet(a: agents.Agent) {
   const general = a.kind === "orchestrator";
   const { who, instructions, tools } = chatConfig(general ? "general" : "worker", a.tools ?? undefined);
-  const [page, keep] = await Promise.all([
+  const [page, keep, assigned] = await Promise.all([
     a.keepPage
       ? agentPage.shown(a.keepPage).catch((err: Error) => {
           log.warn(`${a.slug}: ${err.message}`);
@@ -38,6 +38,12 @@ export async function agentSheet(a: agents.Agent) {
       log.warn(`workspaces: ${err.message}`);
       return { workspaces: [], shared: [], error: err.message };
     }),
+    general
+      ? agentPage.assigned().catch((err: Error) => {
+          log.warn(`assigned: ${err.message}`);
+          return [];
+        })
+      : [],
   ]);
   return {
     agent: a,
@@ -47,6 +53,7 @@ export async function agentSheet(a: agents.Agent) {
     memory: memoryOf(a),
     page,
     keep,
+    assigned,
     tools,
     routines: automations.all().filter((r) => (r.agent ? r.agent === a.slug : general)),
     events: eventCatalog(),

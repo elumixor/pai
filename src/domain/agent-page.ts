@@ -1,8 +1,7 @@
 import { config } from "../core/config.ts";
 import { logger } from "../core/log.ts";
 import type { KeepPage, PropertyDef } from "./dev-tasks.ts";
-import { callKeep, KeepError, pageId } from "./keep.ts";
-import * as people from "./people.ts";
+import { callKeep, pageId } from "./keep.ts";
 
 /**
  * An agent's Keep page: the task it works from and is tracked on. Its body is the brief, its Assignee the agent's
@@ -14,7 +13,6 @@ const log = logger("agent-page");
 
 const ASSIGNEE: PropertyDef = { name: "Assignee", type: "person" };
 const STATUS_PROPERTY = /^status$/i;
-const GENERAL_TITLE = "General";
 
 /** The option names a status means, best first; a workspace without any of them is left as it is. */
 const STATUS_OPTIONS = {
@@ -76,25 +74,28 @@ export async function workspaces() {
   return { workspaces: own.map((w) => ({ ...w, url: `${config.keepUrl.replace(/\/$/, "")}/p/${w.id}` })), shared };
 }
 
-interface Trait {
-  readonly name: string;
-  readonly properties: readonly PropertyDef[];
+/** A page someone gave Pai or one of its people, wherever it sits. */
+export interface AssignedPage {
+  readonly urn: string;
+  readonly title: string;
+  readonly workspace: string;
+  readonly url: string;
+  readonly status?: string;
 }
 
-/** General's own page in the home workspace, found or made; assigned to the Pai group, so to General. */
-export async function ensureGeneral(): Promise<string> {
+const ASSIGNED_PER_WORKSPACE = 50;
+
+/** The pages assigned to the Pai group or to General, across the connected workspaces. General has no page of its own: this is its tracker. */
+export async function assigned(): Promise<readonly AssignedPage[]> {
   const { workspaces: own } = await workspaces();
-  const home = own.find((w) => w.title === config.keepHome);
-  if (!home) throw new KeepError(`no Keep workspace named ${config.keepHome}`);
-  const found = await callKeep<{ pages: readonly { id: string }[] }>("find_pages", { workspace_id: home.id, filter: [{ property: "$title", op: "is", value: GENERAL_TITLE }], limit: 1 });
-  if (found.pages[0]) return `keep:page/${found.pages[0].id}`;
-  const traits = await callKeep<readonly Trait[]>("list_workspace_traits", { workspace_id: home.id });
-  const task = traits.find((t) => t.name === "Task");
-  const made = await callKeep<{ id: string }>("create_page", {
-    parent_id: home.id,
-    title: GENERAL_TITLE,
-    body: "The tracker of General, pai's top agent: the one point of contact for everything the user wants done. Each job it hands off has a page of its own, assigned to the worker doing it.",
-    ...(task ? { traits: [task.name], properties: { Assignee: people.groupUrn(), Status: "In progress" } } : {}),
-  });
-  return `keep:page/${made.id}`;
+  const ids = [config.peopleGroupId, config.peopleId].filter(Boolean);
+  const found = await Promise.all(
+    own.flatMap((w) =>
+      ids.map(async (id) => {
+        const { pages } = await callKeep<{ pages: readonly { id: string; title: string; properties?: Record<string, unknown> }[] }>("find_pages", { workspace_id: w.id, filter: [{ property: "Assignee", op: "contains", value: id }], limit: ASSIGNED_PER_WORKSPACE });
+        return pages.map((p) => ({ urn: `keep:page/${p.id}`, title: p.title, workspace: w.title, url: `${config.keepUrl.replace(/\/$/, "")}/p/${p.id}`, status: typeof p.properties?.Status === "string" ? p.properties.Status : undefined }));
+      }),
+    ),
+  );
+  return [...new Map(found.flat().map((p) => [p.urn, p])).values()];
 }

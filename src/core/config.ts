@@ -130,7 +130,6 @@ export const config = {
   peopleKey: env.PAI_PEOPLE_KEY ?? "",
   peopleGroupId: setting("PAI_PEOPLE_GROUP_ID") ?? "",
   /** The Keep workspace General's own page lives in. */
-  keepHome: setting("PAI_KEEP_HOME") ?? "Personal",
   /** A question a supervisor has not settled by then goes to the user. */
   escalateMinutes: Number(setting("PAI_ESCALATE_MINUTES") ?? 10),
   /** What waits on the user is said again after this, then every `remindRepeatMinutes`. */

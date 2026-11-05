@@ -26,6 +26,8 @@ export const PROJECT_PREFIX = "dev:project/";
 export const SESSION_PREFIX = "dev:session/";
 /** What dev-tasks' Keep writes are tagged with, so a thread watching the task sees them as someone else's. */
 const KEEP_CLIENT = { client: "pai:dev-tasks" };
+/** General writes a worker's page first and starts the worker a moment later: the page must not be claimed in between. */
+const SETTLE_MS = 60_000;
 
 /** A Keep property: a name and a type; a page's values are keyed by the name. */
 export interface PropertyDef {
@@ -154,16 +156,25 @@ async function extensionId(workspace: string, page: KeepPage, projectKey: string
   return extensions.find((e) => e.manifest?.propertyTypes?.some((t) => t.id === "session"))?.id;
 }
 
+/** Assigned to the Pai group, General or an agent: pai decides who does it, a dev session is for tasks left to dev. */
+function forPai(values: Record<string, unknown>) {
+  const assignee = JSON.stringify(Object.entries(values).find(([name]) => name.toLowerCase() === "assignee")?.[1] ?? "");
+  const people = [config.peopleGroupId, config.peopleId, ...(db.query("SELECT person_id FROM agents WHERE person_id IS NOT NULL").all() as { person_id: string }[]).map((r) => r.person_id)];
+  return people.some((id) => id && assignee.includes(id));
+}
+
 /** One Keep page event: starts the task's session when it should have one. Answers what it did, for tests and logs. */
 export async function consider(event: { urn: string; workspace: string }) {
   // Always read the page: a webhook's values are the page's own, and a task inherits its project.
   if (db.query("SELECT 1 FROM dev_tasks WHERE keep_urn = ? AND session_id IS NOT NULL").get(event.urn)) return "has session";
+  if (db.query("SELECT 1 FROM agents WHERE keep_page = ?").get(event.urn)) return "has a worker";
   const page = await readPage(event.urn);
   // A page showing its pages in a view tab is a list of tasks, not one.
   if (page.views?.some((v) => !v.embedded)) return "list";
   const values = effectiveOf(page);
   const project = findValue(values, PROJECT_PREFIX);
   if (!project) return "no project";
+  if (forPai(values ?? {})) return "assigned to pai";
   if (findValue(values, SESSION_PREFIX)) return "has session";
   const defs = definitions(page);
   const existing = sessionProperty(defs, project.key);
@@ -232,20 +243,26 @@ export function start() {
   if (!config.devTasks) return () => {};
   // One event at a time: a webhook and its retry arriving together must not both read "no session".
   let queue = Promise.resolve();
+  const settling = new Set<ReturnType<typeof setTimeout>>();
   const onEvent = (event: PaiEvent) => {
     if (event.kind !== "keep.page.created" && event.kind !== "keep.page.changed") return;
     const payload = event.payload as { urn: string; workspace: string };
-    queue = queue.then(() =>
-      consider(payload).then(
-        (outcome) => log.debug(`${payload.urn}: ${outcome}`),
-        (err: Error) => log.warn(`${payload.urn}: ${err.message}`),
-      ),
+    settling.add(
+      setTimeout(() => {
+        queue = queue.then(() =>
+          consider(payload).then(
+            (outcome) => log.debug(`${payload.urn}: ${outcome}`),
+            (err: Error) => log.warn(`${payload.urn}: ${err.message}`),
+          ),
+        );
+      }, SETTLE_MS),
     );
   };
   bus.on("event", onEvent);
   const timer = setInterval(() => void sync(), SYNC_MS);
   return () => {
     bus.off("event", onEvent);
+    for (const t of settling) clearTimeout(t);
     clearInterval(timer);
   };
 }
