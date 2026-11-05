@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { sveltekit } from "@sveltejs/kit/vite";
@@ -18,6 +18,8 @@ const API = /^\/(?:attachments\/|(?!@|_app|src|node_modules|\.svelte-kit)[^./][^
 function box() {
   if (process.env.PAI_DEV_API) return { url: process.env.PAI_DEV_API, token: process.env.PAI_DEV_TOKEN ?? "" };
   const file = join(homedir(), ".config", "pai", "box.json");
+  // Tools that load this config without serving, like svelte-check in CI, have no box to talk to.
+  if (!existsSync(file)) return null;
   const known = JSON.parse(readFileSync(file, "utf8")) as { url?: string; baseUrl?: string; token?: string };
   const url = known.url ?? known.baseUrl;
   if (!url) throw new Error(`${file} has no url — run any \`pai\` command once to learn the box`);

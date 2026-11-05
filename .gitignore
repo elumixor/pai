@@ -14,6 +14,8 @@ workspace/*
 !workspace/.claude/
 workspace/.claude/*
 !workspace/.claude/skills/
+workspace/.claude/skills/*
+!workspace/.claude/skills/voice/
 scripts/pai
 apps/web/node_modules
 apps/web/.svelte-kit
