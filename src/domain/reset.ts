@@ -54,7 +54,9 @@ function generalSessions() {
 
 function deleteTranscripts(ids: ReadonlySet<string>) {
   if (!existsSync(projectsDir)) return;
-  for (const dir of readdirSync(projectsDir)) {
+  for (const entry of readdirSync(projectsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const dir = entry.name;
     const path = join(projectsDir, dir);
     if (dir.includes("-workspace-agents")) {
       rmSync(path, { recursive: true, force: true });
