@@ -38,6 +38,9 @@ export interface Fields {
   readonly account?: string;
 }
 
+export type Approver = "user" | "pin";
+export type SendPolicy = "ask" | "auto";
+
 export interface Draft {
   readonly id: number;
   readonly agent: string;
@@ -46,6 +49,8 @@ export interface Draft {
   readonly status: DraftStatus;
   readonly state: SendState | null;
   readonly note: string;
+  /** "user" for a Send on the card, "pin" for a channel set to send by itself. */
+  readonly approvedBy: Approver | null;
   readonly taskId: number | null;
   readonly messageId: number | null;
   readonly createdAt: number;
@@ -80,6 +85,7 @@ const toDraft = (r: Record<string, any>): Draft => ({
   status: r.status,
   state: r.state ?? null,
   note: r.note ?? "",
+  approvedBy: r.approved_by ?? null,
   taskId: r.task_id ?? null,
   messageId: r.message_id ?? null,
   createdAt: r.created_at,
@@ -203,14 +209,31 @@ export function offer(input: OfferInput): Draft {
   db.prepare("UPDATE drafts SET message_id = ? WHERE id = ?").run(row.id, id);
   log.info(`${input.agent} offered a ${input.channel} draft #${id}`);
   bus.emitEvent("draft.offered", { id, agent: input.agent, channel: input.channel });
-  return get(id)!;
+  return policy(input.channel) === "auto" ? send(id, "pin") : get(id)!;
+}
+
+const pinKey = (channel: Channel) => `draft:${channel}`;
+
+/** Whether a channel's drafts wait for his Send or go by themselves. Asking is the default for every channel. */
+export function policy(channel: Channel): SendPolicy {
+  const row = db.query("SELECT mode FROM pins WHERE action = ?").get(pinKey(channel)) as { mode: SendPolicy } | null;
+  return row?.mode ?? "ask";
+}
+
+export const policies = () => Object.fromEntries((Object.keys(SHAPE) as Channel[]).map((channel) => [channel, policy(channel)])) as Record<Channel, SendPolicy>;
+
+export function setPolicy(channel: Channel, mode: SendPolicy) {
+  if (!SHAPE[channel]) throw new DraftError(`no such channel: ${channel}`);
+  if (mode === "ask") db.prepare("DELETE FROM pins WHERE action = ?").run(pinKey(channel));
+  else db.prepare("INSERT OR REPLACE INTO pins (action, mode, created_at) VALUES (?, 'auto', ?)").run(pinKey(channel), now());
+  return policies();
 }
 
 /** His edit. Only a draft that has not gone anywhere can change, and the row follows it. */
 export function edit(id: number, fields: Partial<Fields>): Draft {
   const draft = get(id);
   if (!draft) throw new DraftError(`no draft #${id}`);
-  if (draft.status !== "pending") throw new DraftError(`draft #${id} is ${draft.status}; it cannot be changed now`);
+  if (draft.status !== "pending" && draft.status !== "failed") throw new DraftError(`draft #${id} is ${draft.status}; it cannot be changed now`);
   const next: Fields = { ...draft.fields, ...fields, body: (fields.body ?? draft.fields.body).trim() };
   if (!next.body) throw new DraftError("a draft with no words is not a draft");
   db.prepare("UPDATE drafts SET fields = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(next), now(), id);
@@ -233,7 +256,7 @@ function touchRow(d: Draft) {
 export function wakeText(d: Draft): string {
   const f = d.fields;
   const lines = [
-    `He approved draft #${d.id} (${LABEL[d.channel]}) and may have edited it. Send exactly what follows — not what you first wrote — with \`${TOOL[d.channel]}\`, then report the result with \`draft_result\`.`,
+    `${d.approvedBy === "pin" ? `Draft #${d.id} (${LABEL[d.channel]}) is cleared by his standing setting for this channel.` : `He approved draft #${d.id} (${LABEL[d.channel]}) and may have edited it.`} Send exactly what follows — not what you first wrote — with \`${TOOL[d.channel]}\`, then report the result with \`draft_result\`.`,
     "",
     ...(f.account ? [`from: ${f.account}`] : []),
     ...(f.to ? [`to: ${f.to}`] : []),
@@ -247,27 +270,49 @@ export function wakeText(d: Draft): string {
   return lines.join("\n");
 }
 
-/** His Send. The fields are read at this moment, and the agent is woken to send those. */
-export function send(id: number): Draft {
+/** His Send, or his pin's. The fields are read at this moment, and the agent is woken to send those. A failed one nothing left of may go again. */
+export function send(id: number, by: Approver = "user"): Draft {
   const draft = get(id);
   if (!draft) throw new DraftError(`no draft #${id}`);
-  if (draft.status !== "pending") throw new DraftError(`draft #${id} is ${draft.status}`);
-  db.prepare("UPDATE drafts SET status = 'sending', updated_at = ? WHERE id = ?").run(now(), id);
+  if (draft.status !== "pending" && draft.status !== "failed") throw new DraftError(`draft #${id} is ${draft.status}`);
+  db.prepare("UPDATE drafts SET status = 'sending', state = NULL, note = '', approved_by = ?, updated_at = ? WHERE id = ?").run(by, now(), id);
   const sending = get(id)!;
   touchRow(sending);
-  bus.emitEvent("draft.sending", { id, agent: draft.agent, channel: draft.channel, text: wakeText(sending) });
-  log.info(`he approved draft #${id}; ${draft.agent} is sending it`);
+  bus.emitEvent("draft.sending", { id, agent: draft.agent, channel: draft.channel, text: wakeText(sending), by });
+  log.info(`draft #${id} approved by ${by}; ${draft.agent} is sending it`);
   return sending;
+}
+
+/** Nothing could be asked to send it: the card says why and may be tried again. */
+export function fail(id: number, why: string): Draft {
+  const draft = get(id);
+  if (!draft) throw new DraftError(`no draft #${id}`);
+  db.prepare("UPDATE drafts SET status = 'failed', state = 'not_sent', note = ?, updated_at = ? WHERE id = ?").run(why, now(), id);
+  const failed = get(id)!;
+  touchRow(failed);
+  bus.emitEvent("draft.settled", { id, state: "not_sent", note: why, agent: draft.agent, by: draft.approvedBy });
+  return failed;
+}
+
+const STUCK_AFTER_MS = 15 * 60_000;
+const NO_RESULT = "Its agent reported nothing within 15 minutes, so it may or may not have gone. Check before sending it again.";
+
+/** A send nobody reported on. It may have gone, so it is unverified, never "safe to try again". `waiting` = an agent that has not had its turn yet. */
+export function sweepStuck(waiting: (agent: string) => boolean) {
+  const rows = db.query("SELECT * FROM drafts WHERE status = 'sending' AND updated_at < ?").all(now() - STUCK_AFTER_MS) as Record<string, any>[];
+  for (const draft of rows.map(toDraft)) if (!waiting(draft.agent)) result(draft.id, "unverified", NO_RESULT);
 }
 
 /** What the channel's own tool concluded, put back on the card. */
 export function result(id: number, state: SendState, note = ""): Draft {
   const draft = get(id);
   if (!draft) throw new DraftError(`no draft #${id}`);
+  // A late report still counts after the sweep gave up on it; nothing else can settle what was not sent.
+  if (draft.status !== "sending" && draft.note !== NO_RESULT) throw new DraftError(`draft #${id} is ${draft.status}; nothing was being sent`);
   db.prepare("UPDATE drafts SET status = ?, state = ?, note = ?, updated_at = ? WHERE id = ?").run(state === "not_sent" ? "failed" : "sent", state, note, now(), id);
   const settled = get(id)!;
   touchRow(settled);
-  bus.emitEvent("draft.settled", { id, state, note });
+  bus.emitEvent("draft.settled", { id, state, note, agent: draft.agent, by: draft.approvedBy });
   log.info(`draft #${id}: ${state}${note ? ` — ${note}` : ""}`);
   return settled;
 }

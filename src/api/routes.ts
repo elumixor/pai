@@ -122,6 +122,11 @@ export async function handle(req: Request): Promise<Response> {
 
     // A draft he is approving: the card's fields, his edits, his Send and his Discard.
     if (path === "/drafts") return json({ drafts: drafts.open(), shape: drafts.SHAPE });
+    if (path === "/drafts/policy") {
+      if (req.method !== "PATCH") return json(drafts.policies());
+      const { channel, mode } = await body<{ channel: drafts.Channel; mode: drafts.SendPolicy }>(req);
+      return json(drafts.setPolicy(channel, mode));
+    }
     const draftPath = /^\/drafts\/(\d+)(?:\/(send|discard))?$/.exec(path);
     if (draftPath?.[1]) {
       const id = Number(draftPath[1]);

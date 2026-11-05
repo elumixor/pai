@@ -38,7 +38,7 @@
   let note = $state("");
   let localStatus = $state<Draft["status"] | undefined>();
   const status = $derived(localStatus ?? draft.status);
-  const editable = $derived(status === "pending");
+  const editable = $derived(status === "pending" || status === "failed");
   let saving: ReturnType<typeof setTimeout> | undefined;
 
   /** A keystroke is kept, so a draft he edited and left survives a reload. */
@@ -82,9 +82,9 @@
   {/if}
   {#if editable}
     <div class="draft-foot">
-      <button class="opt draft-act draft-send" disabled={busy} onclick={send}>Send</button>
+      <button class="opt draft-act draft-send" disabled={busy} onclick={send}>{status === "failed" ? "Try again" : "Send"}</button>
       <button class="opt draft-act faint" disabled={busy} onclick={discard}>Discard</button>
-      <span class="draft-note">{note}</span>
+      <span class="draft-note">{note || (status === "failed" ? draft.note || (draft.state ? SAID[draft.state] : "") : "")}</span>
     </div>
   {:else}
     <div class="draft-foot">

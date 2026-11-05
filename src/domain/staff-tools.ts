@@ -217,9 +217,12 @@ export function staffTools(me: string | undefined) {
         const draft = drafts.offer(input);
         return {
           draft: draft.id,
-          waiting: "on him",
+          waiting: draft.status === "sending" ? "nothing" : "on him",
           pending: pending.filter((p) => p.draft !== draft.id),
-          note: `Offered as a card. End your turn; when he presses Send you are woken with what the card holds then, to send with ${drafts.toolFor(a.channel)} and report with draft_result.`,
+          note:
+            draft.status === "sending"
+              ? `This channel is set to send by itself. You are woken to send it with ${drafts.toolFor(a.channel)} and report with draft_result.`
+              : `Offered as a card. End your turn; when he presses Send you are woken with what the card holds then, to send with ${drafts.toolFor(a.channel)} and report with draft_result.`,
         };
       }),
     ),
@@ -249,14 +252,7 @@ export function staffTools(me: string | undefined) {
     ),
   );
 
-  if (!isPai)
-    out.push(
-      tool(
-        "notify",
-        "Tell the user something through pai's chat — only what they would act on or want to know today, in one line, the conclusion first; routine progress stays in your own chat (log). urgent: now with sound, even at night (minutes to act). normal: now, silent; held in quiet hours. digest: in the next brief. log: only in your own chat.",
-        { text: z.string().max(1500), priority: priority.optional() },
-        guard((a: { text: string; priority?: asks.Priority }) => asks.notify(self, a.text, a.priority ?? "normal")),
-      ),
+  out.push(
       tool(
         "check_outbound",
         "Before an outbound action (send email, LinkedIn message, Telegram message as the user, calendar invite to someone else, post, pay, delete): the user's pin for that action type, if any. ask = get approval with ask_user first; auto = go ahead; none = your own judgment, ask when in doubt.",
@@ -266,6 +262,16 @@ export function staffTools(me: string | undefined) {
           if (pin === "ask") outboundAsk.add(self);
           return { pin };
         }),
+      ),
+  );
+
+  if (!isPai)
+    out.push(
+      tool(
+        "notify",
+        "Tell the user something through pai's chat — only what they would act on or want to know today, in one line, the conclusion first; routine progress stays in your own chat (log). urgent: now with sound, even at night (minutes to act). normal: now, silent; held in quiet hours. digest: in the next brief. log: only in your own chat.",
+        { text: z.string().max(1500), priority: priority.optional() },
+        guard((a: { text: string; priority?: asks.Priority }) => asks.notify(self, a.text, a.priority ?? "normal")),
       ),
     );
   out.push(

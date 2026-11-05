@@ -5,6 +5,8 @@ import { config } from "../core/config.ts";
 import { db, kv, now } from "../core/db.ts";
 import { logger } from "../core/log.ts";
 import { day } from "../core/time.ts";
+import * as asks from "./asks.ts";
+import * as drafts from "./drafts.ts";
 import * as agentPage from "./agent-page.ts";
 import { attach, type Upload } from "./attachments.ts";
 import { narrowed, unresolved } from "./capabilities.ts";
@@ -668,6 +670,18 @@ export function linkPai(link: PaiLink) {
 }
 const notePai = (text: string) => paiLink.note(text);
 
+const notYetRun = (slug: string) => ["paused", "queued"].includes(get(slug)?.status ?? "");
+
+/** The card's approval reaches whoever offered it. Whatever stops that turn is said on the card: it is never left "sending". */
+function wakeToSend(slug: string, draftId: number, text: string, byPin: boolean) {
+  const a = get(slug);
+  if (!a) return drafts.fail(draftId, `${slug} no longer exists. Offer it again from another agent.`);
+  if (a.kind === "orchestrator") return paiLink.direct(text);
+  if (a.status === "closed") return drafts.fail(draftId, `${a.name} is closed, so it cannot send this.`);
+  if (a.turnsToday >= a.budget.turnsPerDay) return drafts.fail(draftId, `${a.name} has used its turns for today (${a.budget.turnsPerDay}). Try again tomorrow or raise its budget.`);
+  message(slug, text, { from: byPin ? PAI : "user", kind: "chat", logged: true });
+}
+
 /** A question a supervisor holds: a row in its chat and a turn, so it settles it or passes it on. */
 export function askSupervisor(holder: string, ask: { readonly id: number; readonly agent: string; readonly question: string; readonly options: readonly string[]; readonly taskId: number | null }) {
   const asker = get(ask.agent);
@@ -852,17 +866,21 @@ export function start() {
   };
   // His Send on a draft card: the agent that offered it sends it, with the fields as they stand.
   const onDraft = (e: PaiEvent) => {
-    if (e.kind !== "draft.sending") return;
     const slug = String(e.payload.agent ?? "");
-    const text = String(e.payload.text ?? "");
-    if (!slug || !text || !get(slug)) return;
-    message(slug, text, { from: "user", kind: "chat", logged: true });
+    if (e.kind === "draft.sending") wakeToSend(slug, Number(e.payload.id), String(e.payload.text ?? ""), e.payload.by === "pin");
+    else if (e.kind === "draft.discarded" && !String(e.payload.why ?? "").startsWith("withdrawn")) {
+      const text = `[The user discarded draft #${e.payload.id}: nothing was sent. Do not offer it again unless they ask.]`;
+      if (slug === PAI) notePai(text);
+      else noteTo(slug, text);
+    } else if (e.kind === "draft.settled" && e.payload.by === "pin" && e.payload.state !== "verified") {
+      asks.ask({ agent: slug, question: `A message set to send by itself ended ${e.payload.state}: draft #${e.payload.id}. ${e.payload.note ?? ""}`.trim(), options: ["Seen"], blocking: false, fallback: "Carry on", forUser: true });
+    }
   };
   bus.on("event", onDraft);
 
   bus.on("event", handler);
   setTimeout(drain, 5_000);
-  const settling = setInterval(() => (settle(), drainHeld(), closeFinished(), catchUpPages()), SETTLE_EVERY_MS);
+  const settling = setInterval(() => (settle(), drainHeld(), closeFinished(), catchUpPages(), drafts.sweepStuck(notYetRun)), SETTLE_EVERY_MS);
   return () => {
     clearInterval(settling);
     bus.off("event", handler);
