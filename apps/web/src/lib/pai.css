@@ -696,3 +696,6 @@ body.in-home .tooltip .dim { color: color-mix(in srgb, var(--canvas) 65%, transp
 .spend-legend { display: flex; align-items: center; gap: 6px; margin: 6px 0 14px; font-size: 11px; }
 .spend-legend .key { width: 10px; height: 10px; border-radius: 2px; margin-left: 6px; }
 
+
+/* Settings dialog (shared from @desk/core): no visible title; the close button keeps its place. */
+.desk-settings-backdrop header h2 { visibility: hidden; }
