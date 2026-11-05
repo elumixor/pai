@@ -11,7 +11,7 @@ import { projectsDir } from "./transcript.ts";
 
 const log = logger("reset");
 
-const WIPED_TABLES = ["tasks", "messages", "asks", "notices", "requests", "routes", "drafts", "inbox"] as const;
+const WIPED_TABLES = ["tasks", "messages", "asks", "notices", "requests", "routes", "drafts", "inbox", "reminders"] as const;
 const WIPED_KEYS = ["agent_queue", "agent_held", "main_limit_held", "main_last_user", "main_thread_id", "read_marks"] as const;
 const WIPED_FOLDERS = ["agents", "journal", "drafts"] as const;
 const BLANK_MEMORY = "# Profile\n";
@@ -76,6 +76,7 @@ export function clearGeneral() {
   try {
     const { rows, gone } = generalSessions();
     const topics = [...new Set([main.thread(), ...rows.filter((r) => gone.has(r.session_id)).map((r) => r.thread_id), ...agents.list({ closed: true }).map((a) => a.threadId)])].filter((t): t is number => Boolean(t));
+    for (const a of [...agents.list({ closed: true }), ...agents.trashList()]) agents.forgetPerson(a);
     agents.forgetAll();
     sessions.erase(gone);
     db.transaction(() => {

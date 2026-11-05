@@ -1,7 +1,7 @@
 <script lang="ts">
   import { forkMounts } from "../chat/model";
   import { TrashBanner } from "@desk/core/trash";
-  import { PanelLeftOpen, SlidersHorizontal, Trash2 } from "lucide-svelte";
+  import { OctagonX, Pause, PanelLeftOpen, Play, SlidersHorizontal, Trash2 } from "lucide-svelte";
   import { fly } from "svelte/transition";
   import { api } from "../api";
   import ChatView, { type ChatSpec } from "../chat/ChatView.svelte";
@@ -12,6 +12,7 @@
   import { openAgent } from "../shell/open.svelte";
   import { sidebar } from "../sidebar/state.svelte";
   import { ancestors, type TreeNode, threadTitle } from "../sidebar/tree";
+  import AgentSheet, { AGENT_TABS, type AgentTab } from "../context/AgentSheet.svelte";
   import ChatConfig from "../context/ChatConfig.svelte";
   import GeneralActions from "./GeneralActions.svelte";
   import { newChat } from "./new-chat.svelte";
@@ -30,6 +31,7 @@
 
   /** What a session thinks at when nothing was asked for: Claude Code's own default. */
   const DEFAULT_EFFORT: Effort = "high";
+  const BAR_BUTTON = "grid size-7 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink";
   let chat = $state<ChatView>();
   /** The first message of a thread just started, shown in it until its transcript has it. */
   let seed = $state<{ id: string; text: string } | undefined>();
@@ -74,6 +76,37 @@
     if (!id.startsWith("thread:") || desk.trashedOf(id.slice(7))) return;
     event.preventDefault();
     menus.openContext(event.clientX, event.clientY, [{ label: "Move to trash", icon: "trash", run: () => trashThread(id.slice(7)) }]);
+  }
+
+  // ---- an agent, General included: what it runs on, and stopping, killing or deleting it --------------------------
+
+  /** Whose setup the header offers. A trashed agent is out of the way until it is restored. */
+  const agentHere = $derived(route.name === "home" ? PAI : route.name === "chat" ? route.param : undefined);
+  const trashedAgent = $derived(route.name === "chat" ? desk.trashedAgentOf(route.param ?? "") : undefined);
+  const openAgentRow = $derived(route.name === "chat" && !trashedAgent ? desk.bySlug(route.param ?? "") : undefined);
+  let sheetTab = $state<AgentTab | undefined>();
+  let killing = $state(false);
+  let killReason = $state("");
+  let killSheet = $state<Sheet>();
+
+  const stopAgent = async (slug: string) => {
+    const result = await api.stopAgent(slug);
+    return { error: result.error };
+  };
+  const stopOpen = () => void (openAgentRow && stopAgent(openAgentRow.slug));
+  const resumeOpen = () => void (openAgentRow && api.resumeAgent(openAgentRow.slug));
+  const trashOpen = () => {
+    if (!openAgentRow) return;
+    void desk.trash([`agent:${openAgentRow.slug}`]);
+    navigate("home");
+  };
+  async function kill() {
+    if (!openAgentRow) return;
+    const reason = killReason.trim();
+    killing = false;
+    killReason = "";
+    await api.killAgent(openAgentRow.slug, reason || undefined);
+    await desk.refreshAgents();
   }
 
   // ---- the chats -------------------------------------------------------------------------------------------------
@@ -139,6 +172,9 @@
         key: slug,
         agent: slug,
         parent: a?.parent ?? PAI,
+        live: async () => desk.bySlug(slug)?.sessionId ?? undefined,
+        stop: () => stopAgent(slug),
+        above: a?.status === "paused" ? pausedCard : undefined,
         prefs: () => (desk.bySlug(slug)?.model ? { model: desk.bySlug(slug)!.model, effort: desk.bySlug(slug)!.effort ?? DEFAULT_EFFORT } : undefined),
         send: (text, images) => api.messageAgent(slug, text, undefined, images),
         placeholder: `Tell ${a?.name ?? slug}…`,
@@ -242,6 +278,14 @@
 </script>
 
 {#snippet options()}<NewChatOptions />{/snippet}
+{#snippet pausedCard()}
+  <div class="mb-2 flex flex-wrap items-center gap-2 rounded-sm bg-ink-5 px-3 py-2 text-[13px]">
+    <Pause size={16} class="text-hand" />
+    <span class="min-w-0 flex-1">You stopped {openAgentRow?.name}{openAgentRow?.pauseReason ? `: ${openAgentRow.pauseReason}` : ""}. Write what it should do, or:</span>
+    <button class="h-7 rounded-sm bg-ink-10 px-2 transition-colors hover:bg-ink-20" onclick={resumeOpen}>Resume</button>
+    <button class="h-7 rounded-sm px-2 text-hot transition-colors hover:bg-ink-10" onclick={() => (killing = true)}>Kill</button>
+  </div>
+{/snippet}
 {#snippet status()}<NewChatStatus />{/snippet}
 
 <svelte:window onkeydown={closeKey} />
@@ -268,15 +312,39 @@
       {/each}
     </nav>
     <div class="crumb-under flex shrink-0 items-center"></div>
-    {#if route.name === "home" || configurable}
-      <button class="grid size-7 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink" aria-label="Chat config" title="Chat config" onclick={() => (configOpen = true)}><SlidersHorizontal size={16} /></button>
+    {#if configurable}
+      <button class={BAR_BUTTON} aria-label="Chat config" title="Chat config" onclick={() => (configOpen = true)}><SlidersHorizontal size={16} /></button>
+    {/if}
+    {#if agentHere && !trashedAgent}
+      <!-- On a phone one button opens the sheet, whose tabs are the rest. -->
+      {#each AGENT_TABS as item (item.id)}
+        <button class="{BAR_BUTTON} max-md:hidden" aria-label={item.label} title={item.label} onclick={() => (sheetTab = item.id)}><item.icon size={16} /></button>
+      {/each}
+      <button class="{BAR_BUTTON} md:hidden" aria-label="What this agent runs on" title="What this agent runs on" onclick={() => (sheetTab = "instructions")}><SlidersHorizontal size={16} /></button>
+    {/if}
+    {#if openAgentRow && openAgentRow.status !== "closed"}
+      {#if openAgentRow.status === "paused"}
+        <button class={BAR_BUTTON} aria-label="Resume" title="Resume" onclick={resumeOpen}><Play size={16} /></button>
+      {:else if openAgentRow.status === "working" || openAgentRow.status === "queued"}
+        <button class={BAR_BUTTON} aria-label="Stop" title="Stop: it waits on you" onclick={stopOpen}><Pause size={16} /></button>
+      {/if}
+      <button class={BAR_BUTTON} aria-label="Kill" title="Kill: close it for good" onclick={() => (killing = true)}><OctagonX size={16} /></button>
+    {/if}
+    {#if openAgentRow}
+      <button class={BAR_BUTTON} aria-label="Move to trash" title="Move to trash" onclick={trashOpen}><Trash2 size={16} /></button>
     {/if}
     {#if route.name === "home"}<GeneralActions />{/if}
     {#if openThread && !trashedHere}
-      <button class="grid size-7 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink" aria-label="Move to trash" title="Move to trash" onclick={() => trashThread(openThread)}><Trash2 size={16} /></button>
+      <button class={BAR_BUTTON} aria-label="Move to trash" title="Move to trash" onclick={() => trashThread(openThread)}><Trash2 size={16} /></button>
     {/if}
   </header>
   {#if configOpen}<ChatConfig session={openThread} onclose={() => (configOpen = false)} />{/if}
+  {#if sheetTab && agentHere}<AgentSheet slug={agentHere} name={agentHere === PAI ? "General" : (openAgentRow?.name ?? agentHere)} tab={sheetTab} onclose={() => (sheetTab = undefined)} />{/if}
+  {#if trashedAgent?.trashedAt}
+    <div class="shrink-0 py-2">
+      <TrashBanner since={trashedAgent.trashedAt} days={desk.trashDays} onrestore={() => void desk.restoreAgent(trashedAgent.slug)} onpurge={() => void desk.purgeAgent(trashedAgent.slug).then(() => navigate("home"))} />
+    </div>
+  {/if}
   {#if trashedHere}
     <div class="shrink-0 py-2">
       <TrashBanner
@@ -294,6 +362,17 @@
       </div>
     {/key}
   </section>
+  {#if killing}
+    <Sheet bind:this={killSheet} label="Kill {openAgentRow?.name}?" onclose={() => (killing = false)}>
+      {#snippet head()}<h2 class="m-0 text-[15px] font-medium">Kill {openAgentRow?.name}?</h2>{/snippet}
+      <p class="m-0 mb-2 text-[13px] text-ink-70">It closes now, with the workers under it. Its supervisor hears why.</p>
+      <textarea class="w-full rounded-sm bg-ink-5 p-2 text-[13px] outline-none focus:ring-2 focus:ring-accent/40" rows="2" placeholder="Why, if you want to say" aria-label="Why" bind:value={killReason}></textarea>
+      <div class="mt-4 flex justify-end gap-2">
+        <button class="h-8 rounded-sm bg-ink-5 px-3 text-[13px] transition-colors hover:bg-ink-10" onclick={() => void killSheet?.close()}>Keep it</button>
+        <button class="h-8 rounded-sm bg-ink-5 px-3 text-[13px] font-medium text-hot transition-colors hover:bg-ink-10" onclick={() => void kill()}>Kill</button>
+      </div>
+    </Sheet>
+  {/if}
   {#if discarding}
     <Sheet bind:this={discardSheet} label="Discard this message?" onclose={() => (discarding = false)}>
       {#snippet head()}<h2 class="m-0 text-[15px] font-medium">Discard this message?</h2>{/snippet}

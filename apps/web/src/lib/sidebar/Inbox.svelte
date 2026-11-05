@@ -2,6 +2,7 @@
   import { type InboxGroup, type InboxItem, InboxList } from "@desk/core/inbox";
   import { Briefcase, Calendar, ExternalLink, FileText, Inbox as InboxIcon, Mail, MessageCircle, Send } from "lucide-svelte";
   import { desk } from "../desk.svelte";
+  import Waiting from "./Waiting.svelte";
   import { ago, dayLabel, dayOf } from "../format";
   import { navigate } from "../router.svelte";
   import { type InboxEntry, inbox } from "../stores/inbox.svelte";
@@ -80,6 +81,7 @@
   }
 </script>
 
+<Waiting {onclose} />
 <InboxList
   {groups}
   unread={inbox.unread}

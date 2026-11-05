@@ -67,7 +67,7 @@ export class PeopleNotifyError extends Error {
 
 /** Where a notification goes: pai itself, one of its agents, or a plain thread. */
 export type Target = { kind: "main" } | { kind: "agent"; slug: string } | { kind: "thread"; sessionId: string };
-export type Via = "client" | "link" | "decide" | "general";
+export type Via = "person" | "client" | "link" | "decide" | "general";
 
 /** Rows older than this are not routed after a restart: the moment has passed. */
 const REQUEUE_MS = 24 * 60 * 60 * 1000;
@@ -91,6 +91,8 @@ export function receive(body: string, signature: string | null, event: string | 
     throw new PeopleNotifyError("the body is not JSON", 400);
   }
   if (typeof n?.id !== "string" || !n.id || typeof n.type !== "string" || typeof n.subject !== "string") throw new PeopleNotifyError("not a notification", 400);
+  // A page assigned by pai itself, as every agent's page is when it starts: nobody needs telling.
+  if (n.type === "mention" && n.data?.mention === "property" && config.peopleId && n.actor === `people:person/${config.peopleId}`) return { ok: true, ignored: true };
   const res = db.prepare("INSERT OR IGNORE INTO keep_notifications (id, body, received_at) VALUES (?, ?, ?)").run(n.id, body, now());
   if (res.changes === 0) return { ok: true, duplicate: true };
   inbox.record({ id: n.id, source: "keep", kind: `keep.${n.type}`, title: n.title, body: n.text ?? "", link: n.url });
@@ -152,6 +154,7 @@ async function handle(id: string) {
 
 /** Why it went where it went, for the inbox. */
 const VIA: Record<Via, string> = {
+  person: "who it was addressed to",
   client: "the thread that watches the page",
   link: "the thread that owns the page",
   decide: "Jev's choice",
@@ -175,6 +178,10 @@ export function targetOf(sessionId: string | undefined): Target | undefined {
 
 /** Where a notification goes, without delivering it; a new thread is started (and linked) here. */
 export async function route(n: Notification): Promise<{ via: Via; target: Target }> {
+  // Addressed by name: an agent's own person, or the group, which is General's.
+  if (n.to && config.peopleGroupId && n.to === config.peopleGroupId) return { via: "person", target: { kind: "main" } };
+  const person = n.to ? agents.list().find((a) => a.personId === n.to) : undefined;
+  if (person) return { via: "person", target: person.kind === "orchestrator" ? { kind: "main" } : { kind: "agent", slug: person.slug } };
   const tagged = /^pai:thread\/(.+)$/.exec(n.client ?? "")?.[1];
   const byClient = targetOf(tagged ? sessions.resolveId(tagged) : undefined);
   if (byClient) return { via: "client", target: byClient };

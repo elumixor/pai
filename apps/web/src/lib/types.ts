@@ -123,7 +123,7 @@ export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 
 export type AgentKind = "orchestrator" | "standing" | "sub" | "service";
 
-export type AgentStatus = "idle" | "queued" | "working" | "waiting" | "closed";
+export type AgentStatus = "idle" | "queued" | "working" | "waiting" | "paused" | "done" | "closed";
 
 export interface Agent {
   readonly slug: string;
@@ -155,6 +155,32 @@ export interface Agent {
   readonly threads?: readonly AgentThread[];
   /** Its current session: the one its chat talks to. */
   readonly sessionId?: string | null;
+  /** The Keep page it works from and is tracked on. */
+  readonly keepPage?: string | null;
+  /** What the user said when they stopped it. */
+  readonly pauseReason?: string | null;
+  readonly trashedAt?: number | null;
+}
+
+/** What one agent runs on, General included: `GET /agents/<slug>/sheet`. */
+export interface AgentSheet {
+  readonly agent: Agent;
+  readonly breadcrumb: string;
+  readonly instructions: { readonly folder: string; readonly files: readonly { readonly name: string; readonly text: string }[]; readonly system: string; readonly sections: ChatConfig["instructions"] };
+  readonly memory: readonly { readonly name: string; readonly text: string }[];
+  readonly page: { readonly urn: string; readonly title?: string; readonly path?: readonly string[]; readonly body?: string; readonly url?: string; readonly error?: string } | null;
+  readonly keep: { readonly workspaces: readonly KeepWorkspace[]; readonly shared: readonly KeepWorkspace[]; readonly error?: string };
+  readonly tools: ChatConfig["tools"];
+  readonly routines: ChatConfig["routines"];
+  readonly events: ChatConfig["events"];
+}
+
+export interface KeepWorkspace {
+  readonly id: string;
+  readonly title: string;
+  readonly icon: string | null;
+  readonly role: string;
+  readonly url?: string;
 }
 
 export type MessageKind = "chat" | "delegate" | "report" | "request" | "response" | "ask" | "answer" | "notice" | "event";
@@ -167,6 +193,12 @@ export interface LogMessage {
   readonly body: string;
   readonly taskId: number | null;
   readonly meta: {
+    /** An ask still with a supervisor: who. */
+    readonly heldBy?: string;
+    /** An agent's start: its task as it stood, and the Keep page holding it. */
+    readonly brief?: string;
+    readonly keep?: string;
+    readonly pageTitle?: string;
     readonly event?: string;
     readonly askId?: number;
     readonly options?: readonly string[];
@@ -220,7 +252,7 @@ export interface TaskItem {
 }
 
 export interface Need {
-  readonly kind: "ask" | "question" | "task" | "draft";
+  readonly kind: "ask" | "question" | "task" | "draft" | "paused";
   readonly draftId?: number;
   readonly draft?: NonNullable<LogMessage["meta"]["draft"]>;
   readonly id: string;

@@ -46,7 +46,7 @@ const QUESTION: decide.Choice = {
 /** The reports in a batch: each starts with `[Agent name]` on its own paragraph. */
 export function split(batch: string): string[] {
   const body = batch.replace(/\n\n\[Handle this yourself:[^]*$/, "");
-  const parts = body.split(/\n\n(?=\[[^\]\n]+\] )/).map((p) => p.trim()).filter(Boolean);
+  const parts = body.split(/\n\n(?=\[[^\]\n]+\][ \n])/).map((p) => p.trim()).filter(Boolean);
   return parts.length ? parts : [body.trim()];
 }
 

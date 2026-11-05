@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { keepPage } from "../keep";
   import { DESK_DOMAIN } from "@desk/core";
   import { flip } from "svelte/animate";
-  import { ChevronRight, CircleCheck, FolderGit2, Hand, Plus } from "lucide-svelte";
+  import { ChevronRight, CircleCheck, FolderGit2, Hand, Plus, Pause } from "lucide-svelte";
   import { auth } from "../auth.svelte";
   import { desk } from "../desk.svelte";
   import { projectName } from "../format";
@@ -40,7 +41,6 @@
   const hiddenPicked = $derived(selection.allPicked(hidden));
   const moreKey = $derived(`more:${node.id}`);
   const devUrl = $derived(node.project ? `https://dev.${DESK_DOMAIN}/?project=${encodeURIComponent(node.project)}${thread ? `&session=${thread}` : ""}` : undefined);
-  const keepPage = (urn: string) => `${(auth.config.keepUrl ?? `https://keep.${DESK_DOMAIN}`).replace(/\/$/, "")}/p/${urn.replace(/^keep:page\//, "")}`;
 
   /** The title fades out at its end, instead of an ellipsis, only when it does not fit. */
   function fadeWhenClipped(el: HTMLElement) {
@@ -86,7 +86,7 @@
     menus.openContext(event.clientX, event.clientY, [
       { label: ids.length > 1 ? `Move ${ids.length} into…` : "Move into…", icon: "arrows", run: () => mover.start(ids) },
       ...(thread ? [{ label: "New thread under this one", icon: "plus" as const, run: () => onnew(thread) }] : []),
-      ...(ids.some((id) => id.startsWith("thread:")) ? [{ label: ids.length > 1 ? `Move ${ids.length} to trash` : "Move to trash", icon: "trash" as const, run: () => void remove(ids) }] : []),
+      ...(ids.length ? [{ label: ids.length > 1 ? `Move ${ids.length} to trash` : "Move to trash", icon: "trash" as const, run: () => void remove(ids) }] : []),
       ...(devUrl ? [{ label: `Open ${projectName(node.project!)} in Dev`, icon: "code" as const, run: () => window.open(devUrl, "_blank", "noopener") }] : []),
     ]);
   }
@@ -199,9 +199,9 @@
       ondragend={() => (selection.dragging = null)}
     >
       <span class="grid w-4 shrink-0 place-items-center transition-opacity {openable ? 'group-hover:opacity-0 group-focus-within:opacity-0 max-md:opacity-0' : ''}">
-        {#if working}<span class="tree-spinner"></span>{:else}<node.icon size={16} class="text-ink-45" />{/if}
+        {#if working}<span class="tree-spinner"></span>{:else if node.standing === "paused"}<Pause size={16} class="text-hand" />{:else}<node.icon size={16} class={node.standing === "done" ? "tree-done" : "text-ink-45"} />{/if}
       </span>
-      <span class="tree-label min-w-0 overflow-hidden whitespace-nowrap" {@attach fadeWhenClipped}>{node.label}</span>
+      <span class="tree-label min-w-0 overflow-hidden whitespace-nowrap {waiting ? 'tree-pending' : node.standing === 'done' ? 'tree-done' : ''}" {@attach fadeWhenClipped}>{node.label}</span>
       {#if devUrl}
         <span
           role="link"

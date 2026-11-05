@@ -26,6 +26,7 @@ import type {
   Transcript,
   Upload,
   Usage,
+  AgentSheet,
 } from "./types";
 
 /** A refusal from the daemon, with its own words. */
@@ -101,6 +102,16 @@ export const api = {
   purgeThreads: (ids: readonly string[]) => send<{ ids: string[] }>("/sessions/purge", { ids }),
   /** Puts threads under a session, an agent (`agent:<slug>`) or at the top (`null`). */
   moveThreads: (ids: readonly string[], parent: string | null) => send<{ moved: string[] }>("/sessions/move", { ids, parent }),
+  agentSheet: (slug: string) => get<AgentSheet>(`/agents/${slug}/sheet`),
+  stopAgent: (slug: string, reason?: string) => send<{ stopped: string[] }>(`/agents/${slug}/stop`, { reason }),
+  resumeAgent: (slug: string) => send(`/agents/${slug}/resume`, {}),
+  killAgent: (slug: string, summary?: string) => send(`/agents/${slug}/close`, { summary }),
+  trashAgent: (slug: string) => send(`/agents/${slug}/trash`, {}),
+  restoreAgent: (slug: string) => send(`/agents/${slug}/restore`, {}),
+  purgeAgent: (slug: string) => send(`/agents/${slug}/purge`, {}),
+  agentTrash: () => get<{ items: Agent[]; days: number }>("/agents/trash", true),
+  prefs: () => get<Record<string, unknown>>("/prefs", true),
+  savePrefs: (changes: Record<string, unknown>) => request("PUT", "/prefs", changes),
   configureAgent: (slug: string, changes: { bubble?: boolean; name?: string; parent?: string }) => send(`/agents/${slug}`, changes, "PATCH"),
   messages: (agent: string, options: { before?: number; limit?: number; task?: number } = {}) =>
     get<LogMessage[]>(`/messages?${options.task ? `task=${options.task}` : `agent=${q(agent)}`}&limit=${options.limit ?? 100}${options.before ? `&before=${options.before}` : ""}`),

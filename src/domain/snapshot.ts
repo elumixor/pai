@@ -52,7 +52,7 @@ export function snapshot(): string {
   const staff = agents.list().filter((a) => a.slug !== agents.PAI);
   const byDepth = [...staff].sort((x, y) => agents.depth(x.slug) - agents.depth(y.slug) || x.name.localeCompare(y.name));
   const open = tasks.list();
-  const decisions = asks.open();
+  const decisions = asks.forUser();
   const routines = automations.all();
   const waiting = drafts.open();
   const days = journalDays();

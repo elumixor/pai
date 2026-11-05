@@ -74,9 +74,11 @@ function build(
   // The `keep` server pai injects (Pai's key, this thread's client tag) is every agent's: each tracks its work there.
   const mcpServers = Object.fromEntries(Object.entries(servers).filter(([name]) => serverOn(name) && (name === "keep" || serverAllowed(name, agent?.tools))));
   const disallowedTools = [...offTools(), ...(prefs?.private ? ["mcp__pai__edit_memory"] : [])];
-  // pai delegates through its own agents, which the user can watch and answer; Claude Code's Agent tool would hide the work.
+  // Agents delegate through agents of their own, which the user can watch and answer; Claude Code's Agent tool would
+  // hide the work. A plain or dev thread is no agent: it is Claude Code one to one and keeps its subagents.
+  if (agent) disallowedTools.push("Agent", "Task");
   // Threads are the same kind of hidden work: whatever pai hands off is an agent, so it shows in the agent tree.
-  if (agent?.slug === "pai") disallowedTools.push("Agent", "Task", ...PAI_THREAD_TOOLS);
+  if (agent?.slug === "pai") disallowedTools.push(...PAI_THREAD_TOOLS);
   return {
     cwd,
     model: resolveModel(prefs?.model ?? (kind === "chat" ? config.models.main : config.models.task)),
@@ -618,6 +620,9 @@ export class Session {
         behavior: "deny",
         message: "The user is not in this conversation right now. Ask with ask_user (blocking false) and the same options instead; the answer comes back as a turn.",
       });
+    // A worker's question goes through its supervisor first, and it must not hold a process open while it waits.
+    if (this.agent && this.agent !== "pai")
+      return Promise.resolve({ behavior: "deny", message: "You do not have AskUserQuestion: ask with ask_user. It reaches your supervisor first, and the answer comes back as a turn." });
     return new Promise<{ behavior: "allow"; updatedInput: Record<string, unknown> }>((resolve) => {
       const id = randomUUID().slice(0, 8);
       this.pending = {

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { CommandPalette, type PaletteItem } from "@desk/core/palette";
   import { TrashList } from "@desk/core/trash";
-  import { ArrowUpToLine, Code, Hand, MessageSquare, Trash2, House, Inbox as InboxIcon, LogOut, PanelLeftClose, Plus, Settings } from "lucide-svelte";
+  import { ArrowUpToLine, Code, Hand, MessageSquare, Trash2, House, Inbox as InboxIcon, LogOut, PanelLeftClose, Plus, Settings, GitBranch } from "lucide-svelte";
   import { auth } from "../auth.svelte";
   import { desk } from "../desk.svelte";
   import { href, navigate } from "../router.svelte";
@@ -26,8 +26,11 @@
   $effect(() => {
     if (trashOpen) void desk.refreshTrash();
   });
-  const trashItems = $derived(desk.trashed?.map((t) => ({ ...t, id: t.sessionId, title: t.title || t.shortId })) ?? null);
+  const trashItems = $derived(desk.trashed && [...desk.trashedAgents.map((a) => ({ id: `agent:${a.slug}`, title: a.name, kind: "agent" })), ...desk.trashed.map((t) => ({ ...t, id: t.sessionId, title: t.title || t.shortId }))]);
+  const agentOf = (id: string) => (id.startsWith("agent:") ? id.slice("agent:".length) : undefined);
+  const trashRoute = (id: string) => (agentOf(id) ? { name: "chat" as const, param: agentOf(id)! } : { name: "thread" as const, param: id });
   let inboxOpen = $state(false);
+  const inboxBadge = $derived(inbox.unread + desk.needs.length);
   inbox.start();
   const home = $derived(active === "pai");
   const waiting = $derived(generalWaiting(desk.agents, desk.sessions, desk.needs, desk.paiSession?.sessionId));
@@ -186,20 +189,20 @@
       {#snippet children({ close })}
         <TrashList
           items={trashItems}
-          href={(item) => href({ name: "thread", param: item.id })}
-          onopen={(item) => { close(); navigate({ name: "thread", param: item.id }); }}
-          onrestore={(item) => void desk.restore([item.id])}
-          onpurge={(item) => void desk.purge([item.id])}
+          href={(item) => href(trashRoute(item.id))}
+          onopen={(item) => { close(); navigate(trashRoute(item.id)); }}
+          onrestore={(item) => void (agentOf(item.id) ? desk.restoreAgent(agentOf(item.id)!) : desk.restore([item.id]))}
+          onpurge={(item) => void (agentOf(item.id) ? desk.purgeAgent(agentOf(item.id)!) : desk.purge([item.id]))}
         >
-          {#snippet lead(item)}{#if item.kind === "code"}<Code size={16} />{:else}<MessageSquare size={16} />{/if}{/snippet}
+          {#snippet lead(item)}{#if item.kind === "agent"}<GitBranch size={16} />{:else if item.kind === "code"}<Code size={16} />{:else}<MessageSquare size={16} />{/if}{/snippet}
         </TrashList>
       {/snippet}
     </Popover>
     <Popover bind:open={inboxOpen} width="w-96" align="end">
       {#snippet trigger({ toggle })}
-        <button class="relative grid size-9 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink" aria-label={inbox.unread ? `Inbox, ${inbox.unread} unread` : "Inbox"} title="Inbox" aria-expanded={inboxOpen} onclick={toggle}>
+        <button class="relative grid size-9 shrink-0 place-items-center rounded-sm text-ink-45 transition-colors hover:bg-ink-5 hover:text-ink" aria-label={inboxBadge ? `Inbox, ${desk.needs.length} waiting on you, ${inbox.unread} unread` : "Inbox"} title="Inbox" aria-expanded={inboxOpen} onclick={toggle}>
           <InboxIcon size={17} />
-          {#if inbox.unread}<span class="absolute top-1 right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[10px] leading-4 font-medium text-accent-ink tabular-nums" aria-hidden="true">{inbox.unread > 99 ? "99+" : inbox.unread}</span>{/if}
+          {#if inboxBadge}<span class="absolute top-1 right-0.5 min-w-4 rounded-full {desk.needs.length ? 'bg-hand' : 'bg-accent'} px-1 text-center text-[10px] leading-4 font-medium text-accent-ink tabular-nums" aria-hidden="true">{inboxBadge > 99 ? "99+" : inboxBadge}</span>{/if}
         </button>
       {/snippet}
       {#snippet children({ close })}

@@ -4,6 +4,7 @@
   import { desk } from "../desk.svelte";
   import { clock, firstLine } from "../format";
   import { kindIcon, kindTint } from "../kinds";
+  import { keepPage } from "../keep";
   import { md, mdInline, mdTimed } from "../markdown";
   import type { LogMessage } from "../types";
   import Icon from "../ui/Icon.svelte";
@@ -183,7 +184,7 @@
 {:else if shape === "ask"}
   <div {@attach attach} class="row question tint-warn" class:open={askOpen} class:answered={!askOpen} data-message={m.id} data-ask={askId ?? ""} data-task={m.taskId ?? ""} data-at={m.createdAt} data-key={key} data-testid="ask">
     <div class="q-meta">
-      <Icon name={kindIcon("approval")} size={10} /><b>{askOpen ? "Action needed" : "Decision made"}</b><span>{ctx.agent === m.from ? "" : ` · ${ctx.nameOf(m.from)}`}</span>
+      <Icon name={kindIcon("approval")} size={10} /><b>{!askOpen ? "Decision made" : m.meta.heldBy ? `Asked ${m.meta.heldBy}` : "Action needed"}</b><span>{ctx.agent === m.from ? "" : ` · ${ctx.nameOf(m.from)}`}</span>
       {#if m.meta.priority && m.meta.priority !== "normal"}<span class="tag prio-{m.meta.priority}">{m.meta.priority}</span>{/if}
     </div>
     {#if m.meta.breadcrumb}<div class="q-crumb">{m.meta.breadcrumb}</div>{/if}
@@ -231,7 +232,8 @@
   >
     <span class="pill-line"><Icon name={eventIcon(m)} size={10} /><span class="ellipsis pill-text" {@attach mdInline(lineOf(m))}></span><span class="when">{clock(m.createdAt)}</span>{@render chevron()}</span>
     <div class="event-body">
-      <div {@attach md(m.body)}></div>
+      <div {@attach md(typeof m.meta.brief === "string" ? m.meta.brief : m.body)}></div>
+      {#if typeof m.meta.keep === "string"}<a href={keepPage(m.meta.keep)} target="_blank" rel="noreferrer" onclick={(e) => e.stopPropagation()}><Icon name="external" size={10} /> {m.meta.pageTitle ?? "Open"} in Keep</a>{/if}
       {#if m.meta.link}<a href={m.meta.link} target="_blank" rel="noreferrer" onclick={(e) => e.stopPropagation()}><Icon name="external" size={10} /> open</a>{/if}
     </div>
   </button>

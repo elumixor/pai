@@ -19,6 +19,8 @@
     readonly seed?: string;
     /** The live session, when there is one: its stream and its transcript's tool calls. */
     readonly live?: () => Promise<string | undefined>;
+    /** What Stop does when a chat has more to it than its session: an agent's stops those below it and waits on the user. */
+    readonly stop?: () => Promise<{ error?: string }>;
     readonly send: (text: string, images: readonly Upload[]) => Promise<Sent>;
     readonly placeholder: string;
     readonly prefs?: () => Prefs | undefined;
@@ -399,6 +401,11 @@
 
   async function stopTurn() {
     if (!liveSession) return;
+    if (spec.stop) {
+      const stopped = await spec.stop();
+      if (stopped.error) box?.setNote(stopped.error);
+      return;
+    }
     const result = await api.stop(liveSession);
     if (result.error) box?.setNote(result.error);
     else if (result.data?.stopped === false) box?.setNote("This turn runs in a terminal: press Esc there to stop it.");

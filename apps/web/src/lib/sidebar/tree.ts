@@ -19,6 +19,8 @@ export interface TreeNode {
   readonly working: boolean;
   /** Decisions waiting on him in this row itself. */
   readonly waiting: number;
+  /** An agent's standing: finished its job, or stopped by the user and waiting on them. */
+  readonly standing?: "done" | "paused";
   readonly lastActivity: number;
   /** The dev project a thread runs in. */
   readonly project?: string;
@@ -31,7 +33,7 @@ export interface TreeNode {
 
 export const PAI = "pai";
 export const KIND_ORDER: Record<Agent["kind"], number> = { orchestrator: 0, standing: 1, service: 2, sub: 3 };
-const STATUS: Record<AgentStatus, string> = { working: "working", waiting: "waiting on you", queued: "queued", idle: "idle", closed: "closed" };
+const STATUS: Record<AgentStatus, string> = { working: "working", waiting: "waiting on an answer", paused: "stopped, waiting on you", queued: "queued", idle: "idle", done: "finished", closed: "closed" };
 const KIND_ICON: Record<Agent["kind"], TreeIcon> = { orchestrator: Bot, standing: Bot, service: Zap, sub: GitBranch };
 /** An agent's icon from what it is called: the first that fits. */
 const AGENT_ICONS: readonly (readonly [RegExp, TreeIcon])[] = [
@@ -90,6 +92,8 @@ export function buildTree({ agents, sessions, needs, open, pai }: TreeInput): Tr
       hint: [`${a.name} · ${a.kind}`, STATUS[a.status] + (a.queued ? ` · ${a.queued} queued` : ""), open ? `${open} open task${open === 1 ? "" : "s"}` : "", a.model ? modelName(a.model) : ""].filter(Boolean).join("\n"),
       icon: agentIcon(a),
       working: a.status === "working",
+      standing: a.status === "done" || a.status === "paused" ? a.status : undefined,
+      keep: a.keepPage ? [{ urn: a.keepPage, title: "" }] : undefined,
       waiting: needs.filter((n) => n.agent === a.slug && !(n.session && threadIds.has(n.session))).length,
       lastActivity: a.lastActive ?? a.createdAt ?? 0,
       holds: Boolean(a.sessionId),

@@ -745,3 +745,9 @@ body.in-home .tooltip .dim { color: color-mix(in srgb, var(--canvas) 65%, transp
 .opacity-range::-webkit-slider-thumb { appearance: none; width: 10px; height: 10px; margin-top: -4px; border-radius: 50%; background: var(--ink-45); }
 .opacity-range::-moz-range-track { height: 2px; border-radius: 1px; background: var(--ink-20); }
 .opacity-range::-moz-range-thumb { width: 10px; height: 10px; border: 0; border-radius: 50%; background: var(--ink-45); }
+
+/* An agent in the sidebar: finished is a quiet green, waiting on the user breathes in the hand's colour beside the hand. */
+.tree-done { color: color-mix(in srgb, var(--ok, var(--idle)) 65%, var(--ink-45, currentColor)); }
+.tree-pending { color: var(--hand); animation: tree-pending 2.4s ease-in-out infinite; }
+@keyframes tree-pending { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .tree-pending { animation: none; } }

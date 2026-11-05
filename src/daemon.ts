@@ -25,7 +25,8 @@ import * as summaries from "./domain/summaries.ts";
 import * as push from "./domain/push.ts";
 import * as spend from "./domain/spend.ts";
 import * as models from "./domain/models.ts";
-import { flush as flushNotices } from "./domain/asks.ts";
+import { elevateOverdue, flush as flushNotices } from "./domain/asks.ts";
+import { remindDue } from "./domain/reminders.ts";
 import { startClaudeLoginCheck } from "./domain/claude-login.ts";
 import * as dev from "./domain/dev.ts";
 import * as devTasks from "./domain/dev-tasks.ts";
@@ -89,12 +90,20 @@ const stopPush = push.start();
 const stopSpend = spend.start();
 const stopModels = models.start();
 // Notices and asks held through quiet hours go out when they end.
-const noticeTimer = setInterval(flushNotices, 60 * 1000);
+const noticeTimer = setInterval(() => {
+  flushNotices();
+  elevateOverdue();
+  remindDue();
+}, 60 * 1000);
 
 const reaper = setInterval(reapIdle, 60 * 1000);
 // The trash empties itself of what has been there 30 days.
-purgeOld();
-const trashTimer = setInterval(purgeOld, 60 * 60 * 1000);
+const purgeTrash = () => {
+  purgeOld();
+  agents.purgeOld();
+};
+purgeTrash();
+const trashTimer = setInterval(purgeTrash, 60 * 60 * 1000);
 
 bus.emitEvent("daemon.started", { pid: process.pid, port: config.port });
 

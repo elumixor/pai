@@ -15,6 +15,7 @@ class Desk {
   sessions = $state<SessionSummary[]>([]);
   /** Threads in the trash (`null` until asked), and the days they wait there. */
   trashed = $state<TrashedThread[] | null>(null);
+  trashedAgents = $state<readonly Agent[]>([]);
   trashDays = $state(30);
   /** Open tasks: what the tree and the desks show. */
   tasks = $state<TaskItem[]>([]);
@@ -117,16 +118,25 @@ class Desk {
   }
 
   async refreshTrash() {
-    const found = await api.trash().catch(() => undefined);
+    const [found, agents] = await Promise.all([api.trash().catch(() => undefined), api.agentTrash().catch(() => undefined)]);
+    if (agents) this.trashedAgents = agents.items;
     if (!found) return;
     this.trashed = found.items;
     this.trashDays = found.days;
   }
 
+  trashedAgentOf = (slug: string) => this.trashedAgents.find((a) => a.slug === slug);
+
   trashedOf = (id: string) => this.trashed?.find((t) => t.sessionId === id || t.shortId === id);
 
-  /** Moves tree rows to the trash: threads only (with what hangs under them), at once, then read back. */
+  /** Moves tree rows to the trash (with what hangs under them), at once, then read back. */
   async trash(ids: readonly string[]) {
+    const agents = ids.filter((id) => id.startsWith("agent:")).map((id) => id.slice("agent:".length));
+    if (agents.length) {
+      this.agents = this.agents.filter((a) => !agents.includes(a.slug));
+      await Promise.all(agents.map((slug) => api.trashAgent(slug)));
+      await Promise.all([this.refreshAgents(), this.refreshTrash()]);
+    }
     const threads = ids.filter((id) => id.startsWith("thread:")).map((id) => id.slice("thread:".length));
     if (!threads.length) return;
     const gone = new Set(threads);
@@ -138,6 +148,18 @@ class Desk {
     const sent = await api.trashThreads(threads);
     if (sent.error) console.warn("[trash]", sent.error);
     await Promise.all([this.refreshSessions(), this.refreshTrash()]);
+  }
+
+  async restoreAgent(slug: string) {
+    this.trashedAgents = this.trashedAgents.filter((a) => a.slug !== slug);
+    await api.restoreAgent(slug);
+    await Promise.all([this.refreshAgents(), this.refreshSessions(), this.refreshTrash()]);
+  }
+
+  async purgeAgent(slug: string) {
+    this.trashedAgents = this.trashedAgents.filter((a) => a.slug !== slug);
+    await api.purgeAgent(slug);
+    await this.refreshTrash();
   }
 
   async restore(ids: readonly string[]) {
@@ -198,9 +220,17 @@ class Desk {
         const changed = payload as unknown as Agent;
         const index = this.agents.findIndex((a) => a.slug === changed.slug);
         if (index < 0) void this.refreshAgents();
-        else this.agents[index] = { ...this.agents[index]!, ...changed };
+        else {
+          if (this.agents[index]!.status !== changed.status && (changed.status === "paused" || this.agents[index]!.status === "paused")) void this.refreshNeeds();
+          this.agents[index] = { ...this.agents[index]!, ...changed };
+        }
         break;
       }
+      case "agents.trashed":
+      case "agents.restored":
+      case "agents.purged":
+        void Promise.all([this.refreshAgents(), this.refreshSessions(), this.refreshTrash(), this.refreshNeeds()]);
+        break;
       // A turn began: the thread works from now on.
       case "session.input":
         this.#setState(sessionId, "busy");

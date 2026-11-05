@@ -289,6 +289,16 @@ if (!sessionColumns.includes("origin")) {
 }
 // Whether reports an agent receives from those under it go on up to its own parent; it decides, per agent.
 if (!(db.query("PRAGMA table_info(agents)").all() as { name: string }[]).some((c) => c.name === "bubble")) db.exec("ALTER TABLE agents ADD COLUMN bubble INTEGER NOT NULL DEFAULT 1");
+// An agent works from a Keep page and is a person in People; it can be paused on the user, done, or in the trash.
+const agentColumns = (db.query("PRAGMA table_info(agents)").all() as { name: string }[]).map((c) => c.name);
+for (const [column, type] of [["keep_page", "TEXT"], ["person_id", "TEXT"], ["page_session", "TEXT"], ["paused_at", "INTEGER"], ["pause_reason", "TEXT"], ["done_at", "INTEGER"], ["trashed_at", "INTEGER"]] as const)
+  if (!agentColumns.includes(column)) db.exec(`ALTER TABLE agents ADD COLUMN ${column} ${type}`);
+// A question stays with a supervisor until it settles or elevates it; null is the user.
+const askColumns = (db.query("PRAGMA table_info(asks)").all() as { name: string }[]).map((c) => c.name);
+if (!askColumns.includes("holder")) db.exec("ALTER TABLE asks ADD COLUMN holder TEXT");
+if (!askColumns.includes("held_since")) db.exec("ALTER TABLE asks ADD COLUMN held_since INTEGER");
+// What waits on the user and was said again, by the need's id.
+db.exec("CREATE TABLE IF NOT EXISTS reminders (need TEXT PRIMARY KEY, at INTEGER NOT NULL, times INTEGER NOT NULL)");
 // Routines: a schedule next to the event, an agent next to the action, a check in code before any model runs.
 const automationColumns = (db.query("PRAGMA table_info(automations)").all() as { name: string }[]).map((c) => c.name);
 if (!automationColumns.includes("schedule")) db.exec("ALTER TABLE automations ADD COLUMN schedule TEXT NOT NULL DEFAULT ''");

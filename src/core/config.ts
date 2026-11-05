@@ -125,6 +125,19 @@ export const config = {
   peopleWebhookSecret: env.PAI_PEOPLE_WEBHOOK_SECRET ?? "",
   /** Pai's People person id: how it recognises itself in Keep and People (`people:person/<id>`). */
   peopleId: setting("PAI_PEOPLE_ID") ?? "",
+  /** People's API, pai's key on it, and the group its agents are people in (General, `peopleId`, leads it). */
+  peopleUrl: setting("PAI_PEOPLE_URL") ?? "https://people.desk.atmagaming.com",
+  peopleKey: env.PAI_PEOPLE_KEY ?? "",
+  peopleGroupId: setting("PAI_PEOPLE_GROUP_ID") ?? "",
+  /** The Keep workspace General's own page lives in. */
+  keepHome: setting("PAI_KEEP_HOME") ?? "Personal",
+  /** A question a supervisor has not settled by then goes to the user. */
+  escalateMinutes: Number(setting("PAI_ESCALATE_MINUTES") ?? 10),
+  /** What waits on the user is said again after this, then every `remindRepeatMinutes`. */
+  remindMinutes: Number(setting("PAI_REMIND_MINUTES") ?? 30),
+  remindRepeatMinutes: Number(setting("PAI_REMIND_REPEAT_MINUTES") ?? 240),
+  /** A worker that finished stays open this long for follow-ups, then closes. */
+  doneCloseHours: Number(setting("PAI_DONE_CLOSE_HOURS") ?? 72),
   /** A Keep task with a dev project gets a dev session started for it (`dev-tasks.ts`); PAI_DEV_TASKS=0 turns that off. */
   devTasks: bool(setting("PAI_DEV_TASKS"), true),
 

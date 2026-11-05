@@ -14,6 +14,7 @@
   import { agentIcon, ancestors, buildTree, threadIcon, threadTitle } from "../sidebar/tree";
   import { auth } from "../auth.svelte";
   import { theme } from "../theme.svelte";
+  import { vim } from "../vim.svelte";
   import type { LogMessage, TaskStatus } from "../types";
   import BodyPeek from "../ui/BodyPeek.svelte";
   import Menus from "../ui/Menus.svelte";
@@ -34,7 +35,10 @@
   const route = $derived(current());
 
   $effect(() => {
-    if (auth.signedIn) void theme.load();
+    if (auth.signedIn) {
+      void theme.load();
+      void vim.load();
+    }
   });
   /** What the settings dialog opens over: the place that was showing when it was asked for. */
   let behind = $state<Route>({ name: "home" });

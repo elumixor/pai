@@ -382,7 +382,7 @@ class Frontend {
         return true;
       }
       case "/asks": {
-        const open = asks.open();
+        const open = asks.forUser();
         await reply(open.length ? open.map((a) => `<b>#${a.id}</b> ${esc(agents.breadcrumb(a.agent))}: ${esc(a.question)}`).join("\n") : "nothing waiting on you");
         return true;
       }
@@ -659,7 +659,7 @@ class Frontend {
         if (!now_ || now_.cardId === null) return;
         const brief = db.query("SELECT body FROM messages WHERE recipient = ? AND kind = 'delegate' ORDER BY id DESC LIMIT 1").get(a.slug) as { body: string } | undefined;
         const line = brief?.body.split("\n").find((l) => l.trim())?.trim().slice(0, 300) ?? "";
-        const status = { working: "working", waiting: "waiting on you", queued: "queued", idle: "done", closed: "closed" }[now_.status] ?? now_.status;
+        const status = { working: "working", waiting: "waiting on an answer", paused: "stopped, waiting on you", queued: "queued", idle: "idle", done: "done", closed: "closed" }[now_.status] ?? now_.status;
         void this.bot.api
           .editMessageText(this.chatId, now_.cardId, `↳ <b>${esc(now_.name)}</b>: ${esc(line)}\n<i>${status}</i>${this.trailerFor(this.meta(now_, { kind: "delegation", status: now_.status, breadcrumb: agents.breadcrumb(now_.slug) }))}`, { parse_mode: "HTML", link_preview_options: { is_disabled: true } })
           .catch((err: Error) => !err.message.includes("not modified") && log.debug("card edit failed", err.message));

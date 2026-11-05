@@ -16,8 +16,8 @@ import { conversationDigest, conversations } from "./transcript.ts";
 
 /**
  * The tools that make a session one of pai's staff, by role: pai (the orchestrator) runs the
- * show; a standing agent owns an area and may start sub-agents; a sub-agent does one job; a
- * service agent answers requests. A plain thread gets the task list and recall only.
+ * show; a worker does one job and may start workers of its own, down to `MAX_DEPTH`. A plain
+ * thread gets the task list and recall only.
  */
 
 const ok = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });
@@ -59,38 +59,27 @@ const agentSummary = (a: agents.Agent) => ({
   costUsd: Number(a.costUsd.toFixed(3)),
 });
 
-/** Only pai sees every agent; an agent sees its own sub-agents. */
+/** pai reaches every agent; an agent, those under it. */
 function mine(me: string, slug: string) {
   const a = agents.get(slug);
   if (!a) throw new Error(`no agent ${slug}`);
-  if (me !== agents.PAI && a.parent !== me) throw new Error(`${slug} is not yours: you reach other agents with request`);
+  if (me !== agents.PAI && !agents.isUnder(slug, me)) throw new Error(`${slug} is not yours: you reach other agents with request`);
   return a;
-}
-
-/**
- * Whatever waits on the user belongs to an area: its card sits on that agent in the tree. pai
- * itself has no row there, so a decision it keeps for itself would be one no area shows.
- */
-function inArea(owner: string) {
-  if (owner === agents.PAI) throw new Error("a task waiting on the user belongs to an area: owner = that area's agent (list_agents; create one if none fits), never pai");
-  if (!agents.get(owner)) throw new Error(`no agent ${owner}`);
-}
-
-/** The task a decision of pai's hangs on, checked to exist and to belong to an area. */
-function areaOwned(taskId: number) {
-  const t = tasks.get(taskId);
-  if (!t) throw new Error(`no task #${taskId}`);
-  inArea(t.owner);
 }
 
 /** What a waiting_user task's card shows the user: it is their instruction, not a note to another agent. */
 const NEXT_ACTION =
   "With status waiting_user this is the card the user reads: say to them (you, never he/his) exactly what to do, each step with its link, then one line on why you cannot do it yourself (the access or tool you lack). They answer I did it (you resume) or Won't do.";
 
+/** After `check_outbound` said "ask": that agent's next question is the user's, whoever is above it. */
+const outboundAsk = new Set<string>();
+
 export function staffTools(me: string | undefined) {
   const role = roleOf(me);
   const self = me ?? agents.PAI;
   const isPai = role === "orchestrator";
+  /** A worker at the bottom of the tree starts no more of them, and has no one under it to manage. */
+  const canStaff = isPai || (role === "sub" && agents.depth(self) < agents.MAX_DEPTH);
   const out = [];
 
   // ---- the task list: everyone reads it; agents write their own -----------------
@@ -109,7 +98,6 @@ export function staffTools(me: string | undefined) {
         notes: z.string().optional(),
       },
       guard((a: { title: string; owner?: string; parent_id?: number; status?: tasks.TaskStatus; next_action?: string; due?: string; source?: string; notes?: string }) => {
-        if (a.status === "waiting_user") inArea(a.owner ?? self);
         return tasks.add({ title: a.title, owner: a.owner ?? self, parentId: a.parent_id, status: a.status, nextAction: a.next_action, due: a.due, source: a.source, notes: a.notes, createdBy: me ?? "thread" });
       }),
     ),
@@ -131,7 +119,6 @@ export function staffTools(me: string | undefined) {
         const t = tasks.get(a.id);
         if (!t) throw new Error(`no task #${a.id}`);
         if (!isPai && role !== "thread" && t.owner !== self && !agents.list({ parent: self }).some((c) => c.slug === t.owner)) throw new Error(`task #${a.id} belongs to ${t.owner}`);
-        if ((a.status ?? t.status) === "waiting_user" && (a.status || a.owner)) inArea(a.owner ?? t.owner);
         return tasks.update(a.id, { title: a.title, status: a.status, nextAction: a.next_action, due: a.due, owner: a.owner, source: a.source, notes: a.notes, parentId: a.parent_id });
       }),
     ),
@@ -171,7 +158,7 @@ export function staffTools(me: string | undefined) {
   out.push(
     tool(
       "ask_user",
-      `Ask the user a question; it reaches them through pai's chat (and their phone and watch) as a card with your name, answered with one tap. The question is one short line; options are two to four short choices — Yes / No, or A / B / C with the choice in each label, your recommendation first; they can still type an answer. blocking: you are parked until they answer and the answer arrives as a new message. Non-blocking: give a fallback you go on with now; you hear back only if they answer differently. A decision already waiting on them (open_asks, task_list status waiting_user) is not asked again: the call returns the open one.${isPai ? " Yours always names task_id: the task the decision is about, owned by the area's agent (task_add it first if there is none) — that is where the card shows." : ""}`,
+      `${isPai ? "Ask the user a question; it reaches them through their chat (and their phone and watch) as a card with your name, answered with one tap." : "Ask a question you cannot settle: a card in your chat the user can answer, and your supervisor gets it first: they answer it or pass it on towards the user. After check_outbound said ask, it goes straight to the user."} The question is one short line; options are two to four short choices — Yes / No, or A / B / C with the choice in each label, your recommendation first; they can still type an answer. blocking: you are parked until it is answered and the answer arrives as a new message. Non-blocking: give a fallback you go on with now; you hear back only if the answer differs. A decision already waiting on them (open_asks, task_list status waiting_user) is not asked again: the call returns the open one.`,
       {
         question: z.string(),
         options: z.array(z.string().max(40)).max(4).optional(),
@@ -180,16 +167,16 @@ export function staffTools(me: string | undefined) {
         blocking: z.boolean().optional().describe("default true"),
         fallback: z.string().optional().describe("what you do meanwhile, for a non-blocking ask"),
         context: z.string().optional().describe("where it comes from, shown after your name: 'Candidate replies'"),
-        task_id: isPai ? z.number() : z.number().optional(),
+        task_id: z.number().optional(),
       },
       guard(async (a: { question: string; options?: string[]; allow_free_text?: boolean; priority?: asks.Priority; blocking?: boolean; fallback?: string; context?: string; task_id?: number }) => {
-        if (isPai) areaOwned(a.task_id!);
         const already = asks.pending({ agent: self, question: a.question, taskId: a.task_id });
         if (already) return { ask: already.id, duplicate: true, note: `Already waiting on the user as ask #${already.id} ("${already.question}"); not asked again.` };
         const repeat = await repeatOf(a.question, a.task_id);
         if (repeat?.kind === "ask") return { ask: repeat.ask.id, duplicate: true, note: `The same decision already waits on the user as ask #${repeat.ask.id} ("${repeat.ask.question}"); not asked again.` };
         if (repeat?.kind === "task") return { task: repeat.task.id, duplicate: true, note: `The same decision already waits on the user as task #${repeat.task.id} ("${repeat.task.title}"); not asked again. To put options on it, ask again with task_id ${repeat.task.id}.` };
-        const asked = asks.ask({ agent: self, question: a.question, options: a.options, freeText: a.allow_free_text, priority: a.priority, blocking: a.blocking, fallback: a.fallback, context: a.context, taskId: a.task_id });
+        const forUser = outboundAsk.delete(self);
+        const asked = asks.ask({ agent: self, question: a.question, options: a.options, freeText: a.allow_free_text, priority: a.priority, blocking: a.blocking, fallback: a.fallback, context: a.context, taskId: a.task_id, forUser });
         if (a.task_id && (asked.blocking || isPai)) tasks.update(a.task_id, { status: "waiting_user" });
         return { ask: asked.id, delivered: asked.delivered, note: asked.blocking ? "End your turn now; the answer comes as a new message." : `Go on with: ${asked.fallback}` };
       }),
@@ -274,7 +261,11 @@ export function staffTools(me: string | undefined) {
         "check_outbound",
         "Before an outbound action (send email, LinkedIn message, Telegram message as the user, calendar invite to someone else, post, pay, delete): the user's pin for that action type, if any. ask = get approval with ask_user first; auto = go ahead; none = your own judgment, ask when in doubt.",
         { action: z.string().describe("the action type in a few words: 'send email', 'linkedin message', 'calendar invite'"), summary: z.string().describe("what exactly, to whom") },
-        guard((a: { action: string; summary: string }) => ({ pin: asks.pinFor(a.action) ?? "none" })),
+        guard((a: { action: string; summary: string }) => {
+          const pin = asks.pinFor(a.action) ?? "none";
+          if (pin === "ask") outboundAsk.add(self);
+          return { pin };
+        }),
       ),
     );
   out.push(
@@ -290,17 +281,15 @@ export function staffTools(me: string | undefined) {
   );
 
   // ---- agents ----------------------------------------------------------------
-  if (isPai || role === "standing") {
+  if (canStaff) {
     out.push(
       tool(
-        isPai ? "create_agent" : "spawn_subagent",
-        isPai
-          ? "Start a worker for one bounded job: it writes its results to Keep pages, reports once and closes. The brief is its CLAUDE.md: goal, context, voice, rules, what done means. task is the first job."
-          : "Start a sub-agent for one bounded job ('screen these 12 profiles'). It gets at most your tools, reports back to you once and closes.",
+        "create_agent",
+        "Start a worker for one bounded job. First find the workspace and the task view it belongs in (find_pages, list_workspace_traits) and create_page its task with the goal, context, rules and what done means: that page is its brief, and it is the page's assignee. The worker reads the page when it starts, keeps what it finds there, can start workers of its own, reports to you and stays open for follow-ups until you close it.",
         {
           name: z.string().describe("short display name: 'Hiring', 'Travel', 'Screener'"),
-          brief: z.string(),
-          task: z.string().optional().describe("the first job"),
+          keep_page: z.string().describe("the task's page, keep:page/<id>: must exist and hold the task"),
+          note: z.string().optional().describe("anything to add to 'read your page' in its first message"),
           tools: z.array(z.string()).optional().describe("What it may use, by capability: gmail, linkedin, telegram, notion, drive, browser, calendar, balance. Omit for all of yours."),
           model: model.optional(),
           project: z.string().optional().describe("a repo slug: a coding agent working there"),
@@ -308,19 +297,18 @@ export function staffTools(me: string | undefined) {
           turn_minutes: z.number().optional().describe("how long one turn may run (default 20); up to 90 for a long read-through"),
           task_id: z.number().optional(),
         },
-        guard((a: { name: string; brief: string; task?: string; tools?: string[]; model?: string; project?: string; turns_per_day?: number; turn_minutes?: number; task_id?: number }) => {
-          const created = agents.create(
-            { name: a.name, kind: "sub", parent: self, brief: a.brief, tools: a.tools, model: a.model, project: a.project, budget: a.turns_per_day || a.turn_minutes ? { ...(a.turns_per_day ? { turnsPerDay: a.turns_per_day } : {}), ...(a.turn_minutes ? { turnMinutes: Math.min(90, a.turn_minutes) } : {}) } : undefined },
+        guard(async (a: { name: string; keep_page: string; note?: string; tools?: string[]; model?: string; project?: string; turns_per_day?: number; turn_minutes?: number; task_id?: number }) => {
+          const created = await agents.create(
+            { name: a.name, kind: "sub", parent: self, keepPage: a.keep_page, note: a.note, taskId: a.task_id, tools: a.tools, model: a.model, project: a.project, budget: a.turns_per_day || a.turn_minutes ? { ...(a.turns_per_day ? { turnsPerDay: a.turns_per_day } : {}), ...(a.turn_minutes ? { turnMinutes: Math.min(90, a.turn_minutes) } : {}) } : undefined },
             self,
           );
-          if (a.task?.trim()) agents.message(created.slug, a.task, { from: self, kind: "delegate", taskId: a.task_id });
           if (a.task_id) tasks.update(a.task_id, { owner: created.slug, status: "active" });
           return agentSummary(agents.get(created.slug)!);
         }),
       ),
       tool(
         "message_agent",
-        isPai ? "Hand work or a follow-up to an agent. It wakes with this as its next turn and reports back." : "Send one of your sub-agents a follow-up.",
+        isPai ? "Hand work or a follow-up to an agent. It wakes with this as its next turn and reports back." : "Send a worker of yours a follow-up.",
         { agent: z.string(), text: z.string(), task_id: z.number().optional().describe("the task this is about: the message and the report go into that task's thread") },
         guard((a: { agent: string; text: string; task_id?: number }) => {
           const target = mine(self, a.agent);
@@ -330,13 +318,13 @@ export function staffTools(me: string | undefined) {
       ),
       tool(
         "list_agents",
-        isPai ? "Your staff: every agent, its status, open tasks and spend today." : "Your sub-agents.",
+        isPai ? "Your staff: every agent, its status, open tasks and spend today." : "Your workers.",
         { include_closed: z.boolean().optional() },
         guard((a: { include_closed?: boolean }) => {
           const open = tasks.openCounts();
           return agents
-            .list({ closed: a.include_closed, parent: isPai ? undefined : self })
-            .filter((x) => x.kind !== "orchestrator")
+            .list({ closed: a.include_closed })
+            .filter((x) => x.kind !== "orchestrator" && (isPai || agents.isUnder(x.slug, self)))
             .map((x) => ({ ...agentSummary(x), openTasks: open[x.slug] ?? 0 }));
         }),
       ),
@@ -351,9 +339,41 @@ export function staffTools(me: string | undefined) {
       ),
       tool(
         "close_agent",
-        "Close an agent whose work is done: its folder is archived, a line goes into the journal, its sub-agents close too.",
+        "Close an agent of yours: its work is done, or you are shutting it down (it stops mid-turn). Its folder is archived, a line goes into the journal, its workers close too. Say why in summary.",
         { agent: z.string(), summary: z.string().optional() },
-        guard((a: { agent: string; summary?: string }) => agentSummary(agents.close(mine(self, a.agent).slug, a.summary ?? ""))),
+        guard((a: { agent: string; summary?: string }) => agentSummary(agents.close(mine(self, a.agent).slug, a.summary ?? "", { by: agents.get(self)?.name ?? self, killBusy: true }))),
+      ),
+      tool(
+        "stop_agent",
+        "Stop an agent of yours mid-turn, with those under it, and say why: it stays open, and hears your reason on its next turn. To end it for good, close_agent.",
+        { agent: z.string(), reason: z.string() },
+        guard(async (a: { agent: string; reason: string }) => ({ stopped: await agents.stopBy(self, mine(self, a.agent).slug, a.reason) })),
+      ),
+      tool(
+        "answer_ask",
+        isPai
+          ? "Settle an open question: the user's message answers it (from_user true), or it is a question a worker put to you and you decide it (from_user false, the default)."
+          : "Settle a question a worker under you put to you. Only what is yours to decide from what you know; else elevate_ask.",
+        { ask: z.number(), answer: z.string(), ...(isPai ? { from_user: z.boolean().optional().describe("these are the user's words, passed on") } : {}) },
+        guard((a: { ask: number; answer: string; from_user?: boolean }) => {
+          const asked = asks.getAsk(a.ask);
+          if (!asked) throw new Error(`no ask #${a.ask}`);
+          if (!isPai && !agents.isUnder(asked.agent, self)) throw new Error(`ask #${a.ask} is not from a worker of yours`);
+          // A decision with no supervisor on it is the user's to make; pai may only pass their words on.
+          if (asked.holder === null && !a.from_user) throw new Error(`ask #${a.ask} waits on the user: only their own words answer it (from_user)`);
+          return a.from_user ? asks.answer(a.ask, a.answer, "pai") : asks.answer(a.ask, a.answer, "agent", self);
+        }),
+      ),
+      tool(
+        "elevate_ask",
+        "Pass a question a worker put to you on upwards, towards the user: it is theirs to decide, or you cannot tell. Add what you know in note.",
+        { ask: z.number(), note: z.string().optional() },
+        guard((a: { ask: number; note?: string }) => {
+          const asked = asks.getAsk(a.ask);
+          if (!asked) throw new Error(`no ask #${a.ask}`);
+          if (asked.holder !== self) throw new Error(`ask #${a.ask} is not with you`);
+          return asks.elevate(a.ask, self, a.note);
+        }),
       ),
     );
   }
@@ -361,13 +381,12 @@ export function staffTools(me: string | undefined) {
     out.push(
       tool(
         "configure_agent",
-        "Change an agent: brief (rewrites its CLAUDE.md), tools, model, daily turn budget, minutes per turn, its notices' priority (-2 quieter … +2 louder), where it sits in the tree (parent: the agent its reports go to), or whether reports it receives from those under it go on up to its own parent (bubble, on by default).",
-        { agent: z.string(), name: z.string().optional(), brief: z.string().optional(), parent: z.string().optional(), bubble: z.boolean().optional(), tools: z.array(z.string()).nullable().optional(), model: model.nullable().optional(), turns_per_day: z.number().optional(), turn_minutes: z.number().optional(), priority: z.number().optional() },
-        guard((a: { agent: string; name?: string; brief?: string; parent?: string; bubble?: boolean; tools?: string[] | null; model?: string | null; turns_per_day?: number; turn_minutes?: number; priority?: number }) =>
+        "Change an agent: tools, model, daily turn budget, minutes per turn, its notices' priority (-2 quieter … +2 louder), where it sits in the tree (parent: the agent its reports go to), or whether reports it receives from those under it go on up to its own parent (bubble, on by default).",
+        { agent: z.string(), name: z.string().optional(), parent: z.string().optional(), bubble: z.boolean().optional(), tools: z.array(z.string()).nullable().optional(), model: model.nullable().optional(), turns_per_day: z.number().optional(), turn_minutes: z.number().optional(), priority: z.number().optional() },
+        guard((a: { agent: string; name?: string; parent?: string; bubble?: boolean; tools?: string[] | null; model?: string | null; turns_per_day?: number; turn_minutes?: number; priority?: number }) =>
           agentSummary(
             agents.configure(a.agent, {
               name: a.name,
-              brief: a.brief,
               parent: a.parent,
               bubble: a.bubble,
               tools: a.tools,
@@ -397,16 +416,10 @@ export function staffTools(me: string | undefined) {
         guard((a: { open_only?: boolean }) => ({ requests: requests.list({ status: a.open_only ? "open" : undefined, limit: 30 }), routes: requests.routes() })),
       ),
       tool(
-        "answer_ask",
-        "The user's message answers an open ask: pass it on to the agent that asked.",
-        { ask: z.number(), answer: z.string() },
-        guard((a: { ask: number; answer: string }) => asks.answer(a.ask, a.answer, "pai")),
-      ),
-      tool(
         "open_asks",
         "What the agents are waiting on the user for (\"what do you need from me?\").",
         {},
-        guard(() => asks.open().map((a) => ({ id: a.id, from: agents.breadcrumb(a.agent), question: a.question, options: a.options, since: new Date(a.createdAt).toISOString().slice(0, 16), blocking: a.blocking }))),
+        guard(() => asks.open().map((a) => ({ id: a.id, from: agents.breadcrumb(a.agent), question: a.question, options: a.options, since: new Date(a.createdAt).toISOString().slice(0, 16), blocking: a.blocking, with: a.holder ?? "the user" }))),
       ),
       tool(
         "drop_ask",

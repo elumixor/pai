@@ -1,16 +1,19 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { bus, type PaiEvent } from "../core/bus.ts";
 import { config } from "../core/config.ts";
 import { db, kv, now } from "../core/db.ts";
 import { logger } from "../core/log.ts";
 import { day } from "../core/time.ts";
+import * as agentPage from "./agent-page.ts";
 import { attach, type Upload } from "./attachments.ts";
 import { narrowed, unresolved } from "./capabilities.ts";
 import { isLimit, limitLine, resetAt } from "./limits.ts";
 import { get as getProject } from "./projects.ts";
 import * as journal from "./journal.ts";
+import * as keepLinks from "./keep-links.ts";
 import * as messages from "./messages.ts";
+import * as people from "./people.ts";
 import { agentInstructions, instructionsFor } from "./prompts.ts";
 import type { AgentSetup, Effort, Session } from "./session.ts";
 import * as sessions from "./sessions.ts";
@@ -23,14 +26,16 @@ const log = logger("agents");
  * life. Its conversation is a Claude Code session that can be thrown away and rebuilt from the
  * folder at any time: one idle for more than a day starts fresh from those two files.
  *
+ * Each works from a Keep page, its brief and tracker, on which it is the assignee: a person in People's Pai group.
+ *
  * - `orchestrator`: pai, the one voice the user hears (main.ts holds its session).
- * - `standing`: owns an area of the user's life (hiring, travel); only pai creates one.
- * - `sub`: one bounded job for its parent; reports once and closes.
- * - `service`: owns no tasks, answers requests (Voice rewrites drafts in the user's voice).
+ * - `sub`: a worker, one bounded job for its parent; reports and stays open for follow-ups until closed.
+ * - `standing`, `service`: history, rows of an older model.
  */
 
 export type AgentKind = "orchestrator" | "standing" | "sub" | "service";
-export type AgentStatus = "idle" | "queued" | "working" | "waiting" | "closed";
+/** `waiting`: on an answer to its question. `paused`: the user stopped it and has not said why yet. `done`: reported. */
+export type AgentStatus = "idle" | "queued" | "working" | "waiting" | "paused" | "done" | "closed";
 
 export interface Budget {
   /** Turns a day before pai is told and the agent stops being woken. */
@@ -66,6 +71,16 @@ export interface Agent {
   readonly createdAt: number;
   readonly lastActive: number;
   readonly closedAt: number | null;
+  /** The Keep page it works from and is tracked on, `keep:page/<id>`. */
+  readonly keepPage: string | null;
+  /** Who it is in People: what Keep assigns the page to. */
+  readonly personId: string | null;
+  /** The session whose thread tag the page was last set up under. */
+  readonly pageSession: string | null;
+  readonly pausedAt: number | null;
+  readonly pauseReason: string | null;
+  readonly doneAt: number | null;
+  readonly trashedAt: number | null;
 }
 
 export const PAI = "pai";
@@ -98,6 +113,13 @@ const toAgent = (r: Record<string, any>): Agent => ({
   createdAt: r.created_at,
   lastActive: r.last_active,
   closedAt: r.closed_at ?? null,
+  keepPage: r.keep_page ?? null,
+  personId: r.person_id ?? null,
+  pageSession: r.page_session ?? null,
+  pausedAt: r.paused_at ?? null,
+  pauseReason: r.pause_reason ?? null,
+  doneAt: r.done_at ?? null,
+  trashedAt: r.trashed_at ?? null,
 });
 
 export class AgentError extends Error {}
@@ -108,7 +130,7 @@ export function get(slug: string): Agent | undefined {
 }
 
 export function list(opts: { closed?: boolean; parent?: string } = {}): Agent[] {
-  const rows = db.query("SELECT * FROM agents ORDER BY created_at").all() as Record<string, any>[];
+  const rows = db.query("SELECT * FROM agents WHERE trashed_at IS NULL ORDER BY created_at").all() as Record<string, any>[];
   return rows.map(toAgent).filter((a) => (opts.closed || a.status !== "closed") && (opts.parent === undefined || a.parent === opts.parent));
 }
 
@@ -123,7 +145,7 @@ export function bySession(sessionId: string): Agent | undefined {
   return row ? toAgent(row) : undefined;
 }
 
-/** pai is depth 1, its standing agents 2, their sub-agents 3. */
+/** pai is depth 1, its workers 2, theirs 3. */
 export function depth(slug: string): number {
   let d = 0;
   for (let a = get(slug); a; a = a.parent ? get(a.parent) : undefined) d += 1;
@@ -139,6 +161,15 @@ export function lineage(slug: string): Agent[] {
 
 export const breadcrumb = (slug: string) => lineage(slug).map((a) => a.name).join(" › ");
 
+/** The chain of agents under one, itself first. */
+const subtree = (a: Agent): Agent[] => [a, ...list({ parent: a.slug }).flatMap(subtree)];
+
+/** Whether `slug` sits anywhere under `above`. */
+export const isUnder = (slug: string, above: string) => lineage(slug).some((a) => a.slug === above && a.slug !== slug);
+
+/** Who answers for an agent: the agent above it. */
+export const supervisorOf = (slug: string) => (slug === PAI ? null : (get(slug)?.parent ?? PAI));
+
 function set(slug: string, fields: Record<string, string | number | null>) {
   const keys = Object.keys(fields);
   db.prepare(`UPDATE agents SET ${keys.map((k) => `${k} = ?`).join(", ")} WHERE slug = ?`).run(...keys.map((k) => fields[k] ?? null), slug);
@@ -151,7 +182,13 @@ export const setThread = (slug: string, threadId: number | null) => set(slug, { 
 /** pai's session changed (main.ts started a fresh one). */
 export const adoptSession = (sessionId: string) => set(PAI, { session_id: sessionId, last_active: now() });
 export const setCard = (slug: string, cardId: number | null) => set(slug, { card_id: cardId });
-const setStatus = (slug: string, status: AgentStatus) => set(slug, { status, last_active: now() });
+function setStatus(slug: string, status: AgentStatus) {
+  const before = get(slug)?.status;
+  const a = set(slug, { status, last_active: now() });
+  const onPage = status === "working" ? "working" : status === "waiting" || status === "paused" ? "waiting" : status === "done" ? "done" : undefined;
+  if (a?.keepPage && onPage && before !== status) void agentPage.followStatus(a.keepPage, onPage, a.sessionId);
+  return a;
+}
 
 // ---- creation --------------------------------------------------------------
 
@@ -176,8 +213,8 @@ export interface CreateInput {
   kind: Exclude<AgentKind, "orchestrator">;
   /** Who it reports to; pai for standing and service agents. */
   parent?: string;
-  /** Goal, voice, rules, what "done" means: becomes its CLAUDE.md. */
-  brief: string;
+  /** The Keep page holding its task: goal, context, rules, what done means. It is the brief; without a readable one nothing is made. */
+  keepPage: string;
   /** MCP servers it may use, by name or part of one (gmail, linkedin, notion, calendar, browser…); omitted = its parent's. */
   tools?: string[] | null;
   model?: string | null;
@@ -185,8 +222,8 @@ export interface CreateInput {
   budget?: Partial<Budget>;
   /** A repo it works in: a coding agent, whose sessions run there. */
   project?: string | null;
-  /** The first job, sent as soon as it exists. */
-  task?: string;
+  /** Anything to add to "read your page", sent with it as its first message. */
+  note?: string;
   taskId?: number | null;
 }
 
@@ -200,17 +237,23 @@ export function ensurePai(): Agent {
   return get(PAI)!;
 }
 
-export function create(input: CreateInput, by: string = PAI): Agent {
+export async function create(input: CreateInput, by: string = PAI): Promise<Agent> {
   ensurePai();
   const parentSlug = input.kind === "sub" ? (input.parent ?? by) : PAI;
   const parent = get(parentSlug);
   if (!parent || parent.status === "closed") throw new AgentError(`no agent ${parentSlug} to report to`);
   if (input.kind !== "sub" && by !== PAI) throw new AgentError("only pai creates standing and service agents; start a sub-agent instead");
-  if (input.kind === "sub" && by !== PAI && by !== parentSlug) throw new AgentError("an agent starts sub-agents only under itself");
-  if (depth(parentSlug) + 1 > MAX_DEPTH) throw new AgentError(`depth is capped at ${MAX_DEPTH}: ${parent.name} cannot start sub-agents; make it a to-do in its own work`);
+  if (input.kind === "sub" && by !== PAI && by !== parentSlug) throw new AgentError("an agent starts workers only under itself");
+  if (depth(parentSlug) + 1 > MAX_DEPTH) throw new AgentError(`depth is capped at ${MAX_DEPTH}: ${parent.name} cannot start workers; make it a to-do in its own work`);
   if (!input.name?.trim()) throw new AgentError("an agent needs a name");
-  if (!input.brief?.trim()) throw new AgentError("an agent needs a brief: goal, context, what done means");
   if (input.project && !getProject(input.project)) throw new AgentError(`no project ${input.project}`);
+  if (!input.keepPage?.trim()) throw new AgentError("an agent needs a Keep page: find or create the task's page first, with its goal and what done means");
+  const keepPage = keepLinks.pageUrn(input.keepPage);
+  const page = await agentPage.read(keepPage).catch((err: Error) => {
+    throw new AgentError(`cannot read ${keepPage}: ${err.message}`);
+  });
+  const brief = page.body?.trim() ?? "";
+  if (!brief) throw new AgentError(`${keepPage} has no text: write the task on the page first (goal, context, what done means)`);
 
   // A sub-agent gets at most its parent's tools, never more.
   let tools = input.tools === undefined ? parent.tools : input.tools;
@@ -220,21 +263,68 @@ export function create(input: CreateInput, by: string = PAI): Agent {
   const slug = freeSlug(input.name);
   const folder = input.kind === "sub" && parent.kind !== "orchestrator" ? join(parent.folder, "sub", slug) : join(config.workspace, "agents", slug);
   mkdirSync(folder, { recursive: true });
-  writeFileSync(join(folder, "CLAUDE.md"), roleFile(input.name, input.brief));
+  writeFileSync(join(folder, "CLAUDE.md"), roleFile(input.name, keepPage));
   if (!existsSync(join(folder, "STATE.md"))) writeFileSync(join(folder, "STATE.md"), `# State\n\nNothing yet: ${input.name} was just created (${day()}).\n`);
 
   const budget = { ...(input.kind === "sub" ? SUB_BUDGET : DEFAULT_BUDGET), ...input.budget };
   db.prepare(
-    `INSERT INTO agents (slug, name, kind, parent, brief, folder, project, tools, model, effort, budget, status, created_at, last_active)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', ?, ?)`,
-  ).run(slug, input.name.trim(), input.kind, parentSlug, input.brief.trim(), folder, input.project ?? null, tools ? JSON.stringify(tools) : null, input.model ?? null, input.effort ?? null, JSON.stringify(budget), now(), now());
+    `INSERT INTO agents (slug, name, kind, parent, brief, keep_page, folder, project, tools, model, effort, budget, status, created_at, last_active)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', ?, ?)`,
+  ).run(slug, input.name.trim(), input.kind, parentSlug, brief, keepPage, folder, input.project ?? null, tools ? JSON.stringify(tools) : null, input.model ?? null, input.effort ?? null, JSON.stringify(budget), now(), now());
   const agent = get(slug)!;
   log.info(`created ${agent.kind} ${slug} under ${parentSlug}`);
   warnUnresolved(agent);
-  messages.event(slug, input.kind === "sub" ? "agent.spawned" : "agent.created", `${parent.name} ${input.kind === "sub" ? "started" : "created"} ${agent.name}`, { from: parentSlug, to: parentSlug });
+  messages.event(slug, input.kind === "sub" ? "agent.spawned" : "agent.created", `${parent.name} ${input.kind === "sub" ? "started" : "created"} ${agent.name}`, { from: parentSlug, to: parentSlug, meta: { brief, keep: keepPage, pageTitle: page.title } });
   bus.emitEvent("agent.created", agent as unknown as Record<string, unknown>);
-  if (input.task?.trim()) message(slug, input.task, { from: parentSlug, kind: "delegate", taskId: input.taskId });
-  return agent;
+  void syncPage(agent);
+  message(slug, `Your task is the Keep page ${keepPage} ("${page.title}"). Read it with read_page and work from it.${input.note?.trim() ? `\n\n${input.note.trim()}` : ""}`, { from: parentSlug, kind: "delegate", taskId: input.taskId });
+  return get(slug)!;
+}
+
+/**
+ * Sets an agent's page up as far as it can: its person in People, the assignment, its session's watch. Each step is
+ * written only once it worked, and the minute tick calls this again until everything is there, so a People or Keep
+ * outage delays it rather than losing it.
+ */
+const syncing = new Set<string>();
+async function syncPage(a: Agent) {
+  if (!a.keepPage || a.kind === "orchestrator" || syncing.has(a.slug)) return;
+  const sessionId = get(a.slug)?.sessionId ?? null;
+  if (a.personId && a.pageSession === sessionId) return;
+  syncing.add(a.slug);
+  try {
+    let personId = a.personId;
+    if (!personId) {
+      personId = await people.addMember(a.name, `${config.baseUrl}/#/chat/${a.slug}`);
+      set(a.slug, { person_id: personId });
+      await agentPage.assign(a.keepPage, `people:person/${personId}`, sessionId);
+    }
+    if (sessionId) {
+      await agentPage.watch(a.keepPage, sessionId);
+      keepLinks.link(a.keepPage, sessionId, { replace: true });
+      set(a.slug, { page_session: sessionId });
+    }
+  } catch (err) {
+    log.warn(`${a.slug}: page not set up yet: ${(err as Error).message}`);
+  } finally {
+    syncing.delete(a.slug);
+  }
+}
+
+/** General's page, found or made. Retried by the tick until it works. */
+async function syncGeneralPage() {
+  const pai = get(PAI);
+  if (!pai) return;
+  try {
+    const page = pai.keepPage ?? (await agentPage.ensureGeneral());
+    if (!pai.keepPage) set(PAI, { keep_page: page });
+    if (pai.sessionId && pai.pageSession !== pai.sessionId) {
+      keepLinks.link(page, pai.sessionId, { replace: true });
+      set(PAI, { page_session: pai.sessionId });
+    }
+  } catch (err) {
+    log.warn(`General's page not set up yet: ${(err as Error).message}`);
+  }
 }
 
 /**
@@ -250,13 +340,13 @@ function warnUnresolved(a: Agent) {
   messages.event(a.slug, "agent.tools_missing", `${a.name} declares tools no server provides: ${what}`, { from: a.parent ?? PAI, to: a.parent ?? PAI });
 }
 
-/** An agent's CLAUDE.md: who it is, with its STATE.md pulled in, so a fresh session starts knowing both. */
-function roleFile(name: string, brief: string) {
-  return `# ${name}\n\n${brief.trim()}\n\n## Where things stand\n\n@STATE.md\n`;
+/** An agent's CLAUDE.md: who it is and where its task lives, with its STATE.md pulled in, so a fresh session starts knowing both. */
+function roleFile(name: string, keepPage: string) {
+  return `# ${name}\n\nYour task is the Keep page ${keepPage}: goal, context, rules and what done means are there, and it may change. Read it with read_page when you start, and keep what you find and how it stands on it.\n\n## Where things stand\n\n@STATE.md\n`;
 }
 
 /** Changes what an agent runs with; its session restarts on the next message. */
-export function configure(slug: string, changes: { brief?: string; tools?: string[] | null; model?: string | null; effort?: Effort | null; budget?: Partial<Budget>; priority?: number; name?: string; parent?: string; bubble?: boolean }) {
+export function configure(slug: string, changes: { tools?: string[] | null; model?: string | null; effort?: Effort | null; budget?: Partial<Budget>; priority?: number; name?: string; parent?: string; bubble?: boolean }) {
   const a = get(slug);
   if (!a || a.kind === "orchestrator") throw new AgentError(`no agent ${slug}`);
   const fields: Record<string, string | number | null> = {};
@@ -268,10 +358,6 @@ export function configure(slug: string, changes: { brief?: string; tools?: strin
     if (parent.slug === slug || lineage(parent.slug).some((p) => p.slug === slug)) throw new AgentError(`${changes.parent} is under ${slug}`);
     fields.parent = parent.slug;
   }
-  if (changes.brief) {
-    fields.brief = changes.brief;
-    writeFileSync(join(a.folder, "CLAUDE.md"), roleFile(changes.name ?? a.name, changes.brief));
-  }
   if (changes.tools !== undefined) fields.tools = changes.tools ? JSON.stringify(changes.tools) : null;
   if (changes.model !== undefined) fields.model = changes.model;
   if (changes.effort !== undefined) fields.effort = changes.effort;
@@ -281,7 +367,7 @@ export function configure(slug: string, changes: { brief?: string; tools?: strin
   const updated = set(slug, fields);
   if (changes.tools !== undefined && updated) warnUnresolved(updated);
   // Tools and model are fixed when a process starts; the next message starts one with these.
-  if (changes.tools !== undefined || changes.model !== undefined || changes.effort !== undefined || changes.brief) sessionOf(a)?.kill();
+  if (changes.tools !== undefined || changes.model !== undefined || changes.effort !== undefined) sessionOf(a)?.kill();
   return updated!;
 }
 
@@ -351,7 +437,8 @@ function ensureSession(a: Agent): Session {
     effort: a.effort,
     agent: setupOf(a),
   });
-  set(a.slug, { session_id: s.id });
+  const updated = set(a.slug, { session_id: s.id });
+  if (updated) void syncPage(updated);
   return s;
 }
 
@@ -383,6 +470,8 @@ const saveQueue = () => kv.set(QUEUE_KEY, JSON.stringify(queue));
 interface Held extends Pending {
   at: number;
 }
+/** A held turn whose moment is not a time: the agent resuming. */
+const UNTIL_RESUMED = Number.MAX_SAFE_INTEGER;
 const HELD_KEY = "agent_held";
 const held: Held[] = (() => {
   try {
@@ -411,8 +500,9 @@ const lastWake = new Map<string, Pending>();
 export function drainHeld(now = Date.now()) {
   const due = held.filter((h) => h.at <= now);
   if (!due.length) return;
+  const rest = held.filter((h) => h.at > now);
   held.length = 0;
-  held.push(...held.filter((h) => h.at > now));
+  held.push(...rest);
   saveHeld();
   for (const h of due) {
     const a = get(h.slug);
@@ -442,6 +532,8 @@ function limitHit(a: Agent, text: string) {
  */
 const answering = new Map<string, { requestId: number; taskId: number | null }[]>();
 const turnTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/** Whose running turn was cut off, by anyone: what it had written by then is no report. */
+const interrupted = new Set<string>();
 /** What each process had cost at its last turn end; the SDK reports a running total. */
 const booked = new Map<string, number>();
 /** Parents that asked to hear back with a turn rather than a note. */
@@ -479,6 +571,12 @@ export function message(slug: string, text: string, opts: MessageOptions): messa
 
 function wake(slug: string, text: string, requestId?: number, taskId?: number | null) {
   const a = get(slug)!;
+  // Paused on the user: what the others send waits for them to resume it.
+  if (a.status === "paused") {
+    held.push({ slug, text, requestId, taskId, at: UNTIL_RESUMED });
+    saveHeld();
+    return;
+  }
   lastWake.set(slug, { slug, text, requestId, taskId });
   if (a.turnsToday >= a.budget.turnsPerDay) {
     messages.event(slug, "error", `${a.name} hit its budget of ${a.budget.turnsPerDay} turns today; not woken`, { to: reportsTo(a) });
@@ -500,6 +598,7 @@ function wake(slug: string, text: string, requestId?: number, taskId?: number | 
 }
 
 function run(a: Agent, text: string, requestId?: number, taskId?: number | null) {
+  if (a.doneAt) set(a.slug, { done_at: null });
   const s = ensureSession(a);
   answering.set(a.slug, [...(answering.get(a.slug) ?? []), { requestId: requestId ?? 0, taskId: taskId ?? null }]);
   const today = day();
@@ -511,6 +610,7 @@ function run(a: Agent, text: string, requestId?: number, taskId?: number | null)
     a.slug,
     setTimeout(() => {
       if (s.state !== "busy") return;
+      interrupted.add(a.slug);
       void s.interrupt();
       messages.event(a.slug, "error", `${a.name}'s turn ran past ${a.budget.turnMinutes} minutes and was stopped`, { to: reportsTo(a) });
       tellOwner(a, `${a.name}'s turn ran past its ${a.budget.turnMinutes}-minute budget and was interrupted.`);
@@ -536,9 +636,10 @@ function drain() {
 }
 
 /** A turn for an agent whose message is already in the log (an answer to its ask). */
-export function deliver(slug: string, text: string, opts: { taskId?: number | null } = {}) {
+export function deliver(slug: string, text: string, opts: { taskId?: number | null; byUser?: boolean } = {}) {
   const a = get(slug);
   if (!a || a.status === "closed") return;
+  if (a.status === "paused" && opts.byUser) resume(slug);
   if (a.status === "waiting") setStatus(slug, "idle");
   wake(slug, `${text}${opts.taskId ? `\n\n(task #${opts.taskId})` : ""}`, undefined, opts.taskId);
 }
@@ -556,6 +657,7 @@ export function noteTo(slug: string, text: string) {
 export function fromUser(slug: string, text: string, taskId?: number | null, images?: readonly Upload[]) {
   const a = get(slug);
   if (!a) throw new AgentError(`no agent ${slug}`);
+  if (a.status === "paused") resume(slug, { saying: true });
   // An agent is woken with text, so its pictures travel as the file paths it can open itself.
   const pictures = attach(images);
   const row = message(slug, pictures.refs ? `${text}\n\n${pictures.refs}`.trim() : text, { from: "user", kind: "chat", taskId, meta: pictures.meta, body: text });
@@ -568,13 +670,29 @@ export function fromUser(slug: string, text: string, taskId?: number | null, ima
 /** How a report reaches pai: main.ts registers these, so this file does not import it. */
 interface PaiLink {
   note(text: string): void;
+  /** A report: what it needs is screened first. */
   turn(text: string): void;
+  /** Something pai must answer: a turn, always. */
+  direct(text: string): void;
 }
-let paiLink: PaiLink = { note: () => {}, turn: () => {} };
+let paiLink: PaiLink = { note: () => {}, turn: () => {}, direct: () => {} };
 export function linkPai(link: PaiLink) {
   paiLink = link;
 }
 const notePai = (text: string) => paiLink.note(text);
+
+/** A question a supervisor holds: a row in its chat and a turn, so it settles it or passes it on. */
+export function askSupervisor(holder: string, ask: { readonly id: number; readonly agent: string; readonly question: string; readonly options: readonly string[]; readonly taskId: number | null }) {
+  const asker = get(ask.agent);
+  const name = asker?.name ?? ask.agent;
+  const text = `${name} asks (question #${ask.id}): ${ask.question}${ask.options.length ? `\nOptions: ${ask.options.join(" / ")}` : ""}\n\nDecide it with answer_ask if it is yours to decide from what you know. If it is the user's to decide (their taste, money, anything only they know) or you cannot tell, pass it on with elevate_ask. Either way, do it now.`;
+  if (holder === PAI) {
+    messages.log({ from: ask.agent, to: PAI, kind: "request", body: ask.question, taskId: ask.taskId, meta: { askId: ask.id, agent: ask.agent } });
+    paiLink.direct(`[${text}]`);
+    return;
+  }
+  message(holder, text, { from: ask.agent, kind: "request", body: ask.question, taskId: ask.taskId, meta: { askId: ask.id, agent: ask.agent } });
+}
 
 /**
  * What pai's staff hand back to it — reports, failures, spent budgets — is pai's to act on, never left for
@@ -667,22 +785,25 @@ function turnEnded(a: Agent, payload: Record<string, unknown>) {
   if (requestId) onAnswered(requestId, a.slug, text);
   const ids = requestId ? [requestId] : [];
 
+  // Cut off, by the user, a supervisor or its time budget: what it had written so far is no report.
+  const cutOff = interrupted.delete(a.slug) || Boolean(payload.isError);
+  if (current.status === "paused") return drain();
   const waiting = current.status === "waiting";
   if (!waiting) setStatus(a.slug, pending.length ? "working" : "idle");
   checkState(current);
 
-  // A parked agent's "asked, waiting" is not a report; its answer brings the next turn.
-  if (text && !ids.length && !waiting) {
-    let report = String(payload.final ?? text).trim().slice(0, REPORT_CHARS);
-    // A sub-agent does one job: once it has said what came of it, it closes. Closing archives its folder, so
-    // the files its report points at are named where they are now.
-    if (current.kind === "sub") {
-      const closed = close(a.slug, report.split("\n")[0]!.slice(0, 200));
-      if (closed.folder !== a.folder) report = report.replaceAll(a.folder, closed.folder);
+  // A parked agent's "asked, waiting" is not a report, nor is a turn that ended with its own workers still at it:
+  // their reports bring the next turn.
+  const staffBusy = list({ parent: a.slug }).some((c) => ["working", "queued", "waiting", "paused"].includes(c.status));
+  if (text && !ids.length && !waiting && !cutOff && !staffBusy) {
+    const report = String(payload.final ?? text).trim().slice(0, REPORT_CHARS);
+    if (current.kind === "sub" && !pending.length) {
+      setStatus(a.slug, "done");
+      set(a.slug, { done_at: now() });
     }
     const chain = reportChain(current);
     messages.log({ from: a.slug, to: chain[0]!, kind: "report", body: report, taskId, meta: { agent: a.slug } });
-    reportUp(chain, `[${a.name} reported]\n${report}`, (parent) => message(parent.slug, `${a.name} reported:\n${report}`, { from: a.slug, kind: "report", taskId, meta: { agent: a.slug } }));
+    reportUp(chain, `[${a.name} reported]\n${report}`, (parent) => message(parent.slug, `${a.name} reported:\n${report}`, { from: a.slug, kind: "report", taskId, meta: { agent: a.slug }, logged: parent.slug === chain[0] }));
   }
   drain();
 }
@@ -707,6 +828,7 @@ function checkState(a: Agent) {
 /** Follows agent sessions' turns on the bus. */
 export function start() {
   ensurePai();
+  void syncGeneralPage();
   // Revived sessions find their agent's role and tools through this; registered here, not at import, because these files import each other.
   sessions.resolveAgentsWith((slug) => {
     const a = get(slug);
@@ -747,7 +869,7 @@ export function start() {
 
   bus.on("event", handler);
   setTimeout(drain, 5_000);
-  const settling = setInterval(() => (settle(), drainHeld()), SETTLE_EVERY_MS);
+  const settling = setInterval(() => (settle(), drainHeld(), closeFinished(), catchUpPages()), SETTLE_EVERY_MS);
   return () => {
     clearInterval(settling);
     bus.off("event", handler);
@@ -768,11 +890,12 @@ const SETTLE_EVERY_MS = 60_000;
  */
 export function settle() {
   for (const a of list()) {
-    if (a.kind === "orchestrator" || a.status === "closed" || a.status === "queued" || a.status === "waiting") continue;
+    if (a.kind === "orchestrator" || a.status === "closed" || a.status === "queued" || a.status === "waiting" || a.status === "paused") continue;
     const s = a.sessionId ? sessions.find(a.sessionId) : undefined;
     const alive = s && s.state !== "dead";
     const busy = Boolean(alive && (s.state === "busy" || s.state === "starting") && !s.pending);
     if (busy && a.status !== "working") {
+      if (a.status === "done") set(a.slug, { done_at: null });
       log.info(`${a.slug} has a turn running and was marked ${a.status}; working`);
       setStatus(a.slug, "working");
       continue;
@@ -784,50 +907,124 @@ export function settle() {
   }
 }
 
+/** Workers finished long enough ago close by themselves; a follow-up in time keeps them open. */
+function closeFinished() {
+  const before = now() - config.doneCloseHours * 3_600_000;
+  for (const a of list()) if (a.status === "done" && a.doneAt && a.doneAt < before) close(a.slug, "finished");
+}
+
+/** What an earlier People or Keep outage left undone. */
+function catchUpPages() {
+  void syncGeneralPage();
+  for (const a of list()) void syncPage(a);
+}
+
 // ---- stopping --------------------------------------------------------------
 
-/**
- * The user stopped an agent: its running turn is interrupted and its waiting turns dropped, and its
- * sub-agents stop with it. It stays open — the next message wakes it as usual. The slugs that stopped.
- */
-export async function stop(slug: string): Promise<string[]> {
-  const a = get(slug);
-  if (!a || a.kind === "orchestrator") throw new AgentError(`no agent ${slug}`);
+/** Interrupts the agents' running turns and drops what they had waiting, each and every one given. The slugs that were at something. */
+async function cutOff(targets: readonly Agent[]): Promise<string[]> {
   const stopped: string[] = [];
-  const targets = [a];
-  for (let i = 0; i < targets.length; i++) targets.push(...list({ parent: targets[i]!.slug }));
   for (const target of targets) {
     if (target.status === "closed") continue;
     for (let i = queue.length - 1; i >= 0; i--) if (queue[i]!.slug === target.slug) queue.splice(i, 1);
+    for (let i = held.length - 1; i >= 0; i--) if (held[i]!.slug === target.slug) held.splice(i, 1);
     clearTimeout(turnTimers.get(target.slug));
     const s = sessionOf(target);
     const busy = s?.state === "busy";
-    if (busy) await s!.interrupt();
+    if (busy) {
+      interrupted.add(target.slug);
+      await s!.interrupt();
+    }
     if (busy || target.status === "working" || target.status === "queued") {
       if (target.status === "queued" || !busy) setStatus(target.slug, "idle");
       stopped.push(target.slug);
     }
   }
   saveQueue();
-  if (stopped.length) {
-    messages.event(slug, "stopped", `${a.name} stopped by the user`, { to: a.parent ?? PAI });
-    notePai(`[the user stopped ${breadcrumb(slug)}${stopped.length > 1 ? ` and ${stopped.length - 1} below it` : ""}]`);
+  saveHeld();
+  return stopped;
+}
+
+/**
+ * The user stopped an agent, maybe saying nothing. It waits on them: paused, with a need that reminds them until they
+ * resume it, write to it or kill it. Its supervisor is told without a turn, and what the supervisor sends meanwhile
+ * waits. Those below it are stopped too and left idle for it to pick up. The slugs that stopped.
+ */
+export async function stop(slug: string, reason = ""): Promise<string[]> {
+  const a = get(slug);
+  if (!a || a.kind === "orchestrator") throw new AgentError(`no agent ${slug}`);
+  // Marked first: the interrupted turn's end finds it paused and reports nothing.
+  const wasPaused = a.status === "paused";
+  const active = a.status === "working" || a.status === "queued" || sessionOf(a)?.state === "busy";
+  if (active) set(slug, { status: "paused", paused_at: now(), pause_reason: reason || null });
+  const stopped = await cutOff(subtree(get(slug)!));
+  if (!active && !wasPaused && stopped.length === 0) return [];
+  if (active) {
+    void (a.keepPage && agentPage.followStatus(a.keepPage, "waiting", a.sessionId));
+    messages.event(slug, "stopped", `${a.name} stopped by the user${reason ? `: ${reason}` : ""}`, { to: a.parent ?? PAI });
+    tellOwner(a, `The user stopped ${a.name}${reason ? `: ${reason}` : ""}. It waits on them; do not restart it.`);
   }
   drain();
   return stopped;
 }
 
+/** A supervisor stops an agent under it: nothing waits on the user, the agent is told why on its next turn. */
+export async function stopBy(by: string, slug: string, reason: string): Promise<string[]> {
+  const a = get(slug);
+  if (!a) throw new AgentError(`no agent ${slug}`);
+  const stopped = await cutOff(subtree(a));
+  messages.event(slug, "stopped", `${get(by)?.name ?? by} stopped ${a.name}: ${reason}`, { from: by, to: by });
+  noteTo(slug, `[${get(by)?.name ?? by} stopped you: ${reason}]`);
+  drain();
+  return stopped;
+}
+
+/** Back to work after the user's stop: told what happened, and handed what was sent to it meanwhile. */
+export function resume(slug: string, opts: { saying?: boolean } = {}) {
+  const a = get(slug);
+  if (!a) throw new AgentError(`no agent ${slug}`);
+  if (a.status !== "paused") return a;
+  set(slug, { status: "idle", paused_at: null, pause_reason: null, last_active: now() });
+  messages.event(slug, "resumed", `${a.name} resumed by the user`, { to: a.parent ?? PAI });
+  db.prepare("DELETE FROM reminders WHERE need = ?").run(`paused:${slug}`);
+  const note = `[the user stopped you earlier${a.pauseReason ? `: ${a.pauseReason}` : ""}, and your turn was cut off there.`;
+  if (opts.saying) noteTo(slug, `${note} They are writing to you now.]`);
+  else wake(slug, `${note} They resumed you without further instructions: carry on from where you were.]`);
+  for (const h of held) if (h.slug === slug && h.at === UNTIL_RESUMED) h.at = 0;
+  saveHeld();
+  drainHeld();
+  tellOwner(a, `The user resumed ${a.name}.`);
+  return get(slug)!;
+}
+
 // ---- closing ---------------------------------------------------------------
 
-/** Done: the session goes, the folder is archived, a line goes into the journal. Its sub-agents close with it. */
-export function close(slug: string, summary = ""): Agent {
+/** Takes an agent and those below it off work: session, queue, what it held, its open questions, its routines. */
+function retire(a: Agent, opts: { killBusy: boolean }) {
+  clearTimeout(turnTimers.get(a.slug));
+  const s = sessionOf(a);
+  if (s && (opts.killBusy || s.state !== "busy")) s.kill();
+  const index = queue.findIndex((q) => q.slug === a.slug);
+  if (index >= 0) {
+    queue.splice(index, 1);
+    saveQueue();
+  }
+  for (let i = held.length - 1; i >= 0; i--) if (held[i]!.slug === a.slug) held.splice(i, 1);
+  saveHeld();
+  db.prepare("UPDATE asks SET status = 'dropped', answered_at = ? WHERE status = 'open' AND agent = ?").run(now(), a.slug);
+  db.prepare("DELETE FROM reminders WHERE need = ?").run(`paused:${a.slug}`);
+  // Routines that would wake it, or that it kept for itself, go with it.
+  db.prepare("DELETE FROM automations WHERE agent = ? OR owner = ?").run(a.slug, a.slug);
+  bus.emitEvent("ask.answered", { agent: a.slug });
+}
+
+/** Done: the session goes, the folder is archived, a line goes into the journal. Its workers close with it. */
+export function close(slug: string, summary = "", opts: { by?: string; killBusy?: boolean } = {}): Agent {
   const a = get(slug);
   if (!a || a.kind === "orchestrator") throw new AgentError(`no agent ${slug}`);
   if (a.status === "closed") return a;
-  for (const child of list({ parent: slug })) close(child.slug, `closed with ${a.name}`);
-  clearTimeout(turnTimers.get(slug));
-  const s = sessionOf(a);
-  if (s && s.state !== "busy") s.kill();
+  for (const child of list({ parent: slug })) close(child.slug, `closed with ${a.name}`, opts);
+  retire(a, { killBusy: opts.killBusy ?? false });
   let folder = a.folder;
   if (existsSync(a.folder)) {
     folder = join(config.workspace, "agents", ".archive", `${slug}-${day()}`);
@@ -839,17 +1036,84 @@ export function close(slug: string, summary = ""): Agent {
       folder = a.folder;
     }
   }
-  const index = queue.findIndex((q) => q.slug === slug);
-  if (index >= 0) {
-    queue.splice(index, 1);
-    saveQueue();
-  }
-  // Routines that would wake it, or that it kept for itself, go with it.
-  db.prepare("DELETE FROM automations WHERE agent = ? OR owner = ?").run(slug, slug);
-  const closed = set(slug, { status: "closed", closed_at: now(), folder })!;
+  const closed = set(slug, { status: "closed", closed_at: now(), folder, paused_at: null, pause_reason: null })!;
+  const done = a.status === "done";
+  if (a.keepPage) void agentPage.followStatus(a.keepPage, done ? "closed" : "dropped", a.sessionId);
   journal.append(`${a.name} (${a.kind}) closed${summary ? `: ${summary}` : ""}`);
-  messages.event(slug, "agent.closed", `${a.name} closed${summary ? `: ${summary}` : ""}`, { to: a.parent ?? PAI });
+  messages.event(slug, "agent.closed", `${a.name} closed${opts.by ? ` by ${opts.by}` : ""}${summary ? `: ${summary}` : ""}`, { to: a.parent ?? PAI });
   return closed;
+}
+
+/** The user killed an agent, maybe saying why: it closes now, even mid-turn, and whoever it worked for hears. */
+export function kill(slug: string, reason = ""): Agent {
+  const a = get(slug);
+  if (!a) throw new AgentError(`no agent ${slug}`);
+  const closed = close(slug, reason, { by: "the user", killBusy: true });
+  tellOwner(a, `The user killed ${a.name}${reason ? `: ${reason}` : ""}. Do not restart it unless they ask.`);
+  return closed;
+}
+
+// ---- the trash -------------------------------------------------------------
+
+export const TRASH_DAYS = sessions.TRASH_DAYS;
+
+/** To the trash, those below it too: nothing runs, its chat and sessions are out of sight, and it can come back for 30 days. */
+export function trash(slug: string): readonly string[] {
+  const a = get(slug);
+  if (!a || a.kind === "orchestrator") throw new AgentError(`no agent ${slug}`);
+  const at = now();
+  const all = subtree(a);
+  for (const target of all) {
+    retire(target, { killBusy: true });
+    sessions.trashOfAgent(target.slug);
+    set(target.slug, { trashed_at: at, status: "closed", closed_at: at, paused_at: null, pause_reason: null });
+  }
+  bus.emitEvent("agents.trashed", { slugs: all.map((t) => t.slug) });
+  return all.map((t) => t.slug);
+}
+
+/** What went to the trash with one agent and that agent itself: rows sharing its moment. */
+const trashedWith = (a: Agent) => (db.query("SELECT * FROM agents WHERE trashed_at = ?").all(a.trashedAt) as Record<string, any>[]).map(toAgent);
+
+export const trashList = () => (db.query("SELECT * FROM agents WHERE trashed_at IS NOT NULL ORDER BY trashed_at DESC").all() as Record<string, any>[]).map(toAgent);
+
+/** Back from the trash, with what went with it. It stays idle until someone writes to it. */
+export function restore(slug: string): readonly string[] {
+  const a = get(slug);
+  if (!a?.trashedAt) throw new AgentError(`${slug} is not in the trash`);
+  const back = trashedWith(a);
+  for (const target of back) {
+    sessions.restoreOfAgent(target.slug);
+    set(target.slug, { trashed_at: null, status: "idle", closed_at: null });
+  }
+  bus.emitEvent("agents.restored", { slugs: back.map((t) => t.slug) });
+  return back.map((t) => t.slug);
+}
+
+/** For good: its folder, sessions, row and person. The Keep page stays, what it found is written there. */
+export function purge(slug: string): readonly string[] {
+  const a = get(slug);
+  if (!a?.trashedAt) throw new AgentError(`${slug} is not in the trash`);
+  const gone = trashedWith(a);
+  for (const target of gone) {
+    sessions.purgeOfAgent(target.slug);
+    rmSync(target.folder, { recursive: true, force: true });
+    forgetPerson(target);
+    db.prepare("DELETE FROM agents WHERE slug = ?").run(target.slug);
+  }
+  bus.emitEvent("agents.purged", { slugs: gone.map((t) => t.slug) });
+  return gone.map((t) => t.slug);
+}
+
+/** Its person is of no use once it is gone. People keeps the row, so what was assigned to it still has a name. */
+export function forgetPerson(a: Agent) {
+  if (a.personId) void people.removeMember(a.personId).catch((err: Error) => log.warn(`${a.slug}: person not removed: ${err.message}`));
+}
+
+/** The trash empties itself of agents there longer than `TRASH_DAYS`. */
+export function purgeOld() {
+  const before = now() - TRASH_DAYS * 86_400_000;
+  for (const a of trashList()) if (a.trashedAt! < before && get(a.slug)) purge(a.slug);
 }
 
 /** Status, open work and spend per agent, for the tree view. */

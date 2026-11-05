@@ -2,7 +2,11 @@ import { config } from "../core/config.ts";
 import { contextTokens } from "../domain/transcript.ts";
 import type { ForgetTarget } from "../domain/transcript.ts";
 import { MAX_FILES, readable, serve as serveAttachment, type Upload } from "../domain/attachments.ts";
+import * as agentPage from "../domain/agent-page.ts";
+import * as prefs from "../domain/prefs.ts";
+import { agentSheet } from "../domain/agent-sheet.ts";
 import * as drafts from "../domain/drafts.ts";
+import { KILL, needs, RESUME } from "../domain/needs.ts";
 import { mapResponse } from "../domain/maps.ts";
 import { ratesResponse } from "../domain/rates.ts";
 import * as inbox from "../domain/inbox.ts";
@@ -143,6 +147,10 @@ export async function handle(req: Request): Promise<Response> {
       return json({ marks: reads.mark(String(place ?? ""), Number(at ?? 0)) });
     }
     if (path === "/reads") return json({ marks: reads.marks() });
+
+    // What the web client remembers across browsers: one look everywhere, local and production alike.
+    if (path === "/prefs" && req.method === "PUT") return json(prefs.merge(await body<Record<string, unknown>>(req)));
+    if (path === "/prefs") return json(prefs.all());
 
     // The themes made in the web client's editor.
     if (path === "/themes") return json({ themes: themes.list() });
@@ -421,6 +429,13 @@ export async function handle(req: Request): Promise<Response> {
       const routines = automations.all().filter((r) => (r.agent ? r.agent === slug : who === "general"));
       return json({ ...chatConfig(who, agent?.tools ?? undefined), routines, events: eventCatalog() });
     }
+    if (path === "/keep/workspaces") {
+      try {
+        return json(await agentPage.workspaces());
+      } catch (err) {
+        return json({ error: (err as Error).message }, 502);
+      }
+    }
     if (path === "/tools" && req.method === "PATCH") {
       const change = await body<{ claudeSync?: boolean; server?: string; tool?: string; skill?: string; on?: boolean }>(req);
       if (change.claudeSync !== undefined) {
@@ -598,13 +613,14 @@ export async function handle(req: Request): Promise<Response> {
     // pai and its staff: the tree, one agent's chat, creating, writing to, closing.
     if (path === "/agents" && req.method === "POST") {
       try {
-        return json(agents.create(await body<agents.CreateInput>(req)), 201);
+        return json(await agents.create(await body<agents.CreateInput>(req)), 201);
       } catch (err) {
         return json({ error: (err as Error).message }, 400);
       }
     }
     if (path === "/agents") return json(agents.tree(tasks.openCounts()));
-    const agentPath = /^\/agents\/([a-z0-9-]+)(?:\/(message|close|stop|instructions))?$/.exec(path);
+    if (path === "/agents/trash") return json({ items: agents.trashList(), days: agents.TRASH_DAYS });
+    const agentPath = /^\/agents\/([a-z0-9-]+)(?:\/(message|close|stop|resume|instructions|sheet|trash|restore|purge))?$/.exec(path);
     if (agentPath?.[1]) {
       const slug = agentPath[1];
       const a = agents.get(slug);
@@ -619,16 +635,23 @@ export async function handle(req: Request): Promise<Response> {
           if (slug === agents.PAI) return json({ session: main.send(text ?? "", { images: attached }).shortId });
           return json(agents.fromUser(slug, text ?? "", taskId, attached));
         }
-        // Stopping pai is stopping its one session; an agent stops with everything below it.
+        // Stopping pai is stopping its one session; an agent stops with everything below it, and waits on the user.
         if (agentPath[2] === "stop" && req.method === "POST") {
           if (slug === agents.PAI) {
             await main.session().interrupt();
             return json({ stopped: [agents.PAI] });
           }
-          return json({ stopped: await agents.stop(slug) });
+          const { reason } = await body<{ reason?: string }>(req).catch(() => ({}) as { reason?: string });
+          return json({ stopped: await agents.stop(slug, reason) });
         }
+        if (agentPath[2] === "resume" && req.method === "POST") return json(agents.resume(slug));
         if (agentPath[2] === "instructions") return json(agents.instructionsOf(a));
-        if (agentPath[2] === "close" && req.method === "POST") return json(agents.close(slug, (await body<{ summary?: string }>(req).catch(() => ({}) as { summary?: string })).summary ?? ""));
+        if (agentPath[2] === "sheet") return json(await agentSheet(a));
+        // The user's kill: it closes now, mid-turn too, with what they said.
+        if (agentPath[2] === "close" && req.method === "POST") return json(agents.kill(slug, (await body<{ summary?: string }>(req).catch(() => ({}) as { summary?: string })).summary ?? ""));
+        if (agentPath[2] === "trash" && req.method === "POST") return json({ trashed: agents.trash(slug) });
+        if (agentPath[2] === "restore" && req.method === "POST") return json({ restored: agents.restore(slug) });
+        if (agentPath[2] === "purge" && req.method === "POST") return json({ purged: agents.purge(slug) });
         if (req.method === "PATCH") return json(agents.configure(slug, await body<Parameters<typeof agents.configure>[1]>(req)));
       } catch (err) {
         return json({ error: (err as Error).message }, 400);
@@ -685,80 +708,7 @@ export async function handle(req: Request): Promise<Response> {
 
     // Everything that waits on the user, newest first, in one shape: the agents' asks and the questions sessions
     // have open (pai's AskUserQuestion). A phone answers either with one tap: `asks/<id>/answer` or `/answer`.
-    if (path === "/needs") {
-      // A need sits on its area: the agent that asked, or for pai's own asks the owner of the task it is about.
-      const area = (slug: string | undefined) => (slug && slug !== agents.PAI ? slug : null);
-      const open = asks.open();
-      // An ask held for quiet hours has no row in the chat yet, so it is not a need yet either.
-      const fromAsks = open.filter((a) => a.delivered).map((a) => ({
-        kind: "ask" as const,
-        id: `ask:${a.id}`,
-        askId: a.id,
-        taskId: a.taskId ?? undefined,
-        agent: area(a.agent === agents.PAI && a.taskId ? tasks.get(a.taskId)?.owner : a.agent),
-        from: agents.get(a.agent)?.name ?? a.agent,
-        question: a.question,
-        options: a.options,
-        freeText: a.freeText,
-        priority: a.priority,
-        // A card with a link in its text gets a button that opens it, instead of asking the user to copy it out.
-        link: tasks.firstUrl(a.question, a.context),
-        createdAt: a.createdAt,
-      }));
-      const fromSessions = sessions.list().flatMap((summary) => {
-        const s = sessions.find(summary.sessionId);
-        const index = s?.nextUnanswered();
-        const q = index === undefined ? undefined : s!.pending!.questions[index];
-        if (!s || !q) return [];
-        const owner = summary.agent ? agents.get(summary.agent) : undefined;
-        return [{
-          kind: "question" as const,
-          id: `q:${s.id}:${s.pending!.id}:${index}`,
-          session: s.id,
-          agent: owner?.slug ?? null,
-          from: owner?.name ?? summary.title,
-          question: q.question,
-          options: q.options.map((o) => o.label),
-          freeText: true,
-          priority: "normal",
-          link: tasks.firstUrl(q.question),
-          createdAt: summary.lastActivity,
-        }];
-      });
-      // A draft waiting on him is a decision with a card of its own: Send or Discard, after editing.
-      const fromDrafts = drafts.open().map((d) => ({
-        kind: "draft" as const,
-        id: `draft:${d.id}`,
-        draftId: d.id,
-        taskId: d.taskId ?? undefined,
-        agent: area(d.agent),
-        from: agents.get(d.agent)?.name ?? d.agent,
-        question: `${drafts.labelFor(d.channel)}${d.fields.to ? ` to ${d.fields.to}` : ""}${d.fields.subject ? `: ${d.fields.subject}` : ""}`,
-        options: d.status === "sending" ? [] : ["Send", "Discard"],
-        freeText: false,
-        priority: "normal",
-        draft: { channel: d.channel, fields: d.fields, status: d.status, state: d.state, note: d.note },
-        createdAt: d.createdAt,
-      }));
-
-      // A task waiting on the user is a decision too: done, dropped, or a word to whoever owns it.
-      // A task with an open ask on it is that ask's card already.
-      const asked = new Set(open.map((a) => a.taskId));
-      const fromTasks = tasks.list({ status: "waiting_user" }).filter((t) => !asked.has(t.id)).map((t) => ({
-        kind: "task" as const,
-        id: `task:${t.id}`,
-        taskId: t.id,
-        agent: area(t.owner),
-        from: agents.get(t.owner)?.name ?? t.owner,
-        question: t.nextAction ? `${t.title}\n${t.nextAction}` : t.title,
-        options: [asks.TASK_DID, asks.TASK_SKIP],
-        freeText: true,
-        priority: "normal",
-        link: tasks.firstUrl(t.nextAction, t.source, t.notes),
-        createdAt: t.updatedAt,
-      }));
-      return json([...fromSessions, ...fromDrafts, ...fromAsks, ...fromTasks].sort((a, b) => b.createdAt - a.createdAt));
-    }
+    if (path === "/needs") return json(needs());
 
     // A phone's APNs token (Paigram registers itself), and a test push to every phone.
     if (path === "/push/devices" && req.method === "POST") {
@@ -791,6 +741,8 @@ export async function handle(req: Request): Promise<Response> {
       try {
         const [kind, ref] = [id.slice(0, id.indexOf(":")), id.slice(id.indexOf(":") + 1)];
         if (kind === "ask") return json({ answered: true, ask: asks.answer(Number(ref), text) });
+        // Resume sets a paused agent going as it was; anything else is what the user has to say to it.
+        if (kind === "paused") return json({ answered: true, agent: text === RESUME ? agents.resume(ref) : text === KILL ? agents.kill(ref) : agents.fromUser(ref, text) });
         if (kind === "q") {
           const s = resolveLive(ref.split(":")[0]!);
           if (!s?.pending) return json({ answered: false, error: "no question pending" });

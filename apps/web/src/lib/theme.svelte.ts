@@ -23,7 +23,8 @@ function writeStyle(css: string) {
  * Which palette is on: a light one and a dark one are chosen, and the mode says whether the system decides between
  * them. Applied as attributes on the root, which `@desk/core/tokens.css` reads, so the whole page follows. A theme of
  * one's own shows as its base palette plus a stylesheet of its changes. Themes are held by the daemon and kept here
- * too, so `app.html` can show the right one before anything has loaded; the choice stays per browser.
+ * too, so `app.html` can show the right one before anything has loaded. The choice lives there as well, so every
+ * browser, local or production, wears the same look; this browser's copy is only for the first paint.
  */
 class Theme {
   choice = $state<ThemeChoice>(recall(KEY, DEFAULT_THEME));
@@ -43,6 +44,7 @@ class Theme {
     this.choice = { ...this.choice, ...changes };
     remember(KEY, JSON.stringify(this.choice));
     this.#apply();
+    void api.savePrefs({ theme: this.choice }).catch((error: Error) => this.#failed(error));
   }
 
   /** Puts a palette on, in its own light or dark. */
@@ -63,8 +65,14 @@ class Theme {
     if (this.#loaded) return;
     this.#loaded = true;
     try {
-      this.custom = (await api.themes()) as readonly CustomTheme[];
+      const [custom, prefs] = await Promise.all([api.themes(), api.prefs()]);
+      this.custom = custom as readonly CustomTheme[];
       this.#keep();
+      // The first browser to get here has its choice taken up; after that the daemon's is the one.
+      if (prefs.theme) {
+        this.choice = { ...DEFAULT_THEME, ...(prefs.theme as Partial<ThemeChoice>) };
+        remember(KEY, JSON.stringify(this.choice));
+      } else await api.savePrefs({ theme: this.choice });
       this.#apply();
     } catch (error) {
       console.warn("[theme] the daemon's themes are unavailable, using this browser's", error);

@@ -1,7 +1,11 @@
+import { DESK_DOMAIN } from "@desk/core";
 import { auth } from "./auth.svelte";
 
 const KEEP_URN = /\bkeep:page\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/g;
 let loading: Promise<void> | null = null;
+
+/** Where a `keep:page/<id>` opens. */
+export const keepPage = (urn: string) => `${(auth.config.keepUrl ?? `https://keep.${DESK_DOMAIN}`).replace(/\/$/, "")}/p/${urn.replace(/^keep:page\//, "")}`;
 
 /**
  * Keep content in chat: a `keep:` URN becomes `<keep-pill>`, defined by Keep's own `elements.js`. The client never

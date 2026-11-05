@@ -90,7 +90,7 @@ export function send(text: string, opts: { images?: readonly Upload[]; place?: R
     s.answer(text);
     return s;
   }
-  const open = asks.open();
+  const open = asks.forUser();
   if (open.length) s.inject(`[open asks — if the user's next message answers one, call answer_ask]\n${open.map((a) => `#${a.id} ${agents.breadcrumb(a.agent)}: ${a.question}${a.options.length ? ` (${a.options.join(" / ")})` : ""}`).join("\n")}`);
   // Pictures go to the model as pictures; a file goes as a line naming it, its size and where to
   // read it — a PDF reaches Claude through the Read tool, not as bytes in the turn.
@@ -147,7 +147,7 @@ export function note(text: string) {
 
 function briefing(reason: string): string {
   const open = tasks.list({ limit: 40 });
-  const waiting = asks.open();
+  const waiting = asks.forUser();
   const staff = agents.list().filter((a) => a.kind !== "orchestrator");
   const today = journal.logicalDay();
   const yesterday = journal.previous(today);
@@ -200,13 +200,15 @@ export function rotate(reason: string): Promise<void> {
  * and the clock rotates it daily. Agents' reports reach it through `agents.linkPai`.
  */
 export function start() {
-  agents.linkPai({ note, turn: (text) => void gate.screen(text, { turn: system, note }) });
+  agents.linkPai({ note, turn: (text) => void gate.screen(text, { turn: system, note }), direct: system });
   requests.linkPai(system, silent);
   requests.wire();
   asks.link({
     priority: (slug) => agents.get(slug)?.priority ?? 0,
     breadcrumb: agents.breadcrumb,
     park: (slug) => slug !== agents.PAI && agents.park(slug),
+    supervisor: agents.supervisorOf,
+    hold: agents.askSupervisor,
     deliver: (slug, text, opts) => (slug === agents.PAI ? system(text) : agents.deliver(slug, text, opts)),
     note: (slug, text) => (slug === agents.PAI ? note(text) : agents.noteTo(slug, text)),
   });

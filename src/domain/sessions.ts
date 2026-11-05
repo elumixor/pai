@@ -215,18 +215,34 @@ function withChildren(ids: readonly string[]): string[] {
   return [...all];
 }
 
-/** Moves threads (and what hangs under them) to the trash; a running one is stopped. Agents' sessions are not threads. */
-export function trash(ids: readonly string[]): string[] {
+const isAgentSession = (id: string) => Boolean(db.query("SELECT 1 FROM sessions WHERE session_id = ? AND (kind = 'main' OR agent IS NOT NULL)").get(id));
+
+function moveToTrash(ids: readonly string[]) {
   const at = now();
-  const moved = withChildren(ids).filter((id) => !(db.query("SELECT 1 FROM sessions WHERE session_id = ? AND (kind = 'main' OR agent IS NOT NULL)").get(id)));
-  for (const id of moved) {
+  for (const id of ids) {
     db.prepare("UPDATE sessions SET deleted_at = ? WHERE session_id = ? AND deleted_at IS NULL").run(at, id);
     const s = live.get(id);
     if (s && s.state !== "dead") s.kill();
   }
-  if (moved.length) bus.emitEvent("sessions.trashed", { ids: moved });
-  return moved;
+  if (ids.length) bus.emitEvent("sessions.trashed", { ids });
+  return ids;
 }
+
+/** Moves threads (and what hangs under them) to the trash; a running one is stopped. An agent goes with `trashOfAgent`, not as a thread. */
+export function trash(ids: readonly string[]): readonly string[] {
+  const threads = ids.flatMap((raw) => resolveId(raw) ?? []).filter((id) => !isAgentSession(id));
+  return moveToTrash(withChildren(threads).filter((id) => !isAgentSession(id)));
+}
+
+/** Every session an agent has run in, and the threads under them, to the trash with it. */
+export function trashOfAgent(slug: string): readonly string[] {
+  const own = db.query("SELECT session_id FROM sessions WHERE agent = ?").all(slug) as { session_id: string }[];
+  return moveToTrash(withChildren(own.map((r) => r.session_id)));
+}
+
+/** The same sessions back out of the trash, or deleted for good. */
+export const restoreOfAgent = (slug: string) => restore((db.query("SELECT session_id FROM sessions WHERE agent = ?").all(slug) as { session_id: string }[]).map((r) => r.session_id));
+export const purgeOfAgent = (slug: string) => purge((db.query("SELECT session_id FROM sessions WHERE agent = ?").all(slug) as { session_id: string }[]).map((r) => r.session_id));
 
 /** Takes threads back out of the trash. */
 export function restore(ids: readonly string[]): string[] {

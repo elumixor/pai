@@ -22,7 +22,7 @@ function overnight(): string[] {
 }
 
 export function morning(): string {
-  const waiting = asks.open();
+  const waiting = asks.forUser();
   const old = new Set(asks.stale().map((a) => a.id));
   const digest = asks.takeDigest();
   const due = tasks.list().filter((t) => t.due && t.due <= stamp().slice(0, 10));

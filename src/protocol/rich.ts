@@ -89,6 +89,8 @@ export const EVENT_ICONS: Readonly<Record<string, string>> = {
   notice: "bell",
   error: "exclamationmark.triangle",
   stopped: "stop.circle",
+  resumed: "bolt",
+  elevated: "hand.raised",
   "agent.closed": "archivebox",
   "agent.tools_missing": "exclamationmark.triangle",
   chat: "bubble.left",

@@ -1,4 +1,5 @@
 import { bus } from "../core/bus.ts";
+import { config } from "../core/config.ts";
 import { db, now } from "../core/db.ts";
 import { logger } from "../core/log.ts";
 import { quiet, stamp } from "../core/time.ts";
@@ -32,11 +33,15 @@ interface AgentLookup {
   breadcrumb(slug: string): string;
   /** A blocking ask parks the agent; an answer wakes it with a turn. */
   park(slug: string): void;
-  deliver(slug: string, text: string, opts: { askId: number; taskId: number | null }): void;
+  /** Who a question goes to before the user: the agent above; null for pai, whose questions are the user's. */
+  supervisor(slug: string): string | null;
+  /** A supervisor is handed a question to settle or pass on. */
+  hold(holder: string, ask: Ask): void;
+  deliver(slug: string, text: string, opts: { askId: number; taskId: number | null; byUser: boolean }): void;
   /** Without a turn: the answer matched the default the agent already went on with. */
   note(slug: string, text: string): void;
 }
-let agents: AgentLookup = { priority: () => 0, breadcrumb: (s) => s, park: () => {}, deliver: () => {}, note: () => {} };
+let agents: AgentLookup = { priority: () => 0, breadcrumb: (s) => s, park: () => {}, supervisor: () => null, hold: () => {}, deliver: () => {}, note: () => {} };
 export function link(lookup: AgentLookup) {
   agents = lookup;
 }
@@ -61,6 +66,9 @@ export interface Ask {
   readonly delivered: boolean;
   readonly createdAt: number;
   readonly answeredAt: number | null;
+  /** The supervisor it is with; null once it is the user's to answer. */
+  readonly holder: string | null;
+  readonly heldSince: number | null;
 }
 
 const toAsk = (r: Record<string, any>): Ask => ({
@@ -79,6 +87,8 @@ const toAsk = (r: Record<string, any>): Ask => ({
   delivered: r.message_id !== null && r.message_id !== undefined,
   createdAt: r.created_at,
   answeredAt: r.answered_at ?? null,
+  holder: r.holder ?? null,
+  heldSince: r.held_since ?? null,
 });
 
 export function getAsk(id: number): Ask | undefined {
@@ -86,10 +96,13 @@ export function getAsk(id: number): Ask | undefined {
   return row ? toAsk(row) : undefined;
 }
 
-/** What is waiting on the user, oldest first. */
+/** Every question not answered yet, oldest first, whoever it is with. */
 export function open(): Ask[] {
   return (db.query("SELECT * FROM asks WHERE status = 'open' ORDER BY id").all() as Record<string, any>[]).map(toAsk);
 }
+
+/** What is waiting on the user, oldest first: the questions no supervisor holds. */
+export const forUser = (): Ask[] => open().filter((a) => a.holder === null);
 
 export function recentAsks(limit = 50): Ask[] {
   return (db.query("SELECT * FROM asks ORDER BY id DESC LIMIT ?").all(limit) as Record<string, any>[]).map(toAsk);
@@ -105,6 +118,8 @@ export interface AskInput {
   fallback?: string;
   context?: string;
   taskId?: number | null;
+  /** The user's call and nobody else's, whoever is above the asker: an outbound approval, a task only they can do. */
+  forUser?: boolean;
 }
 
 export class AskError extends Error {}
@@ -134,34 +149,76 @@ export function ask(input: AskInput): Ask {
   const blocking = input.blocking ?? true;
   if (!blocking && !input.fallback?.trim()) throw new AskError("a non-blocking ask says what the agent does meanwhile (fallback)");
   const priority = shifted(input.priority ?? "normal", agents.priority(input.agent));
+  const holder = input.forUser || input.fallback === TASK_FALLBACK ? null : agents.supervisor(input.agent);
   const res = db
-    .prepare("INSERT INTO asks (agent, question, options, free_text, priority, blocking, fallback, context, task_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .run(input.agent, input.question.trim(), JSON.stringify(input.options ?? []), input.freeText === false ? 0 : 1, priority, blocking ? 1 : 0, input.fallback ?? null, input.context ?? "", input.taskId ?? null, now());
+    .prepare("INSERT INTO asks (agent, question, options, free_text, priority, blocking, fallback, context, task_id, created_at, holder, held_since) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(input.agent, input.question.trim(), JSON.stringify(input.options ?? []), input.freeText === false ? 0 : 1, priority, blocking ? 1 : 0, input.fallback ?? null, input.context ?? "", input.taskId ?? null, now(), holder, holder ? now() : null);
   const a = getAsk(Number(res.lastInsertRowid))!;
   if (blocking) agents.park(input.agent);
-  // An ask is something the user can act on, so even a "digest" one goes out now unless it is quiet.
-  if (priority === "urgent" || !quiet()) deliverAsk(a);
+  // In its own chat at once, whoever holds it. It reaches the user's when it is theirs: an ask is something they can act on, so even a "digest" one goes out now unless it is quiet.
+  if (holder || priority === "urgent" || !quiet()) deliverAsk(a);
   const created = getAsk(a.id)!;
   bus.emitEvent("ask.created", created as unknown as Record<string, unknown>);
+  if (holder) agents.hold(holder, created);
   if (card) drop(card.id);
   return created;
+}
+
+/**
+ * On from whoever holds it: up to the next supervisor, and from the top to the user. `direct` skips the ones between,
+ * for a question that sat too long. Its row is the same one, so what the user has already seen in a chat does not repeat.
+ */
+export function elevate(id: number, by: string | null, note = "", opts: { direct?: boolean } = {}): Ask {
+  const a = getAsk(id);
+  if (!a) throw new AskError(`no ask #${id}`);
+  if (a.status !== "open") throw new AskError(`ask #${id} is already ${a.status}`);
+  if (a.holder === null) throw new AskError(`ask #${id} is already with the user`);
+  const next = opts.direct ? null : agents.supervisor(a.holder);
+  db.prepare("UPDATE asks SET holder = ?, held_since = ? WHERE id = ?").run(next, next ? now() : null, id);
+  const moved = getAsk(id)!;
+  const words = note.trim();
+  messages.event(a.agent, "elevated", `Question #${id} passed on to ${next ? agents.breadcrumb(next) : "the user"}${by ? ` by ${agents.breadcrumb(by)}` : " after no answer"}${words ? `: ${words}` : ""}`, { to: a.agent });
+  const row = db.query("SELECT message_id FROM asks WHERE id = ?").get(id) as { message_id: number | null } | undefined;
+  if (next) {
+    if (row?.message_id) messages.patchMeta(row.message_id, { heldBy: agents.breadcrumb(next).split(" › ").at(-1) });
+    agents.hold(next, moved);
+  } else if (a.priority === "urgent" || !quiet()) toUser(moved, words);
+  bus.emitEvent("ask.created", moved as unknown as Record<string, unknown>);
+  return moved;
+}
+
+/** A question held in its asker's chat becomes the user's: the same row goes on to them. */
+function toUser(a: Ask, note = "") {
+  const row = db.query("SELECT message_id FROM asks WHERE id = ?").get(a.id) as { message_id: number | null } | undefined;
+  if (row?.message_id) messages.readdress(row.message_id, "user", { heldBy: undefined, ...(note ? { elevatedNote: note } : {}) });
+  else deliverAsk(a);
+}
+
+/** Questions a supervisor sat on too long go to the user directly. Runs every minute. */
+export function elevateOverdue() {
+  const before = now() - config.escalateMinutes * 60_000;
+  for (const a of open()) if (a.holder && a.heldSince && a.heldSince < before) elevate(a.id, null);
 }
 
 function deliverAsk(a: Ask) {
   const breadcrumb = [agents.breadcrumb(a.agent), a.context].filter(Boolean).join(" › ");
   const row = messages.log({
     from: a.agent,
-    to: "user",
+    // Held by a supervisor it stays in its own chat, out of the user's and off their phone.
+    to: a.holder ? a.agent : "user",
     kind: "ask",
     body: a.question,
     taskId: a.taskId,
-    meta: { askId: a.id, options: a.options, breadcrumb, priority: a.priority, silent: a.priority !== "urgent", freeText: a.freeText, blocking: a.blocking, fallback: a.fallback ?? undefined, agent: a.agent },
+    meta: { askId: a.id, options: a.options, breadcrumb, priority: a.priority, silent: a.priority !== "urgent", freeText: a.freeText, blocking: a.blocking, fallback: a.fallback ?? undefined, agent: a.agent, heldBy: a.holder ? agents.breadcrumb(a.holder).split(" › ").at(-1) : undefined },
   });
   db.prepare("UPDATE asks SET message_id = ? WHERE id = ?").run(row.id, a.id);
 }
 
-/** The user's answer, by button or by text. The agent gets it as a turn (or a note, when it changes nothing). */
-export function answer(id: number, text: string, via = "user"): Ask {
+/**
+ * An answer, by button or by text: the user's, or a supervisor's (`by`). The agent gets it as a turn (or a note, when
+ * it changes nothing). `via` is who passed the user's words on.
+ */
+export function answer(id: number, text: string, via = "user", by = "user"): Ask {
   const a = getAsk(id);
   if (!a) throw new AskError(`no ask #${id}`);
   if (a.status !== "open") throw new AskError(`ask #${id} is already ${a.status}`);
@@ -170,12 +227,13 @@ export function answer(id: number, text: string, via = "user"): Ask {
   if (!a.freeText && a.options.length && !a.options.some((o) => o.toLowerCase() === reply.toLowerCase()))
     throw new AskError(`ask #${id} takes one of: ${a.options.join(", ")}`);
   db.prepare("UPDATE asks SET status = 'answered', answer = ?, answered_at = ? WHERE id = ?").run(reply, now(), id);
-  messages.log({ from: "user", to: a.agent, kind: "answer", body: reply, taskId: a.taskId, meta: { askId: id, via, event: "answered", agent: a.agent, quote: quoteOf(id) } });
+  const byUser = by === "user";
+  messages.log({ from: by, to: a.agent, kind: "answer", body: reply, taskId: a.taskId, meta: { askId: id, via, event: "answered", agent: a.agent, quote: quoteOf(id) } });
   const choice = reply.toLowerCase();
   if (isTaskAsk(a) && a.taskId && choice === TASK_DID.toLowerCase()) {
     // The user did their part: the work goes back to its owner, who checks it and carries on.
     tasks.update(a.taskId, { status: "active" });
-    agents.deliver(a.agent, `[the user says they did what task #${a.taskId} "${tasks.get(a.taskId)?.title}" waited on: check it and carry on]`, { askId: id, taskId: a.taskId });
+    agents.deliver(a.agent, `[the user says they did what task #${a.taskId} "${tasks.get(a.taskId)?.title}" waited on: check it and carry on]`, { askId: id, taskId: a.taskId, byUser });
     const answered = getAsk(id)!;
     bus.emitEvent("ask.answered", answered as unknown as Record<string, unknown>);
     return answered;
@@ -191,9 +249,9 @@ export function answer(id: number, text: string, via = "user"): Ask {
   }
   // Answered, the decision is no longer the user's: its task goes back to whoever owns it.
   if (a.taskId && tasks.get(a.taskId)?.status === "waiting_user") tasks.update(a.taskId, { status: "active" });
-  const text_ = `[answer to your question #${id}: "${a.question}"] ${reply}`;
+  const text_ = `[${byUser ? "answer" : `${agents.breadcrumb(by)}'s answer`} to your question #${id}: "${a.question}"] ${reply}`;
   if (!a.blocking && a.fallback && a.fallback.trim().toLowerCase() === reply.toLowerCase()) agents.note(a.agent, text_);
-  else agents.deliver(a.agent, text_, { askId: id, taskId: a.taskId });
+  else agents.deliver(a.agent, text_, { askId: id, taskId: a.taskId, byUser });
   const answered = getAsk(id)!;
   bus.emitEvent("ask.answered", answered as unknown as Record<string, unknown>);
   return answered;
@@ -327,12 +385,24 @@ export function flush() {
   if (quiet()) return;
   const held = (db.query("SELECT * FROM notices WHERE priority = 'normal' AND delivered_at IS NULL ORDER BY id").all() as Record<string, any>[]).map(toNotice);
   for (const n of held) deliverNotice(n);
-  for (const a of open().filter((x) => !x.delivered)) deliverAsk(a);
+  for (const a of forUser().filter((x) => !x.delivered)) deliverAsk(a);
+  for (const a of forUser()) if (undelivered(a)) toUser(a);
   if (held.length) log.info(`released ${held.length} held notices`);
 }
 
+/** Elevated in quiet hours: still addressed to its asker's chat. */
+function undelivered(a: Ask) {
+  const row = db.query("SELECT m.recipient FROM asks a JOIN messages m ON m.id = a.message_id WHERE a.id = ?").get(a.id) as { recipient: string } | undefined;
+  return row !== undefined && row.recipient !== "user";
+}
+
 /** Open asks older than a day: the morning brief repeats them. */
-export const stale = (olderThanMs = 24 * 3600 * 1000) => open().filter((a) => now() - a.createdAt > olderThanMs);
+export const stale = (olderThanMs = 24 * 3600 * 1000) => forUser().filter((a) => now() - a.createdAt > olderThanMs);
+
+/** Something waiting on the user, said again; with sound, since the first time did not reach them. Quiet hours hold it. */
+export function remind(agent: string, text: string) {
+  messages.log({ from: agent, to: "user", kind: "notice", body: text, meta: { priority: "normal", silent: false, breadcrumb: agents.breadcrumb(agent), agent, reminder: true } });
+}
 
 /** A plain digest line per notice, for the evening brief that needs no model. */
 export function digestText(items: Notice[]) {

@@ -40,6 +40,8 @@ export type EventName =
   | "agent.closed"
   | "agent.tools_missing"
   | "stopped"
+  | "resumed"
+  | "elevated"
   | "routine.fired"
   | "item.arrived"
   | "calendar.upcoming"
@@ -175,6 +177,17 @@ export function update(id: number, patch: { body?: string; meta?: MessageMeta })
   db.prepare("UPDATE messages SET body = ?, meta = ? WHERE id = ?").run(body, JSON.stringify(meta), id);
   const updated = { ...m, body, meta };
   bus.emitEvent("message.updated", updated as unknown as Record<string, unknown>);
+  return updated;
+}
+
+/** A row kept in one chat goes on to someone else: same row, told to the bus as new so their clients draw it. */
+export function readdress(id: number, to: Party, patch: MessageMeta = {}): Message | undefined {
+  const m = get(id);
+  if (!m) return undefined;
+  const meta = { ...m.meta, ...patch };
+  db.prepare("UPDATE messages SET recipient = ?, meta = ? WHERE id = ?").run(to, JSON.stringify(meta), id);
+  const updated = { ...m, to, meta };
+  bus.emitEvent("message.new", updated as unknown as Record<string, unknown>);
   return updated;
 }
 
