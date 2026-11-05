@@ -56,7 +56,7 @@
   import FindBar, { type FindTarget } from "./FindBar.svelte";
   import MessageRow from "./MessageRow.svelte";
   import { navigate } from "../router.svelte";
-  import { forkSeeds, splitPastes, describeTools, eventIcon, eventType, excerptOf, type Item, type LiveQuestion, type ReplyQuote, type Row, textOf, type ToolGroup, typeLabel, withReply } from "./model";
+  import { copyOf, forkSeeds, splitPastes, describeTools, eventIcon, eventType, excerptOf, type Item, type LiveQuestion, type ReplyQuote, type Row, textOf, type ToolGroup, typeLabel, withReply } from "./model";
   import Pictures from "./Pictures.svelte";
   import QuestionRow from "./QuestionRow.svelte";
   import QuoteRef from "./QuoteRef.svelte";
@@ -95,6 +95,7 @@
   let pending = $state<{ id: number; text: string; body: string; quote?: ReplyQuote; images: string[]; state: "sending" | "sent" | "failed" }[]>([]);
   let openedAt = $state(0);
   let replyTarget: ReplyQuote | undefined;
+  let hiddenAts = new Set<number>();
   let rewriting = false;
   let rewriteTurn: number | undefined;
   let nextTurn = 0;
@@ -436,7 +437,7 @@
       return group;
     };
     const close = () => {
-      if (reply) out.push(spoken(spec.agent, reply.text, reply.at));
+      if (reply && !hiddenAts.has(reply.at)) out.push(spoken(spec.agent, reply.text, reply.at));
       reply = undefined;
       group = undefined;
     };
@@ -446,7 +447,7 @@
         if (entry.meta || (!entry.text.trim() && !entry.images?.length) || entry.text.startsWith("[Request interrupted")) continue;
         close();
         nextTurn = (entry.turn ?? nextTurn) + 1;
-        out.push(spoken("user", entry.text, at, entry.images, entry.turn));
+        if (!hiddenAts.has(at)) out.push(spoken("user", entry.text, at, entry.images, entry.turn));
         continue;
       }
       // The texts before a turn's last one were the model thinking aloud.
@@ -508,6 +509,7 @@
   async function load() {
     if (spec.session) {
       const history = await api.transcript(spec.session).catch(() => [] as Transcript[]);
+      hiddenAts = new Set(await api.hiddenTurns(spec.session).catch(() => [] as number[]));
       const rows = turnsOf(history);
       forks = await api.forks(spec.session).catch(() => []);
       const forked = forkSeeds.get(spec.session);
@@ -598,6 +600,11 @@
         const m = payload as unknown as LogMessage;
         const item = items.find((i): i is Row => i.kind === "message" && i.m.id === m.id);
         if (item) item.m = m;
+        break;
+      }
+      case "message.deleted": {
+        const gone = new Set((payload as { ids: number[] }).ids);
+        items = items.filter((i) => i.kind !== "message" || !gone.has(i.m.id));
         break;
       }
       case "message.new": {
@@ -888,6 +895,53 @@
 
   const rowMessage = (row: HTMLElement) => items.find((i): i is Row => i.kind === "message" && i.m.id === Number(row.dataset.message))?.m;
 
+  // ---- selecting rows: click to pick, then copy or delete them together --------------------------------------------
+
+  let selecting = $state(false);
+  let sure = $state(false);
+  const picked = new SvelteSet<string>();
+  const pickedRows = $derived(items.filter((i): i is Row => i.kind === "message" && picked.has(i.key)).sort((a, b) => a.at - b.at));
+  function endSelecting() {
+    selecting = sure = false;
+    picked.clear();
+  }
+  function pick(event: MouseEvent) {
+    if (!selecting) return;
+    const key = (event.target as HTMLElement).closest<HTMLElement>("[data-key]")?.dataset.key;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!key || !items.some((i) => i.kind === "message" && i.key === key)) return;
+    sure = false;
+    if (picked.has(key)) picked.delete(key);
+    else picked.add(key);
+  }
+  $effect(() => {
+    if (!log) return;
+    const on = new Set(picked);
+    void items.length;
+    for (const row of log.querySelectorAll<HTMLElement>("[data-key]")) row.classList.toggle("picked", on.has(row.dataset.key ?? ""));
+  });
+  async function deletePicked() {
+    if (!sure) return void (sure = true);
+    const rows = pickedRows;
+    const ids = rows.filter((r) => r.m.id > 0).map((r) => r.m.id);
+    let ats: number[] = [];
+    if (spec.session) {
+      // A row placed live has its own time; the transcript's entry for the same words is what a reload draws.
+      const history = await api.transcript(spec.session).catch(() => [] as Transcript[]);
+      ats = rows.filter((r) => r.m.id < 0).map((r) => {
+        const role = r.m.from === "user" ? "user" : "assistant";
+        const same = history.filter((h) => h.role === role && h.text === r.m.body).map((h) => new Date(h.ts).getTime());
+        return same.length ? same.reduce((a, b) => (Math.abs(b - r.at) < Math.abs(a - r.at) ? b : a)) : r.at;
+      });
+    }
+    const result = await api.deleteMessages({ ids, session: spec.session, ats });
+    if (result.error) return void box?.setNote(result.error);
+    const gone = new Set(rows.map((r) => r.key));
+    items = items.filter((i) => !gone.has(i.key));
+    endSelecting();
+  }
+
   function contextmenu(event: MouseEvent) {
     const row = (event.target as HTMLElement).closest<HTMLElement>("[data-message]");
     const m = row && rowMessage(row);
@@ -898,6 +952,11 @@
     const copy = (text: string) => void navigator.clipboard.writeText(text);
     menus.openContext(event.clientX, event.clientY, [
       { label: "Reply", icon: "reply", run: () => startReply(m) },
+      { label: "Select", icon: "check", run: () => {
+        selecting = true;
+        const key = row.dataset.key;
+        if (key) picked.add(key);
+      } },
       ...(selected ? [{ label: "Copy selection", icon: "copy" as const, run: () => copy(selected) }] : []),
       { label: "Copy text", icon: "copy", run: () => copy(textOf(m)) },
       ...(link ? [{ label: "Copy link", icon: "link" as const, run: () => copy(link) }] : []),
@@ -1003,6 +1062,7 @@
       }));
 
   function keydown(event: KeyboardEvent) {
+    if (event.key === "Escape" && selecting) return endSelecting();
     if (event.key !== "f" || !(event.metaKey || event.ctrlKey) || event.altKey || !log?.offsetParent) return;
     event.preventDefault();
     if (find?.showing() && event.shiftKey) void find.step(-1);
@@ -1030,7 +1090,7 @@
   <div class="chat-view">
     <div class="chat-head"><span class="chat-daypill" class:shown={dayShown}>{day}</span></div>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="chat-log" bind:this={log} {onscroll} onwheel={wheel} ontouchstart={letGo} oncontextmenu={contextmenu} data-testid="messages">
+    <div class="chat-log" class:selecting bind:this={log} onclickcapture={pick} {onscroll} onwheel={wheel} ontouchstart={letGo} oncontextmenu={contextmenu} data-testid="messages">
       {#if more}<div class="list-loader" role="progressbar" aria-label="Loading earlier messages" bind:this={loader}><span class="spinner"></span></div>{/if}
       {#each entries as entry (entry.key)}
         {#if entry.type === "day"}
@@ -1090,6 +1150,14 @@
         {#if !atBottom}<button class="to-bottom" title="to the latest" aria-label="To the latest" onclick={() => log?.scrollTo({ top: log.scrollHeight, behavior: "smooth" })}><Icon name="chevron" size={13} /></button>{/if}
         <div class="chat-slot">{@render slot?.()}</div>
       </div>
+      {#if selecting}
+        <div class="select-bar">
+          <span>{picked.size} selected</span><span class="grow"></span>
+          <button disabled={!picked.size} onclick={() => { void navigator.clipboard.writeText(pickedRows.map((r) => copyOf(r.m.body)).join("\n\n")); endSelecting(); }}>Copy</button>
+          <button class="danger" disabled={!picked.size} onclick={deletePicked}>{sure ? `Delete ${picked.size} for good?` : "Delete"}</button>
+          <button onclick={endSelecting}>Cancel</button>
+        </div>
+      {/if}
       {@render spec.above?.()}
       <Compose bind:this={box} placeholder={spec.placeholder} draftKey={spec.ephemeral ? undefined : spec.key} ontext={spec.ontext} session={() => liveSession} prefs={spec.prefs} setPrefs={spec.setPrefs} {extra} disabled={spec.disabled} {submit} />
     </div>

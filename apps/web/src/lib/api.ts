@@ -142,6 +142,8 @@ export const api = {
   stop: (id: string) => send<{ stopped?: boolean }>("/stop", { id }),
   forks: (id: string) => get<{ turn: number; ids: string[] }[]>(`/forks?id=${q(id)}`),
   fork: (id: string, turn: number, text: string, images: readonly Upload[]) => send<SessionSummary>("/fork", { id, turn, text, images }),
+  hiddenTurns: (session: string) => get<number[]>(`/hidden?session=${q(session)}`),
+  deleteMessages: (input: { ids?: number[]; session?: string; ats?: number[] }) => send("/messages/delete", input),
   closePrivate: (id: string) => send("/private/close", { id }),
   reconfigure: (id: string, changes: { model?: string | null; effort?: Effort | null }) => send("/reconfigure", { id, ...changes }),
 

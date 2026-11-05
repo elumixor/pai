@@ -489,6 +489,14 @@ button.row-file { width: 100%; background: none; font: inherit; text-align: left
 .row-versions button:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
 .row-versions button:disabled { opacity: 0.35; cursor: default; }
 .row.mine:has(> .row-versions) { margin-bottom: 24px; }
+.selecting [data-key] { cursor: pointer; user-select: none; }
+.selecting [data-key].picked { border-radius: 12px; background: color-mix(in srgb, var(--accent, var(--ink)) 12%, transparent); }
+.select-bar { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface); font: 400 var(--meta)/var(--meta-lh) var(--font-ui); color: var(--ink-70); }
+.select-bar .grow { flex: 1; }
+.select-bar button { padding: 3px 10px; border: 0; border-radius: 999px; background: none; color: inherit; font: inherit; cursor: pointer; }
+.select-bar button:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.select-bar button:disabled { opacity: 0.4; cursor: default; }
+.select-bar .danger { color: var(--danger, #c0392b); }
 .row-actions button { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--ink-45); cursor: pointer; }
 .row-actions button:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
 @media (hover: none) { .row-actions { opacity: 0.7; } }

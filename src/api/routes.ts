@@ -41,6 +41,7 @@ import * as composer from "../domain/compose.ts";
 import * as asks from "../domain/asks.ts";
 import * as dev from "../domain/dev.ts";
 import * as main from "../domain/main.ts";
+import { db } from "../core/db.ts";
 import * as messages from "../domain/messages.ts";
 import * as summaries from "../domain/summaries.ts";
 import * as recall from "../domain/recall.ts";
@@ -334,6 +335,14 @@ export async function handle(req: Request): Promise<Response> {
       return json({ ok: true, stopped: true });
     }
 
+    // A thread's words live in Claude Code's transcript, which a running process and a resume depend on: they are hidden, not cut out.
+    if (path === "/hidden") return json((db.query("SELECT at FROM hidden_turns WHERE session_id = ?").all(url.searchParams.get("session") ?? "") as { at: number }[]).map((r) => r.at));
+    if (path === "/messages/delete" && req.method === "POST") {
+      const { ids = [], session, ats = [] } = await body<{ ids?: number[]; session?: string; ats?: number[] }>(req);
+      messages.remove(ids);
+      if (session) for (const at of ats) db.prepare("INSERT OR IGNORE INTO hidden_turns (session_id, at) VALUES (?, ?)").run(session, at);
+      return json({ ok: true });
+    }
     if (path === "/forks") return json(sessions.forksOf(url.searchParams.get("id") ?? ""));
     if (path === "/fork" && req.method === "POST") {
       const { id, turn, text, images } = await body<{ id: string; turn: number; text: string; images?: { media_type: string; data: string }[] }>(req);

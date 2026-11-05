@@ -189,6 +189,12 @@ export function patchMeta(id: number, patch: MessageMeta): Message | undefined {
   return updated;
 }
 
+/** Rows gone from the log for good, and from what clients show. */
+export function remove(ids: readonly number[]) {
+  for (const id of ids) db.prepare("DELETE FROM messages WHERE id = ?").run(id);
+  if (ids.length) bus.emitEvent("message.deleted", { ids });
+}
+
 export function get(id: number): Message | undefined {
   const row = db.query("SELECT * FROM messages WHERE id = ?").get(id) as Record<string, any> | undefined;
   return row ? toMessage(row) : undefined;

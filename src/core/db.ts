@@ -13,6 +13,7 @@ db.exec("PRAGMA busy_timeout = 5000;");
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS session_forks (session_id TEXT PRIMARY KEY, parent_id TEXT NOT NULL, turn INTEGER NOT NULL, created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS hidden_turns (session_id TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (session_id, at));
 CREATE TABLE IF NOT EXISTS private_sessions (session_id TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS sessions (
   session_id    TEXT PRIMARY KEY,
