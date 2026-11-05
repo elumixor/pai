@@ -23,4 +23,6 @@ export interface RowContext {
   readonly draftsChanged: () => void;
   /** His message back in the box; what he sends replaces it and what followed. */
   readonly rewrite: (m: LogMessage) => void;
+  /** The rewrites of this message, when there are any: which one this is, and the way to another. */
+  readonly versions: (m: LogMessage) => { at: number; total: number; go: (step: number) => void } | undefined;
 }

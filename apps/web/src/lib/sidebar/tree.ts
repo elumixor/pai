@@ -76,7 +76,7 @@ export function buildTree({ agents, sessions, needs, open, pai }: TreeInput): Tr
   const owner = owners(agents, sessions, pai);
   const shown = agents.filter((a) => a.slug !== PAI && (a.status !== "closed" || open === `agent:${a.slug}`));
   const shownSlugs = new Set(shown.map((a) => a.slug));
-  const threads = sessions.filter((s) => s.kind !== "main" && !owner.has(s.sessionId));
+  const threads = sessions.filter((s) => s.kind !== "main" && !owner.has(s.sessionId) && (!s.forkOf || open === `thread:${s.sessionId}`));
   const threadIds = new Set(threads.map((t) => t.sessionId));
 
   const parent = new Map<string, string | null>();

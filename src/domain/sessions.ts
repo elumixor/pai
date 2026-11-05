@@ -1,5 +1,5 @@
 import { rmSync } from "node:fs";
-import { ensureTranscriptAt, transcriptPath } from "./transcript.ts";
+import { ensureTranscriptAt, forkTranscript, transcriptPath } from "./transcript.ts";
 import { Session, UNTITLED, asKind, closeWarm, prewarm, rewarm, type AgentSetup, type Effort, type SessionKind, type ThreadOrigin } from "./session.ts";
 import { db, kv, now } from "../core/db.ts";
 import { existsSync, watch } from "node:fs";
@@ -292,6 +292,38 @@ export function sweepPrivate() {
   return () => clearInterval(timer);
 }
 
+const forkRow = (id: string) => db.query("SELECT parent_id, turn FROM session_forks WHERE session_id = ?").get(id) as { parent_id: string; turn: number } | undefined;
+
+/**
+ * A rewrite: a new conversation with what came before `turn`, so the old one and what followed in it stay whole
+ * and can be switched back to. Run here, whoever held the original. Forking at or before where this thread itself
+ * branched is a sibling of it, not a child: the words before that point are the same.
+ */
+export async function forkAt(id: string, turn: number): Promise<Session | undefined> {
+  const source = resolveId(id) ?? id;
+  const row = db.query("SELECT kind, title, cwd, project, model_pref, effort FROM sessions WHERE session_id = ?").get(source) as { kind: SessionKind; title: string; cwd: string; project: string | null; model_pref: string | null; effort: Effort | null } | undefined;
+  if (!row) return undefined;
+  const cwd = workingDirectory(row.cwd, row.project);
+  const newId = crypto.randomUUID();
+  if (!(await forkTranscript(source, turn, newId, cwd))) return undefined;
+  let parent = source;
+  for (let up = forkRow(parent); up && turn <= up.turn; up = forkRow(parent)) parent = up.parent_id;
+  db.prepare("INSERT INTO session_forks (session_id, parent_id, turn, created_at) VALUES (?, ?, ?, ?)").run(newId, parent, turn, Date.now());
+  const session = new Session({ kind: asKind(row.kind), title: row.title, cwd, project: row.project ?? undefined, resume: newId, origin: "terminal", model: row.model_pref, effort: row.effort });
+  live.set(session.id, session);
+  return session;
+}
+
+/** The versions of each thing said in this thread, by turn, oldest first: only turns that have more than one. */
+export function forksOf(id: string): { turn: number; ids: string[] }[] {
+  const full = resolveId(id) ?? id;
+  const children = db.query("SELECT session_id, turn FROM session_forks WHERE parent_id = ? ORDER BY created_at").all(full) as { session_id: string; turn: number }[];
+  const own = new Map<number, string[]>();
+  for (const c of children) own.set(c.turn, [...(own.get(c.turn) ?? [full]), c.session_id]);
+  const up = forkRow(full);
+  return [...(up ? forksOf(up.parent_id).filter((f) => f.turn <= up.turn) : []), ...[...own].map(([turn, ids]) => ({ turn, ids }))];
+}
+
 /** What is in the trash, newest first. */
 export function trashList(): { sessionId: string; shortId: string; title: string; kind: SessionKind; project: string | null; deletedAt: number }[] {
   const rows = db.query("SELECT session_id, short_id, title, kind, project, deleted_at FROM sessions WHERE deleted_at > 0 ORDER BY deleted_at DESC").all() as Record<string, any>[];
@@ -349,6 +381,7 @@ export function recent(limit = 20, kind?: SessionKind): SessionRow[] {
     title: r.title,
     project: r.project,
     private: bus.hidden.has(r.session_id),
+    forkOf: forkRow(r.session_id)?.parent_id,
     cwd: r.cwd,
     threadId: r.thread_id,
     parent: r.parent_id ?? null,

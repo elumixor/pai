@@ -140,6 +140,8 @@ export const api = {
   contextUsage: (session: string) => get<{ percentage?: number; totalTokens?: number; maxTokens?: number }>(`/context-usage?session=${q(session)}`, true),
   sendThread: (id: string, text: string, images: readonly Upload[] = [], adopt?: { cwd?: string; title?: string }) => send("/send", { id, text, images, ...adopt }),
   stop: (id: string) => send<{ stopped?: boolean }>("/stop", { id }),
+  forks: (id: string) => get<{ turn: number; ids: string[] }[]>(`/forks?id=${q(id)}`),
+  fork: (id: string, turn: number, text: string, images: readonly Upload[]) => send<SessionSummary>("/fork", { id, turn, text, images }),
   closePrivate: (id: string) => send("/private/close", { id }),
   reconfigure: (id: string, changes: { model?: string | null; effort?: Effort | null }) => send("/reconfigure", { id, ...changes }),
 

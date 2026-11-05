@@ -334,6 +334,15 @@ export async function handle(req: Request): Promise<Response> {
       return json({ ok: true, stopped: true });
     }
 
+    if (path === "/forks") return json(sessions.forksOf(url.searchParams.get("id") ?? ""));
+    if (path === "/fork" && req.method === "POST") {
+      const { id, turn, text, images } = await body<{ id: string; turn: number; text: string; images?: { media_type: string; data: string }[] }>(req);
+      const s = await sessions.forkAt(id, turn);
+      if (!s) return json({ error: "cannot rewrite that message" }, 404);
+      s.send(text, { images });
+      return json(s.summary());
+    }
+
     if (path === "/private/close" && req.method === "POST") {
       const { id } = await body<{ id: string }>(req);
       return json({ closed: sessions.closePrivate(id) });

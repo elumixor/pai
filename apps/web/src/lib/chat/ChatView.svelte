@@ -55,7 +55,8 @@
   import type { RowContext } from "./context";
   import FindBar, { type FindTarget } from "./FindBar.svelte";
   import MessageRow from "./MessageRow.svelte";
-  import { splitPastes, describeTools, eventIcon, eventType, excerptOf, type Item, type LiveQuestion, type ReplyQuote, type Row, textOf, type ToolGroup, typeLabel, withReply } from "./model";
+  import { navigate } from "../router.svelte";
+  import { forkSeeds, splitPastes, describeTools, eventIcon, eventType, excerptOf, type Item, type LiveQuestion, type ReplyQuote, type Row, textOf, type ToolGroup, typeLabel, withReply } from "./model";
   import Pictures from "./Pictures.svelte";
   import QuestionRow from "./QuestionRow.svelte";
   import QuoteRef from "./QuoteRef.svelte";
@@ -95,6 +96,9 @@
   let openedAt = $state(0);
   let replyTarget: ReplyQuote | undefined;
   let rewriting = false;
+  let rewriteTurn: number | undefined;
+  let nextTurn = 0;
+  let forks = $state<{ turn: number; ids: string[] }[]>([]);
   let pinnedAnswer: ((text: string) => Promise<unknown>) | undefined;
   let log = $state<HTMLDivElement>();
   let box = $state<Compose>();
@@ -260,12 +264,20 @@
       box?.setPin({ icon: "help", text: question.split("\n").find((l) => l.trim()) ?? question, onDismiss: () => (pinnedAnswer = undefined) });
     },
     draftsChanged: () => void refreshDrafts(),
+    versions: (m) => {
+      const turn = (m.meta as { turn?: number }).turn;
+      const ids = forks.find((f) => f.turn === turn)?.ids;
+      const at = ids && spec.session ? ids.indexOf(spec.session) : -1;
+      if (!ids || at < 0) return undefined;
+      return { at, total: ids.length, go: (step) => navigate({ name: "thread", param: ids[at + step]! }) };
+    },
     rewrite: (m) => {
       const { text, pastes } = splitPastes(textOf(m));
       box?.fill([{ kind: "text", text }, ...pastes.map((paste) => ({ kind: "paste" as const, text: paste }))]);
       pinnedAnswer = undefined;
       replyTarget = { from: nameOf(m.from), at: m.createdAt, excerpt: excerptOf(textOf(m)), messageId: m.id > 0 ? m.id : undefined };
       rewriting = true;
+      rewriteTurn = (m.meta as { turn?: number }).turn;
       box?.setPin({ icon: "pencil", from: "Rewriting", text: replyTarget.excerpt, onDismiss: dropReply });
     },
   };
@@ -320,8 +332,18 @@
     if (diverted) return diverted(text, images);
     const quote = replyTarget;
     const rewrote = rewriting;
+    const turn = rewriteTurn;
     dropReply();
     if (rewrote && working) await stopTurn();
+    // A plain thread branches: the old version and what followed stay, one switch away.
+    if (rewrote && spec.session && turn !== undefined) {
+      box?.setPin(null);
+      const result = await api.fork(spec.session, turn, text, images);
+      if (result.error || !result.data?.sessionId) return void box?.setNote(result.error ?? "no thread came back");
+      forkSeeds.set(result.data.sessionId, text);
+      void desk.refreshSessions();
+      return navigate({ name: "thread", param: result.data.sessionId });
+    }
     box?.setPin(null);
     const body = withReply(quote, rewrote ? `(This rewrites the quoted message: disregard it and anything that followed from it.)\n${text}` : text);
     const row = { id: ++pendingCount, text, body, quote, images: images.filter((i) => i.media_type.startsWith("image/")).map((i) => `data:${i.media_type};base64,${i.data}`), state: "sending" as const };
@@ -336,7 +358,7 @@
     box?.setNote("");
     if (spec.session) {
       pending = pending.filter((p) => p.id !== row.id);
-      place(spoken("user", body, Date.now(), row.images));
+      place(spoken("user", body, Date.now(), row.images, nextTurn++));
       return;
     }
     pending = pending.map((p) => (p.id === row.id ? { ...p, state: "sent" } : p));
@@ -395,9 +417,9 @@
   }
 
   /** A line of a plain thread as a row of the log, so it is drawn as the log's are. */
-  function spoken(from: string, body: string, at: number, images?: readonly string[]): Row {
+  function spoken(from: string, body: string, at: number, images?: readonly string[], turn?: number): Row {
     spokenCount += 1;
-    const m = { id: -spokenCount, from, to: from === "user" ? spec.agent : "user", kind: "chat", body, taskId: null, meta: images?.length ? { images } : {}, createdAt: at } as unknown as LogMessage;
+    const m = { id: -spokenCount, from, to: from === "user" ? spec.agent : "user", kind: "chat", body, taskId: null, meta: { ...(images?.length ? { images } : {}), ...(turn !== undefined ? { turn } : {}) }, createdAt: at } as unknown as LogMessage;
     return { kind: "message", key: `s${spokenCount}`, at, m };
   }
 
@@ -423,7 +445,8 @@
       if (entry.role === "user") {
         if (entry.meta || (!entry.text.trim() && !entry.images?.length) || entry.text.startsWith("[Request interrupted")) continue;
         close();
-        out.push(spoken("user", entry.text, at, entry.images));
+        nextTurn = (entry.turn ?? nextTurn) + 1;
+        out.push(spoken("user", entry.text, at, entry.images, entry.turn));
         continue;
       }
       // The texts before a turn's last one were the model thinking aloud.
@@ -486,7 +509,17 @@
     if (spec.session) {
       const history = await api.transcript(spec.session).catch(() => [] as Transcript[]);
       const rows = turnsOf(history);
-      if (spec.seed && !rows.some((i) => i.kind === "message" && i.m.from === "user")) rows.push(spoken("user", spec.seed, Date.now()));
+      forks = await api.forks(spec.session).catch(() => []);
+      const forked = forkSeeds.get(spec.session);
+      if (forked !== undefined) {
+        forkSeeds.delete(spec.session);
+        if (!rows.some((i) => i.kind === "message" && i.m.from === "user" && i.m.body === forked)) {
+          rows.push(spoken("user", forked, Date.now(), undefined, nextTurn++));
+          working = { since: Date.now() };
+          forks = await api.forks(spec.session).catch(() => []);
+        }
+      }
+      if (spec.seed && !rows.some((i) => i.kind === "message" && i.m.from === "user")) rows.push(spoken("user", spec.seed, Date.now(), undefined, nextTurn++));
       liveSession = spec.session;
       items = [...rows, ...questionsFrom(await api.needs().catch(() => [] as Need[]))];
       loading = false;
@@ -609,7 +642,7 @@
         working ??= { since: ts };
         const typed = payload.said ?? (payload.echo ? payload.text : undefined);
         const placed = items.slice(-20).some((i) => i.kind === "message" && i.m.from === "user" && i.m.body.trim() === typed?.trim());
-        if (spec.session && payload.terminal && typed?.trim() && !placed) items.push(spoken("user", typed, ts));
+        if (spec.session && payload.terminal && typed?.trim() && !placed) items.push(spoken("user", typed, ts, undefined, nextTurn++));
         break;
       }
       // A terminal's text before its last: thinking aloud, as with a stream's text before a call.

@@ -32,6 +32,8 @@ export interface TranscriptMessage {
   readonly images?: readonly string[];
   /** Injected context rather than something the user typed (task results, tool output, hooks). */
   readonly meta?: boolean;
+  /** Which of the things he said this is, from 0: where a rewrite branches. */
+  readonly turn?: number;
 }
 
 /** Claude Code names a project directory after its cwd, every character but letters and digits flattened. */
@@ -116,6 +118,7 @@ export async function transcript(sessionId: string, cwd?: string, limit = 200): 
   if (!path) return [];
   const lines = (await Bun.file(path).text()).split("\n");
   const messages: TranscriptMessage[] = [];
+  let turns = 0;
   // Tool results arrive as user entries; they belong under the call they answer.
   const tools = new Map<string, { name: string; input?: string; result?: string }>();
 
@@ -140,9 +143,41 @@ export async function transcript(sessionId: string, cwd?: string, limit = 200): 
     const message = toMessage(entry);
     if (!message) continue;
     for (const tool of message.tools ?? []) if (tool.id) tools.set(tool.id, tool as { name: string; input?: string; result?: string });
-    messages.push(message);
+    messages.push(isTurn(message) ? { ...message, turn: turns++ } : message);
   }
   return messages.slice(-limit);
+}
+
+/** Something he said, as opposed to injected context or an interruption's marker. */
+const isTurn = (m: TranscriptMessage) => m.role === "user" && !m.meta && Boolean(m.text.trim() || m.images?.length) && !m.text.startsWith("[Request interrupted");
+
+/** A new conversation holding this one up to, not including, what he said at `turn`. False when it has no such turn. */
+export async function forkTranscript(sessionId: string, turn: number, newId: string, cwd: string): Promise<boolean> {
+  const path = transcriptPath(sessionId, cwd);
+  if (!path) return false;
+  const kept: string[] = [];
+  let seen = 0;
+  let reached = false;
+  for (const line of (await Bun.file(path).text()).split("\n")) {
+    if (!line.trim()) continue;
+    let entry: Entry;
+    try {
+      entry = JSON.parse(line) as Entry;
+    } catch {
+      continue;
+    }
+    if (entry.isSidechain) continue;
+    const message = entry.type === "user" ? toMessage(entry) : undefined;
+    if (message && isTurn(message) && seen++ === turn) {
+      reached = true;
+      break;
+    }
+    kept.push(JSON.stringify(entry.sessionId ? { ...entry, sessionId: newId } : entry));
+  }
+  if (!reached) return false;
+  mkdirSync(join(projectsDir, slug(cwd)), { recursive: true });
+  await Bun.write(join(projectsDir, slug(cwd), `${newId}.jsonl`), kept.length ? `${kept.join("\n")}\n` : "");
+  return true;
 }
 
 const FULL_CHARS = 200_000;

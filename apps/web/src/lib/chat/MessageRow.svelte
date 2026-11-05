@@ -100,6 +100,14 @@
 </script>
 
 {#snippet actions(editable: boolean)}
+  {@const versions = editable ? ctx.versions(m) : undefined}
+  {#if versions}
+    <div class="row-versions">
+      <button aria-label="Previous version" disabled={versions.at === 0} onclick={() => versions.go(-1)}>‹</button>
+      <span>{versions.at + 1}/{versions.total}</span>
+      <button aria-label="Next version" disabled={versions.at === versions.total - 1} onclick={() => versions.go(1)}>›</button>
+    </div>
+  {/if}
   <div class="row-actions">
     <button title="Copy" aria-label="Copy" onclick={copy}><Icon name={copied ? "check" : "copy"} size={13} /></button>
     {#if editable}<button title="Rewrite" aria-label="Rewrite" onclick={() => ctx.rewrite(m)}><Icon name="pencil" size={13} /></button>{/if}

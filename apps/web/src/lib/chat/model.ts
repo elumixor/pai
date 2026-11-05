@@ -89,6 +89,8 @@ export const copyOf = (body: string) => {
   const { text, pastes } = splitPastes(parseReply(body)?.text ?? body);
   return [text, ...pastes].filter(Boolean).join("\n\n");
 };
+/** What a rewrite said, shown in its new thread until the transcript has it. */
+export const forkSeeds = new Map<string, string>();
 export const textOf = (m: LogMessage) => parseReply(m.body)?.text ?? m.body;
 
 /** "Created a file, ran 5 commands" — what a turn's tool calls amount to, by family. */

@@ -1,6 +1,8 @@
 /** The daemon's shapes as the client reads them over HTTP. */
 export interface SessionSummary {
   readonly private?: boolean;
+  /** A rewrite of this thread: it stays out of the sidebar unless open. */
+  readonly forkOf?: string;
   readonly sessionId: string;
   readonly shortId: string;
   /** `chat`, `code` — or `claude`, a conversation on disk the daemon has not run yet. */
@@ -474,6 +476,7 @@ export interface TranscriptTool {
 
 /** One message of a thread as it is on disk. */
 export interface Transcript {
+  readonly turn?: number;
   readonly role: "user" | "assistant";
   readonly ts: string;
   readonly text: string;
