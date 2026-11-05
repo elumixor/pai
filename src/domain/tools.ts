@@ -9,6 +9,7 @@ import { roleOf, staffTools } from "./staff-tools.ts";
 import * as audit from "./audit.ts";
 import * as keepLinks from "./keep-links.ts";
 import { locationTools } from "./location.ts";
+import { editMemory } from "./memory.ts";
 
 const ok = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });
 const taskArg = z.string().describe("thread id, full or the 6-character short form");
@@ -26,7 +27,24 @@ export function paiTools(_kind: SessionKind, ref: SessionRef, agent?: string) {
     if (!ref.session) throw new Error("tool called before its session was bound");
     return ref.session;
   };
+  // Workers leave memory to pai: a lasting fact goes into their report.
+  const memory = !agent || agent === "pai" ? [
+    tool(
+      "edit_memory",
+      "Change your long-term memory (MEMORY.md), which is loaded into every session. Without find, text is added at the end. With find, that exact passage is replaced by text; an empty text removes it. Say in a few words what you saved.",
+      { find: z.string().optional().describe("the exact passage to change, which must appear exactly once"), text: z.string().describe("the new text; empty removes the passage") },
+      async ({ find, text }) => {
+        try {
+          editMemory({ find, text });
+          return ok({ saved: true });
+        } catch (err) {
+          return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
+        }
+      },
+    ),
+  ] : [];
   const common = [
+    ...memory,
     // A place goes to him as a pin in his chat with pai, which every client draws (Telegram as a venue card).
     ...locationTools(ref),
     tool(

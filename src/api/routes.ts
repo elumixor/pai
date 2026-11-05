@@ -8,7 +8,11 @@ import * as keep from "../domain/keep.ts";
 import * as peopleNotify from "../domain/people-notify.ts";
 import * as projects from "../domain/projects.ts";
 import * as automations from "../domain/automations.ts";
-import { context, save as saveContext } from "../domain/context.ts";
+import { context, createSkill, deleteSkill, providers, reset as resetContext, save as saveContext } from "../domain/context.ts";
+import { discover as discoverConnectors } from "../domain/claude-connectors.ts";
+import * as directMcp from "../domain/direct-mcp.ts";
+import { preview as previewPrompt } from "../domain/prompts.ts";
+import * as toolRegistry from "../domain/tool-registry.ts";
 import * as external from "../connectors/loader.ts";
 import { update as updateConnectors } from "../connectors/source.ts";
 import { eventCatalog } from "../domain/event-catalog.ts";
@@ -331,7 +335,51 @@ export async function handle(req: Request): Promise<Response> {
       const { name, text } = await body<{ name: string; text: string }>(req);
       return json(saveContext(name, text));
     }
+    if (path === "/context" && req.method === "DELETE") {
+      resetContext(url.searchParams.get("name") ?? "");
+      return json({ ok: true });
+    }
     if (path === "/context") return json(context());
+    if (path === "/context/prompt") {
+      const who = url.searchParams.get("who");
+      if (who !== "general" && who !== "thread" && who !== "code" && who !== "worker") return json({ error: "who is general, thread, code or worker" }, 400);
+      return json({ text: previewPrompt(who) });
+    }
+    if (path === "/skills" && req.method === "POST") {
+      const { name, description } = await body<{ name: string; description: string }>(req);
+      createSkill(name, description);
+      sessions.applyTools();
+      return json({ ok: true });
+    }
+    const skill = /^\/skills\/([^/]+)$/.exec(path);
+    if (skill && req.method === "DELETE") {
+      deleteSkill(decodeURIComponent(skill[1]!));
+      sessions.applyTools();
+      return json({ ok: true });
+    }
+
+    // What sessions may have: every server, switched off ones included (tool-registry.ts).
+    if (path === "/tools" && req.method === "PATCH") {
+      const change = await body<{ claudeSync?: boolean; server?: string; tool?: string; skill?: string; on?: boolean }>(req);
+      if (change.claudeSync !== undefined) {
+        toolRegistry.setClaudeSync(change.claudeSync);
+        if (change.claudeSync) void discoverConnectors().catch(() => {});
+      }
+      if (change.server !== undefined && change.on !== undefined) toolRegistry.setServer(change.server, change.on);
+      if (change.tool !== undefined && change.on !== undefined) toolRegistry.setTool(change.tool, change.on);
+      if (change.skill !== undefined && change.on !== undefined) toolRegistry.setSkill(change.skill, change.on);
+      sessions.applyTools();
+      return json(providers());
+    }
+    if (path === "/tools") return json(providers());
+    if (path === "/tools/servers" && req.method === "POST") return json(await directMcp.add(await body<directMcp.NewServer>(req)));
+    const directServer = /^\/tools\/servers\/([^/]+)$/.exec(path);
+    if (directServer && req.method === "DELETE") {
+      directMcp.remove(decodeURIComponent(directServer[1]!));
+      return json(providers());
+    }
+    const forwarded = /^\/direct-mcp\/([^/]+)$/.exec(path);
+    if (forwarded) return directMcp.forward(req, decodeURIComponent(forwarded[1]!));
 
     // The bot's public face: pai's own Telegram client, at the path it had while it lived in the telegram module.
     if (path === "/m/telegram/info") {

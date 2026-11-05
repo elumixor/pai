@@ -33,6 +33,8 @@ import * as held from "./domain/held.ts";
 import * as mirror from "./domain/mirror.ts";
 import * as projects from "./domain/projects.ts";
 import { startReleaseCheck } from "./domain/release-check.ts";
+import { startClaudeConnectors } from "./domain/claude-connectors.ts";
+import { moveUserContext } from "./domain/context.ts";
 
 const log = logger("daemon");
 
@@ -55,6 +57,8 @@ const stopPeopleNotify = peopleNotify.start();
 automations.link({ turn: main.system, triage: triage.add, fields: { brief: briefs.morning, digest: briefs.evening } });
 automations.seed();
 const stopMemoryWatch = watchMemory();
+moveUserContext();
+const stopClaudeConnectors = startClaudeConnectors();
 const stopClaudeLoginCheck = startClaudeLoginCheck();
 const server = startServer();
 const stopBrowser = startBrowser();
@@ -109,6 +113,7 @@ function shutdown(signal: string) {
   stopAutoUpdate();
   stopAutomations();
   stopMemoryWatch();
+  stopClaudeConnectors();
   stopClaudeLoginCheck();
   stopMirror();
   stopReleaseCheck();

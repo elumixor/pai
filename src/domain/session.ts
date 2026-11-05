@@ -10,8 +10,9 @@ import { paiTools, type SessionRef } from "./tools.ts";
 import { browserMcp } from "./browser.ts";
 import { instructionsFor } from "./prompts.ts";
 import { mcpServers as externalMcpServers } from "../connectors/loader.ts";
-import { knownServers, noteInit } from "./inventory.ts";
+import { noteInit } from "./inventory.ts";
 import { serverAllowed } from "./capabilities.ts";
+import { offTools, serverOn, sessionServers, skillOverrides } from "./tool-registry.ts";
 import { describeServers } from "./mcp-describe.ts";
 import { resolve as resolveModel } from "./models.ts";
 import * as keepLinks from "./keep-links.ts";
@@ -39,14 +40,17 @@ export interface AgentSetup {
 /** dev's tools that start or feed a session: pai hands coding to its agents, which use them; pai itself only reads. */
 const PAI_THREAD_TOOLS = ["mcp__dev__start_session", "mcp__dev__send_to_session"];
 
-/** The prefix Claude Code gives a server's tools, so a deny rule can remove a whole connector. */
-const toolPrefix = (server: string) => `mcp__${server.replace(/[^A-Za-z0-9_-]/g, "_")}`;
-
 /** Keep's MCP as Pai's Keep account, every write tagged with this thread, so its watches and notifications find their way back. */
 function keepMcp(sessionId: string): NonNullable<Options["mcpServers"]> {
   if (!config.keepUrl || !config.keepKey) return {};
   const url = `${config.keepUrl.replace(/\/$/, "")}/mcp`;
   return { keep: { type: "http", url, headers: { authorization: `Bearer ${config.keepKey}`, "x-keep-client": `pai:thread/${sessionId}` } } };
+}
+
+/** dev's MCP server, on the same box. */
+function devMcp(): NonNullable<Options["mcpServers"]> {
+  if (!config.dev.token) return {};
+  return { dev: { type: "http", url: `${config.dev.url}/mcp`, headers: { authorization: `Bearer ${config.dev.token}` } } };
 }
 
 function build(
@@ -63,19 +67,12 @@ function build(
     playwright: browserMcp(),
     ...externalMcpServers(ref),
     ...keepMcp(sessionId),
+    ...devMcp(),
+    ...(sessionServers() as NonNullable<Options["mcpServers"]>),
   };
   // The `keep` server pai injects (Pai's key, this thread's client tag) is every agent's: each tracks its work there.
-  const paiKeep = "keep" in servers;
-  const mcpServers = Object.fromEntries(Object.entries(servers).filter(([name]) => name === "keep" || serverAllowed(name, agent?.tools)));
-  // claude.ai connectors arrive with the user's settings rather than through mcpServers; the
-  // ones an agent may not use are denied by their tool prefix, as the last session init named them.
-  const disallowedTools = agent?.tools ? knownServers().filter((name) => !(name in servers) && !serverAllowed(name, agent.tools)).map(toolPrefix) : [];
-  // Connectors the user switched off for the assistant (a calendar that lives in Balance instead).
-  disallowedTools.push(...config.deniedConnectors.map(toolPrefix));
-  // The old per-workspace Keep servers in the user's settings: the `keep` server above covers every workspace.
-  if (paiKeep) disallowedTools.push(...knownServers().filter((name) => name.startsWith("keep-")).map(toolPrefix));
-  // Without Pai's key, a `keep` in the user's settings would act as the user: no session gets it.
-  else if (knownServers().includes("keep") && !disallowedTools.includes(toolPrefix("keep"))) disallowedTools.push(toolPrefix("keep"));
+  const mcpServers = Object.fromEntries(Object.entries(servers).filter(([name]) => serverOn(name) && (name === "keep" || serverAllowed(name, agent?.tools))));
+  const disallowedTools = [...offTools()];
   // pai delegates through its own agents, which the user can watch and answer; Claude Code's Agent tool would hide the work.
   // Threads are the same kind of hidden work: whatever pai hands off is an agent, so it shows in the agent tree.
   if (agent?.slug === "pai") disallowedTools.push("Agent", "Task", ...PAI_THREAD_TOOLS);
@@ -86,13 +83,13 @@ function build(
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
     includePartialMessages: true,
-    // claude.ai connectors (Calendar, Balance, Notion, …) only load with the user's settings, so those
-    // are in; the user's hooks are for their terminal sessions, not the assistant, and stay off.
-    settingSources: ["user", "project"],
-    settings: { disableAllHooks: true },
+    // Only what is listed in `mcpServers` runs: no user settings, so no plugins, no servers from ~/.claude.json, no
+    // hooks; the account's connectors are passed explicitly (tool-registry.ts). Plugin and skill sync stay off for the
+    // same reason. Memory is MEMORY.md and the edit_memory tool, not Claude Code's own.
+    settingSources: ["project"],
+    strictMcpConfig: true,
+    settings: { disableAllHooks: true, syncClaudeAiPlugins: false, syncClaudeAiSkills: false, autoMemoryEnabled: false, skillOverrides: skillOverrides() },
     // Discovered from .claude/skills under the project (and, for code sessions, the repo).
-    // No global plugins: hooks like caveman's `~/.claude/.caveman-active` toggle assume one
-    // interactive terminal and would race across pai's concurrent sessions.
     skills: "all",
     additionalDirectories: [...(kind === "code" ? [config.workspace] : []), ...(agent?.additionalDirectories ?? [])],
     systemPrompt: { type: "preset", preset: "claude_code", append: instructionsFor(kind, project, agent) },
@@ -110,7 +107,7 @@ function build(
   };
 }
 
-function sessionEnv(): Record<string, string> {
+export function sessionEnv(): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined && key !== "CLAUDE_CODE_OAUTH_TOKEN" && key !== "ANTHROPIC_API_KEY") env[key] = value;
   // Compact long before a 1M window fills: every tool step re-reads the whole context.

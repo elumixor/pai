@@ -2,7 +2,10 @@ import type { AgentSetup, SessionKind } from "./session.ts";
 import type { Agent } from "./agents.ts";
 import { config } from "../core/config.ts";
 import { prompts as connectorPrompts } from "../connectors/loader.ts";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { unavailable, unresolved } from "./capabilities.ts";
+import { sessionServers, serverOn } from "./tool-registry.ts";
 import { KEEP_WORK } from "./keep-prompt.ts";
 
 const COMMON = `
@@ -14,20 +17,20 @@ How to talk:
 - Say the result, not the process: what you did, what you found, what's left. Skip step-by-step narration.
 - Full detail (diffs, logs, findings, reasoning) belongs in the web app, not the message — the live card already links there. If the user wants more than the summary, they'll ask or open the link.
 - Say what you did and what you found, not what you are about to do.
-- Before anything irreversible or visible to other people (sending an email or message, paying, deleting, posting), use AskUserQuestion to confirm. An answer that changes the text is not a yes: apply it and ask again with the new final text. Otherwise do not ask; pick the most likely reading and say what you assumed.
 - Do it yourself before handing it to the user: the box has gh and GITHUB_TOKEN (admin on their repos), VERCEL_TOKEN, a browser and their mail. Hand them only what needs them in person: a consent given as one of their accounts, 2FA, a payment, a choice. When a missing access is what stops you, ask once for the access (a token, a login), not for the click, so next time it is yours.
-- Use AskUserQuestion when you genuinely need a decision from the user. Keep options short.
-- You have connectors (Gmail, Drive, Notion, Balance, browser via playwright, web search). The calendar is Balance: its events, spheres and timers (list_events, create_event); there is no Google Calendar. and the user's own Telegram account (tg tools: read chats, search, send as them). Use them instead of asking the user for things you can look up.
 - Questions about the user's own systems, projects or knowledge: search keep first, then answer from what it says. Keep is the \`keep\` MCP server (every workspace you are a member of, and the pages shared with you): call \`find_pages\` with \`text\` (a few keywords, e.g. \`release pai\`, not the whole question), read the best hits whole with \`read_page\`, and cite the page URN (\`keep:page/<id>\`). The desk suite's own documentation (pai, dev, keep, people, the box, infra, releasing, runbook) lives in the "Desk" workspace.
-- The user's messages arrive from Telegram; long pastes may be split. Attachments are saved under the workspace. Voice messages arrive as \`[voice message: "..."]\` — a local transcription, treat the quoted text as what the user said.
+- The user's messages arrive from Telegram; long pastes may be split. Attachments are saved under the workspace. Voice messages arrive as \`[voice message: "..."]\` — a local transcription, treat the quoted text as what the user said.`;
 
-Memory:
-- Your long-term memory is the file MEMORY.md in your working directory, loaded with these instructions every session. Edit it with the Edit tool.
+const ASKING = `- Before anything irreversible or visible to other people (sending an email or message, paying, deleting, posting), use AskUserQuestion to confirm. An answer that changes the text is not a yes: apply it and ask again with the new final text. Otherwise do not ask; pick the most likely reading and say what you assumed.
+- Use AskUserQuestion when you genuinely need a decision from the user. Keep options short.`;
+
+const MEMORY = `Memory:
+- Your long-term memory is the file MEMORY.md in your working directory, loaded with these instructions every session. Change it with the edit_memory tool, never with Edit or Write.
 - Write to it when the user says to remember something, states a preference or correction, or when you learn something durable (people, accounts, standing decisions, how they like things done). Do it as it happens, without being asked twice, and say in a few words that it is saved.
 - One fact per line or short section, absolute dates. Fix a fact that turns out wrong instead of keeping both; delete what stops being true.
-- What belongs to one project goes into that project's CLAUDE.md instead.
+- What belongs to one project goes into that project's CLAUDE.md instead.`;
 
-Changing pai itself:
+const CHANGING_PAI = `Changing pai itself:
 - pai's own code is the \`pai\` project. A change to it (a new tool, a fix) is coding work in that project (pai: a coding agent; a conversation: a builder thread), never an edit made from where you are.
 - Coding work in the pai project finishes the job end to end: once the checks pass, it releases (\`bun run release\`; CI builds and updates this host). Do not stop at a branch and ask the user to release; a change that is not released changed nothing. The release restarts the daemon, so release as the very last step, after reporting.
 - Restarting or updating the daemon cuts off every running turn, yours included. Do it only as the very last step of a turn, after reporting, and say the reply may arrive after the restart.`;
@@ -40,10 +43,7 @@ Changing pai itself:
 /** What an attached file looks like in a turn, and what to do with it. */
 export const ATTACHMENTS = `# Files he attached
 
-A line like \`[file: Lease.pdf, 1.2 MB — read it at /home/pai/pai/data/attachments/ab12….pdf]\` is a
-file he attached: open it with the Read tool at that path (a PDF, a text file, a csv — Read handles
-them). Pictures arrive as pictures and need nothing. The file is kept, so the path stays valid; say
-what is in it rather than that you received it.`;
+A line like \`[file: Lease.pdf, 1.2 MB — read it at /home/pai/pai/data/attachments/ab12….pdf]\` is a file he attached: open it with the Read tool at that path (a PDF, a text file, a csv — Read handles them). Pictures arrive as pictures and need nothing. The file is kept, so the path stays valid; say what is in it rather than that you received it.`;
 
 export const MONEY_FORMAT = `# Writing money
 
@@ -53,10 +53,8 @@ Amounts are rendered and converted, so write them in a form that parses:
 - \`k\` or \`M\` for thousands and millions, attached to the number: \`120k\`, \`1.4M\`
 - a range with an en dash, the multiplier on either end: \`$10–14k\`, \`172–210K\`
 - a period after it, when it is one: \`/mo\`, \`/yr\` — \`€9,000/mo\`, \`103–162K/mo\`
-- a bare number is read in his main currency (CZK), and the hover says it was assumed: write the
-  currency whenever it is anything else
-- never dress up something that is not money (a version, an id, a count, a percentage); a number
-  with no currency and no multiplier is left alone, which is what keeps \`v0.6.41\` and \`#87\` intact`;
+- a bare number is read in his main currency (CZK), and the hover says it was assumed: write the currency whenever it is anything else
+- never dress up something that is not money (a version, an id, a count, a percentage); a number with no currency and no multiplier is left alone, which is what keeps \`v0.6.41\` and \`#87\` intact`;
 
 // Measured on LinkedIn, 2026-10-07: with every non-GET request aborted in the browser, the
 // page still rendered the message as sent. Ten "sent" messages that never existed came from
@@ -112,11 +110,7 @@ You are one of pai's agents: pai is the assistant the user talks to, and you wor
 const SUB = `
 You are a worker: one bounded job. Do it, put what came of it on Keep pages (search first, update what exists, \`keep:page/<id>\` names one), report those pages and the outcome in your final text, and you close. You cannot start agents of your own; deeper work is a to-do in your own work.`;
 
-const STANDING = `
-You are a standing agent: you own your area for as long as it lasts. You may start sub-agents (spawn_subagent) for bounded jobs ("screen these 12 profiles", "draft replies to today's candidates"); they get at most your tools, report back to you and close. Claude Code's own Agent tool is fine for quick parallel lookups no one needs to watch.`;
-
-const SERVICE = `
-You are a service agent: you own no tasks; you answer requests routed to you by pai. Your reply in a turn is the answer that goes back — only the answer, no preamble.`;
+const PEOPLE_AND_DAYS = "Facts about a person go into people/<name>.md here (search before creating one); a day's events into journal/; MEMORY.md is the profile, kept under about 150 lines.";
 
 const STAFF_MEMORY = `Memory:
 - ${config.workspace}/MEMORY.md is the user's profile; pai keeps it. A lasting fact about the user goes into your report so pai can file it.
@@ -127,22 +121,28 @@ const STAFF_MEMORY = `Memory:
 
 /** pai's own role, or an agent's: the paragraphs that make a session one of pai's staff. */
 export function agentInstructions(a: Pick<Agent, "kind" | "name" | "slug">, own: string): string {
-  if (a.kind === "orchestrator") return ORCHESTRATOR.trim();
-  const kind = a.kind === "sub" ? SUB : a.kind === "service" ? SERVICE : STANDING;
-  return [`${AGENT.trim()}\n${kind.trim()}\n\nYou are ${a.name} (\`${a.slug}\`).`, own.trim() ? `# Your role (CLAUDE.md)\n${own.trim()}` : ""].filter(Boolean).join("\n\n");
+  if (a.kind === "orchestrator") return [text("orchestrator"), PEOPLE_AND_DAYS].join("\n\n");
+  const kind = a.kind === "sub" ? text("worker") : "";
+  return [`${text("agent")}\n${kind}\n\nYou are ${a.name} (\`${a.slug}\`).`, own.trim() ? `# Your role (CLAUDE.md)\n${own.trim()}` : ""].filter(Boolean).join("\n\n");
+}
+
+/** What every session is told it can reach: generated from what is switched on, so it cannot name something it does not have. */
+function reachable(): string {
+  const names = Object.keys(sessionServers())
+    .filter(serverOn)
+    .map((name) => name.replace(/^claude\.ai /, ""));
+  const list = [...names, ...(serverOn("playwright") ? ["the browser (playwright)"] : []), "web search"].join(", ");
+  const calendar = names.some((n) => n.toLowerCase() === "balance") ? " The calendar is Balance: its events, spheres and timers (list_events, create_event); there is no Google Calendar." : "";
+  return `- You can reach: ${list}.${calendar} The user's own Telegram account is the tg tools (read chats, search, send as them). Use them instead of asking the user for things you can look up.`;
 }
 
 export function instructionsFor(kind: SessionKind, _project?: string, agent?: AgentSetup): string {
-  const role = agent ? agent.instructions : kind === "code" ? CODE : CHAT;
+  const role = agent ? agent.instructions : kind === "code" ? text("coding") : text("conversation");
   // pai's staff ask through ask_user rather than AskUserQuestion, and leave the profile to pai.
   const staff = agent && agent.slug !== "pai";
-  const common = staff
-    ? COMMON.replace(/- Before anything irreversible[^\n]*\n- Use AskUserQuestion[^\n]*\n/, "").replace(/\nMemory:\n(- [^\n]*\n)+/, `\n${STAFF_MEMORY}\n`)
-    : agent
-      ? `${COMMON}\n- Facts about a person go into people/<name>.md here (search before creating one); a day's events into journal/; MEMORY.md is the profile, kept under about 150 lines.`
-      : COMMON;
+  const general = [text("general"), reachable(), ...(staff ? [] : [text("asking")]), staff ? text("staff-memory") : text("memory"), text("changing-pai")].join("\n\n");
   // Money is rendered and converted in every client, so everyone who writes an amount writes it the same way.
-  return [`${common}\n${role}`, ...(kind === "code" && agent ? [CODE.trim()] : []), ATTACHMENTS, MONEY_FORMAT, KEEP_WORK, BROWSER, missingTools(agent), ...connectorSections()].filter(Boolean).join("\n\n");
+  return [general, role, ...(kind === "code" && agent ? [text("coding")] : []), text("files"), text("money"), text("keep"), text("browser"), text("global"), missingTools(agent), ...connectorSections()].filter(Boolean).join("\n\n");
 }
 
 /**
@@ -154,7 +154,7 @@ export function missingTools(agent?: AgentSetup): string {
   const lines = [
     ...(agent?.tools ? unresolved(agent.tools).map((c) => `- \`${c}\` is in your tools list, but no MCP server here provides it.`) : []),
     ...unavailable().map((u) => {
-      const why = u.reason === "off" ? "is switched off for every session" : "never signed in, so every call fails";
+      const why = u.reason === "off" ? "is switched off for every session" : u.reason === "failed" ? "did not start, so every call fails" : "never signed in, so every call fails";
       const instead = u.instead ? ` — use ${u.instead.server} instead${u.instead.tools.length ? ` (${u.instead.tools.slice(0, 3).join(", ")})` : ""}, the \`${u.instead.capability}\` capability.` : ".";
       return `- ${u.server} ${why}${instead}`;
     }),
@@ -162,17 +162,61 @@ export function missingTools(agent?: AgentSetup): string {
   return lines.length ? `# Tools you do not have\n\n${lines.join("\n")}\n\nSay so rather than working around them.` : "";
 }
 
-/** The fixed paragraphs with the sessions they go to, for the context view. */
-export function sections(): [name: string, text: string, kinds: SessionKind[]][] {
-  return [
-    ["general", COMMON.trim(), ["chat", "code"]],
-    ["files he attached", ATTACHMENTS.trim(), ["chat", "code"]],
-    ["writing money", MONEY_FORMAT.trim(), ["chat", "code"]],
-    ["work in keep", KEEP_WORK.trim(), ["chat", "code"]],
-    ["browser", BROWSER.trim(), ["chat", "code"]],
-    ["conversation", CHAT.trim(), ["chat"]],
-    ["coding session", CODE.trim(), ["code"]],
-    ["pai (orchestrator)", ORCHESTRATOR.trim(), ["chat"]],
-    ["agent", AGENT.trim(), ["chat", "code"]],
-  ];
+/** A paragraph of the system prompt: what it is for and who gets it, so nobody has to read the code to find out. */
+export interface Section {
+  readonly id: string;
+  readonly title: string;
+  readonly what: string;
+  readonly goesTo: string;
+  readonly fallback: string;
+}
+
+const SECTIONS: readonly Section[] = [
+  { id: "general", title: "General", what: "Who pai is and how it talks: short messages, results over narration, doing things itself before handing them over.", goesTo: "Every session", fallback: COMMON.trim() },
+  { id: "asking", title: "Asking the user", what: "When to stop and confirm with AskUserQuestion. Workers do not get this: they ask through ask_user.", goesTo: "General, threads, code sessions", fallback: ASKING },
+  { id: "memory", title: "Memory rules", what: "When to save something to memory and how. This is what makes a session call edit_memory.", goesTo: "General, threads, code sessions", fallback: MEMORY },
+  { id: "staff-memory", title: "Memory rules for workers", what: "Workers do not edit memory: they report lasting facts to General and keep notes on people and their own area in files.", goesTo: "Workers", fallback: STAFF_MEMORY.trim() },
+  { id: "changing-pai", title: "Changing pai itself", what: "A change to pai's code is coding work that ends in a release, and restarting cuts off running turns.", goesTo: "Every session", fallback: CHANGING_PAI },
+  { id: "orchestrator", title: "General (orchestrator)", what: "What makes General delegate: when to answer itself and when to start a worker with create_agent, what a worker's brief must hold, and what comes back to the user. General has no Agent tool of Claude Code's.", goesTo: "General", fallback: ORCHESTRATOR.trim() },
+  { id: "agent", title: "Agent", what: "How anything working for General behaves: its report, its tasks, how it reaches the user, the outbound check.", goesTo: "Workers", fallback: AGENT.trim() },
+  { id: "worker", title: "Worker", what: "One bounded job: do it, put the outcome on Keep pages, report once, close. General's brief for the job is added below this, as the worker's CLAUDE.md, and the job itself is its first message.", goesTo: "Workers", fallback: SUB.trim() },
+  { id: "conversation", title: "Thread", what: "A plain conversation: answer directly, and start_thread for work that takes longer.", goesTo: "Threads", fallback: CHAT.trim() },
+  { id: "coding", title: "Coding session", what: "Working in one of the repositories: commit when a piece is done, never push, report what changed.", goesTo: "Code sessions, and workers with a project", fallback: CODE.trim() },
+  { id: "files", title: "Attached files", what: "What an attachment line looks like in a turn and how to open it.", goesTo: "Every session", fallback: ATTACHMENTS },
+  { id: "money", title: "Writing money", what: "How to write amounts so every client can convert them.", goesTo: "Every session", fallback: MONEY_FORMAT },
+  { id: "keep", title: "Work in Keep", what: "How work is tracked on Keep pages.", goesTo: "Every session", fallback: KEEP_WORK.trim() },
+  { id: "browser", title: "Writes in the browser", what: "A page showing a write as done proves nothing: confirm it by reading it back.", goesTo: "Every session", fallback: BROWSER },
+  { id: "global", title: "Your own rules", what: "Anything you want every session to know. Empty unless you write something.", goesTo: "Every session", fallback: "" },
+];
+
+const overrideFile = (id: string) => join(config.workspace, "instructions", `${id}.md`);
+const fallbackOf = (id: string) => SECTIONS.find((s) => s.id === id)?.fallback ?? "";
+
+/** A section as it is sent: the user's own text when they wrote one, else the default. */
+function text(id: string): string {
+  const file = overrideFile(id);
+  return existsSync(file) ? readFileSync(file, "utf8").trim() : fallbackOf(id);
+}
+
+export const sections = () => SECTIONS.map((s) => ({ ...s, text: text(s.id), overridden: existsSync(overrideFile(s.id)), source: overrideFile(s.id) }));
+
+export function saveSection(id: string, value: string) {
+  if (!SECTIONS.some((s) => s.id === id)) throw new Error(`no section named ${JSON.stringify(id)}`);
+  mkdirSync(join(config.workspace, "instructions"), { recursive: true });
+  writeFileSync(overrideFile(id), value);
+}
+
+/** Back to the default: without the file the section is what the code says. */
+export function resetSection(id: string) {
+  rmSync(overrideFile(id), { force: true });
+}
+
+const WORKER_PREVIEW = { kind: "sub", name: "A worker", slug: "worker" } as const;
+
+/** The whole system prompt a kind of session gets, as it would be sent now. */
+export function preview(who: "general" | "thread" | "code" | "worker"): string {
+  if (who === "thread") return instructionsFor("chat");
+  if (who === "code") return instructionsFor("code");
+  if (who === "general") return instructionsFor("chat", undefined, { slug: "pai", instructions: agentInstructions({ kind: "orchestrator", name: "pai", slug: "pai" }, "") });
+  return instructionsFor("chat", undefined, { slug: WORKER_PREVIEW.slug, instructions: agentInstructions(WORKER_PREVIEW, "(General's brief for the job goes here)") });
 }

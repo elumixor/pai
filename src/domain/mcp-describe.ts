@@ -19,7 +19,7 @@ export interface ToolDescription {
 
 type Registered = { _registeredTools?: Record<string, { description?: string }> };
 
-async function overHttp(url: string, headers: Record<string, string>): Promise<ToolDescription[]> {
+export async function overHttp(url: string, headers: Record<string, string>): Promise<ToolDescription[]> {
   const client = new Client({ name: "pai", version: "1.0.0" });
   const transport = new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers } });
   try {
@@ -77,7 +77,7 @@ export async function describeServers(status: readonly McpServerStatus[], config
           return;
         }
         const config = (s.config ?? own) as { type?: string; url?: string; id?: string } | undefined;
-        if (config?.type === "http" && config.url) out[s.name] = await overHttp(config.url, {});
+        if (config?.type === "http" && config.url) out[s.name] = await overHttp(config.url, (own as { headers?: Record<string, string> } | undefined)?.headers ?? {});
         else if (config?.type === "claudeai-proxy" && config.id && token) out[s.name] = await overProxy(config.id, token);
       } catch (err) {
         log.debug(`${s.name}: no descriptions (${(err as Error).message.slice(0, 120)})`);

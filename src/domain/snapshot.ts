@@ -19,7 +19,7 @@ import * as tasks from "./tasks.ts";
 const IMPORT_STEPS = [
   "When the user asks you to import this file, parts of it are out of date, so every line is a lead to check, not a fact. The journal and conversation are history: evidence to read as needed. Rebuild the current picture, in this order:",
   "1. Fact-check. For each claim, open task and decision look at the latest evidence: mail, Telegram, WhatsApp, calendar, Keep, dev, recall, the web. Work out what is done, dead, changed or still true.",
-  "2. Memory: rewrite MEMORY.md from what survives the check. Durable facts stay, anything stale goes.",
+  "2. Memory: rewrite MEMORY.md with edit_memory from what survives the check. Durable facts stay, anything stale goes.",
   "3. Keep: projects, tasks and docs live there. Search first and update what exists; otherwise create pages: a project per area, a task per thing still open, a doc for notes worth keeping.",
   "4. Workers: anything too big for your own context goes to a worker (create_agent), several at once when the work splits. Each writes its results to Keep pages and reports the page. Do not create standing agents, and do not recreate the agents named in the export: their areas become Keep projects.",
   "5. Send nothing as the user. A pending draft or a message that is due becomes a Keep task, or a card for the user (offer_draft).",

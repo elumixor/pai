@@ -4,6 +4,7 @@ import { logger } from "../core/log.ts";
 import { clearSession, identified, origin, personEmail, sessionCookie, sessionFromRequest, sign, tokenFromRequest, verify } from "./auth.ts";
 import { deviceFor, listDevices, mintDevice, revokeDevice } from "./devices.ts";
 import type { OAuthFinish } from "@desk/connector";
+import { finish as finishDirectMcp } from "../domain/direct-mcp.ts";
 
 const log = logger("google");
 
@@ -37,6 +38,9 @@ export const SIGN_IN = "/#/sign-in";
 
 export const loginUrl = (next: string) => `/auth/google?next=${encodeURIComponent(next)}`;
 
+const escapeHtml = (text: string) => text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+const html = (text: string) => new Response(`<!doctype html><meta charset="utf-8"><title>pai</title><p>${text}</p>`, { headers: { "content-type": "text/html; charset=utf-8" } });
+
 export async function handleAuth(req: Request, url: URL): Promise<Response | undefined> {
   const path = url.pathname;
   if (path === "/auth/me") {
@@ -48,6 +52,15 @@ export async function handleAuth(req: Request, url: URL): Promise<Response | und
   }
   if (path === "/auth/config") {
     return json({ clerkPublishableKey: clerkConfigured() ? config.clerk.publishableKey : null, keepUrl: config.keepUrl || null });
+  }
+  if (path === "/auth/mcp/callback") {
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state") ?? "";
+    if (!code) return html(`The sign-in did not finish: ${escapeHtml(url.searchParams.get("error_description") ?? url.searchParams.get("error") ?? "no code came back")}`);
+    return finishDirectMcp(state, code).then(
+      (server) => html(`${escapeHtml(server.name)} is connected, with ${server.tools} tools. You can close this tab.`),
+      (err: Error) => html(`It did not connect: ${escapeHtml(err.message)}`),
+    );
   }
   if (path === "/auth/devices" || path.startsWith("/auth/devices/")) return devices(req, url);
   // The consent screen links here; Google will not publish an app without a privacy policy.

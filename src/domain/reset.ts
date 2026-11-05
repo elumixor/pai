@@ -20,11 +20,11 @@ const BLANK_MEMORY = "# Profile\n";
 const EXPLORE = `[fresh start] You know nothing about the user yet: this chat, your memory and your journal were cleared on their request. Build the picture of who they are, what they are working on and what they want, starting now. Hand anything big to workers.
 
 Look through:
-- Keep, every workspace you can reach (keep, keep-amcz, keep-atma, keep-desk): projects, docs and tasks.
+- Keep, every workspace you can reach: projects, docs and tasks.
 - dev's repositories, mail, calendar, Balance, Telegram, WhatsApp, Drive, Notion, their Claude Code conversations, their claude.ai chats (claude.ai refuses the box, so workspace/inbox/claude-chats holds a copy, one JSON file per chat: grep it), and workspace/people.
 
 While you do:
-- Write durable facts to MEMORY.md once confirmed. A guess is not a fact: mark it as a guess or ask.
+- Write durable facts to memory with edit_memory once confirmed. A guess is not a fact: mark it as a guess or ask.
 - When you are not sure, ask, one question at a time with one-tap options, the most useful first. Ask from what you found, never what you could look up.
 - For the tasks in Keep, ask which are still relevant, grouped so it is not one question per task.
 - Send nothing as the user, and change nothing in Keep until they have answered.

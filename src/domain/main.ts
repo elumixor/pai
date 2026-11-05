@@ -180,7 +180,7 @@ export function rotate(reason: string): Promise<void> {
         for (let i = 0; i < 120 && (old.state === "busy" || old.pending); i++) await Bun.sleep(5_000);
         const done = waitFor("session.turn_end", old.id, 10 * 60_000);
         old.send(
-          `[rotation] Your session is about to be rebuilt from a briefing (${reason}). Before it is: append a "## Summary" to journal/${day}.md — what the user asked, what was decided, what the agents did, what is left open, in short lines; put lasting facts about the user into MEMORY.md (the profile, under about 150 lines) and anything about a person into people/<name>.md. End the turn with no text.`,
+          `[rotation] Your session is about to be rebuilt from a briefing (${reason}). Before it is: append a "## Summary" to journal/${day}.md — what the user asked, what was decided, what the agents did, what is left open, in short lines; put lasting facts about the user into memory with edit_memory (the profile, under about 150 lines) and anything about a person into people/<name>.md. End the turn with no text.`,
           { origin: "system" },
         );
         await done.catch((err: Error) => log.warn(`journal turn: ${err.message}`));
@@ -261,7 +261,7 @@ function fillProfile() {
   kv.set(PROFILE_FILLED, new Date().toISOString());
   if (lines >= 15) return;
   silent(
-    "[profile] MEMORY.md is the user's profile and it is nearly empty. Fill it from what you already know: use recall over past conversations (search the user's name, their companies and projects, family, places, tools, preferences, recurring people) and the workspace. Lasting facts only, one per line, grouped under short headings, under about 150 lines, absolute dates. Facts about other people go into people/<name>.md. End with no text.",
+    "[profile] MEMORY.md is the user's profile and it is nearly empty. Fill it with edit_memory from what you already know: use recall over past conversations (search the user's name, their companies and projects, family, places, tools, preferences, recurring people) and the workspace. Lasting facts only, one per line, grouped under short headings, under about 150 lines, absolute dates. Facts about other people go into people/<name>.md. End with no text.",
   );
 }
 

@@ -378,6 +378,15 @@ export function recycle() {
   }
 }
 
+/** Sessions mid-turn when the tools changed: they go when the turn ends. */
+const outdated = new Set<string>();
+
+/** The tools changed: a session's are fixed when its process starts, so idle ones go now and are resumed on their next turn. */
+export function applyTools() {
+  for (const s of live.values()) if (s.state !== "idle" || s.pending) outdated.add(s.id);
+  recycle();
+}
+
 /** Frees the subprocess of long-idle task sessions. The session itself stays resumable. */
 export function reapIdle() {
   const cutoff = now() - config.idleShutdownMs;
@@ -420,6 +429,18 @@ export const party = (s: { agent?: string | null; shortId: string }) => s.agent 
  * the message log. Agents report through agents.ts instead; this is for threads started with start_thread.
  */
 export function relayToParent() {
+  bus.on("event", (e: PaiEvent) => {
+    if (e.kind !== "session.turn_end" || !e.sessionId || !outdated.delete(e.sessionId)) return;
+    const id = e.sessionId;
+    // The turn's own state settles just after its event.
+    setTimeout(() => {
+      const s = live.get(id);
+      if (!s) return;
+      if (s.state !== "idle" || s.pending) return void outdated.add(id);
+      s.kill();
+      live.delete(id);
+    }, 1000);
+  });
   bus.on("event", (e: PaiEvent) => {
     if (!e.sessionId) return;
     const s = find(e.sessionId);
