@@ -79,6 +79,7 @@ export const EVENT_ICONS: Readonly<Record<string, string>> = {
   "routine.fired": "clock.arrow.circlepath",
   rate_limited: "hourglass",
   "item.arrived": "envelope",
+  "triage.batch": "envelope",
   "item.telegram": "paperplane",
   "item.linkedin": "bubble.left",
   "calendar.upcoming": "calendar",

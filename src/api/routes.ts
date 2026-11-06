@@ -187,9 +187,16 @@ export async function handle(req: Request): Promise<Response> {
     if (inboxTell?.[1] && req.method === "POST") {
       const item = inbox.get(inboxTell[1]);
       if (!item) return json({ error: "no such item" }, 404);
-      main.system(`[The user asks you about something triage marked "${item.action}". Look at it and tell them what it is and whether it matters.]\n${item.title}\n${item.body}${item.link ? `\n${item.link}` : ""}`);
+      const text = await inbox.itemText(item);
+      main.system(`[The user asks you about something triage marked "${item.action}". Look at it and tell them what it is and whether it matters.]\n${item.title}\n${text}${item.link ? `\n${item.link}` : ""}`);
       return json({ told: true });
     }
+    const inboxText = /^\/inbox\/([^/]+)\/text$/.exec(path);
+    if (inboxText?.[1]) {
+      const item = inbox.get(inboxText[1]);
+      return item ? json({ text: await inbox.itemText(item) }) : json({ error: "no such item" }, 404);
+    }
+    if (path === "/inbox" && url.searchParams.has("from")) return json({ items: inbox.between(Number(url.searchParams.get("from")), Number(url.searchParams.get("to") ?? Date.now())) });
     if (path === "/inbox" && url.searchParams.get("view") === "triage") return json({ items: inbox.triaged(Number(url.searchParams.get("limit") ?? 100) || 100, Number(url.searchParams.get("before")) || undefined) });
     if (path === "/inbox") return json(inbox.list(Number(url.searchParams.get("limit") ?? 100) || 100));
 

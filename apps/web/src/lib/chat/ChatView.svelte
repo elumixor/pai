@@ -58,7 +58,8 @@
   import FindBar, { type FindTarget } from "./FindBar.svelte";
   import MessageRow from "./MessageRow.svelte";
   import { navigate } from "../router.svelte";
-  import { withoutRewriteNote, copyOf, forkMounts, forkSeeds, splitPastes, describeTools, eventIcon, eventType, excerptOf, type Item, type LiveQuestion, type ReplyQuote, type Row, textOf, type ToolGroup, typeLabel, withReply } from "./model";
+  import TriageRow from "./TriageRow.svelte";
+  import { withoutRewriteNote, copyOf, forkMounts, forkSeeds, splitPastes, describeTools, eventIcon, eventType, excerptOf, isTriageRow, type Item, type LiveQuestion, type ReplyQuote, type Row, textOf, type ToolGroup, typeLabel, withReply } from "./model";
   import Pictures from "./Pictures.svelte";
   import QuestionRow from "./QuestionRow.svelte";
   import QuoteRef from "./QuoteRef.svelte";
@@ -134,8 +135,8 @@
   const replyKey = $derived(`pai.reply:${spec.key}`);
   const isMine = (m: LogMessage) => m.from === spec.parent || (spec.parent !== "user" && m.from === "user");
   const nameOf = (party: string) => (party === "user" ? "you" : party === PAI ? "General" : (desk.bySlug(party)?.name ?? party.replace(/^(watcher|routine):/, "")));
-  const said = (item: Item): item is Row => item.kind === "message" && SAID.includes(item.m.kind) && !isMine(item.m) && item.m.from !== "user" && !item.m.meta.place && Boolean(item.m.body.trim());
-  const isEvent = (item: Item): item is Row => item.kind === "message" && item.m.kind === "event" && !item.m.meta.draft;
+  const said = (item: Item): item is Row => item.kind === "message" && SAID.includes(item.m.kind) && !isMine(item.m) && item.m.from !== "user" && !item.m.meta.place && !isTriageRow(item.m) && Boolean(item.m.body.trim());
+  const isEvent = (item: Item): item is Row => item.kind === "message" && ((item.m.kind === "event" && !item.m.meta.draft) || isTriageRow(item.m));
   const messageItem = (m: LogMessage): Row => ({ kind: "message", key: `m${m.id}`, at: m.createdAt, m: { ...m, body: withoutRewriteNote(m.body) } });
 
   // ---- what is drawn: days, the "new" line, runs of events folded by type ------------------------------------
@@ -144,7 +145,8 @@
     | { type: "day"; key: string; label: string }
     | { type: "new"; key: string }
     | { type: "item"; key: string; item: Item }
-    | { type: "group"; key: string; rows: Row[] };
+    | { type: "group"; key: string; rows: Row[] }
+    | { type: "triage"; key: string; rows: Row[] };
 
   const entries = $derived.by(() => {
     const sorted = [...items].sort((a, b) => a.at - b.at);
@@ -156,6 +158,9 @@
     let run: Row[] = [];
     const flush = () => {
       if (!run.length) return;
+      const triage = run.filter((r) => isTriageRow(r.m));
+      if (triage.length) out.push({ type: "triage", key: `t${triage[0]!.key}`, rows: triage });
+      run = run.filter((r) => !isTriageRow(r.m));
       const byType = new Map<string, Row[]>();
       for (const r of run) byType.set(eventType(r.m), [...(byType.get(eventType(r.m)) ?? []), r]);
       const done = new Set<string>();
@@ -444,7 +449,7 @@
 
   /** The one line a pill shows: the daemon writes a headline for a row once, when asked. */
   function wantHeadline(m: LogMessage) {
-    if (m.meta.headline || asked.has(m.id) || !["event", "notice", "report", "response", "ask"].includes(m.kind)) return;
+    if (m.meta.headline || asked.has(m.id) || isTriageRow(m) || !["event", "notice", "report", "response", "ask"].includes(m.kind)) return;
     asked.add(m.id);
     void api
       .headline(m.id)
@@ -1174,6 +1179,8 @@
           <div class="day" {@attach rowAttach(entry.key)}><span>{entry.label}</span></div>
         {:else if entry.type === "new"}
           <div class="new-line"><span>New</span></div>
+        {:else if entry.type === "triage"}
+          <TriageRow rows={entry.rows.map((r) => r.m)} key={entry.key} attach={rowAttach(entry.key)} />
         {:else if entry.type === "group"}
           {@const first = entry.rows[0]!.m}
           {@const last = entry.rows[entry.rows.length - 1]!.m}

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { bus } from "../core/bus.ts";
+import { api } from "../connectors/loader.ts";
 import { db, now } from "../core/db.ts";
 
 /**
@@ -30,6 +31,8 @@ export interface Entry {
   readonly target: string | null;
   readonly note: string | null;
   readonly readAt: number | null;
+  /** Where its words live (`itemText`); a row with one keeps no body once it is set aside. */
+  readonly ref: string | null;
 }
 
 interface Row {
@@ -44,6 +47,7 @@ interface Row {
   target: string | null;
   note: string | null;
   read_at: number | null;
+  ref: string | null;
 }
 
 const entryOf = (r: Row): Entry => ({ ...r, readAt: r.read_at });
@@ -61,20 +65,22 @@ export function record(input: {
   readonly action?: Action;
   readonly target?: string | null;
   readonly note?: string | null;
+  readonly ref?: Record<string, unknown>;
 }): string {
   const id = input.id ?? randomUUID();
   db.prepare("DELETE FROM inbox WHERE at < ?").run(now() - KEEP_MS);
-  db.prepare("INSERT OR IGNORE INTO inbox (id, source, kind, title, body, link, at, action, target, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
+  db.prepare("INSERT OR IGNORE INTO inbox (id, source, kind, title, body, link, at, action, target, note, ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
     id,
     input.source,
     input.kind,
     input.title.slice(0, 300),
-    (input.body ?? "").slice(0, MAX_BODY),
+    input.ref && input.action === "muted" ? "" : (input.body ?? "").slice(0, MAX_BODY),
     input.link ?? null,
     input.at ?? now(),
     input.action ?? "pending",
     input.target ?? null,
     input.note ?? null,
+    input.ref ? JSON.stringify(input.ref) : null,
   );
   changed(id);
   return id;
@@ -83,14 +89,43 @@ export function record(input: {
 /** What Pai did with it. */
 export function settle(id: string | undefined, outcome: { readonly action: Action; readonly target?: string | null; readonly note?: string | null }) {
   if (!id) return;
-  db.prepare("UPDATE inbox SET action = ?, target = ?, note = ? WHERE id = ?").run(outcome.action, outcome.target ?? null, outcome.note?.slice(0, 300) ?? null, id);
+  const setAside = outcome.action === "ignored" || outcome.action === "muted";
+  db.prepare("UPDATE inbox SET action = ?, target = ?, note = ?, body = CASE WHEN ? AND ref IS NOT NULL THEN '' ELSE body END WHERE id = ?").run(outcome.action, outcome.target ?? null, outcome.note?.slice(0, 300) ?? null, setAside ? 1 : 0, id);
   changed(id);
 }
 
-/** Everything that came in and what triage made of it, newest first, a page at a time. */
+/** What triage acted on, newest first, a page at a time. */
 export function triaged(limit = 100, before = now() + 1): readonly Entry[] {
-  const rows = db.query(`SELECT * FROM inbox WHERE NOT (${ADDRESSED}) AND at < ? ORDER BY at DESC LIMIT ?`).all(before, Math.max(1, Math.min(500, limit))) as Row[];
+  const rows = db.query(`SELECT * FROM inbox WHERE NOT (${ADDRESSED}) AND action NOT IN ('ignored', 'muted') AND at < ? ORDER BY at DESC LIMIT ?`).all(before, Math.max(1, Math.min(500, limit))) as Row[];
   return rows.map(entryOf);
+}
+
+/** Everything triage saw in a stretch of time, set aside or not (muted is never shown), newest first. */
+export const between = (from: number, to: number): readonly Entry[] =>
+  (db.query(`SELECT * FROM inbox WHERE NOT (${ADDRESSED}) AND action != 'muted' AND at BETWEEN ? AND ? ORDER BY at DESC LIMIT 500`).all(from, to) as Row[]).map(entryOf);
+
+const CONNECTOR_OF: Readonly<Record<string, string>> = { mail: "email", telegram: "telegram", whatsapp: "whatsapp" };
+
+/** An item's words, read from where they live; what the row kept when the source cannot answer. */
+export async function itemText(entry: Entry): Promise<string> {
+  const connector = CONNECTOR_OF[entry.source];
+  const reader = connector && entry.ref ? api<{ readItem?: (ref: unknown) => Promise<string | undefined> }>(connector)?.readItem : undefined;
+  if (!reader) return entry.body;
+  try {
+    return (await reader(JSON.parse(entry.ref!))) || entry.body;
+  } catch {
+    return entry.body;
+  }
+}
+
+/** Once: notices triage sent before they said so, recognised by the item they name, so they fold with the rest. */
+export function tagOldTriageNotices() {
+  if (db.query("SELECT 1 FROM kv WHERE key = 'triage_notices_tagged'").get()) return;
+  db.exec(`UPDATE messages SET meta = json_set(meta, '$.triage', 'legacy')
+    WHERE kind = 'notice' AND sender = 'pai' AND ifnull(json_extract(meta, '$.priority'), '') != 'urgent' AND EXISTS (
+      SELECT 1 FROM inbox i WHERE i.action = 'told' AND i.at BETWEEN messages.created_at - 900000 AND messages.created_at
+        AND (instr(messages.body, i.title) > 0 OR (i.link IS NOT NULL AND instr(messages.body, i.link) > 0) OR (i.note IS NOT NULL AND instr(messages.body, i.note) > 0)))`);
+  db.prepare("INSERT OR REPLACE INTO kv (key, value) VALUES ('triage_notices_tagged', '1')").run();
 }
 
 export const get = (id: string) => {

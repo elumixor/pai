@@ -197,6 +197,12 @@ export interface LogMessage {
   readonly taskId: number | null;
   readonly meta: {
     /** An ask still with a supervisor: who. */
+    /** A notice about triage's work: `batch`, or `legacy` when it predates batches and counts as an action itself. */
+    readonly triage?: "batch" | "legacy";
+    /** A triage batch: how many came in, how many were acted on, when the oldest arrived. */
+    readonly items?: number;
+    readonly acted?: number;
+    readonly since?: number;
     readonly heldBy?: string;
     /** An agent's start: its task as it stood, and the Keep page holding it. */
     readonly brief?: string;

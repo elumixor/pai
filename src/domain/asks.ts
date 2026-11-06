@@ -405,7 +405,7 @@ const toNotice = (r: Record<string, any>): Notice => ({ id: r.id, agent: r.agent
  * Something the user should know. urgent: now, with sound, even in quiet hours. normal: now,
  * silently, or when quiet hours end. digest: in the next brief. log: only in the agent's chat.
  */
-export function notify(agent: string, text: string, priority: Priority = "normal"): Notice {
+export function notify(agent: string, text: string, priority: Priority = "normal", meta: messages.MessageMeta = {}): Notice {
   if (!text.trim()) throw new AskError("an empty notice");
   if (mutedBy(text)) priority = "log";
   const p = shifted(priority, agents.priority(agent));
@@ -414,12 +414,12 @@ export function notify(agent: string, text: string, priority: Priority = "normal
   if (p === "log") {
     messages.log({ from: agent, to: agent, kind: "notice", body: n.text, meta: { priority: p, agent } });
     markDelivered([n.id]);
-  } else if (p === "urgent" || (p === "normal" && !quiet())) deliverNotice(n);
+  } else if (p === "urgent" || (p === "normal" && !quiet())) deliverNotice(n, meta);
   return n;
 }
 
-function deliverNotice(n: Notice) {
-  messages.log({ from: n.agent, to: "user", kind: "notice", body: n.text, meta: { priority: n.priority, silent: n.priority !== "urgent", breadcrumb: agents.breadcrumb(n.agent), agent: n.agent } });
+function deliverNotice(n: Notice, extra: messages.MessageMeta = {}) {
+  messages.log({ from: n.agent, to: "user", kind: "notice", body: n.text, meta: { ...extra, priority: n.priority, silent: n.priority !== "urgent", breadcrumb: agents.breadcrumb(n.agent), agent: n.agent } });
   markDelivered([n.id]);
 }
 

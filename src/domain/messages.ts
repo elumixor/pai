@@ -44,6 +44,8 @@ export type EventName =
   | "elevated"
   | "routine.fired"
   | "item.arrived"
+  /** One triage batch: what came in and how much was acted on. */
+  | "triage.batch"
   | "calendar.upcoming"
   | "answered"
   | "sent"

@@ -1081,6 +1081,8 @@ function eventNoun(i: RichEvent) {
       return i.icon === "envelope" ? "email" : "message";
     case "calendar.upcoming":
       return "meeting";
+    case "triage.batch":
+      return "batch";
     case "agent.woken":
       return "wake-up";
     case "error":

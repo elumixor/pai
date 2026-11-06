@@ -205,6 +205,10 @@ export const typeLabel = (type: string) => TYPE_LABEL[type] ?? type.replace(/^it
 /** The icon by where it came from when the source has one (Telegram, LinkedIn), else by the event. */
 export const eventIcon = (m: LogMessage) => kindIcon(hasKindIcon(`item.${eventType(m)}`) ? `item.${eventType(m)}` : (m.meta.event ?? "event"));
 
+const TRIAGE_EVENTS: readonly unknown[] = ["item.arrived", "calendar.upcoming", "triage.batch"];
+/** A row that folds into `N events → M actions`: what came in, and the notices triage sent about it (never an urgent one). */
+export const isTriageRow = (m: LogMessage) => (m.kind === "event" && TRIAGE_EVENTS.includes(m.meta.event)) || (m.kind === "notice" && Boolean(m.meta.triage) && m.meta.priority !== "urgent");
+
 /** How big a file is, as a row says it. */
 export const fileSize = (bytes: number) => (bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
 

@@ -164,6 +164,8 @@ export const api = {
   draftPolicies: () => get<Record<string, "ask" | "auto">>("/drafts/policy"),
   setDraftPolicy: (channel: string, mode: "ask" | "auto") => send<Record<string, "ask" | "auto">>("/drafts/policy", { channel, mode }, "PATCH"),
   triaged: (before?: number) => get<{ items: import("./stores/inbox.svelte").InboxEntry[] }>(`/inbox?view=triage${before ? `&before=${before}` : ""}`, true),
+  triagedBetween: (from: number, to: number) => get<{ items: import("./stores/inbox.svelte").InboxEntry[] }>(`/inbox?from=${from}&to=${to}`, true),
+  itemText: (id: string) => get<{ text: string }>(`/inbox/${q(id)}/text`, true),
   tellAboutItem: (id: string) => send(`/inbox/${q(id)}/tell`),
   sent: () => get<{ id: string; agent: string | null; tool: string; summary: string; ts: number; outcome: "verified" | "unverified" | "not_sent" | "done" | "running" }[]>("/sent", true),
   connector: (name: string, quiet = false) => get<ConnectorDetail>(`/connectors/${q(name)}`, quiet),

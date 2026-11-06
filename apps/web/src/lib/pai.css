@@ -542,7 +542,11 @@ button.row-file { width: 100%; background: none; font: inherit; text-align: left
 .row.pill .card-body, .row.pill .event-body, .row.notice .event-body { display: none; padding: 6px 0 4px 16px; font: 400 var(--ui)/var(--ui-lh) var(--font-ui); color: var(--ink-45); }
 .row.pill.open .card-body, .row.pill.open .event-body, .row.notice.open .event-body { display: block; }
 .row.pill .event-body a { color: var(--model); }
-.row.group { cursor: default; }
+.row.group, .row.triage { cursor: default; }
+.triage-line { gap: 2px; }
+.triage-count { padding: 0 6px; border: 0; border-radius: var(--r-xs); background: none; color: inherit; font: inherit; cursor: pointer; }
+.triage-count:hover { background: var(--ink-5); color: var(--ink); }
+.triage-arrow { padding: 0 4px 0 2px; color: var(--ink-30); }
 .row.group .pill-line { cursor: pointer; border: 0; background: none; padding: 0; font: 400 var(--ui)/var(--ui-lh) var(--font-ui); color: var(--ink-45); text-align: left; appearance: none; width: 100%; }
 .row.group .pill-line:hover { color: color-mix(in srgb, var(--ink) 80%, transparent); }
 .row.group .pill-line:focus-visible { outline: 1px solid var(--ink-30); outline-offset: 3px; border-radius: 4px; }

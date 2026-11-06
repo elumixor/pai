@@ -112,7 +112,21 @@ export function noteWith(notes: string, line: string, keep = KEPT_LINES): string
 }
 
 /** An item as its inbox row starts: arrived, not decided yet. */
-const arrived = (item: Item) => ({ source: item.source, kind: item.kind, title: item.title, body: item.body, link: item.link, at: item.at });
+const arrived = (item: Item) => ({ source: item.source, kind: item.kind, title: item.title, body: item.body, link: item.link, at: item.at, ref: refOf(item) });
+
+/** Where an item's words can be read again later, so a row set aside need not keep them. */
+function refOf({ kind, payload: p }: Item): Record<string, unknown> | undefined {
+  if (kind === "gmail.new" && p.account && p.id) return { account: p.account, id: p.id };
+  if ((kind === "telegram.dm" || kind === "telegram.chat") && p.chatId && p.messageId) return { chatId: p.chatId, messageId: p.messageId };
+  if (kind === "whatsapp.message" && p.messageId) return { messageId: p.messageId };
+  return undefined;
+}
+
+/** One row in the log for a whole batch: the items themselves are in the inbox, read when someone opens it. */
+function logBatch(items: readonly Item[]) {
+  const acted = items.filter((i) => i.id && ["filed", "woke", "told"].includes(inbox.get(i.id)?.action ?? "")).length;
+  messages.event(agents.PAI, "triage.batch", `${items.length} events → ${acted} actions`, { meta: { items: items.length, acted, since: Math.min(...items.map((i) => i.at)) } });
+}
 
 /** The routines' sink: the item waits for the rest of its burst. */
 export function add(e: PaiEvent, _rule?: Automation) {
@@ -126,7 +140,6 @@ export function add(e: PaiEvent, _rule?: Automation) {
     inbox.record({ ...arrived(item), action: "muted", note: `muted: ${muted.pattern}` });
     return log.debug(`muted (${muted.pattern}): ${item.title}`);
   }
-  messages.event(agents.PAI, item.kind === "calendar.upcoming" ? "calendar.upcoming" : "item.arrived", item.title, { meta: { source: item.source, link: item.link } });
   batch.push({ ...item, id: inbox.record(arrived(item)) });
   if (batch.length >= MAX_BATCH) void flush();
   else timer ??= setTimeout(() => void flush(), WINDOW_MS);
@@ -134,6 +147,7 @@ export function add(e: PaiEvent, _rule?: Automation) {
 
 /** Picks up what a restart cut off, or it would say "Deciding…" forever and nobody would be told. A long outage's leftovers are stale news. */
 export function resume() {
+  inbox.tagOldTriageNotices();
   const cutoff = now() - RESUME_WITHIN_MS;
   for (const e of inbox.undecided()) {
     if (e.at < cutoff) inbox.settle(e.id, { action: "failed", note: "pai was down too long to decide this" });
@@ -154,8 +168,9 @@ export async function flush() {
   } catch (err) {
     // Without a decision nothing is lost: the items go to the user as one quiet notice.
     log.warn(`triage failed, passing ${items.length} items on: ${(err as Error).message}`);
-    asks.notify(agents.PAI, `${items.length} new: ${items.map((i) => i.title).join("; ").slice(0, 1200)}`, "normal");
+    asks.notify(agents.PAI, `${items.length} new: ${items.map((i) => i.title).join("; ").slice(0, 1200)}`, "normal", { triage: "batch" });
     for (const item of items) inbox.settle(item.id, { action: "told", note: "triage failed: passed on as one notice" });
+    logBatch(items);
     return;
   }
   apply(items, decisions);
@@ -197,7 +212,7 @@ export function apply(items: Item[], decisions: Decision[]) {
       } else if (d.action === "tell") {
         if (d.urgent) asks.notify(agents.PAI, `${d.note || item.title}${item.link ? `\n${item.link}` : ""}`, "urgent");
         else told.push(`${d.note || item.title}${item.link ? ` ${item.link}` : ""}`);
-        inbox.settle(item.id, { action: "told", note: d.reason || d.note });
+        inbox.settle(item.id, { action: "told", note: d.note || d.reason });
       }
     } catch (err) {
       log.warn(`item ${d.i}: ${(err as Error).message}`);
@@ -209,7 +224,8 @@ export function apply(items: Item[], decisions: Decision[]) {
     const task = tasks.add({ title: item.title, owner: agents.PAI, source: item.link, notes: item.body.slice(0, 1000), createdBy: "event" });
     inbox.settle(item.id, { action: "filed", target: `task:${task.id}`, note: "triage skipped it" });
   }
-  if (told.length) asks.notify(agents.PAI, told.length === 1 ? told[0]! : told.map((t) => `- ${t}`).join("\n"), "normal");
+  if (told.length) asks.notify(agents.PAI, told.length === 1 ? told[0]! : told.map((t) => `- ${t}`).join("\n"), "normal", { triage: "batch" });
+  logBatch(items);
   const counts = decisions.reduce<Record<string, number>>((acc, d) => ({ ...acc, [d.action]: (acc[d.action] ?? 0) + 1 }), {});
   log.info(`${items.length} items: ${Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(", ")}`);
   db.prepare("INSERT OR REPLACE INTO kv (key, value) VALUES ('triage_last', ?)").run(JSON.stringify({ at: now(), items: items.length, ...counts }));

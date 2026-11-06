@@ -271,6 +271,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS archive USING fts5(source, ref UNINDEXED, tit
 `);
 
 // Columns added after the first release; ALTER is the migration.
+if (!(db.query("PRAGMA table_info(inbox)").all() as { name: string }[]).some((c) => c.name === "ref")) db.exec("ALTER TABLE inbox ADD COLUMN ref TEXT");
 const sessionColumns = (db.query("PRAGMA table_info(sessions)").all() as { name: string }[]).map((c) => c.name);
 if (!sessionColumns.includes("parent_id")) db.exec("ALTER TABLE sessions ADD COLUMN parent_id TEXT");
 if (!sessionColumns.includes("model")) db.exec("ALTER TABLE sessions ADD COLUMN model TEXT");
