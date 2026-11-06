@@ -7,13 +7,14 @@
   /**
    * The discs in the box's foot, as Claude Code's status line has them: the conversation's context, the session window
    * and the week, each a percent. The time to the reset shows only when it matters: the session past half, the week
-   * ahead of its pace.
+   * ahead of its pace and at 10% or more.
    */
   let { model, session }: { model?: string | null; session?: string } = $props();
   const R = 6.5;
   const C = 2 * Math.PI * R;
   const CONTEXT_EVERY_MS = 20_000;
   const SESSION_TIME_AT = 50;
+  const WEEK_TIME_AT = 10;
   const WEEK_MS = 7 * 24 * 3_600_000;
 
   let context = $state<number | undefined>();
@@ -52,7 +53,7 @@
     return [
       ...(session ? [{ key: "context", percent: context, level: "context", time: "", title: context === undefined ? "Context: not known yet" : `Context: ${context}% full` }] : []),
       { key: "session", percent: s?.percent, level: s ? level(s.percent) : "none", time: s && s.percent > SESSION_TIME_AT ? left(s.resetsAt) : "", title: s ? `${s.name}: ${s.percent}% used · resets in ${left(s.resetsAt)}` : `Session: unavailable — ${why}` },
-      { key: "week", percent: week?.percent, level: week ? (ahead && week.percent < 90 ? "warm" : level(week.percent, 101)) : "none", time: ahead ? left(week?.resetsAt) : "", title: week ? `${week.name}: ${week.percent}% used · resets in ${left(week.resetsAt)}` : `Weekly: unavailable — ${why}` },
+      { key: "week", percent: week?.percent, level: week ? (ahead && week.percent < 90 ? "warm" : level(week.percent, 101)) : "none", time: ahead && week!.percent >= WEEK_TIME_AT ? left(week!.resetsAt) : "", title: week ? `${week.name}: ${week.percent}% used · resets in ${left(week.resetsAt)}` : `Weekly: unavailable — ${why}` },
     ];
   });
 </script>
